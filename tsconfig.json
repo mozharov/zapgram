@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "baseUrl": "src",
+    "module": "Node16",
+    "target": "ES2022",
+    "strict": true,
+    "outDir": "dist",
+    "declaration": true,
+    "experimentalDecorators": true,
+    "removeComments": true,
+    "useUnknownInCatchVariables": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"],
+  "ts-node": {
+    "esm": true,
+    "transpileOnly": true
+  }
+}

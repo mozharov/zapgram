@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1738838126026,
+      "tag": "0000_short_roland_deschain",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1739166224090,
+      "tag": "0001_fluffy_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1739792421657,
+      "tag": "0002_mysterious_mattie_franklin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1739838955869,
+      "tag": "0003_melted_lockjaw",
+      "breakpoints": true
+    }
+  ]
+}

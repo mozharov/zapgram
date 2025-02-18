@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "gruntfuggly.todo-tree",
+    "paulys.fluent-syntax-highlighting",
+    "ms-vscode-remote.remote-containers",
+    "ldez.ignore-files",
+    "fabiospampinato.vscode-todo-plus",
+    "damms005.devdb"
+  ]
+}
