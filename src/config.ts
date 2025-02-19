@@ -18,7 +18,6 @@ export const config = {
     LNBITS_URL: z.string().nonempty(),
     LNBITS_ADMIN_KEY: z.string().nonempty(),
     LNBITS_ADMIN_ID: z.string().nonempty(),
-    NWC_FUND_URL: z.string().nonempty(),
   }),
 
   get botInfo(): UserFromGetMe | undefined {
