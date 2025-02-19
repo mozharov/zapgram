@@ -72,16 +72,16 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
 
 help = <b>ℹ️ Bitcoin</b>
-    Bitcoin is the perfect form of money that exists on the internet. A decentralized and permissionless system with no owners or controlling authorities. Bitcoin is sound money that is faster, more secure, and more accessible than the traditional financial system.  
+    Bitcoin is the best form of money in our history that lives on the Internet. A decentralized and permissionless system with no rulers or controlling authorities. Bitcoin is sound money that is faster, more secure, and more accessible than fiat currencies we are coerced into using today.  
     
-    Bitcoin is the first strictly limited resource in human history; its total supply will never exceed 21 million.  
-    The smallest unit of Bitcoin is satoshi (sat). 100,000,000 sats = 1 Bitcoin. The fiat value of Bitcoin can fluctuate daily. However, if you live on a Bitcoin standard, 1 sat will always equal 1 sat.  
+    Bitcoin is the first finitely scarce resource in human history: there will never be more than 21 million bitcoin.  
+    The smallest unit of Bitcoin is satoshi (sat). 1 bitcoin = 100,000,000 sats.
 
     If you want to learn more about Bitcoin, I recommend starting with this article:  
     • <a href="https://21ideas.org/en/start/start/">What is Bitcoin?</a>
 
     <b>ℹ️ Lightning Network</b>
-    The Lightning Network is a payment protocol that enables fast and cheap Bitcoin payments that require almost no energy. It is what scales Bitcoin to the billions of people around the world.
+    The Lightning Network is a payment protocol that enables extremely fast and cheap bitcoin payments. It is open, borderless and efficient. It is available to 650+ million people in the world. It allows you to permissionlessly send and receive nearly instant and nearly free payments anywhere in the world.
     • <a href="https://21ideas.org/en/what-is-lightning-network/">What is Lightning Network?</a>
 
     <b>ℹ️ {bot-name} compatible wallets (NWC)</b>
@@ -89,10 +89,10 @@ help = <b>ℹ️ Bitcoin</b>
     • <a href="https://coinos.io">Coinos</a>
 
     <b>ℹ️ {bot-name}</b>
-    • Quick Payment: Just send a message with a Lightning invoice in the chat.
+    • Quick Payment: Simply send a Lightning invoice to the chat.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
-    <i>When paying invoices not created by {bot-name} wallets, a fee of 1 sat + 1.5% of the transfer amount is charged. This fee is only applied when paying from a {bot-name} wallet.</i>
+    <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
 
     <i>If you need assistance or have any questions about using {bot-name}, feel free to contact me on Telegram: @vmozharov</i>
 
