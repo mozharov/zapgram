@@ -1,10 +1,10 @@
-import type {User} from '../../lib/database/types.js'
-import {logger} from '../../lib/logger.js'
-import {getUserOrThrow} from '../../models/user.js'
-import {getUserWallet} from '../../services/lnbits-user-wallet.js'
-import {msatsToSats} from '../../utils/sats.js'
-import {bot} from '../bot.js'
-import {translate} from '../lib/i18n.js'
+import type {User} from '../lib/database/types.js'
+import {logger} from '../lib/logger.js'
+import {getUserOrThrow} from '../models/user.js'
+import {getUserWallet} from './lnbits-user-wallet.js'
+import {msatsToSats} from '../utils/sats.js'
+import {bot} from '../bot/bot.js'
+import {translate} from '../bot/lib/i18n.js'
 
 export async function notifySatsReceived(
   toUserId: User['id'],

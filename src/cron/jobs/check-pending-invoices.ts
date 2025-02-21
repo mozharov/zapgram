@@ -1,5 +1,5 @@
 import {CronJob} from 'cron'
-import {notifyInvoicePaid} from '../../bot/services/notify-invoice-paid.js'
+import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 import {logger} from '../../lib/logger.js'
 import {
   getPendingInvoices,

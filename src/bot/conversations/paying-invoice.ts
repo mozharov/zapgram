@@ -6,7 +6,7 @@ import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {msatsToSats} from '../../utils/sats.js'
 import {waitForInvoiceReview} from '../helpers/conversations/wait-for-invoice-review.js'
 import {NWCConnectionError} from '../errors/nwc-connection.js'
-import {notifyInvoicePaid} from '../services/notify-invoice-paid.js'
+import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 import {deletePendingInvoice, getPendingInvoiceBy} from '../../models/pending-invoice.js'
 
 export async function payingInvoice(
