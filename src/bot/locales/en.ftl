@@ -137,14 +137,6 @@ settings = <b>⚙️ Settings</b>
         
         If you make {bot-name} an admin of your channel, all /tip commands in reply to that channel's posts will also be sent to your wallet.
 
-        <b>Synonyms</b>
-        You can also use the /zap or /send commands instead of the /tip command in groups. These are synonyms.
-        To disable certain synonyms in case of, for example, conflict with other bots, use <code>/disable [zap|tip|send]</code> in the group. To turn synonyms back on, use <code>/enable [zap|tip|send]</code> in the group.
-
-        For example, the <code>/disable tip</code> command will disable responding to the /tip command in a group.
-
-        Only the group owner can manage synonyms.
-
 send-menu = <b>✉️ Send payment</b>
 
         Pay a Lightning invoice or send payment to a Telegram user.
