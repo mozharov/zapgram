@@ -45,7 +45,7 @@ error =
     .invoice-already-paid = <b>⚠️ Этот счёт уже оплачен.</b>
     .no-recipient = <b>⚠️ Не указан получатель.</b>
     .to-bot = <b>⚠️ Ты не можешь отправлять саты ботам.</b>
-    .from-bot = <b>⚠️ Ты не можешь отправлять саты с этого аккаунта.</b>
+    .from-bot = <b>⚠️ Ты не можешь использовать {bot-name} с анонимного профиля.</b>
 
 start = ⚡ <b>{bot-name} — Bitcoin Lightning кошелёк в Telegram.</b>
 

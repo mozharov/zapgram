@@ -2,7 +2,6 @@ import type {HearsContext} from '@grammyjs/conversations/out/deps.node.js'
 import type {ChatTypeContext} from 'grammy'
 import type {BotContext} from '../../context.js'
 import {replyWithTempMessage} from '../../helpers/temp-message.js'
-import {FromBotError} from '../../errors/from-bot.js'
 import {getOrCreateUser, getUserByUsername} from '../../../models/user.js'
 import {getUserFromChatCreator} from '../../helpers/chat-creator.js'
 import {NoRecipientError} from '../../errors/no-recipient.js'
@@ -11,6 +10,8 @@ import {ToYourselfError} from '../../errors/to-yourselfs.js'
 import {notifySatsReceived} from '../../services/notify-sats-recceived.js'
 import {UserDoesNotHaveWalletError} from '../../errors/user-does-not-have-wallet.js'
 import type {User} from '../../../lib/database/types.js'
+import {internalTransfer} from '../../../services/lnbits-user-wallet.js'
+import {getUserWallet} from '../../../services/lnbits-user-wallet.js'
 
 type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
 
@@ -23,12 +24,17 @@ export const tipCommand = async (ctx: Context) => {
   const {sats, username} = parseMatch(ctx.match)
   await ctx.deleteMessage().catch(() => null)
   if (sats === 0) return
-  if (ctx.from.is_bot) throw new FromBotError()
   await ctx.replyWithChatAction('typing').catch(() => null)
 
   const toUser = await getToUser(ctx, username)
   if (!toUser) throw new NoRecipientError()
   if (toUser.id === ctx.user.id) throw new ToYourselfError()
+
+  if (ctx.user.nwcTips && ctx.user.nwc) {
+    const toUserWallet = await getUserWallet(toUser.id)
+    const invoice = await toUserWallet.createInvoice({sats})
+    await ctx.user.nwc.payInvoice(invoice.bolt11)
+  } else await internalTransfer(ctx.user.id, toUser.id, sats)
 
   const replyTo = ctx.message.reply_to_message
   const toChatCreator = (!username && !replyTo) || !!replyTo?.sender_chat

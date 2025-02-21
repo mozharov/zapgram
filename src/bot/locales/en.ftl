@@ -45,7 +45,7 @@ error =
     .invoice-already-paid = <b>⚠️ This invoice has already been paid.</b>
     .no-recipient = <b>⚠️ The recipient is not specified.</b>
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
-    .from-bot = <b>⚠️ You cannot send sats from this account.</b>
+    .from-bot = <b>⚠️ You can't use {bot-name} from anonymous profile.</b>
 
 start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
 
