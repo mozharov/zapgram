@@ -36,3 +36,24 @@ export const pendingInvoicesTable = sqliteTable('pending_invoices', {
     .notNull()
     .default(sql`(unixepoch())`),
 })
+
+// only for paid chats
+export const chatsTable = sqliteTable('chats', {
+  id: integer('id', {mode: 'number'}).primaryKey(), // Telegram ID
+  title: text('title').notNull(),
+  username: text('username'),
+  type: text('type', {enum: ['channel', 'supergroup']}).notNull(),
+  price: integer('price', {mode: 'number'}).notNull().default(0), // Price for subscription in satoshis
+  status: text('status', {enum: ['active', 'inactive', 'no_access']}) // no_access - bot was removed from the chat or rights were changed
+    .notNull()
+    .default('inactive'),
+  paymentType: text('payment_type', {enum: ['one_time', 'monthly']})
+    .notNull()
+    .default('one_time'),
+  ownerId: integer('owner_id', {mode: 'number'})
+    .notNull()
+    .references(() => usersTable.id, {onDelete: 'cascade'}),
+  createdAt: integer('created_at', {mode: 'timestamp'})
+    .notNull()
+    .default(sql`(unixepoch())`),
+})

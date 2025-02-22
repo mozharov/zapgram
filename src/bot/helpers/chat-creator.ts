@@ -1,8 +1,8 @@
 import type {ChatTypeContext} from 'grammy'
-import type {BotContext} from '../context.js'
+import type {BaseContext} from '../context.js'
 import {getOrCreateUser} from '../../models/user.js'
 
-type Context = ChatTypeContext<BotContext, 'group' | 'supergroup'>
+type Context = ChatTypeContext<BaseContext, 'group' | 'supergroup' | 'channel'>
 
 export async function getChatCreator(ctx: Context) {
   const admins = await ctx.getChatAdministrators().catch((error: unknown) => {

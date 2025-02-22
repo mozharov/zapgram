@@ -33,6 +33,9 @@ import {lnbitsWallet} from './middlewares/lnbits-wallet.js'
 import {creatingInvoice} from './conversations/creating-invoice.js'
 import {createInvoiceCallback} from './handlers/callbacks/create-invoice.js'
 import {tipCommand, tipInvalidCommand} from './handlers/commands/tip.js'
+import {myChatMemberHandler} from './handlers/my-chat-member.js'
+import {newChatTitleHandler} from './handlers/new-chat-title.js'
+import {chatJoinRequestHandler} from './handlers/chat-join-request.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -42,6 +45,10 @@ const composer = bot.errorBoundary(errorHandler)
 composer.use(conversations)
 composer.use(logger)
 composer.use(i18n)
+
+composer.chatType(['supergroup', 'channel']).on('my_chat_member', myChatMemberHandler)
+composer.chatType(['supergroup', 'channel']).on(':new_chat_title', newChatTitleHandler)
+composer.chatType(['supergroup', 'channel']).on('chat_join_request', chatJoinRequestHandler)
 
 const privateChat = composer.chatType('private')
 privateChat.use(attachUser)

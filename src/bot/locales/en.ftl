@@ -15,13 +15,14 @@ button =
     .disconnect-nwc = 🚫 Disconnect the NWC wallet
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
-    .add-to-group = 👥 Add {bot-name} to a group
+    .add-to-group = 👥 Add {bot-name} to a chat
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Pay Invoice
     .skip = ➡️ Skip
+    .chat-settings = ⚙️ Chat settings
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -122,7 +123,7 @@ settings = <b>⚙️ Settings</b>
 
     <i>Use /help to learn more.</i>
     .groups = <b>👥 Groups and channels</b>
-        You can add @{bot-username} to a group chat to enable tips in the chat using the /tip command.
+        You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner
@@ -227,3 +228,15 @@ tip =
         [no]sats.
         *[other]sats to {$recipient}.
         }</b>
+
+paid-chat = 
+    .bot-removed = <b>⚠️ {bot-name} was removed from {$username -> 
+        [no]{$title} 
+        *[other]{$title} (@{$username})
+        }.</b>
+        Paid access to this chat is disabled. Add {bot-username} to the chat with required rights to restore paid access.
+    .bot-added = <b>✅ {bot-name} was added to {$username -> 
+        [no]{$title} 
+        *[other]{$title} (@{$username})
+        }.</b>
+        You can set up paid access to this chat.

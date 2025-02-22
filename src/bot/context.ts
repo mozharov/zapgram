@@ -6,12 +6,15 @@ import type {Conversation, ConversationFlavor} from '@grammyjs/conversations'
 import {NostrWallet} from '../lib/nostr-wallet.js'
 import type {UserWallet} from '../lib/lnbits/user-wallet.js'
 
-export type BotContext = ConversationFlavor<Context & I18nFlavor> & {
+export type BaseContext = ConversationFlavor<Context & I18nFlavor> & {
   log: AppLogger
-  user: User & {nwc?: NostrWallet; wallet: UserWallet}
   update: {
     reqId: string
   }
+}
+
+export type BotContext = BaseContext & {
+  user: User & {nwc?: NostrWallet; wallet: UserWallet}
 }
 
 export type ConversationContext = BotContext
