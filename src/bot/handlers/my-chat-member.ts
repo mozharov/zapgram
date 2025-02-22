@@ -1,4 +1,4 @@
-import {InlineKeyboard, Keyboard, type ChatTypeContext} from 'grammy'
+import {InlineKeyboard, type ChatTypeContext} from 'grammy'
 import type {ChatMember, ChatMemberUpdated} from 'grammy/types'
 import type {BaseContext} from '../context.js'
 import {getChatCreator} from '../helpers/chat-creator.js'

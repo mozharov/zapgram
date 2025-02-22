@@ -4,7 +4,7 @@ import {getUserOrThrow} from '../models/user.js'
 import {getUserWallet} from './lnbits-user-wallet.js'
 import {msatsToSats} from '../utils/sats.js'
 import {bot} from '../bot/bot.js'
-import {DecodedInvoice} from '../bot/lib/decoded-invoice.js'
+import {DecodedInvoice} from '../lib/decoded-invoice.js'
 import {translate} from '../bot/lib/i18n.js'
 import {sanitizeMemo} from '../helpers/memo.js'
 

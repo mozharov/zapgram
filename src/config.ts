@@ -38,4 +38,6 @@ export const config = {
   get memoFooter(): string {
     return `Powered by t.me/${this.BOT_USERNAME}`
   },
+
+  chatsPerPage: 10,
 }

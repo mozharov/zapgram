@@ -1,7 +1,7 @@
 import type {BotConversation, ConversationContext} from '../context.js'
 import {waitForInvoice} from '../helpers/conversations/wait-for-invoice.js'
 import {waitForWallet} from '../helpers/conversations/wait-for-wallet.js'
-import {decodeInvoice} from '../lib/decoded-invoice.js'
+import {decodeInvoice} from '../../lib/decoded-invoice.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {msatsToSats} from '../../utils/sats.js'
 import {waitForInvoiceReview} from '../helpers/conversations/wait-for-invoice-review.js'

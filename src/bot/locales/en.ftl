@@ -16,6 +16,7 @@ button =
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
     .add-to-group = 👥 Add {bot-name} to a chat
+    .add-chat = 👥 Add a chat
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
@@ -23,6 +24,8 @@ button =
     .confirm-pay-invoice = 📤 Pay Invoice
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
+    .prev = ⬅️
+    .next = ➡️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -240,3 +243,8 @@ paid-chat =
         *[other]{$title} (@{$username})
         }.</b>
         You can set up paid access to this chat.
+
+chats = <b>👥 Your chats with the ability to enable paid access.</b>
+    Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+    .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
+        Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.

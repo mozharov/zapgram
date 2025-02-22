@@ -36,6 +36,8 @@ import {tipCommand, tipInvalidCommand} from './handlers/commands/tip.js'
 import {myChatMemberHandler} from './handlers/my-chat-member.js'
 import {newChatTitleHandler} from './handlers/new-chat-title.js'
 import {chatJoinRequestHandler} from './handlers/chat-join-request.js'
+import {chatsCommand} from './handlers/commands/chats.js'
+import {chatsCallback} from './handlers/callbacks/chats.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -46,9 +48,11 @@ composer.use(conversations)
 composer.use(logger)
 composer.use(i18n)
 
-composer.chatType(['supergroup', 'channel']).on('my_chat_member', myChatMemberHandler)
-composer.chatType(['supergroup', 'channel']).on(':new_chat_title', newChatTitleHandler)
-composer.chatType(['supergroup', 'channel']).on('chat_join_request', chatJoinRequestHandler)
+composer
+  .chatType(['supergroup', 'channel'])
+  .on('my_chat_member', myChatMemberHandler)
+  .on(':new_chat_title', newChatTitleHandler)
+  .on('chat_join_request', chatJoinRequestHandler)
 
 const privateChat = composer.chatType('private')
 privateChat.use(attachUser)
@@ -61,6 +65,7 @@ privateChat.command('start', startCommand)
 privateChat.command('help', helpCommand)
 privateChat.command('wallet', walletCommand)
 privateChat.command('settings', settingsCommand)
+privateChat.command('chats', chatsCommand)
 privateChat.callbackQuery('help', helpCallback)
 privateChat.callbackQuery('wallet', walletCallback)
 privateChat.callbackQuery('settings', settingsCallback)
@@ -73,6 +78,7 @@ privateChat.callbackQuery('send-menu', sendMenuCallback)
 privateChat.callbackQuery('send-to-user', sendToUserCallback)
 privateChat.callbackQuery('pay-invoice', payInvoiceCallback)
 privateChat.callbackQuery('create-invoice', createInvoiceCallback)
+privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
 privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 privateChat.on('callback_query', unknownCallback)
 privateChat.on('message', walletCommand)

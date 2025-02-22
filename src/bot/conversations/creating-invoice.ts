@@ -7,7 +7,7 @@ import {satsToMsats} from '../../utils/sats.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {NWCConnectionError} from '../errors/nwc-connection.js'
 import {InputFile} from 'grammy'
-import {decodeInvoice} from '../lib/decoded-invoice.js'
+import {decodeInvoice} from '../../lib/decoded-invoice.js'
 import QRCode from 'qrcode'
 import {sanitizeMemo} from '../../helpers/memo.js'
 
