@@ -76,7 +76,12 @@ function handlePayInvoiceError(error: unknown) {
       if (status !== 'failed') throw error
       const message = detail.toLowerCase()
       if (message.includes('already paid')) throw new InvoiceAlreadyPaidError()
-      if (message.includes('insufficient balance')) throw new InsufficientFundsError()
+      if (
+        message.includes('insufficient balance') ||
+        message.includes('you must reserve at least')
+      ) {
+        throw new InsufficientFundsError()
+      }
     }
   }
   throw error
