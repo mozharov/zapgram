@@ -43,7 +43,7 @@ export const chatsTable = sqliteTable('chats', {
   title: text('title').notNull(),
   username: text('username'),
   type: text('type', {enum: ['channel', 'supergroup']}).notNull(),
-  price: integer('price', {mode: 'number'}).notNull().default(0), // Price for subscription in satoshis
+  price: integer('price', {mode: 'number'}).notNull().default(1000), // Price for subscription in satoshis
   status: text('status', {enum: ['active', 'inactive', 'no_access']}) // no_access - bot was removed from the chat or rights were changed
     .notNull()
     .default('inactive'),

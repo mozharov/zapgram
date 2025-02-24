@@ -20,6 +20,7 @@ const BATCH_SIZE = 10
 async function checkPendingInvoices() {
   const total = await countPendingInvoices()
   logger.info(`Found ${total} pending invoices.`)
+  if (total === 0) return
 
   let processed = 0
   for (let offset = 0; offset < total; offset += BATCH_SIZE) {

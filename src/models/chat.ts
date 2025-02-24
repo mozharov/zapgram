@@ -34,7 +34,12 @@ export async function getChat(criteria: Partial<Chat>) {
 }
 
 export async function updateChat(id: Chat['id'], criteria: Partial<Chat>) {
-  await db.update(chatsTable).set(criteria).where(eq(chatsTable.id, id))
+  return db
+    .update(chatsTable)
+    .set(criteria)
+    .where(eq(chatsTable.id, id))
+    .returning()
+    .then(res => res[0]!)
 }
 
 export function getPaginatedAccessibleChats(ownerId: Chat['ownerId'], page: number, limit: number) {

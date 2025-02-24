@@ -26,6 +26,11 @@ button =
     .chat-settings = ⚙️ Chat settings
     .prev = ⬅️
     .next = ➡️
+    .enable-monthly-payment = 🔄 Turn to monthly payment
+    .enable-one-time-payment = 🔄 Turn to one-time payment
+    .change-price = Change price
+    .enable-paid-access = Enable paid access
+    .disable-paid-access = 🚫 Disable paid access
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -248,3 +253,22 @@ chats = <b>👥 Your chats with the ability to enable paid access.</b>
     Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
     .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
         Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+
+chat = <b>👥 {$title} {$username ->
+    [no]</b>
+    *[other](@{$username})</b>
+    }
+    
+    Paid access: <b>{$status ->
+    [active] enabled
+    *[other] disabled
+    }</b>
+    Price: <b>{$price} sats</b>
+    Payment type: <b>{$paymentType ->
+    [one_time] one-time
+    *[other] monthly
+    }</b>
+
+    <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
+    .not-found = <b>👥 Chat not found.</b>
+        Add {bot-username} to a chat with invite and ban permissions to use this command.

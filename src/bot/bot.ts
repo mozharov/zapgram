@@ -38,6 +38,7 @@ import {newChatTitleHandler} from './handlers/new-chat-title.js'
 import {chatJoinRequestHandler} from './handlers/chat-join-request.js'
 import {chatsCommand} from './handlers/commands/chats.js'
 import {chatsCallback} from './handlers/callbacks/chats.js'
+import {chatCallback} from './handlers/callbacks/chat.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -79,6 +80,7 @@ privateChat.callbackQuery('send-to-user', sendToUserCallback)
 privateChat.callbackQuery('pay-invoice', payInvoiceCallback)
 privateChat.callbackQuery('create-invoice', createInvoiceCallback)
 privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
+privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
 privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 privateChat.on('callback_query', unknownCallback)
 privateChat.on('message', walletCommand)
