@@ -40,6 +40,7 @@ import {chatsCommand} from './handlers/commands/chats.js'
 import {chatsCallback} from './handlers/callbacks/chats.js'
 import {chatCallback} from './handlers/callbacks/chat.js'
 import {turnPaidAccessCallback} from './handlers/callbacks/turn-paid-access.js'
+import {turnPaymentTypeCallback} from './handlers/callbacks/turn-payment-type.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -83,6 +84,7 @@ privateChat.callbackQuery('create-invoice', createInvoiceCallback)
 privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
 privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):(on|off)-paid$/, turnPaidAccessCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):turn-(one_time|monthly)$/, turnPaymentTypeCallback)
 privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 privateChat.on('callback_query', unknownCallback)
 privateChat.on('message', walletCommand)

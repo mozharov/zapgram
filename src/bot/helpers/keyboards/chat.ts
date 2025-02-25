@@ -17,7 +17,7 @@ export function buildChatKeyboard(t: BotContext['t'], chat: Chat) {
   }
   if (chat.paymentType === 'monthly') {
     keyboard.row({
-      callback_data: `chat:${chat.id}:turn-one-time`,
+      callback_data: `chat:${chat.id}:turn-one_time`,
       text: t('button.enable-one-time-payment'),
     })
   } else {
