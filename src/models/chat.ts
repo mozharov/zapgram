@@ -15,6 +15,12 @@ export async function createOrUpdateChat(data: NewChat) {
     .then(res => res[0]!)
 }
 
+export async function getAccessibleChat(id: Chat['id']) {
+  return db.query.chatsTable.findFirst({
+    where: and(eq(chatsTable.id, id), ne(chatsTable.status, 'no_access')),
+  })
+}
+
 export async function getChat(criteria: Partial<Chat>) {
   const where = Object.entries(criteria).map(([key, value]) =>
     eq(chatsTable[key as keyof Chat], value!),
