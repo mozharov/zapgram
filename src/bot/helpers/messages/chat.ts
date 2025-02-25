@@ -3,14 +3,19 @@ import type {BotContext} from '../../context.js'
 import {buildChatKeyboard} from '../keyboards/chat.js'
 
 export async function editMessageWithChat(ctx: BotContext, chat: Chat) {
-  await ctx.editMessageText(
-    ctx.t('chat', {
-      title: chat.title,
-      username: chat.username ?? 'no',
-      status: chat.status,
-      price: chat.price,
-      paymentType: chat.paymentType,
-    }),
-    {reply_markup: buildChatKeyboard(ctx.t, chat)},
-  )
+  await ctx.editMessageText(buildText(ctx.t, chat), {reply_markup: buildChatKeyboard(ctx.t, chat)})
+}
+
+export async function replyWithChat(ctx: BotContext, chat: Chat) {
+  await ctx.reply(buildText(ctx.t, chat), {reply_markup: buildChatKeyboard(ctx.t, chat)})
+}
+
+function buildText(t: BotContext['t'], chat: Chat) {
+  return t('chat', {
+    title: chat.title,
+    username: chat.username ?? 'no',
+    status: chat.status,
+    price: chat.price,
+    paymentType: chat.paymentType,
+  })
 }

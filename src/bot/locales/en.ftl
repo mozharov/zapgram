@@ -272,3 +272,6 @@ chat = <b>👥 {$title} {$username ->
     <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
+
+changing-price = <b>₿ Changing the price of paid access...</b>
+    .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
