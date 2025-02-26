@@ -53,11 +53,10 @@ composer.use(conversations)
 composer.use(logger)
 composer.use(i18n)
 
-composer
-  .chatType(['supergroup', 'channel'])
-  .on('my_chat_member', myChatMemberHandler)
-  .on(':new_chat_title', newChatTitleHandler)
-  .on('chat_join_request', chatJoinRequestHandler)
+const paidChat = composer.chatType(['supergroup', 'channel'])
+paidChat.on('my_chat_member', myChatMemberHandler)
+paidChat.on(':new_chat_title', newChatTitleHandler)
+paidChat.on('chat_join_request', attachUser, lnbitsWallet, chatJoinRequestHandler)
 
 const privateChat = composer.chatType('private')
 privateChat.use(attachUser)

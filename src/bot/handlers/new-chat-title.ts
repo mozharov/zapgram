@@ -7,5 +7,5 @@ type Context = ChatTypeContext<BaseContext, 'supergroup' | 'channel'>
 export const newChatTitleHandler = async (ctx: Context) => {
   ctx.log.info({title: ctx.chat.title, chatId: ctx.chatId}, 'new chat title')
   const chat = await getChat({id: ctx.chatId})
-  if (chat) await updateChat(chat.id, {title: ctx.chat.title, username: ctx.chat.username})
+  if (chat) await updateChat(chat.id, {title: ctx.chat.title})
 }

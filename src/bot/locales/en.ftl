@@ -31,7 +31,9 @@ button =
     .change-price = Change price
     .enable-paid-access = Enable paid access
     .disable-paid-access = 🚫 Disable paid access
-
+    .pay-subcription-with-wallet = Pay with {bot-name} balance
+    .pay-subcription-with-nwc = Pay with NWC
+    
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
@@ -275,3 +277,18 @@ chat = <b>👥 {$title} {$username ->
 
 changing-price = <b>₿ Changing the price of paid access...</b>
     .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
+
+subscription-invoice-created = <b>🔒 Access to private community "{$title}"</b>
+
+    Price: <b>{$price} sats</b>
+    Subscription type: <b>{$type ->
+    [one_time] permanent access
+    *[other] one month access
+    }</b>
+
+    <b>To get access to the community, pay the Lightning invoice:</b>
+    <code>{$invoice}</code>
+
+    <b>After successful payment, I will immediately grant you access to the community.</b>
+
+    <i>The invoice is valid for 48 hours. To request a new invoice, submit another request to join the chat.</i>

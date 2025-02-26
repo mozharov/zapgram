@@ -22,6 +22,9 @@ export class UserWallet extends LNBitsAPI {
     this.balance = balance
   }
 
+  /**
+   * @param expiry - number of seconds until the invoice expires
+   */
   async createInvoice({sats, memo = '', expiry = DEFAULT_EXPIRY}: CreateInvoiceParams) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',

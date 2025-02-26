@@ -18,6 +18,9 @@ export class NostrWallet {
     this.nwcUrl = nwcUrl
   }
 
+  /**
+   * @returns balance in millisats
+   */
   public async getBalance() {
     return withTimeout(this.client.getBalance().then(result => result.balance))
   }

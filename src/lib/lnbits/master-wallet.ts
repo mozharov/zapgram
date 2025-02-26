@@ -1,6 +1,7 @@
 import {config} from '../../config.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
+  paymentResponseSchema,
   statusResponseSchema,
   userResponseSchema,
   usersResponseSchema,
@@ -32,6 +33,21 @@ class MasterWallet extends LNBitsAPI {
 
   async checkStatus() {
     return this.fetchWithSchema('/api/v1/status', statusResponseSchema)
+  }
+
+  /**
+   * @param expiry - number of seconds until the invoice expires
+   */
+  async createInvoice(sats: number, expiry: number) {
+    return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+      method: 'POST',
+      body: JSON.stringify({
+        out: false,
+        amount: sats,
+        unit: 'sat',
+        expiry,
+      }),
+    })
   }
 }
 

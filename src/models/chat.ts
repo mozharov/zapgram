@@ -23,7 +23,7 @@ export async function getAccessibleChat(id: Chat['id']) {
 
 export async function getChat(criteria: Partial<Chat>) {
   const where = Object.entries(criteria).map(([key, value]) =>
-    eq(chatsTable[key as keyof Chat], value!),
+    eq(chatsTable[key as keyof Chat], value),
   )
   return db
     .select()

@@ -48,7 +48,6 @@ async function handleRightsGrant(ctx: Context) {
   await createOrUpdateChat({
     id: ctx.chat.id,
     title: ctx.chat.title,
-    username: ctx.chat.username,
     ownerId: owner.id,
     type: ctx.chat.type,
     status: chat?.status === 'active' ? 'active' : 'inactive',
