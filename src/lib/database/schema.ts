@@ -83,6 +83,7 @@ export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
     .references(() => chatsTable.id, {onDelete: 'cascade'}),
   paymentRequest: text('payment_request').notNull(),
   paymentHash: text('payment_hash').notNull(), // lnbits payment hash
+  price: integer('price', {mode: 'number'}).notNull(), // satoshis
   subscriptionType: text('subscription_type', {enum: ['one_time', 'monthly']}).notNull(),
   createdAt: integer('created_at', {mode: 'timestamp'})
     .notNull()

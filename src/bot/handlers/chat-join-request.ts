@@ -36,6 +36,7 @@ async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
     paymentHash: invoice.payment_hash,
     paymentRequest: invoice.bolt11,
     subscriptionType: chat.paymentType,
+    price: chat.price,
   })
   const walletSats = msatsToSats(ctx.user.wallet.balance)
   const nwcSats = msatsToSats((await ctx.user.nwc?.getBalance()) ?? 0)

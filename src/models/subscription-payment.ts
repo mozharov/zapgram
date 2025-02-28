@@ -2,7 +2,7 @@ import {randomUUID} from 'crypto'
 import {db} from '../lib/database/database.js'
 import {subscriptionPaymentsTable} from '../lib/database/schema.js'
 import type {NewSubscriptionPayment, SubscriptionPayment} from '../lib/database/types.js'
-import {count, eq} from 'drizzle-orm'
+import {count, eq, desc} from 'drizzle-orm'
 
 export async function createSubscriptionPayment(data: NewSubscriptionPayment) {
   return db
@@ -23,6 +23,7 @@ export async function getSubscriptionPayments(limit?: number, offset?: number) {
   return db.query.subscriptionPaymentsTable.findMany({
     limit,
     offset,
+    orderBy: desc(subscriptionPaymentsTable.id),
   })
 }
 

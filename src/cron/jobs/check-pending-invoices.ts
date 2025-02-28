@@ -35,7 +35,6 @@ async function checkPendingInvoices() {
         const payment = await wallet.lookupPayment(invoice.paymentHash)
 
         if (payment.paid) {
-          await deletePendingInvoice(invoice.paymentRequest)
           await notifyInvoicePaid(invoice.paymentRequest, invoice.userId).catch(
             (error: unknown) => {
               logger.error({error}, 'Failed to notify user about paid invoice')
@@ -43,12 +42,13 @@ async function checkPendingInvoices() {
           )
         }
       } catch (error) {
-        await deletePendingInvoice(invoice.paymentRequest)
         if (error instanceof HTTPError && error.response.statusCode === 404) {
           logger.warn(`Invoice ${invoice.paymentHash} not found.`)
           continue
         }
         logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
+      } finally {
+        await deletePendingInvoice(invoice.paymentRequest)
       }
     }
 

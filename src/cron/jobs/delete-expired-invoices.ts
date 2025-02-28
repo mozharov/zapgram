@@ -3,7 +3,7 @@ import {logger} from '../../lib/logger.js'
 import {deleteExpiredInvoices as deleteExpiredInvoicesFromDB} from '../../models/pending-invoice.js'
 
 export const deleteExpiredInvoicesJob = CronJob.from({
-  cronTime: '0 */5 * * * *',
+  cronTime: '0 */10 * * * *',
   onTick: deleteExpiredInvoices,
   runOnInit: false,
   waitForCompletion: true,
