@@ -23,7 +23,9 @@ export type Chat = typeof chatsTable.$inferSelect
 export type NewChat = typeof chatsTable.$inferInsert
 
 export type Subscription = typeof subscriptionsTable.$inferSelect
-export type NewSubscription = typeof subscriptionsTable.$inferInsert
+export type SubscriptionInsert = typeof subscriptionsTable.$inferInsert
+export type NewSubscription = Omit<SubscriptionInsert, 'id'>
 
 export type SubscriptionPayment = typeof subscriptionPaymentsTable.$inferSelect
-export type NewSubscriptionPayment = typeof subscriptionPaymentsTable.$inferInsert
+export type SubscriptionPaymentInsert = typeof subscriptionPaymentsTable.$inferInsert
+export type NewSubscriptionPayment = Omit<SubscriptionPaymentInsert, 'id'>

@@ -278,7 +278,8 @@ chat = <b>👥 {$title} {$username ->
 changing-price = <b>₿ Changing the price of paid access...</b>
     .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
 
-subscription-invoice-created = <b>🔒 Access to private community "{$title}"</b>
+subscription-invoice = 
+    .created = <b>🔒 Access to private community "{$title}"</b>
 
     Price: <b>{$price} sats</b>
     Subscription type: <b>{$type ->
@@ -291,4 +292,11 @@ subscription-invoice-created = <b>🔒 Access to private community "{$title}"</b
 
     <b>After successful payment, I will immediately grant you access to the community.</b>
 
-    <i>The invoice is valid for 48 hours. To request a new invoice, submit another request to join the chat.</i>
+    <i>The invoice is valid for 24 hours. To request a new invoice, submit another request to join the chat.</i>
+    .paid = <b>✅ Access to the community "{$title}" received.</b>
+
+    {$type ->
+    [one_time] <i></i>
+    *[other] <i>The subscription amount will be automatically debited from your wallets in {bot-name} every month.</i>
+        <i>For control of automatic debits, use the /subscriptions command.</i>
+    }

@@ -12,7 +12,7 @@ type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
   chatJoinRequest: ChatJoinRequest
 }
 
-const EXPIRY = 60 * 60 * 24 * 2 // 2 days
+const EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 export const chatJoinRequestHandler = async (ctx: Context) => {
   const {chat: tgChat} = ctx.chatJoinRequest
@@ -61,7 +61,7 @@ async function replyWithQRCode(
   const inputFile = new InputFile(buffer)
   await ctx.api
     .sendPhoto(ctx.user.id, inputFile, {
-      caption: ctx.t('subscription-invoice-created', {
+      caption: ctx.t('subscription-invoice.created', {
         amount: invoice.satoshi,
         invoice: paymentRequest,
         type,

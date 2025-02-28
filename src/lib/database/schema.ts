@@ -58,7 +58,7 @@ export const chatsTable = sqliteTable('chats', {
 })
 
 export const subscriptionsTable = sqliteTable('subscriptions', {
-  id: integer('id', {mode: 'number'}).primaryKey(),
+  id: text('id').primaryKey(),
   userId: integer('user_id', {mode: 'number'})
     .notNull()
     .references(() => usersTable.id, {onDelete: 'cascade'}),
@@ -67,13 +67,14 @@ export const subscriptionsTable = sqliteTable('subscriptions', {
     .references(() => chatsTable.id, {onDelete: 'cascade'}),
   price: integer('price', {mode: 'number'}).notNull(), // satoshis
   endsAt: integer('ends_at', {mode: 'timestamp'}), // if null - permanent access
+  autoRenew: integer('auto_renew', {mode: 'boolean'}).notNull().default(true),
   createdAt: integer('created_at', {mode: 'timestamp'})
     .notNull()
     .default(sql`(unixepoch())`),
 })
 
 export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
-  id: integer('id', {mode: 'number'}).primaryKey(),
+  id: text('id').primaryKey(),
   userId: integer('user_id', {mode: 'number'})
     .notNull()
     .references(() => usersTable.id, {onDelete: 'cascade'}),
