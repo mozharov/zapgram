@@ -7,6 +7,7 @@ import {createSubscriptionPayment} from '../../models/subscription-payment.js'
 import {decodeInvoice} from '../../lib/decoded-invoice.js'
 import QRCode from 'qrcode'
 import {msatsToSats} from '../../utils/sats.js'
+import {getSubscriptionByUserAndChat} from '../../models/subscriptions.js'
 
 type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
   chatJoinRequest: ChatJoinRequest
@@ -19,6 +20,12 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
   ctx.log.debug({tgChat, user: ctx.user})
   const chat = await getChat({id: tgChat.id})
   if (!chat || chat.status !== 'active') return
+
+  const subscription = await getSubscriptionByUserAndChat(ctx.user.id, chat.id)
+  if (subscription) {
+    await ctx.approveChatJoinRequest(ctx.user.id)
+    return
+  }
 
   const invoice = await lnbitsMasterWallet.createInvoice(chat.price, EXPIRY)
   const subscriptionPayment = await createSubscriptionPayment({
