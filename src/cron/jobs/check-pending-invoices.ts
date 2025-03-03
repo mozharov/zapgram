@@ -12,7 +12,7 @@ import {HTTPError} from 'got'
 export const checkPendingInvoicesJob = CronJob.from({
   cronTime: '0 */2 * * * *',
   onTick: checkPendingInvoices,
-  runOnInit: true,
+  runOnInit: false,
   waitForCompletion: true,
 })
 

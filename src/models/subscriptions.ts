@@ -2,7 +2,7 @@ import {randomUUID} from 'crypto'
 import {db} from '../lib/database/database.js'
 import {subscriptionsTable} from '../lib/database/schema.js'
 import type {NewSubscription, Subscription} from '../lib/database/types.js'
-import {and, eq, lte, desc, count} from 'drizzle-orm'
+import {and, eq, lte, desc, count, gt} from 'drizzle-orm'
 
 export async function createSubscription(data: NewSubscription) {
   return db
@@ -50,5 +50,38 @@ export async function countExpiredSubscriptions(date?: Date) {
     .select({count: count()})
     .from(subscriptionsTable)
     .where(lte(subscriptionsTable.endsAt, date ?? new Date()))
+    .then(rows => rows[0]!.count)
+}
+
+/**
+ * Get subscriptions that are about to expire and haven't had notifications sent yet
+ */
+export async function getSubscriptionsExpiringWithin(
+  maxExpiryDate: Date,
+  minExpiryDate: Date,
+  limit: number,
+  offset: number,
+): Promise<Subscription[]> {
+  return db.query.subscriptionsTable.findMany({
+    where: and(
+      lte(subscriptionsTable.endsAt, maxExpiryDate),
+      gt(subscriptionsTable.endsAt, minExpiryDate),
+      eq(subscriptionsTable.notificationSent, false),
+    ),
+    limit,
+    offset,
+  })
+}
+
+export async function countSubscriptionsExpiringWithin(maxExpiryDate: Date, minExpiryDate: Date) {
+  return db
+    .select({count: count()})
+    .from(subscriptionsTable)
+    .where(
+      and(
+        lte(subscriptionsTable.endsAt, maxExpiryDate),
+        gt(subscriptionsTable.endsAt, minExpiryDate),
+      ),
+    )
     .then(rows => rows[0]!.count)
 }

@@ -68,6 +68,7 @@ export const subscriptionsTable = sqliteTable('subscriptions', {
   price: integer('price', {mode: 'number'}).notNull(), // satoshis
   endsAt: integer('ends_at', {mode: 'timestamp'}), // if null - permanent access
   autoRenew: integer('auto_renew', {mode: 'boolean'}).notNull().default(true),
+  notificationSent: integer('notification_sent', {mode: 'boolean'}).notNull().default(false), // if true, notification about expiration was sent
   createdAt: integer('created_at', {mode: 'timestamp'})
     .notNull()
     .default(sql`(unixepoch())`),

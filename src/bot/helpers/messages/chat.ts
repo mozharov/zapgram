@@ -13,7 +13,6 @@ export async function replyWithChat(ctx: BotContext, chat: Chat) {
 function buildText(t: BotContext['t'], chat: Chat) {
   return t('chat', {
     title: chat.title,
-    username: chat.username ?? 'no',
     status: chat.status,
     price: chat.price,
     paymentType: chat.paymentType,

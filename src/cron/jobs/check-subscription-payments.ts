@@ -13,14 +13,13 @@ import {
   updateSubscription,
 } from '../../models/subscriptions.js'
 import {bot} from '../../bot/bot.js'
-import {getUserWallet} from '../../services/lnbits-user-wallet.js'
-import {getChat} from '../../models/chat.js'
-import {config} from '../../config.js'
+import {getChatOrThrow} from '../../models/chat.js'
+import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
 
 export const checkSubscriptionPaymentsJob = CronJob.from({
-  cronTime: '0 */2 * * * *',
+  cronTime: '0 */3 * * * *',
   onTick: checkSubscriptionPayments,
-  runOnInit: true,
+  runOnInit: false,
   waitForCompletion: true,
 })
 
@@ -67,6 +66,7 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
     await updateSubscription(subscription.id, {
       price: payment.price,
       endsAt,
+      notificationSent: false,
     })
   } else {
     await createSubscription({
@@ -82,17 +82,8 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
   await bot.api.approveChatJoinRequest(payment.chatId, payment.userId).catch((error: unknown) => {
     logger.error({error}, 'Error while approving chat join request.')
   })
-  const chat = await getChat({id: payment.chatId})
-  const ownerWallet = await getUserWallet(chat!.ownerId)
-
-  const fee = Math.ceil(payment.price * config.SUBSCRIPTION_FEE_PERCENT)
-  const invoice = await ownerWallet.createInvoice({sats: payment.price - fee})
-  await lnbitsMasterWallet.payInvoice(invoice.bolt11)
-
-  if (fee > 0) {
-    const feeInvoice = await lnbitsMasterWallet.createFeeCollectionInvoice(fee)
-    await lnbitsMasterWallet.payInvoice(feeInvoice.bolt11)
-  }
+  const chat = await getChatOrThrow(payment.chatId)
+  await distributeSubscriptionPayment(payment.price, chat.ownerId)
   // TODO: notify chat owner about the purchase
   // TODO: notify user about successful purchase
 }

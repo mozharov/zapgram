@@ -256,10 +256,7 @@ chats = <b>👥 Your chats with the ability to enable paid access.</b>
     .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
         Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
 
-chat = <b>👥 {$title} {$username ->
-    [no]</b>
-    *[other](@{$username})</b>
-    }
+chat = <b>👥 {$title}</b>
     
     Paid access: <b>{$status ->
     [active] enabled
@@ -300,3 +297,9 @@ subscription-invoice =
     *[other] <i>The subscription amount will be automatically debited from your wallets in {bot-name} every month.</i>
         <i>For control of automatic debits, use the /subscriptions command.</i>
     }
+
+subscription-renewal = 
+    .success = <b>✅ Your subscription to "{$title}" has been automatically renewed until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+        Payment amount: <b>{$price} sats</b>
+    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
+        <code>{$invoice}</code>

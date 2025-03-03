@@ -15,6 +15,12 @@ export async function createOrUpdateChat(data: NewChat) {
     .then(res => res[0]!)
 }
 
+export async function getChatOrThrow(id: Chat['id']) {
+  const chat = await getChat({id})
+  if (!chat) throw new Error('Chat not found')
+  return chat
+}
+
 export async function getAccessibleChat(id: Chat['id']) {
   return db.query.chatsTable.findFirst({
     where: and(eq(chatsTable.id, id), ne(chatsTable.status, 'no_access')),
