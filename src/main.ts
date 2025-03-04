@@ -3,7 +3,7 @@ import {startServer} from './app.js'
 import {logger} from './lib/logger.js'
 import {config} from './config.js'
 import {startTunnel, stopTunnel} from './lib/tunnel.js'
-import {deleteWebhook} from './bot/webhook.js'
+import {deleteWebhook, setWebhook} from './bot/webhook.js'
 import {bot} from './bot/bot.js'
 import {migrateDatabase} from './lib/database/database.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
@@ -18,7 +18,7 @@ server.once('listening', () => {
   bot
     .init()
     .then(async () => {
-      if (config.NGROK_TOKEN) await startTunnel()
+      if (config.NGROK_TOKEN) await startTunnel().then(url => setWebhook(url))
       if (config.CONFIGURE_BOT) await configureBot()
       startCronJobs()
     })

@@ -27,6 +27,9 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   })
   await updateUser(ctx.user.id, {nwcUrl})
   await ctx.reply(ctx.t('nwc.connected'))
+
+  ctx.user.nwcUrl = nwcUrl
+  ctx.user.nwc = new NostrWallet(nwcUrl)
   await replyWithWallet(ctx)
 }
 
