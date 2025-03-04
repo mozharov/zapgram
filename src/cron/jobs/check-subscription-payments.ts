@@ -15,6 +15,8 @@ import {
 import {bot} from '../../bot/bot.js'
 import {getChatOrThrow} from '../../models/chat.js'
 import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
+import {translate} from '../../bot/lib/i18n.js'
+import {getUserOrThrow} from '../../models/user.js'
 
 export const checkSubscriptionPaymentsJob = CronJob.from({
   cronTime: '0 */3 * * * *',
@@ -83,7 +85,34 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
     logger.error({error}, 'Error while approving chat join request.')
   })
   const chat = await getChatOrThrow(payment.chatId)
-  await distributeSubscriptionPayment(payment.price, chat.ownerId)
-  // TODO: notify chat owner about the purchase
-  // TODO: notify user about successful purchase
+  const fee = await distributeSubscriptionPayment(payment.price, chat.ownerId)
+
+  const user = await getUserOrThrow(payment.userId)
+  await bot.api
+    .sendMessage(
+      payment.userId,
+      translate('subscription-invoice.paid', user.languageCode, {
+        title: chat.title,
+        type: payment.subscriptionType,
+      }),
+    )
+    .catch((error: unknown) => {
+      logger.error({error}, 'Error while sending successful subscription payment to user.')
+    })
+
+  await bot.api
+    .sendMessage(
+      chat.ownerId,
+      translate('new-subscription-payment', chat.owner.languageCode, {
+        username: user.username ?? user.firstName ?? user.id,
+        title: chat.title,
+        type: payment.subscriptionType,
+        price: payment.price,
+        fee,
+        total: payment.price - fee,
+      }),
+    )
+    .catch((error: unknown) => {
+      logger.error({error}, 'Error while sending successful subscription payment to chat owner.')
+    })
 }

@@ -303,3 +303,16 @@ subscription-renewal =
         Payment amount: <b>{$price} sats</b>
     .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
         <code>{$invoice}</code>
+
+new-subscription-payment = <b>₿ New subscription payment!</b>
+
+    User <b>{$username}</b> has paid for access to the community <b>"{$title}"</b>.
+
+    Subscription type: <b>{$type ->
+    [one_time] one-time (permanent access)
+    *[other] monthly
+    }</b>
+    
+    Payment amount: <b>{$price} sats</b>
+    Fee: <b>{$fee} sats</b>
+    Credited: <b>{$total} sats</b>

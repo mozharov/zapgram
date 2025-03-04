@@ -75,7 +75,24 @@ async function processExpiringSubscriptions() {
             .catch((error: unknown) => {
               logger.error({error}, 'Error sending renewal success message')
             })
-          // TODO: notify chat owner about the purchase
+          await bot.api
+            .sendMessage(
+              chat.ownerId,
+              translate('new-subscription-payment', chat.owner.languageCode, {
+                username: user.username ?? user.firstName ?? user.id,
+                title: chat.title,
+                type: subscription.endsAt ? 'monthly' : 'one_time',
+                price: subscription.price,
+                fee: renewalResult.fee,
+                total: subscription.price - renewalResult.fee,
+              }),
+            )
+            .catch((error: unknown) => {
+              logger.error(
+                {error},
+                'Error while sending successful subscription payment to chat owner.',
+              )
+            })
 
           logger.info(`Auto-renewed subscription ID: ${subscription.id}`)
         } else {
@@ -101,7 +118,7 @@ async function attemptAutoRenewal(
   subscription: Subscription,
   user: User,
   chat: Chat,
-): Promise<{success: true; newExpiryDate: Date} | {success: false}> {
+): Promise<{success: true; newExpiryDate: Date; fee: number} | {success: false}> {
   if (!subscription.autoRenew || !subscription.endsAt) return {success: false}
 
   const invoice = await lnbitsMasterWallet.createInvoice(subscription.price, INVOICE_EXPIRY)
@@ -112,11 +129,11 @@ async function attemptAutoRenewal(
   }
   if (!paymentResult.success) return {success: false}
 
-  await distributeSubscriptionPayment(subscription.price, chat.ownerId)
+  const fee = await distributeSubscriptionPayment(subscription.price, chat.ownerId)
 
   const newExpiryDate = new Date(subscription.endsAt)
   newExpiryDate.setDate(newExpiryDate.getDate() + 30)
-  return {success: true, newExpiryDate}
+  return {success: true, newExpiryDate, fee}
 }
 
 async function attemptPaymentFromBalance(subscription: Subscription, invoice: string) {

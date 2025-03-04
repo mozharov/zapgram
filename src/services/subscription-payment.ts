@@ -4,6 +4,9 @@ import {lnbitsMasterWallet} from '../lib/lnbits/master-wallet.js'
 import {getUserOrThrow} from '../models/user.js'
 import {getUserWallet} from './lnbits-user-wallet.js'
 
+/**
+ * Distributes the subscription payment to the chat owner with fee deduction and returns the fee that was charged.
+ */
 export async function distributeSubscriptionPayment(sats: number, chatOwnerId: User['id']) {
   const owner = await getUserOrThrow(chatOwnerId)
   const ownerWallet = await getUserWallet(owner.id)
@@ -15,4 +18,6 @@ export async function distributeSubscriptionPayment(sats: number, chatOwnerId: U
     const feeInvoice = await lnbitsMasterWallet.createFeeCollectionInvoice(fee)
     await lnbitsMasterWallet.payInvoice(feeInvoice.bolt11)
   }
+
+  return fee
 }
