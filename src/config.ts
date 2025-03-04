@@ -20,6 +20,7 @@ export const config = {
     LNBITS_ADMIN_ID: z.string().nonempty(),
     LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().nonempty(),
     SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
+    HOST: z.string().nonempty(),
   }),
 
   get botInfo(): UserFromGetMe | undefined {

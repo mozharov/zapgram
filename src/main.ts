@@ -1,22 +1,31 @@
-import './utils/websocker-polyfill.js' // required for @getalby/sdk
+import './lib/utils/websocker-polyfill.js' // required for @getalby/sdk
 import {startServer} from './app.js'
 import {logger} from './lib/logger.js'
 import {config} from './config.js'
 import {startTunnel, stopTunnel} from './lib/tunnel.js'
-import {deleteWebhook, setWebhook} from './bot/webhook.js'
+import {deleteWebhook} from './bot/webhook.js'
 import {bot} from './bot/bot.js'
 import {migrateDatabase} from './lib/database/database.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
 import {lnbitsMasterWallet} from './lib/lnbits/master-wallet.js'
+import {configureBot} from './services/bot.js'
 
 if (config.DB_MIGRATE) migrateDatabase()
 await lnbitsMasterWallet.checkStatus()
 
 const server = startServer()
 server.once('listening', () => {
-  void bot.init()
-  if (config.NGROK_TOKEN) void startTunnel().then(tunnelUrl => setWebhook(tunnelUrl))
-  startCronJobs()
+  bot
+    .init()
+    .then(async () => {
+      if (config.NGROK_TOKEN) await startTunnel()
+      await configureBot()
+      startCronJobs()
+    })
+    .catch((error: unknown) => {
+      logger.error({error}, 'Failed to configure bot')
+      process.exit(1)
+    })
 })
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
