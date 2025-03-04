@@ -1,5 +1,5 @@
 import {logger} from '../../../lib/logger.js'
-import {msatsToSats} from '../../../utils/sats.js'
+import {msatsToSats} from '../../../lib/utils/sats.js'
 import type {BotContext} from '../../context.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 

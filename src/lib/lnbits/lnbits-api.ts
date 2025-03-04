@@ -1,7 +1,7 @@
 import {logger} from '../logger.js'
 import got, {HTTPError, OptionsOfJSONResponseBody} from 'got'
 import Bottleneck from 'bottleneck'
-import {validateData} from '../../utils/validator.js'
+import {validateData} from '../utils/validator.js'
 import type {ZodType} from 'zod'
 import {config} from '../../config.js'
 
