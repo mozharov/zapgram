@@ -80,6 +80,9 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
 
     <i>Learn more about {bot-name} features in groups and channels in /settings.</i>
 
+    👥 <b>Paid access to private chats:</b>
+    Add {bot-username} to a chat with invitation and user blocking permissions to create paid access with one-time payment or monthly subscription.
+    Use /chats to manage paid chats.
 
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
@@ -103,6 +106,7 @@ help = <b>ℹ️ Bitcoin</b>
 
     <b>ℹ️ {bot-name}</b>
     • Quick Payment: Simply send a Lightning invoice to the chat.
+    • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
     <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
