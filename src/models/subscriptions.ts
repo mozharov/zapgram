@@ -1,6 +1,6 @@
 import {randomUUID} from 'crypto'
 import {db} from '../lib/database/database.js'
-import {subscriptionsTable} from '../lib/database/schema.js'
+import {chatsTable, subscriptionsTable} from '../lib/database/schema.js'
 import type {NewSubscription, Subscription} from '../lib/database/types.js'
 import {and, eq, lte, desc, count, gt} from 'drizzle-orm'
 
@@ -83,5 +83,35 @@ export async function countSubscriptionsExpiringWithin(maxExpiryDate: Date, minE
         gt(subscriptionsTable.endsAt, minExpiryDate),
       ),
     )
+    .then(rows => rows[0]!.count)
+}
+
+export async function getUserActiveSubscriptions(
+  userId: Subscription['userId'],
+  page: number,
+  limit: number,
+) {
+  const offset = (page - 1) * limit
+  return db
+    .select()
+    .from(subscriptionsTable)
+    .leftJoin(chatsTable, eq(subscriptionsTable.chatId, chatsTable.id))
+    .where(eq(subscriptionsTable.userId, userId))
+    .offset(offset)
+    .limit(limit)
+    .orderBy(desc(subscriptionsTable.createdAt))
+    .then(rows =>
+      rows.map(row => ({
+        ...row.subscriptions,
+        chat: row.chats!,
+      })),
+    )
+}
+
+export async function getUserActiveSubscriptionsCount(userId: Subscription['userId']) {
+  return db
+    .select({count: count()})
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.userId, userId))
     .then(rows => rows[0]!.count)
 }
