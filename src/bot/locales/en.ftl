@@ -33,6 +33,8 @@ button =
     .disable-paid-access = 🚫 Disable paid access
     .pay-subcription-with-wallet = Pay with {bot-name} balance
     .pay-subcription-with-nwc = Pay with NWC
+    .enable-auto-renew = 🔄 Enable auto-renewal
+    .disable-auto-renew = 🚫 Disable auto-renewal
     
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -316,3 +318,20 @@ new-subscription-payment = <b>₿ New subscription payment!</b>
     Payment amount: <b>{$price} sats</b>
     Fee: <b>{$fee} sats</b>
     Credited: <b>{$total} sats</b>
+
+subscriptions = <b>👥 Your subscriptions to private chats.</b>
+    .empty = <b>👥 You don't have any subscriptions.</b>
+
+
+subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
+
+    Price: <b>{$price} sats</b>
+    Valid until: <b>{$endsAt ->
+        [no] permanent
+        *[other] {$endsAt}
+    }</b>
+    Auto-renewal: <b>{$autoRenew ->
+        [yes] enabled
+        *[no] disabled
+    }</b>
+    .not-found = <b>👥 Subscription not found.</b>

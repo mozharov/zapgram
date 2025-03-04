@@ -45,6 +45,8 @@ import {changePriceCallback} from './handlers/callbacks/change-price.js'
 import {changingPrice} from './conversations/changing-price.js'
 import {subscriptionsCommand} from './handlers/commands/subscriptions.js'
 import {subscriptionsCallback} from './handlers/callbacks/subscriptions.js'
+import {subscriptionCallback} from './handlers/callbacks/subscription.js'
+import {toggleAutoRenewCallback} from './handlers/callbacks/toggle-auto-renew.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -88,6 +90,8 @@ privateChat.callbackQuery('pay-invoice', payInvoiceCallback)
 privateChat.callbackQuery('create-invoice', createInvoiceCallback)
 privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
 privateChat.callbackQuery(/^subscriptions:(\d+)$/, subscriptionsCallback)
+privateChat.callbackQuery(/^subscription:([a-f0-9-]+)$/, subscriptionCallback)
+privateChat.callbackQuery(/^subscription:([a-f0-9-]+):turn-auto-renew$/, toggleAutoRenewCallback)
 privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):(on|off)-paid$/, turnPaidAccessCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):turn-(one_time|monthly)$/, turnPaymentTypeCallback)

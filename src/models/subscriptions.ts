@@ -115,3 +115,18 @@ export async function getUserActiveSubscriptionsCount(userId: Subscription['user
     .where(eq(subscriptionsTable.userId, userId))
     .then(rows => rows[0]!.count)
 }
+
+export async function getSubscriptionById(id: Subscription['id']) {
+  return db
+    .select()
+    .from(subscriptionsTable)
+    .leftJoin(chatsTable, eq(subscriptionsTable.chatId, chatsTable.id))
+    .where(eq(subscriptionsTable.id, id))
+    .then(rows => {
+      if (!rows[0]) return null
+      return {
+        ...rows[0].subscriptions,
+        chat: rows[0].chats!,
+      }
+    })
+}
