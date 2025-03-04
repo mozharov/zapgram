@@ -19,7 +19,7 @@ server.once('listening', () => {
     .init()
     .then(async () => {
       if (config.NGROK_TOKEN) await startTunnel()
-      await configureBot()
+      if (config.CONFIGURE_BOT) await configureBot()
       startCronJobs()
     })
     .catch((error: unknown) => {

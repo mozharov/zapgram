@@ -21,6 +21,7 @@ export const config = {
     LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().nonempty(),
     SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
     HOST: z.string().nonempty(),
+    CONFIGURE_BOT: z.coerce.boolean().default(true), // should call configureBot() on startup
   }),
 
   get botInfo(): UserFromGetMe | undefined {

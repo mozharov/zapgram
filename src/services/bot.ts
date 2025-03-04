@@ -3,8 +3,10 @@ import {bot} from '../bot/bot.js'
 import {setWebhook} from '../bot/webhook.js'
 import {config} from '../config.js'
 import {tunnelUrl} from '../lib/tunnel.js'
+import {logger} from '../lib/logger.js'
 
 export async function configureBot() {
+  logger.info('Setting bot commands, webhook and default admin rights...')
   await bot.api.setMyCommands(
     [
       {
@@ -98,4 +100,5 @@ export async function configureBot() {
 
   await bot.api.setMyDefaultAdministratorRights({for_channels: true, rights})
   await bot.api.setMyDefaultAdministratorRights({for_channels: false, rights})
+  logger.info('Bot commands, webhook and default admin rights were set successfully')
 }
