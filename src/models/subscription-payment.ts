@@ -30,3 +30,9 @@ export async function getSubscriptionPayments(limit?: number, offset?: number) {
 export async function deleteSubscriptionPayment(id: SubscriptionPayment['id']) {
   await db.delete(subscriptionPaymentsTable).where(eq(subscriptionPaymentsTable.id, id))
 }
+
+export async function getSubscriptionPayment(id: SubscriptionPayment['id']) {
+  return db.query.subscriptionPaymentsTable.findFirst({
+    where: eq(subscriptionPaymentsTable.id, id),
+  })
+}

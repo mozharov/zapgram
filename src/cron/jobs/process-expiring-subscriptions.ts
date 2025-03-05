@@ -22,7 +22,7 @@ import {distributeSubscriptionPayment} from '../../services/subscription-payment
 const BATCH_SIZE = 10
 const MS_BEFORE_EXPIRATION = 24 * 60 * 60 * 1000 // 24 hours
 const INVOICE_EXPIRY = 60 * 60 * 24 * 1 // 1 day
-
+// TODO: change the script logic. It should create subscriptionpayments and pay from balance/nwc. Payment verification will be handled in the subscriptionpayments check cycle.
 export const processExpiringSubscriptionsJob = CronJob.from({
   cronTime: '0 30 * * * *',
   onTick: processExpiringSubscriptions,

@@ -303,6 +303,8 @@ subscription-invoice =
     *[other] <i>Сумма подписки будет автоматически списываться с твоего кошелька {bot-name} каждый месяц.</i>
         <i>Для контроля автоматического списания, используй команду /subscriptions.</i>
     }
+    .paid-from-balance = <b>✅ Оплата прошла.</b>
+        В течение 5-ти минут ты получишь доступ к сообществу.
 
 subscription-renewal = 
     .success = <b>✅ Твоя подписка на "{$title}" была автоматически продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>

@@ -40,7 +40,7 @@ async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
   })
   const walletSats = msatsToSats(ctx.user.wallet.balance)
   const nwcSats = msatsToSats((await ctx.user.nwc?.getBalance()) ?? 0)
-  // TODO: add callback handlers for payment buttons. If payment fails, show an error in answerCallbackQuery
+
   const keyboard = buildSubscriptionPaymentKeyboard(ctx.t, {
     payNWC: nwcSats >= chat.price,
     payWallet: walletSats >= chat.price,

@@ -303,6 +303,8 @@ subscription-invoice =
     *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
         <i>For control of automatic debits, use the /subscriptions command.</i>
     }
+    .paid-from-balance = <b>✅ Payment completed.</b>
+        Access to the community will be granted within 5 minutes.
 
 subscription-renewal = 
     .success = <b>✅ Your subscription to "{$title}" has been automatically renewed until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
