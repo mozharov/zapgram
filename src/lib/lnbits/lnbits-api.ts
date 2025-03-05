@@ -26,10 +26,11 @@ export class LNBitsAPI {
   }
 
   protected async fetch(path: string, init?: OptionsOfJSONResponseBody) {
+    const headers = {...this.headers, ...init?.headers}
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
         ...init,
-        headers: Object.assign(this.headers, init?.headers ?? {}),
+        headers,
         responseType: 'json',
       }).catch((error: unknown) => {
         if (error instanceof HTTPError)

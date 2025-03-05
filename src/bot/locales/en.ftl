@@ -300,7 +300,7 @@ subscription-invoice =
 
     {$type ->
     [one_time] <i></i>
-    *[other] <i>The subscription amount will be automatically debited from your wallets in {bot-name} every month.</i>
+    *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
         <i>For control of automatic debits, use the /subscriptions command.</i>
     }
 
@@ -334,8 +334,12 @@ subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
         [no] permanent
         *[other] {$endsAt}
     }</b>
-    Auto-renewal: <b>{$autoRenew ->
-        [yes] enabled
-        *[no] disabled
-    }</b>
+    {$endsAt ->
+        [no] <i></i>
+        *[other] Auto-renewal: <b>{$autoRenew ->
+            [yes] enabled
+            *[no] disabled
+        }</b>
+    }
+    
     .not-found = <b>👥 Subscription not found.</b>

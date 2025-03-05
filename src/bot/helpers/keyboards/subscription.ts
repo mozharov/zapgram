@@ -7,16 +7,18 @@ type SubscriptionWithChat = Subscription & {chat: Chat}
 export function buildSubscriptionKeyboard(t: BotContext['t'], subscription: SubscriptionWithChat) {
   const keyboard = new InlineKeyboard()
 
-  if (subscription.autoRenew) {
-    keyboard.row({
-      callback_data: `subscription:${subscription.id}:turn-auto-renew`,
-      text: t('button.disable-auto-renew'),
-    })
-  } else {
-    keyboard.row({
-      callback_data: `subscription:${subscription.id}:turn-auto-renew`,
-      text: t('button.enable-auto-renew'),
-    })
+  if (subscription.endsAt) {
+    if (subscription.autoRenew) {
+      keyboard.row({
+        callback_data: `subscription:${subscription.id}:renew`,
+        text: t('button.disable-auto-renew'),
+      })
+    } else {
+      keyboard.row({
+        callback_data: `subscription:${subscription.id}:renew`,
+        text: t('button.enable-auto-renew'),
+      })
+    }
   }
 
   return keyboard.row({

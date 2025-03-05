@@ -73,6 +73,9 @@ export async function getSubscriptionsExpiringWithin(
   })
 }
 
+/**
+ * Count subscriptions that are about to expire and haven't had notifications sent yet
+ */
 export async function countSubscriptionsExpiringWithin(maxExpiryDate: Date, minExpiryDate: Date) {
   return db
     .select({count: count()})
@@ -81,6 +84,7 @@ export async function countSubscriptionsExpiringWithin(maxExpiryDate: Date, minE
       and(
         lte(subscriptionsTable.endsAt, maxExpiryDate),
         gt(subscriptionsTable.endsAt, minExpiryDate),
+        eq(subscriptionsTable.notificationSent, false),
       ),
     )
     .then(rows => rows[0]!.count)

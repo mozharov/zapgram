@@ -104,7 +104,7 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
     .sendMessage(
       chat.ownerId,
       translate('new-subscription-payment', chat.owner.languageCode, {
-        username: user.username ?? user.firstName ?? user.id,
+        username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
         title: chat.title,
         type: payment.subscriptionType,
         price: payment.price,

@@ -16,8 +16,12 @@ import {InlineKeyboard} from 'grammy'
 import QRCode from 'qrcode'
 import {InputFile} from 'grammy/types'
 import {getUserWallet} from '../../services/lnbits-user-wallet.js'
-import {NostrWallet} from '../../lib/nostr-wallet.js'
+// import {NostrWallet} from '../../lib/nostr-wallet.js'
 import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
+
+const BATCH_SIZE = 10
+const MS_BEFORE_EXPIRATION = 24 * 60 * 60 * 1000 // 24 hours
+const INVOICE_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 export const processExpiringSubscriptionsJob = CronJob.from({
   cronTime: '0 30 * * * *',
@@ -25,10 +29,6 @@ export const processExpiringSubscriptionsJob = CronJob.from({
   runOnInit: true,
   waitForCompletion: true,
 })
-
-const BATCH_SIZE = 10
-const MS_BEFORE_EXPIRATION = 24 * 60 * 60 * 1000 // 24 hours
-const INVOICE_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 async function processExpiringSubscriptions() {
   const now = new Date()
@@ -55,7 +55,7 @@ async function processExpiringSubscriptions() {
       try {
         const user = await getUserOrThrow(subscription.userId)
         const chat = await getChatOrThrow(subscription.chatId)
-        const renewalResult = await attemptAutoRenewal(subscription, user, chat)
+        const renewalResult = await attemptAutoRenewal(subscription, chat)
         logger.info({renewalResult, subscription}, 'Renewal result')
 
         if (renewalResult.success) {
@@ -79,7 +79,7 @@ async function processExpiringSubscriptions() {
             .sendMessage(
               chat.ownerId,
               translate('new-subscription-payment', chat.owner.languageCode, {
-                username: user.username ?? user.firstName ?? user.id,
+                username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
                 title: chat.title,
                 type: subscription.endsAt ? 'monthly' : 'one_time',
                 price: subscription.price,
@@ -116,17 +116,18 @@ async function processExpiringSubscriptions() {
 
 async function attemptAutoRenewal(
   subscription: Subscription,
-  user: User,
+  // user: User,
   chat: Chat,
 ): Promise<{success: true; newExpiryDate: Date; fee: number} | {success: false}> {
   if (!subscription.autoRenew || !subscription.endsAt) return {success: false}
 
   const invoice = await lnbitsMasterWallet.createInvoice(subscription.price, INVOICE_EXPIRY)
 
-  let paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
-  if (!paymentResult.success) {
-    paymentResult = await attemptPaymentFromNWC(subscription, user, invoice.bolt11)
-  }
+  const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
+  // TODO: automatic payment from NWC wallet. Additional checks are needed because LNBits doesn't mark the invoice as paid immediately. May need a separate cycle for funds distribution.
+  // if (!paymentResult.success) {
+  //   paymentResult = await attemptPaymentFromNWC(subscription, user, invoice.bolt11)
+  // }
   if (!paymentResult.success) return {success: false}
 
   const fee = await distributeSubscriptionPayment(subscription.price, chat.ownerId)
@@ -146,16 +147,16 @@ async function attemptPaymentFromBalance(subscription: Subscription, invoice: st
   return {success: !!result}
 }
 
-async function attemptPaymentFromNWC(subscription: Subscription, user: User, invoice: string) {
-  if (!user.nwcUrl) return {success: false}
-  logger.info(`Attempting payment from NWC for subscription ${subscription.id}`)
-  const nwc = new NostrWallet(user.nwcUrl)
-  const result = await nwc.payInvoice(invoice, false).catch((error: unknown) => {
-    logger.error({error}, 'Error paying invoice from NWC')
-    return null
-  })
-  return {success: !!result}
-}
+// async function attemptPaymentFromNWC(subscription: Subscription, user: User, invoice: string) {
+//   if (!user.nwcUrl) return {success: false}
+//   logger.info(`Attempting payment from NWC for subscription ${subscription.id}`)
+//   const nwc = new NostrWallet(user.nwcUrl)
+//   const success = await nwc
+//     .payInvoice(invoice, false)
+//     .then(() => true)
+//     .catch(() => false)
+//   return {success}
+// }
 
 async function createAndSendRenewalInvoice(subscription: Subscription, chat: Chat, user: User) {
   const invoice = await lnbitsMasterWallet.createInvoice(chat.price, INVOICE_EXPIRY)
@@ -168,20 +169,21 @@ async function createAndSendRenewalInvoice(subscription: Subscription, chat: Cha
     price: subscription.price,
   })
 
-  const keyboard = new InlineKeyboard()
-    .row({
-      callback_data: `pay-sub:${subscriptionPayment.id}:wallet`,
-      text: translate('button.pay-subcription-with-wallet', user.languageCode),
-    })
-    .row({
+  const keyboard = new InlineKeyboard().row({
+    callback_data: `pay-sub:${subscriptionPayment.id}:wallet`,
+    text: translate('button.pay-subcription-with-wallet', user.languageCode),
+  })
+  if (user.nwcUrl) {
+    keyboard.row({
       callback_data: `pay-sub:${subscriptionPayment.id}:nwc`,
       text: translate('button.pay-subcription-with-nwc', user.languageCode),
     })
+  }
 
   const buffer = await QRCode.toBuffer(invoice.bolt11)
   const inputFile = new InputFile(buffer)
   await bot.api
-    .sendPhoto(subscription.userId, inputFile, {
+    .sendPhoto(user.id, inputFile, {
       caption: translate('subscription-renewal.need-payment', user.languageCode, {
         title: chat.title,
         price: subscription.price,

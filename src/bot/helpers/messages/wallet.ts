@@ -5,7 +5,7 @@ import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
   const nwcBalance = await getNWCBalance(ctx)
-  const balance = ctx.user.wallet.balance
+  const balance = await ctx.user.wallet.getBalance()
   return ctx.reply(buildWalletText(ctx.t, balance, nwcBalance), {
     reply_markup: buildWalletKeyboard(ctx.t),
   })

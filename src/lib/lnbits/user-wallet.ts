@@ -6,6 +6,7 @@ import {
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
   type PaymentResponse,
+  balanceResponseSchema,
 } from './schemas.js'
 import {InvoiceAlreadyPaidError} from '../../bot/errors/invoice-already-paid.js'
 import {InsufficientFundsError} from '../../bot/errors/insufficient-funds.js'
@@ -62,6 +63,13 @@ export class UserWallet extends LNBitsAPI {
 
   async lookupPayment(paymentHash: string) {
     return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema)
+  }
+
+  /**
+   * @returns millisatoshis
+   */
+  async getBalance() {
+    return this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema).then(data => data.balance)
   }
 }
 

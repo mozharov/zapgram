@@ -30,5 +30,8 @@ export function buildChatKeyboard(t: BotContext['t'], chat: Chat) {
     callback_data: `chat:${chat.id}:change-price`,
     text: t('button.change-price'),
   })
-  return keyboard
+  return keyboard.row({
+    callback_data: 'chats:1',
+    text: t('button.back'),
+  })
 }

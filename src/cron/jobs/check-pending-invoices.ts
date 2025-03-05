@@ -40,6 +40,7 @@ async function checkPendingInvoices() {
               logger.error({error}, 'Failed to notify user about paid invoice')
             },
           )
+          await deletePendingInvoice(invoice.paymentRequest)
         }
       } catch (error) {
         if (error instanceof HTTPError && error.response.statusCode === 404) {
@@ -47,7 +48,6 @@ async function checkPendingInvoices() {
           continue
         }
         logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
-      } finally {
         await deletePendingInvoice(invoice.paymentRequest)
       }
     }
