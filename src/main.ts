@@ -39,11 +39,8 @@ async function shutdown(signal: string) {
   }, 10000)
 
   stopCronJobs()
-
-  if (config.NGROK_TOKEN) {
-    await deleteWebhook()
-    await stopTunnel()
-  }
+  await deleteWebhook()
+  if (config.NGROK_TOKEN) await stopTunnel()
 
   server.close(error => {
     if (error) {
