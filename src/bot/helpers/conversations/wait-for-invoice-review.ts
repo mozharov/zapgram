@@ -1,8 +1,8 @@
 import {InlineKeyboard} from 'grammy'
 import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'
-import type {DecodedInvoice} from '../../lib/decoded-invoice.js'
-import {msatsToSats} from '../../../utils/sats.js'
+import type {DecodedInvoice} from '../../../lib/decoded-invoice.js'
+import {msatsToSats} from '../../../lib/utils/sats.js'
 import {getPendingInvoiceBy} from '../../../models/pending-invoice.js'
 
 export async function waitForInvoiceReview(

@@ -1,5 +1,5 @@
 import {CronJob} from 'cron'
-import {notifyInvoicePaid} from '../../bot/services/notify-invoice-paid.js'
+import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 import {logger} from '../../lib/logger.js'
 import {
   getPendingInvoices,
@@ -12,7 +12,7 @@ import {HTTPError} from 'got'
 export const checkPendingInvoicesJob = CronJob.from({
   cronTime: '0 */2 * * * *',
   onTick: checkPendingInvoices,
-  runOnInit: true,
+  runOnInit: false,
   waitForCompletion: true,
 })
 
@@ -20,6 +20,7 @@ const BATCH_SIZE = 10
 async function checkPendingInvoices() {
   const total = await countPendingInvoices()
   logger.info(`Found ${total} pending invoices.`)
+  if (total === 0) return
 
   let processed = 0
   for (let offset = 0; offset < total; offset += BATCH_SIZE) {
@@ -34,20 +35,20 @@ async function checkPendingInvoices() {
         const payment = await wallet.lookupPayment(invoice.paymentHash)
 
         if (payment.paid) {
-          await deletePendingInvoice(invoice.paymentRequest)
           await notifyInvoicePaid(invoice.paymentRequest, invoice.userId).catch(
             (error: unknown) => {
               logger.error({error}, 'Failed to notify user about paid invoice')
             },
           )
+          await deletePendingInvoice(invoice.paymentRequest)
         }
       } catch (error) {
-        await deletePendingInvoice(invoice.paymentRequest)
         if (error instanceof HTTPError && error.response.statusCode === 404) {
           logger.warn(`Invoice ${invoice.paymentHash} not found.`)
           continue
         }
         logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
+        await deletePendingInvoice(invoice.paymentRequest)
       }
     }
 

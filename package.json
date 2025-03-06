@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "@getalby/lightning-tools": "^5.1.2",
-    "@getalby/sdk": "^3.9.0",
+    "@getalby/sdk": "^4.1.1",
     "@grammyjs/auto-retry": "^2.0.2",
     "@grammyjs/conversations": "^2.0.1",
     "@grammyjs/i18n": "^1.1.2",

@@ -6,6 +6,7 @@ import {
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
   type PaymentResponse,
+  balanceResponseSchema,
 } from './schemas.js'
 import {InvoiceAlreadyPaidError} from '../../bot/errors/invoice-already-paid.js'
 import {InsufficientFundsError} from '../../bot/errors/insufficient-funds.js'
@@ -22,6 +23,9 @@ export class UserWallet extends LNBitsAPI {
     this.balance = balance
   }
 
+  /**
+   * @param expiry - number of seconds until the invoice expires
+   */
   async createInvoice({sats, memo = '', expiry = DEFAULT_EXPIRY}: CreateInvoiceParams) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
@@ -60,6 +64,13 @@ export class UserWallet extends LNBitsAPI {
   async lookupPayment(paymentHash: string) {
     return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema)
   }
+
+  /**
+   * @returns millisatoshis
+   */
+  async getBalance() {
+    return this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema).then(data => data.balance)
+  }
 }
 
 interface CreateInvoiceParams {
@@ -76,7 +87,12 @@ function handlePayInvoiceError(error: unknown) {
       if (status !== 'failed') throw error
       const message = detail.toLowerCase()
       if (message.includes('already paid')) throw new InvoiceAlreadyPaidError()
-      if (message.includes('insufficient balance')) throw new InsufficientFundsError()
+      if (
+        message.includes('insufficient balance') ||
+        message.includes('you must reserve at least')
+      ) {
+        throw new InsufficientFundsError()
+      }
     }
   }
   throw error

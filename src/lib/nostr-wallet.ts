@@ -18,6 +18,9 @@ export class NostrWallet {
     this.nwcUrl = nwcUrl
   }
 
+  /**
+   * @returns balance in millisats
+   */
   public async getBalance() {
     return withTimeout(this.client.getBalance().then(result => result.balance))
   }
@@ -32,9 +35,10 @@ export class NostrWallet {
     return withTimeout(this.client.lookupInvoice({invoice}))
   }
 
-  public async payInvoice(invoice: string) {
+  public async payInvoice(invoice: string, timeout = true) {
     try {
-      await withTimeout(this.client.payInvoice({invoice}))
+      if (timeout) await withTimeout(this.client.payInvoice({invoice}))
+      else await this.client.payInvoice({invoice})
     } catch (error) {
       // some wallet don't return success response after payment, but invoice is paid
       if (!(error instanceof nwc.Nip47Error) || !error.message.includes('already been paid')) {

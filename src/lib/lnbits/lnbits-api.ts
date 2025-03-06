@@ -1,7 +1,7 @@
 import {logger} from '../logger.js'
 import got, {HTTPError, OptionsOfJSONResponseBody} from 'got'
 import Bottleneck from 'bottleneck'
-import {validateData} from '../../utils/validator.js'
+import {validateData} from '../utils/validator.js'
 import type {ZodType} from 'zod'
 import {config} from '../../config.js'
 
@@ -26,10 +26,11 @@ export class LNBitsAPI {
   }
 
   protected async fetch(path: string, init?: OptionsOfJSONResponseBody) {
+    const headers = {...this.headers, ...init?.headers}
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
         ...init,
-        headers: Object.assign(this.headers, init?.headers ?? {}),
+        headers,
         responseType: 'json',
       }).catch((error: unknown) => {
         if (error instanceof HTTPError)

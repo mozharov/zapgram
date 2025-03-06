@@ -1,5 +1,5 @@
 import {z} from 'zod'
-import {logger} from '../lib/logger.js'
+import {logger} from '../logger.js'
 
 export function validateData<T>(data: unknown, schema: z.ZodType<T>): T {
   try {

@@ -89,6 +89,7 @@ export const statusResponseSchema = z.object({
 })
 
 export const balanceResponseSchema = z.object({
-  success: z.boolean(),
-  message: z.string(),
+  name: z.string(),
+  balance: z.number(),
+  id: z.string(),
 })

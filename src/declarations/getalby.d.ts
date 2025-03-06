@@ -2,7 +2,18 @@
 declare module '@getalby/sdk' {
   export namespace nwc {
     import {Event, EventTemplate, Relay} from 'nostr-tools'
-    import {NWCAuthorizationUrlOptions} from './types'
+    export interface NWCAuthorizationUrlOptions {
+      name?: string
+      icon?: string
+      requestMethods?: Nip47Method[]
+      notificationTypes?: Nip47NotificationType[]
+      returnTo?: string
+      expiresAt?: Date
+      maxAmount?: number
+      budgetRenewal?: 'never' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+      isolated?: boolean
+      metadata?: unknown
+    }
     interface WithDTag {
       dTag: string
     }
@@ -19,9 +30,11 @@ declare module '@getalby/sdk' {
       | 'lookup_invoice'
       | 'list_transactions'
       | 'sign_message'
+      | 'create_connection'
     type Nip47MultiMethod = 'multi_pay_invoice' | 'multi_pay_keysend'
     export type Nip47Method = Nip47SingleMethod | Nip47MultiMethod
     export type Nip47Capability = Nip47Method | 'notifications'
+    export type BudgetRenewalPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
     export interface Nip47GetInfoResponse {
       alias: string
       color: string
@@ -31,13 +44,15 @@ declare module '@getalby/sdk' {
       block_hash: string
       methods: Nip47Method[]
       notifications?: Nip47NotificationType[]
+      metadata?: unknown
+      lud16?: string
     }
     export type Nip47GetBudgetResponse =
       | {
           used_budget: number
           total_budget: number
           renews_at?: number
-          renewal_period: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
+          renewal_period: BudgetRenewalPeriod
         }
       | object
     export interface Nip47GetBalanceResponse {
@@ -141,22 +156,31 @@ declare module '@getalby/sdk' {
     export interface Nip47SignMessageRequest {
       message: string
     }
+    export interface Nip47CreateConnectionRequest {
+      pubkey: string
+      name: string
+      request_methods: Nip47Method[]
+      notification_types?: Nip47NotificationType[]
+      max_amount?: number
+      budget_renewal?: BudgetRenewalPeriod
+      expires_at?: number
+      isolated?: boolean
+      metadata?: unknown
+    }
+    export interface Nip47CreateConnectionResponse {
+      wallet_pubkey: string
+    }
     export interface Nip47SignMessageResponse {
       message: string
       signature: string
     }
     export interface NWCOptions {
-      authorizationUrl?: string
       relayUrl: string
       walletPubkey: string
       secret?: string
       lud16?: string
     }
     export declare class Nip47Error extends Error {
-      /**
-       * @deprecated please use message. Deprecated since v3.3.2. Will be removed in v4.0.0.
-       */
-      error: string
       code: string
       constructor(message: string, code: string)
     }
@@ -172,15 +196,13 @@ declare module '@getalby/sdk' {
     export declare class Nip47ResponseValidationError extends Nip47Error {}
     export declare class Nip47UnexpectedResponseError extends Nip47Error {}
     export declare class Nip47NetworkError extends Nip47Error {}
-    export declare class Nip47UnsupportedVersionError extends Nip47Error {}
-    export declare const NWCs: Record<string, NWCOptions>
+    export declare class Nip47UnsupportedEncryptionError extends Nip47Error {}
     export interface NewNWCClientOptions {
-      providerName?: string
-      authorizationUrl?: string
       relayUrl?: string
       secret?: string
       walletPubkey?: string
       nostrWalletConnectUrl?: string
+      lud16?: string
     }
     export declare class NWCClient {
       relay: Relay
@@ -189,30 +211,39 @@ declare module '@getalby/sdk' {
       lud16: string | undefined
       walletPubkey: string
       options: NWCOptions
-      version: string | undefined
-      static SUPPORTED_VERSIONS: string[]
+      private _encryptionType
       static parseWalletConnectUrl(walletConnectUrl: string): NWCOptions
-      static withNewSecret(options?: ConstructorParameters<typeof NWCClient>[0]): NWCClient
       constructor(options?: NewNWCClientOptions)
       get nostrWalletConnectUrl(): string
       getNostrWalletConnectUrl(includeSecret?: boolean): string
       get connected(): boolean
       get publicKey(): string
-      get supportedVersion(): string
+      get encryptionType(): string
       getPublicKey(): Promise<string>
       signEvent(event: EventTemplate): Promise<Event>
       getEventHash(event: Event): string
       close(): void
       encrypt(pubkey: string, content: string): Promise<string>
       decrypt(pubkey: string, content: string): Promise<string>
-      getAuthorizationUrl(options?: NWCAuthorizationUrlOptions): URL
-      initNWC(options?: NWCAuthorizationUrlOptions): Promise<unknown>
+      static getAuthorizationUrl(
+        authorizationBasePath: string,
+        options: NWCAuthorizationUrlOptions | undefined,
+        pubkey: string,
+      ): URL
       /**
-       * @deprecated please use getWalletServiceInfo. Deprecated since v3.5.0. Will be removed in v4.0.0.
+       * create a new client-initiated NWC connection via HTTP deeplink
+       *
+       * @authorizationBasePath the deeplink path e.g. https://my.albyhub.com/apps/new
+       * @options configure the created app (e.g. the name, budget, expiration)
+       * @secret optionally pass a secret, otherwise one will be generated.
        */
-      getWalletServiceSupportedMethods(): Promise<Nip47Capability[]>
+      static fromAuthorizationUrl(
+        authorizationBasePath: string,
+        options?: NWCAuthorizationUrlOptions,
+        secret?: string,
+      ): Promise<NWCClient>
       getWalletServiceInfo(): Promise<{
-        versions: string[]
+        encryptions: string[]
         capabilities: Nip47Capability[]
         notifications: Nip47NotificationType[]
       }>
@@ -222,6 +253,9 @@ declare module '@getalby/sdk' {
       payInvoice(request: Nip47PayInvoiceRequest): Promise<Nip47PayResponse>
       payKeysend(request: Nip47PayKeysendRequest): Promise<Nip47PayResponse>
       signMessage(request: Nip47SignMessageRequest): Promise<Nip47SignMessageResponse>
+      createConnection(
+        request: Nip47CreateConnectionRequest,
+      ): Promise<Nip47CreateConnectionResponse>
       multiPayInvoice(request: Nip47MultiPayInvoiceRequest): Promise<Nip47MultiPayInvoiceResponse>
       multiPayKeysend(request: Nip47MultiPayKeysendRequest): Promise<Nip47MultiPayKeysendResponse>
       makeInvoice(request: Nip47MakeInvoiceRequest): Promise<Nip47Transaction>
@@ -236,8 +270,8 @@ declare module '@getalby/sdk' {
       private executeNip47Request
       private executeMultiNip47Request
       private _checkConnected
-      private _checkCompatibility
-      private selectHighestCompatibleVersion
+      private _selectEncryptionType
+      private _findPreferredEncryptionType
     }
   }
 }

@@ -33,6 +33,21 @@ import {lnbitsWallet} from './middlewares/lnbits-wallet.js'
 import {creatingInvoice} from './conversations/creating-invoice.js'
 import {createInvoiceCallback} from './handlers/callbacks/create-invoice.js'
 import {tipCommand, tipInvalidCommand} from './handlers/commands/tip.js'
+import {myChatMemberHandler} from './handlers/my-chat-member.js'
+import {newChatTitleHandler} from './handlers/new-chat-title.js'
+import {chatJoinRequestHandler} from './handlers/chat-join-request.js'
+import {chatsCommand} from './handlers/commands/chats.js'
+import {chatsCallback} from './handlers/callbacks/chats.js'
+import {chatCallback} from './handlers/callbacks/chat.js'
+import {turnPaidAccessCallback} from './handlers/callbacks/turn-paid-access.js'
+import {turnPaymentTypeCallback} from './handlers/callbacks/turn-payment-type.js'
+import {changePriceCallback} from './handlers/callbacks/change-price.js'
+import {changingPrice} from './conversations/changing-price.js'
+import {subscriptionsCommand} from './handlers/commands/subscriptions.js'
+import {subscriptionsCallback} from './handlers/callbacks/subscriptions.js'
+import {subscriptionCallback} from './handlers/callbacks/subscription.js'
+import {toggleAutoRenewCallback} from './handlers/callbacks/toggle-auto-renew.js'
+import {paySubscriptionCallback} from './handlers/callbacks/pay-subscription.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -43,6 +58,11 @@ composer.use(conversations)
 composer.use(logger)
 composer.use(i18n)
 
+const paidChat = composer.chatType(['supergroup', 'channel'])
+paidChat.on('my_chat_member', myChatMemberHandler)
+paidChat.on(':new_chat_title', newChatTitleHandler)
+paidChat.on('chat_join_request', attachUser, lnbitsWallet, chatJoinRequestHandler)
+
 const privateChat = composer.chatType('private')
 privateChat.use(attachUser)
 privateChat.use(lnbitsWallet)
@@ -50,10 +70,13 @@ privateChat.use(createConversation(connectingNWC))
 privateChat.use(createConversation(sendingToUser))
 privateChat.use(createConversation(payingInvoice))
 privateChat.use(createConversation(creatingInvoice))
+privateChat.use(createConversation(changingPrice))
 privateChat.command('start', startCommand)
 privateChat.command('help', helpCommand)
 privateChat.command('wallet', walletCommand)
 privateChat.command('settings', settingsCommand)
+privateChat.command('chats', chatsCommand)
+privateChat.command('subscriptions', subscriptionsCommand)
 privateChat.callbackQuery('help', helpCallback)
 privateChat.callbackQuery('wallet', walletCallback)
 privateChat.callbackQuery('settings', settingsCallback)
@@ -66,6 +89,15 @@ privateChat.callbackQuery('send-menu', sendMenuCallback)
 privateChat.callbackQuery('send-to-user', sendToUserCallback)
 privateChat.callbackQuery('pay-invoice', payInvoiceCallback)
 privateChat.callbackQuery('create-invoice', createInvoiceCallback)
+privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
+privateChat.callbackQuery(/^subscriptions:(\d+)$/, subscriptionsCallback)
+privateChat.callbackQuery(/^subscription:([a-f0-9-]+)$/, subscriptionCallback)
+privateChat.callbackQuery(/^subscription:([a-f0-9-]+):renew$/, toggleAutoRenewCallback)
+privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):(on|off)-paid$/, turnPaidAccessCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):turn-(one_time|monthly)$/, turnPaymentTypeCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):change-price$/, changePriceCallback)
+privateChat.callbackQuery(/^pay-sub:([a-f0-9-]+):(wallet|nwc)$/, paySubscriptionCallback)
 privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 privateChat.on('callback_query', unknownCallback)
 privateChat.on('message', walletCommand)

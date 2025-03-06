@@ -15,14 +15,27 @@ button =
     .disconnect-nwc = 🚫 Disconnect the NWC wallet
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
-    .add-to-group = 👥 Add {bot-name} to a group
+    .add-to-group = 👥 Add {bot-name} to a chat
+    .add-chat = 👥 Add a chat
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Pay Invoice
     .skip = ➡️ Skip
-
+    .chat-settings = ⚙️ Chat settings
+    .prev = ⬅️
+    .next = ➡️
+    .enable-monthly-payment = 🔄 Turn to monthly payment
+    .enable-one-time-payment = 🔄 Turn to one-time payment
+    .change-price = Change price
+    .enable-paid-access = Enable paid access
+    .disable-paid-access = 🚫 Disable paid access
+    .pay-subcription-with-wallet = Pay with {bot-name} balance
+    .pay-subcription-with-nwc = Pay with NWC
+    .enable-auto-renew = 🔄 Enable auto-renewal
+    .disable-auto-renew = 🚫 Disable auto-renewal
+    
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
@@ -67,6 +80,9 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
 
     <i>Learn more about {bot-name} features in groups and channels in /settings.</i>
 
+    👥 <b>Paid access to private chats:</b>
+    Add {bot-username} to a chat with invitation and user blocking permissions to create paid access with one-time payment or monthly subscription.
+    Use /chats to manage paid chats.
 
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
@@ -90,6 +106,7 @@ help = <b>ℹ️ Bitcoin</b>
 
     <b>ℹ️ {bot-name}</b>
     • Quick Payment: Simply send a Lightning invoice to the chat.
+    • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
     <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
@@ -122,7 +139,7 @@ settings = <b>⚙️ Settings</b>
 
     <i>Use /help to learn more.</i>
     .groups = <b>👥 Groups and channels</b>
-        You can add @{bot-username} to a group chat to enable tips in the chat using the /tip command.
+        You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner
@@ -227,3 +244,104 @@ tip =
         [no]sats.
         *[other]sats to {$recipient}.
         }</b>
+
+paid-chat = 
+    .bot-removed = <b>⚠️ {bot-name} was removed from {$username -> 
+        [no]{$title} 
+        *[other]{$title} (@{$username})
+        }.</b>
+        Paid access to this chat is disabled. Add {bot-username} to the chat with required rights to restore paid access.
+    .bot-added = <b>✅ {bot-name} was added to {$username -> 
+        [no]{$title} 
+        *[other]{$title} (@{$username})
+        }.</b>
+        You can set up paid access to this chat.
+
+chats = <b>👥 Your chats with the ability to enable paid access.</b>
+    Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+    .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
+        Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+
+chat = <b>👥 {$title}</b>
+    
+    Paid access: <b>{$status ->
+    [active] enabled
+    *[other] disabled
+    }</b>
+    Price: <b>{$price} sats</b>
+    Payment type: <b>{$paymentType ->
+    [one_time] one-time
+    *[other] monthly
+    }</b>
+
+    <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
+    .not-found = <b>👥 Chat not found.</b>
+        Add {bot-username} to a chat with invite and ban permissions to use this command.
+
+changing-price = <b>₿ Changing the price of paid access...</b>
+    .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
+
+subscription-invoice = 
+    .created = <b>🔒 Access to private community "{$title}"</b>
+
+    Price: <b>{$price} sats</b>
+    Subscription type: <b>{$type ->
+    [one_time] permanent access
+    *[other] one month access
+    }</b>
+
+    <b>To get access to the community, pay the Lightning invoice:</b>
+    <code>{$invoice}</code>
+
+    <b>After successful payment, I will immediately grant you access to the community.</b>
+
+    <i>The invoice is valid for 24 hours. To request a new invoice, submit another request to join the chat.</i>
+    .paid = <b>✅ Access to the community "{$title}" received.</b>
+
+    {$type ->
+    [one_time] <i></i>
+    *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
+        <i>For control of automatic debits, use the /subscriptions command.</i>
+    }
+    .paid-from-balance = <b>✅ Payment completed.</b>
+        Access to the community will be granted within 5 minutes.
+
+subscription-renewal = 
+    .success = <b>✅ Your subscription to "{$title}" has been automatically renewed until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+        Payment amount: <b>{$price} sats</b>
+    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
+        <code>{$invoice}</code>
+
+new-subscription-payment = <b>₿ New subscription payment!</b>
+
+    User <b>{$username}</b> has paid for access to the community <b>"{$title}"</b>.
+
+    Subscription type: <b>{$type ->
+    [one_time] one-time (permanent access)
+    *[other] monthly
+    }</b>
+    
+    Payment amount: <b>{$price} sats</b>
+    Fee: <b>{$fee} sats</b>
+    Credited: <b>{$total} sats</b>
+
+subscriptions = <b>👥 Your subscriptions to private chats.</b>
+    .empty = <b>👥 You don't have any subscriptions.</b>
+
+
+subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
+
+    Price: <b>{$price} sats</b>
+    Valid until: <b>{$endsAt ->
+        [no] permanent
+        *[other] {$endsAt}
+    }</b>
+    {$endsAt ->
+        [no] <i></i>
+        *[other] Auto-renewal: <b>{$autoRenew ->
+            [yes] enabled
+            *[no] disabled
+        }</b>
+    }
+    
+    .not-found = <b>👥 Subscription not found.</b>

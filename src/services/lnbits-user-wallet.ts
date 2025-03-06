@@ -2,7 +2,7 @@ import {InsufficientFundsError} from '../bot/errors/insufficient-funds.js'
 import type {User} from '../lib/database/types.js'
 import {lnbitsMasterWallet} from '../lib/lnbits/master-wallet.js'
 import {UserWallet} from '../lib/lnbits/user-wallet.js'
-import {satsToMsats} from '../utils/sats.js'
+import {satsToMsats} from '../lib/utils/sats.js'
 
 export async function getUserWallet(userId: User['id']) {
   const {id} =

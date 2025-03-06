@@ -1,11 +1,11 @@
 import {logger} from '../../../lib/logger.js'
-import {msatsToSats} from '../../../utils/sats.js'
+import {msatsToSats} from '../../../lib/utils/sats.js'
 import type {BotContext} from '../../context.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
   const nwcBalance = await getNWCBalance(ctx)
-  const balance = ctx.user.wallet.balance
+  const balance = await ctx.user.wallet.getBalance()
   return ctx.reply(buildWalletText(ctx.t, balance, nwcBalance), {
     reply_markup: buildWalletKeyboard(ctx.t),
   })
