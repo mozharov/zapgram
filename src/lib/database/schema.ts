@@ -52,6 +52,8 @@ export const chatsTable = sqliteTable('chats', {
   ownerId: integer('owner_id', {mode: 'number'})
     .notNull()
     .references(() => usersTable.id, {onDelete: 'cascade'}),
+  customMessageEn: text('custom_message_en'),
+  customMessageRu: text('custom_message_ru'),
   createdAt: integer('created_at', {mode: 'timestamp'})
     .notNull()
     .default(sql`(unixepoch())`),

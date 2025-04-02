@@ -9,8 +9,7 @@
       "extensions": [
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
-        "fabiospampinato.vscode-todo-plus",
-        "damms005.devdb"
+        "yy0931.vscode-sqlite3-editor"
       ]
     }
   },

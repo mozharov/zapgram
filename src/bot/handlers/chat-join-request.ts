@@ -1,10 +1,9 @@
-import {InputFile, type ChatJoinRequest} from 'grammy/types'
+import {type ChatJoinRequest} from 'grammy/types'
 import type {BotContext} from '../context.js'
 import {type ChatTypeContext} from 'grammy'
 import {getChat} from '../../models/chat.js'
 import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
 import {createSubscriptionPayment} from '../../models/subscription-payment.js'
-import QRCode from 'qrcode'
 import {msatsToSats} from '../../lib/utils/sats.js'
 import {getSubscriptionByUserAndChat} from '../../models/subscriptions.js'
 import {buildSubscriptionPaymentKeyboard} from '../helpers/keyboards/subscription-payment.js'
@@ -47,20 +46,20 @@ async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
     paymentId: subscriptionPayment.id,
   })
 
-  const buffer = await QRCode.toBuffer(invoice.bolt11)
-  const inputFile = new InputFile(buffer)
+  const locale = await ctx.i18n.getLocale()
+  const message = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
   await ctx.api
-    .sendPhoto(ctx.user.id, inputFile, {
-      caption: ctx.t('subscription-invoice.created', {
+    .sendMessage(
+      ctx.user.id,
+      ctx.t('subscription-invoice.created', {
+        message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
         amount: invoice.amount,
         invoice: invoice.bolt11,
         type: chat.paymentType,
-        title: chat.title,
         price: chat.price,
       }),
-      show_caption_above_media: true,
-      reply_markup: keyboard,
-    })
+      {reply_markup: keyboard, link_preview_options: {is_disabled: true}},
+    )
     .catch((error: unknown) => {
       ctx.log.error({error}, 'Error while sending message to user about chat join request')
     })

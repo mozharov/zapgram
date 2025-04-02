@@ -48,6 +48,10 @@ import {subscriptionsCallback} from './handlers/callbacks/subscriptions.js'
 import {subscriptionCallback} from './handlers/callbacks/subscription.js'
 import {toggleAutoRenewCallback} from './handlers/callbacks/toggle-auto-renew.js'
 import {paySubscriptionCallback} from './handlers/callbacks/pay-subscription.js'
+import {customMessageCallback} from './handlers/callbacks/custom-message.js'
+import {removeCustomMessageCallback} from './handlers/callbacks/remove-custom-message.js'
+import {editCustomMessage} from './conversations/edit-custom-message.js'
+import {editCustomMessageCallback} from './handlers/callbacks/edit-custom-message.js'
 
 export const bot = new Bot<BotContext>(config.BOT_TOKEN, {botInfo: config.botInfo})
 bot.api.config.use(autoRetry())
@@ -71,6 +75,7 @@ privateChat.use(createConversation(sendingToUser))
 privateChat.use(createConversation(payingInvoice))
 privateChat.use(createConversation(creatingInvoice))
 privateChat.use(createConversation(changingPrice))
+privateChat.use(createConversation(editCustomMessage))
 privateChat.command('start', startCommand)
 privateChat.command('help', helpCommand)
 privateChat.command('wallet', walletCommand)
@@ -97,6 +102,9 @@ privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):(on|off)-paid$/, turnPaidAccessCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):turn-(one_time|monthly)$/, turnPaymentTypeCallback)
 privateChat.callbackQuery(/^chat:(-?\d+):change-price$/, changePriceCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):custom-message$/, customMessageCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):edit-custom-message$/, editCustomMessageCallback)
+privateChat.callbackQuery(/^chat:(-?\d+):remove-custom-message$/, removeCustomMessageCallback)
 privateChat.callbackQuery(/^pay-sub:([a-f0-9-]+):(wallet|nwc)$/, paySubscriptionCallback)
 privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 privateChat.on('callback_query', unknownCallback)

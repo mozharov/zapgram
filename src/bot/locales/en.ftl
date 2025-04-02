@@ -35,6 +35,9 @@ button =
     .pay-subcription-with-nwc = Pay with NWC
     .enable-auto-renew = 🔄 Enable auto-renewal
     .disable-auto-renew = 🚫 Disable auto-renewal
+    .custom-message = 💬 Custom message
+    .edit-custom-message = 💬 Edit message
+    .remove-custom-message = ❌ Reset to default message
     
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -277,12 +280,22 @@ chat = <b>👥 {$title}</b>
     <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
+    .custom-message = You can change the part of the message that users see when they request to join the chat.
+
+        <b>Current message:</b>
+        
+        <b>Ru:</b>
+        {$ruMessage}
+
+        <b>En:</b>
+        {$enMessage}
 
 changing-price = <b>₿ Changing the price of paid access...</b>
     .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
 
 subscription-invoice = 
-    .created = <b>🔒 Access to private community "{$title}"</b>
+    .default-message = <b>🔒 Access to private community "{$title}"</b>
+    .created = {$message}
 
     Price: <b>{$price} sats</b>
     Subscription type: <b>{$type ->
@@ -345,3 +358,12 @@ subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
     }
     
     .not-found = <b>👥 Subscription not found.</b>
+
+edit-custom-message = 
+    .enter-russian = <b>Enter a custom message in Russian (up to 1000 characters):</b>
+        This text will be displayed to users requesting to join the chat.
+    .enter-english = <b>Enter a custom message in English (up to 1000 characters):</b>
+        This text will be displayed to users requesting to join the chat.
+    .invalid = ❌ Please send a valid text message.
+    .too-long = ❌ The message is too long. Maximum allowed length is 1000 characters.
+    .completed = ✅ Custom message has been updated successfully.
