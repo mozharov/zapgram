@@ -1,7 +1,7 @@
 import {db} from '../lib/database/database.js'
 import {chatsTable, usersTable} from '../lib/database/schema.js'
 import type {NewChat, Chat} from '../lib/database/types.js'
-import {and, count, eq, ne, desc} from 'drizzle-orm'
+import {and, count, eq, ne, desc, isNull} from 'drizzle-orm'
 
 export async function createOrUpdateChat(data: NewChat) {
   return db
@@ -28,9 +28,11 @@ export async function getAccessibleChat(id: Chat['id']) {
 }
 
 export async function getChat(criteria: Partial<Chat>) {
-  const where = Object.entries(criteria).map(([key, value]) =>
-    eq(chatsTable[key as keyof Chat], value),
-  )
+  const where = Object.entries(criteria).map(([key, value]) => {
+    const column = chatsTable[key as keyof Chat]
+    if (value === null) return isNull(column)
+    return eq(column, value)
+  })
   return db
     .select()
     .from(chatsTable)
