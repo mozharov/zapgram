@@ -10,6 +10,10 @@ export const deleteExpiredInvoicesJob = CronJob.from({
 })
 
 async function deleteExpiredInvoices() {
-  const deleted = await deleteExpiredInvoicesFromDB()
-  logger.info(`Deleted ${deleted} expired invoices.`)
+  try {
+    const deleted = await deleteExpiredInvoicesFromDB()
+    logger.info(`Deleted ${deleted} expired invoices.`)
+  } catch (error) {
+    logger.error({error}, 'Error in deleteExpiredInvoices job')
+  }
 }
