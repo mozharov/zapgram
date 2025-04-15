@@ -44,14 +44,22 @@ async function checkPendingInvoices() {
             await deletePendingInvoice(invoice.paymentRequest)
           }
         } catch (error) {
+          logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`);
+
+          // Handle specific error types
           if (error instanceof HTTPError && error.response.statusCode === 404) {
-            logger.warn(`Invoice ${invoice.paymentHash} not found.`)
-            continue
+            // Invoice not found on LNBits, likely expired or invalid
+            logger.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`);
+            await deletePendingInvoice(invoice.paymentRequest).catch(deleteError => {
+              logger.error({error: deleteError}, `Failed to delete not-found invoice ${invoice.paymentRequest}`)
+            });
+          } else if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
+             // Timeout connecting to LNBits, keep the invoice for retry
+             logger.warn(`Timeout checking invoice ${invoice.paymentHash}. Will retry later.`);
+          } else {
+            // Other unexpected error
+            logger.error({error}, `Unhandled error processing invoice ${invoice.paymentHash}.`);
           }
-          logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
-          await deletePendingInvoice(invoice.paymentRequest).catch(deleteError => {
-            logger.error({error: deleteError}, `Failed to delete invalid invoice ${invoice.paymentRequest}`)
-          })
         }
       }
 
