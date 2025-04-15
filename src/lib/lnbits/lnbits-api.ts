@@ -32,6 +32,7 @@ export class LNBitsAPI {
         ...init,
         headers,
         responseType: 'json',
+        timeout: { request: 15000 },
       }).catch((error: unknown) => {
         if (error instanceof HTTPError)
           logger.error(
