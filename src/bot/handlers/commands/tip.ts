@@ -16,7 +16,7 @@ import {getUserWallet} from '../../../services/lnbits-user-wallet.js'
 type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
 
 export const tipInvalidCommand = async (ctx: Context) => {
-  await ctx.deleteMessage()
+  await ctx.deleteMessage().catch(() => null)
   return replyWithTempMessage(ctx, ctx.t('tip.invalid-command'))
 }
 
