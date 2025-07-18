@@ -7,23 +7,31 @@ export const walletResponseSchema = z.array(
     name: z.string(),
     adminkey: z.string(),
     inkey: z.string(),
-    deleted: z.boolean(),
+    deleted: z.boolean().default(false),
     created_at: z.date({coerce: true}),
     updated_at: z.date({coerce: true}),
-    currency: z.string().nullable(),
-    balance_msat: z.number(),
+    currency: z.string().nullable().optional(),
+    balance_msat: z.number().default(0),
+    extra: z
+      .object({
+        icon: z.string().default('flash_on'),
+        color: z.string().default('primary'),
+        pinned: z.boolean().default(false),
+      })
+      .optional(),
   }),
 )
 
 export const userResponseSchema = z.object({
-  id: z.string(),
-  username: z.string(),
-  email: z.string().nullable(),
-  password: z.string(),
-  password_repeat: z.string(),
-  pubkey: z.string().nullable(),
-  extensions: z.record(z.string()).nullable(),
-  extra: z.record(z.unknown()),
+  id: z.string().optional(),
+  username: z.string().min(2).max(20).optional(),
+  email: z.string().nullable().optional(),
+  password: z.string().min(8).max(50).optional(),
+  password_repeat: z.string().min(8).max(50).optional(),
+  pubkey: z.string().max(64).nullable().optional(),
+  external_id: z.string().max(256).optional(),
+  extensions: z.array(z.string()).optional(),
+  extra: z.record(z.unknown()).optional(),
 })
 
 export const usersResponseSchema = z.object({
@@ -55,17 +63,19 @@ export const paymentResponseSchema = z.object({
   amount: z.number(), // negative integer if outgoing. msats
   fee: z.number(), // negative integer or 0. msats
   bolt11: z.string(),
-  memo: z.string(),
-  expiry: z.date({coerce: true}),
-  webhook: z.string().nullable(),
-  webhook_status: z.string().nullable(),
-  preimage: z.string().nullable(),
-  tag: z.string().nullable(),
-  extension: z.string().nullable(),
+  fiat_provider: z.string().nullable().optional(),
+  status: z.string().default('pending'),
+  memo: z.string().optional(),
+  expiry: z.date({coerce: true}).nullable().optional(),
+  webhook: z.string().nullable().optional(),
+  webhook_status: z.string().nullable().optional(),
+  preimage: z.string().nullable().optional(),
+  tag: z.string().nullable().optional(),
+  extension: z.string().nullable().optional(),
   time: z.date({coerce: true}),
   created_at: z.date({coerce: true}),
   updated_at: z.date({coerce: true}),
-  extra: z.record(z.unknown()),
+  extra: z.record(z.unknown()).default({}),
 })
 export type PaymentResponse = z.infer<typeof paymentResponseSchema>
 
@@ -75,7 +85,8 @@ export const feeReserveResponseSchema = z.object({
 
 export const lookupPaymentResponseSchema = z.object({
   paid: z.boolean(),
-  preimage: z.string().nullable(),
+  status: z.string().optional(),
+  preimage: z.string().nullable().optional(),
   details: paymentResponseSchema,
 })
 
@@ -88,8 +99,13 @@ export const statusResponseSchema = z.object({
   funding_source_balance_msat: z.number(),
 })
 
+export const healthResponseSchema = z.object({
+  server_time: z.number(),
+  up_time: z.string(),
+})
+
 export const balanceResponseSchema = z.object({
   name: z.string(),
-  balance: z.number(),
+  balance: z.number(), // in millisatoshis
   id: z.string(),
 })

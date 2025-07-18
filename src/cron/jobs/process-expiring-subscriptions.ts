@@ -141,10 +141,7 @@ async function attemptAutoRenewal(
     newExpiryDate.setDate(newExpiryDate.getDate() + 30)
     return {success: true, newExpiryDate, fee}
   } catch (error) {
-    logger.error(
-      {error, subscriptionId: subscription.id},
-      'Error in attemptAutoRenewal',
-    )
+    logger.error({error, subscriptionId: subscription.id}, 'Error in attemptAutoRenewal')
     return {success: false}
   }
 }
@@ -216,7 +213,7 @@ async function createAndSendRenewalInvoice(subscription: Subscription, chat: Cha
   } catch (error) {
     logger.error(
       {error, subscriptionId: subscription.id, userId: user.id},
-      'Error in createAndSendRenewalInvoice'
+      'Error in createAndSendRenewalInvoice',
     )
   }
 }

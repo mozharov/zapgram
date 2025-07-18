@@ -3,37 +3,52 @@ import {LNBitsAPI} from './lnbits-api.js'
 import {
   lookupPaymentResponseSchema,
   paymentResponseSchema,
-  statusResponseSchema,
+  healthResponseSchema,
   userResponseSchema,
   usersResponseSchema,
   walletResponseSchema,
 } from './schemas.js'
 
 class MasterWallet extends LNBitsAPI {
-  private readonly adminId = config.LNBITS_ADMIN_ID
+  private readonly bearerToken?: string
+
+  constructor({adminKey, bearerToken}: {adminKey?: string; bearerToken?: string}) {
+    super({adminKey})
+    this.bearerToken = bearerToken
+  }
+
+  private getAuthHeaders() {
+    if (!this.bearerToken) return {}
+    return {
+      Authorization: `Bearer ${this.bearerToken}`,
+      // Remove X-API-KEY for OAuth endpoints
+      'X-API-KEY': undefined,
+    }
+  }
 
   async createUser(username: string) {
     return this.fetchWithSchema('/users/api/v1/user', userResponseSchema, {
       method: 'POST',
       body: JSON.stringify({username}),
-      searchParams: {usr: this.adminId},
+      headers: this.getAuthHeaders(),
     })
   }
 
   async getWallet(userId: string) {
     return this.fetchWithSchema(`/users/api/v1/user/${userId}/wallet`, walletResponseSchema, {
-      searchParams: {usr: this.adminId},
+      headers: this.getAuthHeaders(),
     }).then(wallets => wallets[0]!)
   }
 
   async getUserByUsername(username: string) {
     return this.fetchWithSchema(`/users/api/v1/user`, usersResponseSchema, {
-      searchParams: {username, usr: this.adminId},
+      searchParams: {username},
+      headers: this.getAuthHeaders(),
     }).then(users => users.data[0])
   }
 
   async checkStatus() {
-    return this.fetchWithSchema('/api/v1/status', statusResponseSchema)
+    return this.fetchWithSchema('/api/v1/health', healthResponseSchema)
   }
 
   /**
@@ -76,4 +91,7 @@ class MasterWallet extends LNBitsAPI {
   }
 }
 
-export const lnbitsMasterWallet = new MasterWallet({adminKey: config.LNBITS_ADMIN_KEY})
+export const lnbitsMasterWallet = new MasterWallet({
+  adminKey: config.LNBITS_ADMIN_KEY,
+  bearerToken: config.LNBITS_BEARER_TOKEN,
+})

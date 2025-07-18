@@ -49,7 +49,7 @@ async function checkExpiredSubscriptions() {
         } catch (error) {
           logger.error(
             {error, subscriptionId: subscription.id},
-            'Error processing expired subscription'
+            'Error processing expired subscription',
           )
         }
       }

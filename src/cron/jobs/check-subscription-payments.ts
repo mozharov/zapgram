@@ -49,7 +49,10 @@ async function checkSubscriptionPayments() {
             await deleteSubscriptionPayment(payment.id)
           }
         } catch (error) {
-          logger.error({error, paymentHash: payment.paymentHash}, 'Error processing subscription payment.')
+          logger.error(
+            {error, paymentHash: payment.paymentHash},
+            'Error processing subscription payment.',
+          )
         }
       }
 
@@ -93,16 +96,16 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
     await bot.api.approveChatJoinRequest(payment.chatId, payment.userId).catch((error: unknown) => {
       logger.error({error}, 'Error while approving chat join request.')
     })
-    
-    let chat;
+
+    let chat
     try {
       chat = await getChatOrThrow(payment.chatId)
     } catch (error) {
       logger.error({error, chatId: payment.chatId}, 'Failed to get chat information.')
       return
     }
-    
-    let fee;
+
+    let fee
     try {
       fee = await distributeSubscriptionPayment(payment.price, chat.ownerId)
     } catch (error) {
@@ -110,14 +113,14 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
       return
     }
 
-    let user;
+    let user
     try {
       user = await getUserOrThrow(payment.userId)
     } catch (error) {
       logger.error({error, userId: payment.userId}, 'Failed to get user information.')
       return
     }
-    
+
     await bot.api
       .sendMessage(
         payment.userId,
