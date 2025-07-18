@@ -5,11 +5,16 @@ import {UserWallet} from '../lib/lnbits/user-wallet.js'
 import {satsToMsats} from '../lib/utils/sats.js'
 
 export async function getUserWallet(userId: User['id']) {
-  const {id} =
+  const user =
     (await lnbitsMasterWallet.getUserByUsername(userId.toString())) ||
     (await lnbitsMasterWallet.createUser(userId.toString()))
-  const wallet = await lnbitsMasterWallet.getWallet(id)
-  return new UserWallet(wallet.adminkey, wallet.balance_msat)
+  
+  if (!user.id) {
+    throw new Error('User ID is missing from LNbits response')
+  }
+  
+  const wallet = await lnbitsMasterWallet.getWallet(user.id)
+  return new UserWallet(wallet.adminkey, wallet.balance_msat ?? 0)
 }
 
 export async function internalTransfer(fromUserId: User['id'], toUserId: User['id'], sats: number) {

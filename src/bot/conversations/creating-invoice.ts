@@ -36,7 +36,7 @@ async function createInvoice(
       userId: ctx.user.id,
       paymentRequest: invoice.bolt11,
       paymentHash: invoice.payment_hash,
-      expiresAt: invoice.expiry,
+      expiresAt: invoice.expiry ?? undefined,
     })
     paymentRequest = invoice.bolt11
   } else {

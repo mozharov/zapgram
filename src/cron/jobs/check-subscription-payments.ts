@@ -44,7 +44,7 @@ async function checkSubscriptionPayments() {
           const data = await lnbitsMasterWallet.lookupPayment(payment.paymentHash)
           if (data.paid) {
             await completeSubscriptionPayment(payment)
-          } else if (data.details.expiry < new Date()) {
+          } else if (data.details.expiry && data.details.expiry < new Date()) {
             logger.info({paymentHash: payment.paymentHash}, 'Subscription payment expired.')
             await deleteSubscriptionPayment(payment.id)
           }
