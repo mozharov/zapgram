@@ -29,8 +29,8 @@ export const userResponseSchema = z.object({
   password: z.string().min(8).max(50).optional(),
   password_repeat: z.string().min(8).max(50).optional(),
   pubkey: z.string().max(64).nullable().optional(),
-  external_id: z.string().max(256).optional(),
-  extensions: z.array(z.string()).optional(),
+  external_id: z.string().max(256).nullable().optional(),
+  extensions: z.array(z.string()).nullable().optional(),
   extra: z.record(z.unknown()).optional(),
 })
 
