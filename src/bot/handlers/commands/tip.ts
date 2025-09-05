@@ -62,7 +62,11 @@ async function getToUser(ctx: Context, username?: string) {
   if (ctx.message.reply_to_message) {
     const {reply_to_message} = ctx.message
     const {from, sender_chat} = reply_to_message
-    if (sender_chat) return getUserFromChatCreator(ctx)
+    if (sender_chat) {
+      const user = await getUserFromChatCreator(ctx, sender_chat.id)
+      if (!user) throw new UserDoesNotHaveWalletError()
+      return user
+    }
     if (from) {
       const {id, username, is_bot, language_code} = from
       if (is_bot || id === 777000) throw new ToBotError() // Telegram service or bot

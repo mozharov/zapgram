@@ -4,9 +4,12 @@ import {getOrCreateUser} from '../../models/user.js'
 
 type Context = ChatTypeContext<BaseContext, 'group' | 'supergroup' | 'channel'>
 
-export async function getChatCreator(ctx: Context) {
-  const admins = await ctx.getChatAdministrators().catch((error: unknown) => {
-    ctx.log.warn({error}, 'Could not get chat administrators')
+export async function getChatCreator(ctx: Context, chatId?: number) {
+  const admins = await (chatId 
+    ? ctx.api.getChatAdministrators(chatId)
+    : ctx.getChatAdministrators()
+  ).catch((error: unknown) => {
+    ctx.log.warn({error, chatId}, 'Could not get chat administrators')
     return []
   })
   const owner = admins.find(admin => admin.status === 'creator')
@@ -14,8 +17,8 @@ export async function getChatCreator(ctx: Context) {
   return owner
 }
 
-export async function getUserFromChatCreator(ctx: Context) {
-  const creator = await getChatCreator(ctx)
+export async function getUserFromChatCreator(ctx: Context, chatId?: number) {
+  const creator = await getChatCreator(ctx, chatId)
   if (!creator) return null
   const {user} = creator
   return getOrCreateUser({
