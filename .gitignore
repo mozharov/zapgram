@@ -1,9 +1,6 @@
-/.pnpm-store
 /dist
 /node_modules
 /.cursor
 main.db*
-*.todo
 .DS_Store
 .env*
-.devdbrc
