@@ -1,10 +1,10 @@
 import {InlineKeyboard} from 'grammy'
-import type {BotContext, BotConversation, ConversationContext} from '../context.js'
-import {replyWithWallet} from '../helpers/messages/wallet.js'
-import {removeInlineKeyboard} from '../helpers/keyboard.js'
 import {NostrWallet} from '../../lib/nostr-wallet.js'
 import {updateUser} from '../../models/user.js'
+import type {BotContext, BotConversation, ConversationContext} from '../context.js'
 import {NWCConnectionError} from '../errors/nwc-connection.js'
+import {removeInlineKeyboard} from '../helpers/keyboard.js'
+import {replyWithWallet} from '../helpers/messages/wallet.js'
 
 export async function connectingNWC(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('nwc.connecting'))

@@ -1,6 +1,6 @@
-import {CallbackQueryContext} from 'grammy'
-import {BotContext} from '../../context.js'
+import type {CallbackQueryContext} from 'grammy'
 import {getSubscriptionById} from '../../../models/subscriptions.js'
+import type {BotContext} from '../../context.js'
 import {editMessageWithSubscription} from '../../helpers/messages/subscription.js'
 
 export const subscriptionCallback = async (ctx: CallbackQueryContext<BotContext>) => {

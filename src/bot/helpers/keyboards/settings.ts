@@ -1,6 +1,6 @@
+import {InlineKeyboard} from 'grammy'
 import type {User} from '../../../lib/database/types.js'
 import type {BotContext} from '../../context.js'
-import {InlineKeyboard} from 'grammy'
 
 export function buildSettingsKeyboard(t: BotContext['t'], user: User) {
   const keyboard = new InlineKeyboard()

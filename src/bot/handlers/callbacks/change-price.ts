@@ -1,6 +1,6 @@
 import type {CallbackQueryContext} from 'grammy'
-import type {BotContext} from '../../context.js'
 import {getAccessibleChat} from '../../../models/chat.js'
+import type {BotContext} from '../../context.js'
 import {changingPrice} from '../../conversations/changing-price.js'
 
 export const changePriceCallback = async (ctx: CallbackQueryContext<BotContext>) => {

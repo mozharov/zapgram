@@ -1,16 +1,16 @@
 import {HTTPError} from 'got'
+import {InsufficientFundsError} from '../../bot/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '../../bot/errors/invoice-already-paid.js'
+import {buildInvoiceMemo} from '../../helpers/memo.js'
 import {logger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
-  paymentResponseSchema,
+  balanceResponseSchema,
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
   type PaymentResponse,
-  balanceResponseSchema,
+  paymentResponseSchema,
 } from './schemas.js'
-import {InvoiceAlreadyPaidError} from '../../bot/errors/invoice-already-paid.js'
-import {InsufficientFundsError} from '../../bot/errors/insufficient-funds.js'
-import {buildInvoiceMemo} from '../../helpers/memo.js'
 
 const DEFAULT_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 

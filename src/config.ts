@@ -1,6 +1,6 @@
 import 'dotenv/config'
-import {parseEnv, z} from 'znv'
 import type {UserFromGetMe} from 'grammy/types'
+import {parseEnv, z} from 'znv'
 
 export const config = {
   ...parseEnv(process.env, {

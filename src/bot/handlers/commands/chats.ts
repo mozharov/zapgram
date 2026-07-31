@@ -1,6 +1,6 @@
 import {InlineKeyboard} from 'grammy'
 import {config} from '../../../config.js'
-import {getPaginatedAccessibleChats, getAccessibleChatsCount} from '../../../models/chat.js'
+import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '../../../models/chat.js'
 import type {BotContext} from '../../context.js'
 import {buildChatsKeyboard} from '../../helpers/keyboards/chats.js'
 

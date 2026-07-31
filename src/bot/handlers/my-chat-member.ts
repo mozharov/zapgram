@@ -1,12 +1,12 @@
-import {InlineKeyboard, type ChatTypeContext} from 'grammy'
+import {type ChatTypeContext, InlineKeyboard} from 'grammy'
 import type {ChatMember, ChatMemberUpdated} from 'grammy/types'
-import type {BaseContext} from '../context.js'
-import {getChatCreator} from '../helpers/chat-creator.js'
-import {createOrUpdateChat, getChat, updateChat} from '../../models/chat.js'
-import {getOrCreateUser} from '../../models/user.js'
-import {translate} from '../lib/i18n.js'
 import type {User} from '../../lib/database/types.js'
 import {sleep} from '../../lib/utils/sleep.js'
+import {createOrUpdateChat, getChat, updateChat} from '../../models/chat.js'
+import {getOrCreateUser} from '../../models/user.js'
+import type {BaseContext} from '../context.js'
+import {getChatCreator} from '../helpers/chat-creator.js'
+import {translate} from '../lib/i18n.js'
 
 type Context = ChatTypeContext<BaseContext, 'supergroup' | 'channel'> & {
   myChatMember: ChatMemberUpdated

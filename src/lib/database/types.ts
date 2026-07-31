@@ -1,10 +1,10 @@
-import {
-  type usersTable,
-  type conversationsTable,
-  type pendingInvoicesTable,
-  type chatsTable,
-  type subscriptionsTable,
-  type subscriptionPaymentsTable,
+import type {
+  chatsTable,
+  conversationsTable,
+  pendingInvoicesTable,
+  subscriptionPaymentsTable,
+  subscriptionsTable,
+  usersTable,
 } from './schema.js'
 
 export type User = typeof usersTable.$inferSelect

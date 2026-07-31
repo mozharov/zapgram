@@ -1,10 +1,12 @@
+/.git
 /dist
 /node_modules
-/.git
 .dockerignore
 .gitignore
 .env*
-eslint.config.mjs
+main.db*
 .DS_Store
 Dockerfile
-README.md
+biome.json
+tsconfig.json
+*.md

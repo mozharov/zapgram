@@ -1,10 +1,10 @@
-import {Context} from 'grammy'
-import type {AppLogger} from '../lib/logger.js'
-import type {I18nFlavor} from '@grammyjs/i18n'
-import type {User} from '../lib/database/types.js'
 import type {Conversation, ConversationFlavor} from '@grammyjs/conversations'
-import {NostrWallet} from '../lib/nostr-wallet.js'
+import type {I18nFlavor} from '@grammyjs/i18n'
+import type {Context} from 'grammy'
+import type {User} from '../lib/database/types.js'
 import type {UserWallet} from '../lib/lnbits/user-wallet.js'
+import type {AppLogger} from '../lib/logger.js'
+import type {NostrWallet} from '../lib/nostr-wallet.js'
 
 export type BaseContext = ConversationFlavor<Context & I18nFlavor> & {
   log: AppLogger

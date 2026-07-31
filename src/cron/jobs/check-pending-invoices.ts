@@ -1,13 +1,13 @@
 import {CronJob} from 'cron'
-import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
+import {HTTPError} from 'got'
 import {logger} from '../../lib/logger.js'
 import {
-  getPendingInvoices,
   countPendingInvoices,
   deletePendingInvoice,
+  getPendingInvoices,
 } from '../../models/pending-invoice.js'
 import {getUserWallet} from '../../services/lnbits-user-wallet.js'
-import {HTTPError} from 'got'
+import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 
 export const checkPendingInvoicesJob = CronJob.from({
   cronTime: '0 */2 * * * *',
@@ -50,7 +50,7 @@ async function checkPendingInvoices() {
           if (error instanceof HTTPError && error.response.statusCode === 404) {
             // Invoice not found on LNBits, likely expired or invalid
             logger.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
-            await deletePendingInvoice(invoice.paymentRequest).catch(deleteError => {
+            await deletePendingInvoice(invoice.paymentRequest).catch((deleteError: unknown) => {
               logger.error(
                 {error: deleteError},
                 `Failed to delete not-found invoice ${invoice.paymentRequest}`,

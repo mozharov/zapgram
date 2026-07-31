@@ -1,6 +1,6 @@
+import type {CallbackQueryContext} from 'grammy'
 import {getSubscriptionPayment} from '../../../models/subscription-payment.js'
 import type {BotContext} from '../../context.js'
-import {CallbackQueryContext} from 'grammy'
 import {NWCConnectionError} from '../../errors/nwc-connection.js'
 
 export const paySubscriptionCallback = async (ctx: CallbackQueryContext<BotContext>) => {

@@ -1,7 +1,7 @@
+import {and, count, eq, lt} from 'drizzle-orm'
 import {db} from '../lib/database/database.js'
 import {pendingInvoicesTable} from '../lib/database/schema.js'
-import type {PendingInvoice, NewPendingInvoice} from '../lib/database/types.js'
-import {and, count, eq, lt} from 'drizzle-orm'
+import type {NewPendingInvoice, PendingInvoice} from '../lib/database/types.js'
 
 export async function createPendingInvoice(data: NewPendingInvoice) {
   return db

@@ -1,9 +1,9 @@
-import type {BotConversation, ConversationContext} from '../context.js'
 import {InlineKeyboard} from 'grammy'
+import type {MessageEntity} from 'grammy/types'
 import {getAccessibleChat, updateChat} from '../../models/chat.js'
+import type {BotConversation, ConversationContext} from '../context.js'
 import {removeInlineKeyboard} from '../helpers/keyboard.js'
 import {replyWithChat} from '../helpers/messages/chat.js'
-import type {MessageEntity} from 'grammy/types'
 
 const MAX_MESSAGE_LENGTH = 1000
 

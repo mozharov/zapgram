@@ -1,13 +1,13 @@
-import type {BotConversation, ConversationContext} from '../context.js'
-import {waitForInvoice} from '../helpers/conversations/wait-for-invoice.js'
-import {waitForWallet} from '../helpers/conversations/wait-for-wallet.js'
 import {decodeInvoice} from '../../lib/decoded-invoice.js'
-import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {msatsToSats} from '../../lib/utils/sats.js'
-import {waitForInvoiceReview} from '../helpers/conversations/wait-for-invoice-review.js'
-import {NWCConnectionError} from '../errors/nwc-connection.js'
-import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 import {deletePendingInvoice, getPendingInvoiceBy} from '../../models/pending-invoice.js'
+import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
+import type {BotConversation, ConversationContext} from '../context.js'
+import {NWCConnectionError} from '../errors/nwc-connection.js'
+import {waitForInvoice} from '../helpers/conversations/wait-for-invoice.js'
+import {waitForInvoiceReview} from '../helpers/conversations/wait-for-invoice-review.js'
+import {waitForWallet} from '../helpers/conversations/wait-for-wallet.js'
+import {replyWithWallet} from '../helpers/messages/wallet.js'
 
 export async function payingInvoice(
   conversation: BotConversation,

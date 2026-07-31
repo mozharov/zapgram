@@ -1,22 +1,22 @@
 import {CronJob} from 'cron'
+import {bot} from '../../bot/bot.js'
+import {translate} from '../../bot/lib/i18n.js'
+import type {SubscriptionPayment} from '../../lib/database/types.js'
+import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
 import {logger} from '../../lib/logger.js'
+import {getChatOrThrow} from '../../models/chat.js'
 import {
   countSubscriptionPayments,
   deleteSubscriptionPayment,
   getSubscriptionPayments,
 } from '../../models/subscription-payment.js'
-import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
-import type {SubscriptionPayment} from '../../lib/database/types.js'
 import {
   createSubscription,
   getSubscriptionByUserAndChat,
   updateSubscription,
 } from '../../models/subscriptions.js'
-import {bot} from '../../bot/bot.js'
-import {getChatOrThrow} from '../../models/chat.js'
-import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
-import {translate} from '../../bot/lib/i18n.js'
 import {getUserOrThrow} from '../../models/user.js'
+import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
 
 export const checkSubscriptionPaymentsJob = CronJob.from({
   cronTime: '0 */3 * * * *',
@@ -97,7 +97,7 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
       logger.error({error}, 'Error while approving chat join request.')
     })
 
-    let chat
+    let chat: Awaited<ReturnType<typeof getChatOrThrow>>
     try {
       chat = await getChatOrThrow(payment.chatId)
     } catch (error) {
@@ -105,7 +105,7 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
       return
     }
 
-    let fee
+    let fee: Awaited<ReturnType<typeof distributeSubscriptionPayment>>
     try {
       fee = await distributeSubscriptionPayment(payment.price, chat.ownerId)
     } catch (error) {
@@ -113,7 +113,7 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
       return
     }
 
-    let user
+    let user: Awaited<ReturnType<typeof getUserOrThrow>>
     try {
       user = await getUserOrThrow(payment.userId)
     } catch (error) {

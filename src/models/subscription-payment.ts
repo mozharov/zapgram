@@ -1,8 +1,8 @@
 import {randomUUID} from 'crypto'
+import {count, desc, eq} from 'drizzle-orm'
 import {db} from '../lib/database/database.js'
 import {subscriptionPaymentsTable} from '../lib/database/schema.js'
 import type {NewSubscriptionPayment, SubscriptionPayment} from '../lib/database/types.js'
-import {count, eq, desc} from 'drizzle-orm'
 
 export async function createSubscriptionPayment(data: NewSubscriptionPayment) {
   return db

@@ -1,6 +1,6 @@
 import pino from 'pino'
-import {config} from '../config.js'
 import {serializeError} from 'serialize-error'
+import {config} from '../config.js'
 
 const options: pino.LoggerOptions = {
   level: config.LOG_LEVEL,

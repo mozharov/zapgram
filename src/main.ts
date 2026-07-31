@@ -1,12 +1,12 @@
 import {startServer} from './app.js'
-import {logger} from './lib/logger.js'
-import {config} from './config.js'
-import {startTunnel, stopTunnel} from './lib/tunnel.js'
-import {deleteWebhook, setWebhook} from './bot/webhook.js'
 import {bot} from './bot/bot.js'
-import {migrateDatabase} from './lib/database/database.js'
+import {deleteWebhook, setWebhook} from './bot/webhook.js'
+import {config} from './config.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
+import {migrateDatabase} from './lib/database/database.js'
 import {lnbitsMasterWallet} from './lib/lnbits/master-wallet.js'
+import {logger} from './lib/logger.js'
+import {startTunnel, stopTunnel} from './lib/tunnel.js'
 import {configureBot} from './services/bot.js'
 
 if (config.DB_MIGRATE) migrateDatabase()

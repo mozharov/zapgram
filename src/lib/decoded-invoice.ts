@@ -1,5 +1,5 @@
-import {InvoiceParsingError} from '../bot/errors/invoice-parsing.js'
 import {Invoice} from '@getalby/lightning-tools'
+import {InvoiceParsingError} from '../bot/errors/invoice-parsing.js'
 
 export function decodeInvoice(paymentRequest: string): DecodedInvoice {
   try {

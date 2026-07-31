@@ -23,7 +23,7 @@ export function buildSubscriptionPaymentKeyboard(
 }
 
 interface Args {
-  payNWC: boolean
-  payWallet: boolean
+  payNWC?: boolean
+  payWallet?: boolean
   paymentId: SubscriptionPayment['id']
 }

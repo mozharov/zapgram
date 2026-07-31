@@ -1,6 +1,6 @@
+import {eq} from 'drizzle-orm'
 import {db} from '../lib/database/database.js'
 import {conversationsTable} from '../lib/database/schema.js'
-import {eq} from 'drizzle-orm'
 import type {Conversation, NewConversation} from '../lib/database/types.js'
 
 export async function deleteConversation(key: Conversation['key']) {

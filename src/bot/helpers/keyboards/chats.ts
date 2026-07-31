@@ -1,7 +1,7 @@
 import {InlineKeyboard} from 'grammy'
-import type {BotContext} from '../../context.js'
 import type {Chat} from '../../../lib/database/types.js'
 import {bot} from '../../bot.js'
+import type {BotContext} from '../../context.js'
 
 export function buildChatsKeyboard(
   t: BotContext['t'],

@@ -1,11 +1,11 @@
 import type {ChatTypeContext} from 'grammy'
-import type {BaseContext} from '../context.js'
 import {getOrCreateUser} from '../../models/user.js'
+import type {BaseContext} from '../context.js'
 
 type Context = ChatTypeContext<BaseContext, 'group' | 'supergroup' | 'channel'>
 
 export async function getChatCreator(ctx: Context, chatId?: number) {
-  const admins = await (chatId 
+  const admins = await (chatId
     ? ctx.api.getChatAdministrators(chatId)
     : ctx.getChatAdministrators()
   ).catch((error: unknown) => {
@@ -13,7 +13,7 @@ export async function getChatCreator(ctx: Context, chatId?: number) {
     return []
   })
   const owner = admins.find(admin => admin.status === 'creator')
-  if (!owner || owner.status !== 'creator') return null
+  if (owner?.status !== 'creator') return null
   return owner
 }
 

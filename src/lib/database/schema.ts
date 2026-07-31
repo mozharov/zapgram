@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm'
-import {text, integer, sqliteTable, index} from 'drizzle-orm/sqlite-core'
+import {index, integer, sqliteTable, text} from 'drizzle-orm/sqlite-core'
 
 export const usersTable = sqliteTable(
   'users',
@@ -10,9 +10,7 @@ export const usersTable = sqliteTable(
     languageCode: text('language_code').notNull().default('en'),
     nwcTips: integer('nwc_tips', {mode: 'boolean'}).notNull().default(false),
     nwcUrl: text('nwc_url'),
-    createdAt: integer('created_at', {mode: 'timestamp'})
-      .notNull()
-      .default(sql`(unixepoch())`),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [index('username_idx').on(table.username)],
 )
@@ -32,9 +30,7 @@ export const pendingInvoicesTable = sqliteTable('pending_invoices', {
   expiresAt: integer('expires_at', {mode: 'timestamp'})
     .notNull()
     .default(sql`(unixepoch() + 60 * 60 * 24 * 7)`), // 7 days
-  createdAt: integer('created_at', {mode: 'timestamp'})
-    .notNull()
-    .default(sql`(unixepoch())`),
+  createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })
 
 // only for paid chats
@@ -54,9 +50,7 @@ export const chatsTable = sqliteTable('chats', {
     .references(() => usersTable.id, {onDelete: 'cascade'}),
   customMessageEn: text('custom_message_en'),
   customMessageRu: text('custom_message_ru'),
-  createdAt: integer('created_at', {mode: 'timestamp'})
-    .notNull()
-    .default(sql`(unixepoch())`),
+  createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })
 
 export const subscriptionsTable = sqliteTable('subscriptions', {
@@ -71,9 +65,7 @@ export const subscriptionsTable = sqliteTable('subscriptions', {
   endsAt: integer('ends_at', {mode: 'timestamp'}), // if null - permanent access
   autoRenew: integer('auto_renew', {mode: 'boolean'}).notNull().default(true),
   notificationSent: integer('notification_sent', {mode: 'boolean'}).notNull().default(false), // if true, notification about expiration was sent
-  createdAt: integer('created_at', {mode: 'timestamp'})
-    .notNull()
-    .default(sql`(unixepoch())`),
+  createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })
 
 export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
@@ -88,7 +80,5 @@ export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
   paymentHash: text('payment_hash').notNull(), // lnbits payment hash
   price: integer('price', {mode: 'number'}).notNull(), // satoshis
   subscriptionType: text('subscription_type', {enum: ['one_time', 'monthly']}).notNull(),
-  createdAt: integer('created_at', {mode: 'timestamp'})
-    .notNull()
-    .default(sql`(unixepoch())`),
+  createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })

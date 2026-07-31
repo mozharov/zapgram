@@ -1,11 +1,10 @@
-import type {ConversationContext} from '../context.js'
-import type {BotConversation} from '../context.js'
+import {getUserWallet, internalTransfer} from '../../services/lnbits-user-wallet.js'
+import {notifySatsReceived} from '../../services/notify-sats-received.js'
+import type {BotConversation, ConversationContext} from '../context.js'
 import {waitForSats} from '../helpers/conversations/wait-for-sats.js'
 import {waitForUser} from '../helpers/conversations/wait-for-user.js'
 import {waitForWallet} from '../helpers/conversations/wait-for-wallet.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
-import {notifySatsReceived} from '../../services/notify-sats-received.js'
-import {getUserWallet, internalTransfer} from '../../services/lnbits-user-wallet.js'
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('sending-to-user'))

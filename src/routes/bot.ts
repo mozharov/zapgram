@@ -1,8 +1,8 @@
 import Router from '@koa/router'
-import {bot} from '../bot/bot.js'
-import {logger} from '../lib/logger.js'
 import {webhookCallback} from 'grammy'
+import {bot} from '../bot/bot.js'
 import {config} from '../config.js'
+import {logger} from '../lib/logger.js'
 
 export const botRouter = new Router()
 botRouter.post(

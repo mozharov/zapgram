@@ -1,11 +1,11 @@
 import {nwc} from '@getalby/sdk'
-import {NoNWCAnswerError} from '../bot/errors/no-nwc-answer.js'
-import {NWCPaymentFailedError} from '../bot/errors/nwc-payment-failed.js'
 import {InsufficientFundsError} from '../bot/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '../bot/errors/invoice-already-paid.js'
+import {NoNWCAnswerError} from '../bot/errors/no-nwc-answer.js'
+import {NWCPaymentFailedError} from '../bot/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '../bot/errors/nwc-timeout.js'
-import {logger} from './logger.js'
 import {buildInvoiceMemo} from '../helpers/memo.js'
+import {logger} from './logger.js'
 
 export class NostrWallet {
   private readonly client: nwc.NWCClient

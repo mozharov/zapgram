@@ -1,5 +1,5 @@
-import {logger} from '../lib/logger.js'
 import type {Middleware} from 'koa'
+import {logger} from '../lib/logger.js'
 
 export const requestLogger: Middleware = async (ctx, next) => {
   ctx.log = logger.child({reqId: ctx.req.id})

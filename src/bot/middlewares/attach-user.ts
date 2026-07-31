@@ -1,8 +1,8 @@
 import type {Middleware} from 'grammy'
-import type {BotContext} from '../context.js'
-import {getOrCreateUser} from '../../models/user.js'
-import {NostrWallet} from '../../lib/nostr-wallet.js'
 import type {User} from '../../lib/database/types.js'
+import {NostrWallet} from '../../lib/nostr-wallet.js'
+import {getOrCreateUser} from '../../models/user.js'
+import type {BotContext} from '../context.js'
 import {FromBotError} from '../errors/from-bot.js'
 
 export const attachUser: Middleware<Context> = async (ctx, next) => {

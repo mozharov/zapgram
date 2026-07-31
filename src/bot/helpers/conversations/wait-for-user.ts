@@ -1,9 +1,9 @@
 import {InlineKeyboard} from 'grammy'
-import type {BotConversation, ConversationContext} from '../../context.js'
-import {removeInlineKeyboard} from '../keyboard.js'
-import {ToYourselfError} from '../../errors/to-yourselfs.js'
 import {getUserByUsername} from '../../../models/user.js'
+import type {BotConversation, ConversationContext} from '../../context.js'
+import {ToYourselfError} from '../../errors/to-yourselfs.js'
 import {UserDoesNotHaveWalletError} from '../../errors/user-does-not-have-wallet.js'
+import {removeInlineKeyboard} from '../keyboard.js'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 

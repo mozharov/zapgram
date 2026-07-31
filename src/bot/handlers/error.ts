@@ -1,6 +1,6 @@
 import type {ErrorHandler} from 'grammy'
-import {ExposedError} from '../errors/exposed-error.js'
 import type {BotContext} from '../context.js'
+import {ExposedError} from '../errors/exposed-error.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {replyWithTempMessage} from '../helpers/temp-message.js'
 

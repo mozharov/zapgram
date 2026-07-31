@@ -1,11 +1,11 @@
 import {CronJob} from 'cron'
+import {bot} from '../../bot/bot.js'
 import {logger} from '../../lib/logger.js'
 import {
   countExpiredSubscriptions,
   deleteSubscription,
   getExpiredSubscriptions,
 } from '../../models/subscriptions.js'
-import {bot} from '../../bot/bot.js'
 
 export const checkExpiredSubscriptionsJob = CronJob.from({
   cronTime: '0 0 * * * *',

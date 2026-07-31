@@ -1,6 +1,6 @@
 import type {ChatTypeContext} from 'grammy'
-import type {BaseContext} from '../context.js'
 import {getChat, updateChat} from '../../models/chat.js'
+import type {BaseContext} from '../context.js'
 
 type Context = ChatTypeContext<BaseContext, 'supergroup' | 'channel'>
 

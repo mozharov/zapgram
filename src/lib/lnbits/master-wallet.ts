@@ -1,9 +1,9 @@
 import {config} from '../../config.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
+  healthResponseSchema,
   lookupPaymentResponseSchema,
   paymentResponseSchema,
-  healthResponseSchema,
   userResponseSchema,
   usersResponseSchema,
   walletResponseSchema,

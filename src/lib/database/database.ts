@@ -6,9 +6,9 @@ import {logger} from '../logger.js'
 import * as schema from './schema.js'
 
 const sqlite = new Database(config.DB_URL)
-sqlite.exec('PRAGMA journal_mode = WAL')
-sqlite.exec(`PRAGMA journal_size_limit = ${240 * 1024 * 1024}`) // 240mb
-sqlite.exec('PRAGMA foreign_keys = ON')
+sqlite.run('PRAGMA journal_mode = WAL')
+sqlite.run(`PRAGMA journal_size_limit = ${240 * 1024 * 1024}`) // 240mb
+sqlite.run('PRAGMA foreign_keys = ON')
 
 export const db = drizzle({client: sqlite, schema})
 

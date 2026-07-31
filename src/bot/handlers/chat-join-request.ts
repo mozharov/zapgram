@@ -1,13 +1,13 @@
-import {type ChatJoinRequest} from 'grammy/types'
-import type {BotContext} from '../context.js'
-import {type ChatTypeContext} from 'grammy'
-import {getChat} from '../../models/chat.js'
-import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
-import {createSubscriptionPayment} from '../../models/subscription-payment.js'
-import {msatsToSats} from '../../lib/utils/sats.js'
-import {getSubscriptionByUserAndChat} from '../../models/subscriptions.js'
-import {buildSubscriptionPaymentKeyboard} from '../helpers/keyboards/subscription-payment.js'
+import type {ChatTypeContext} from 'grammy'
+import type {ChatJoinRequest} from 'grammy/types'
 import type {Chat} from '../../lib/database/types.js'
+import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
+import {msatsToSats} from '../../lib/utils/sats.js'
+import {getChat} from '../../models/chat.js'
+import {createSubscriptionPayment} from '../../models/subscription-payment.js'
+import {getSubscriptionByUserAndChat} from '../../models/subscriptions.js'
+import type {BotContext} from '../context.js'
+import {buildSubscriptionPaymentKeyboard} from '../helpers/keyboards/subscription-payment.js'
 
 type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
   chatJoinRequest: ChatJoinRequest
@@ -20,7 +20,7 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
   ctx.log.debug({tgChat, user: ctx.user})
 
   const chat = await getChat({id: tgChat.id})
-  if (!chat || chat.status !== 'active') return
+  if (chat?.status !== 'active') return
 
   const subscription = await getSubscriptionByUserAndChat(ctx.user.id, chat.id)
   if (subscription) return ctx.approveChatJoinRequest(ctx.user.id)
