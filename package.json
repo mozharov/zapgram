@@ -27,7 +27,6 @@
     "@grammyjs/auto-retry": "^2.0.2",
     "@grammyjs/conversations": "^2.0.1",
     "@grammyjs/i18n": "^1.1.2",
-    "@grammyjs/parse-mode": "^1.11.1",
     "@koa/bodyparser": "^6.1.0",
     "@koa/router": "^15.7.0",
     "better-sse": "^0.16.1",

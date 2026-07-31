@@ -3,7 +3,6 @@ import {
   conversations as grammyConversations,
   type VersionedState,
 } from '@grammyjs/conversations'
-import {parseMode} from '@grammyjs/parse-mode'
 import {Composer} from 'grammy'
 import {
   createOrUpdateConversation,
@@ -11,6 +10,7 @@ import {
   getConversation,
 } from '../../models/conversation.js'
 import type {BotContext, ConversationContext} from '../context.js'
+import {parseMode} from '../lib/parse-mode.js'
 import {attachUser} from './attach-user.js'
 import {i18n} from './i18n.js'
 import {lnbitsWallet} from './lnbits-wallet.js'
