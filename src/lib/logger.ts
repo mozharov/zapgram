@@ -1,11 +1,11 @@
-import {pino, type Logger} from 'pino'
+import pino from 'pino'
 import {config} from '../config.js'
 import {serializeError} from 'serialize-error'
 
 const options: pino.LoggerOptions = {
   level: config.LOG_LEVEL,
   formatters: {
-    level: label => ({level: label}),
+    level: (label: string) => ({level: label}),
     bindings: () => ({}),
     log: (object: Record<string, unknown>) => {
       const result = {...object}
@@ -27,4 +27,4 @@ if (config.NODE_ENV === 'development') {
 
 export const logger = pino(options)
 
-export type AppLogger = Pick<Logger, 'info' | 'error' | 'warn' | 'debug'>
+export type AppLogger = Pick<pino.Logger, 'info' | 'error' | 'warn' | 'debug'>

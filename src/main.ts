@@ -1,4 +1,3 @@
-import './lib/utils/websocker-polyfill.js' // required for @getalby/sdk
 import {startServer} from './app.js'
 import {logger} from './lib/logger.js'
 import {config} from './config.js'
