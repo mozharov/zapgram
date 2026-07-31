@@ -23,5 +23,9 @@ export const errorHandler: ErrorHandler = async err => {
   await ctx.reply(errorResponse).catch((error: unknown) => {
     ctx.log.error({error}, 'Failed to reply about error in private chat')
   })
-  if (ctx.chat?.type === 'private') await replyWithWallet(ctx)
+  if (ctx.chat?.type === 'private') {
+    await replyWithWallet(ctx).catch((error: unknown) => {
+      ctx.log.error({error}, 'Failed to reply with wallet in error handler')
+    })
+  }
 }
