@@ -1,7 +1,7 @@
-import type {z} from 'zod'
+import type {ZodType} from 'zod'
 import {logger} from '../logger.js'
 
-export function validateData<T>(data: unknown, schema: z.ZodType<T>): T {
+export function validateData<T>(data: unknown, schema: ZodType<T>): T {
   try {
     return schema.parse(data)
   } catch (error) {

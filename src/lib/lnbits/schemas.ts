@@ -8,8 +8,8 @@ export const walletResponseSchema = z.array(
     adminkey: z.string(),
     inkey: z.string(),
     deleted: z.boolean().default(false),
-    created_at: z.date({coerce: true}),
-    updated_at: z.date({coerce: true}),
+    created_at: z.coerce.date(),
+    updated_at: z.coerce.date(),
     currency: z.string().nullable().optional(),
     balance_msat: z.number().default(0),
     extra: z
@@ -31,7 +31,7 @@ export const userResponseSchema = z.object({
   pubkey: z.string().max(64).nullable().optional(),
   external_id: z.string().max(256).nullable().optional(),
   extensions: z.array(z.string()).nullable().optional(),
-  extra: z.record(z.unknown()).optional(),
+  extra: z.record(z.string(), z.unknown()).optional(),
 })
 
 export const usersResponseSchema = z.object({
@@ -42,9 +42,9 @@ export const usersResponseSchema = z.object({
       password_hash: z.string().nullable(),
       pubkey: z.string().nullable(),
       email: z.string().nullable(),
-      extra: z.record(z.unknown()),
-      created_at: z.date({coerce: true}),
-      updated_at: z.date({coerce: true}),
+      extra: z.record(z.string(), z.unknown()),
+      created_at: z.coerce.date(),
+      updated_at: z.coerce.date(),
       is_super_user: z.boolean(),
       is_admin: z.boolean(),
       transaction_count: z.number(),
@@ -66,16 +66,16 @@ export const paymentResponseSchema = z.object({
   fiat_provider: z.string().nullable().optional(),
   status: z.string().default('pending'),
   memo: z.string().optional(),
-  expiry: z.date({coerce: true}).nullable().optional(),
+  expiry: z.coerce.date().nullable().optional(),
   webhook: z.string().nullable().optional(),
   webhook_status: z.string().nullable().optional(),
   preimage: z.string().nullable().optional(),
   tag: z.string().nullable().optional(),
   extension: z.string().nullable().optional(),
-  time: z.date({coerce: true}),
-  created_at: z.date({coerce: true}),
-  updated_at: z.date({coerce: true}),
-  extra: z.record(z.unknown()).default({}),
+  time: z.coerce.date(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+  extra: z.record(z.string(), z.unknown()).default({}),
 })
 export type PaymentResponse = z.infer<typeof paymentResponseSchema>
 

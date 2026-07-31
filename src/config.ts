@@ -1,29 +1,38 @@
 import 'dotenv/config'
 import type {UserFromGetMe} from 'grammy/types'
-import {parseEnv, z} from 'znv'
+import {z} from 'zod'
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production']).default('production'),
+  PORT: z.coerce.number().default(8443),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
+  BOT_TOKEN: z.string().min(1),
+  BOT_WEBHOOK_SECRET: z.string().min(1),
+  BOT_ID: z.coerce.number().optional(),
+  BOT_NAME: z.string().optional(),
+  BOT_USERNAME: z.string().optional(),
+  NGROK_TOKEN: z.string().optional(),
+  DB_URL: z.string().min(1),
+  DB_MIGRATE: z.stringbool().default(true),
+  LNBITS_URL: z.string().min(1),
+  LNBITS_ADMIN_KEY: z.string().min(1),
+  LNBITS_ADMIN_ID: z.string().min(1),
+  LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
+  LNBITS_BEARER_TOKEN: z.string().optional(),
+  SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
+  HOST: z.string().min(1),
+  CONFIGURE_BOT: z.stringbool().default(true), // should call configureBot() on startup
+})
+
+const parsed = envSchema.safeParse(process.env)
+if (!parsed.success) {
+  console.error('Invalid environment variables:')
+  console.error(z.prettifyError(parsed.error))
+  process.exit(1)
+}
 
 export const config = {
-  ...parseEnv(process.env, {
-    NODE_ENV: z.enum(['development', 'production']).default('production'),
-    PORT: z.coerce.number().default(8443),
-    LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
-    BOT_TOKEN: z.string().nonempty(),
-    BOT_WEBHOOK_SECRET: z.string().nonempty(),
-    BOT_ID: z.coerce.number().optional(),
-    BOT_NAME: z.string().optional(),
-    BOT_USERNAME: z.string().optional(),
-    NGROK_TOKEN: z.string().optional(),
-    DB_URL: z.string().nonempty(),
-    DB_MIGRATE: z.coerce.boolean().default(true),
-    LNBITS_URL: z.string().nonempty(),
-    LNBITS_ADMIN_KEY: z.string().nonempty(),
-    LNBITS_ADMIN_ID: z.string().nonempty(),
-    LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().nonempty(),
-    LNBITS_BEARER_TOKEN: z.string().optional(),
-    SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
-    HOST: z.string().nonempty(),
-    CONFIGURE_BOT: z.coerce.boolean().default(true), // should call configureBot() on startup
-  }),
+  ...parsed.data,
 
   get botInfo(): UserFromGetMe | undefined {
     if (!this.BOT_ID || !this.BOT_NAME || !this.BOT_USERNAME) return undefined
