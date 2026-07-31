@@ -1,4 +1,4 @@
-import {nwc} from '@getalby/sdk'
+import {Nip47Error, Nip47ResponseValidationError, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
 import {InsufficientFundsError} from '../bot/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '../bot/errors/invoice-already-paid.js'
 import {NoNWCAnswerError} from '../bot/errors/no-nwc-answer.js'
@@ -8,11 +8,11 @@ import {buildInvoiceMemo} from '../helpers/memo.js'
 import {logger} from './logger.js'
 
 export class NostrWallet {
-  private readonly client: nwc.NWCClient
+  private readonly client: NWCClient
   public readonly nwcUrl: string
 
   constructor(nwcUrl: string) {
-    this.client = new nwc.NWCClient({
+    this.client = new NWCClient({
       nostrWalletConnectUrl: nwcUrl,
     })
     this.nwcUrl = nwcUrl
@@ -41,7 +41,7 @@ export class NostrWallet {
       else await this.client.payInvoice({invoice})
     } catch (error) {
       // some wallet don't return success response after payment, but invoice is paid
-      if (!(error instanceof nwc.Nip47Error) || !error.message.includes('already been paid')) {
+      if (!(error instanceof Nip47Error) || !error.message.includes('already been paid')) {
         const lookup = await this.lookupInvoice(invoice).catch(() => ({preimage: null}))
         if (lookup.preimage) return
       }
@@ -53,13 +53,13 @@ export class NostrWallet {
 function handlePayInvoiceError(error: unknown) {
   logger.error({error}, 'Error while paying invoice')
   if (
-    error instanceof nwc.Nip47TimeoutError ||
+    error instanceof Nip47TimeoutError ||
     error instanceof NWCTimeoutError ||
-    error instanceof nwc.Nip47ResponseValidationError
+    error instanceof Nip47ResponseValidationError
   ) {
     throw new NoNWCAnswerError({message: error.message})
   }
-  if (error instanceof nwc.Nip47Error) {
+  if (error instanceof Nip47Error) {
     if (error.message.startsWith('Could not pay')) {
       throw new NWCPaymentFailedError()
     }

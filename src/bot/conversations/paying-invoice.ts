@@ -48,7 +48,7 @@ export async function payingInvoice(
     ctx.t('paying-invoice.paid', {
       amount: invoice.satoshi,
       fee: msatsToSats(feesPaid),
-      total: msatsToSats(invoice.msats + feesPaid),
+      total: msatsToSats(invoice.millisatoshi + feesPaid),
     }),
   )
   await replyWithWallet(ctx)

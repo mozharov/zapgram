@@ -1,5 +1,5 @@
+import type {Invoice} from '@getalby/lightning-tools'
 import {InlineKeyboard} from 'grammy'
-import type {DecodedInvoice} from '../../../lib/decoded-invoice.js'
 import {msatsToSats} from '../../../lib/utils/sats.js'
 import {getPendingInvoiceBy} from '../../../models/pending-invoice.js'
 import type {BotConversation, ConversationContext} from '../../context.js'
@@ -8,7 +8,7 @@ import {removeInlineKeyboard} from '../keyboard.js'
 export async function waitForInvoiceReview(
   conversation: BotConversation,
   ctx: ConversationContext,
-  invoice: DecodedInvoice,
+  invoice: Invoice,
   isInternalWallet: boolean,
 ) {
   const timestamp = await conversation.external(() => new Date().getTime())
