@@ -7,5 +7,4 @@ RUN bun install --frozen-lockfile --production
 COPY src src
 COPY drizzle drizzle
 
-USER bun
 CMD ["bun", "src/main.ts"]
