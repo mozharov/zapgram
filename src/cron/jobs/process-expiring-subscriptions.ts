@@ -2,11 +2,11 @@ import {computeSubscriptionEndsAt} from '@core/subscriptions/policy.js'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
+import {notifier} from '@modules/notifications/notifier.js'
 import {CronJob} from 'cron'
 import {InlineKeyboard} from 'grammy'
 import {InputFile} from 'grammy/types'
 import QRCode from 'qrcode'
-import {bot} from '../../bot/bot.js'
 import {translate} from '../../bot/lib/i18n.js'
 import {getChatOrThrow} from '../../models/chat.js'
 import {grantSubscriptionAccess} from '../../models/subscription-access.js'
@@ -74,36 +74,25 @@ async function processExpiringSubscriptions() {
             )
           } else if (renewalResult.status === 'renewed') {
             // endsAt and notificationSent were already updated inside grantSubscriptionAccess.
-            await bot.api
-              .sendMessage(
-                subscription.userId,
-                translate('subscription-renewal.success', user.languageCode, {
-                  title: chat.title,
-                  expiryDate: renewalResult.newExpiryDate,
-                  price: subscription.price,
-                }),
-              )
-              .catch((error: unknown) => {
-                logger.error({error}, 'Error sending renewal success message')
-              })
-            await bot.api
-              .sendMessage(
-                chat.ownerId,
-                translate('new-subscription-payment', chat.owner.languageCode, {
-                  username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
-                  title: chat.title,
-                  type: subscription.endsAt ? 'monthly' : 'one_time',
-                  price: subscription.price,
-                  fee: renewalResult.fee,
-                  total: subscription.price - renewalResult.fee,
-                }),
-              )
-              .catch((error: unknown) => {
-                logger.error(
-                  {error},
-                  'Error while sending successful subscription payment to chat owner.',
-                )
-              })
+            await notifier.send(
+              subscription.userId,
+              translate('subscription-renewal.success', user.languageCode, {
+                title: chat.title,
+                expiryDate: renewalResult.newExpiryDate,
+                price: subscription.price,
+              }),
+            )
+            await notifier.send(
+              chat.ownerId,
+              translate('new-subscription-payment', chat.owner.languageCode, {
+                username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
+                title: chat.title,
+                type: subscription.endsAt ? 'monthly' : 'one_time',
+                price: subscription.price,
+                fee: renewalResult.fee,
+                total: subscription.price - renewalResult.fee,
+              }),
+            )
 
             logger.info(`Auto-renewed subscription ID: ${subscription.id}`)
           } else {
@@ -281,19 +270,15 @@ async function createAndSendRenewalInvoice(subscription: Subscription, chat: Cha
 
     const buffer = await QRCode.toBuffer(invoice.bolt11)
     const inputFile = new InputFile(buffer)
-    await bot.api
-      .sendPhoto(user.id, inputFile, {
-        caption: translate('subscription-renewal.need-payment', user.languageCode, {
-          title: chat.title,
-          price: subscription.price,
-          invoice: invoice.bolt11,
-        }),
-        show_caption_above_media: true,
-        reply_markup: keyboard,
-      })
-      .catch((error: unknown) => {
-        logger.error({error}, 'Error sending renewal invoice')
-      })
+    await notifier.sendPhoto(user.id, inputFile, {
+      caption: translate('subscription-renewal.need-payment', user.languageCode, {
+        title: chat.title,
+        price: subscription.price,
+        invoice: invoice.bolt11,
+      }),
+      show_caption_above_media: true,
+      reply_markup: keyboard,
+    })
   } catch (error) {
     logger.error(
       {error, subscriptionId: subscription.id, userId: user.id},

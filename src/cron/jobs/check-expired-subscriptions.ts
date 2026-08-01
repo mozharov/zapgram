@@ -1,6 +1,6 @@
 import {logger} from '@infra/logger.js'
+import {bot} from '@infra/telegram/bot.js'
 import {CronJob} from 'cron'
-import {bot} from '../../bot/bot.js'
 import {
   countExpiredSubscriptions,
   deleteSubscription,

@@ -1,8 +1,8 @@
 import {ToYourselfError} from '@core/errors/to-yourself.js'
 import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet.js'
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 import {getUserByUsername} from '../../../models/user.js'
-import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/

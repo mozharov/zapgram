@@ -1,8 +1,8 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {Invoice} from '@getalby/lightning-tools'
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 import {getPendingInvoiceBy} from '../../../models/pending-invoice.js'
-import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'
 
 export async function waitForInvoiceReview(

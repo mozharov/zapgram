@@ -1,4 +1,4 @@
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {buildSendMenuKeyboard} from '../../helpers/keyboards/send-menu.js'
 
 export const sendMenuCallback = async (ctx: BotContext) => {

@@ -1,6 +1,6 @@
+import type {BotContext} from '@telegram/context.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 import {getAccessibleChat} from '../../../models/chat.js'
-import type {BotContext} from '../../context.js'
 import {translate} from '../../lib/i18n.js'
 
 export const customMessageCallback = async (ctx: CallbackQueryContext<BotContext>) => {

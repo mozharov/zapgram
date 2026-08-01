@@ -1,10 +1,10 @@
 import {sleep} from '@core/utils/sleep.js'
 import type {User} from '@infra/db/types.js'
+import type {BaseContext} from '@telegram/context.js'
 import {type ChatTypeContext, InlineKeyboard} from 'grammy'
 import type {ChatMember, ChatMemberUpdated} from 'grammy/types'
 import {createOrUpdateChat, getChat, updateChat} from '../../models/chat.js'
 import {getOrCreateUser} from '../../models/user.js'
-import type {BaseContext} from '../context.js'
 import {getChatCreator} from '../helpers/chat-creator.js'
 import {translate} from '../lib/i18n.js'
 

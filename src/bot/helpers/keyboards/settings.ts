@@ -1,6 +1,6 @@
 import type {User} from '@infra/db/types.js'
+import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotContext} from '../../context.js'
 
 export function buildSettingsKeyboard(t: BotContext['t'], user: User) {
   const keyboard = new InlineKeyboard()

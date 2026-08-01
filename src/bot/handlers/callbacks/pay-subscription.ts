@@ -1,7 +1,7 @@
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
 import {getSubscriptionPayment} from '../../../models/subscription-payment.js'
-import type {BotContext} from '../../context.js'
 
 export const paySubscriptionCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   const {paymentId, from} = parseMatch(ctx.match)

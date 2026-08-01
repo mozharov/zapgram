@@ -1,6 +1,6 @@
 import {msatsToSats} from '@core/money/sats.js'
 import {logger} from '@infra/logger.js'
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {

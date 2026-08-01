@@ -1,7 +1,7 @@
 import {AppError} from '@core/errors/app-error.js'
+import type {BotContext} from '@telegram/context.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import type {ErrorHandler} from 'grammy'
-import type {BotContext} from '../context.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {replyWithTempMessage} from '../helpers/temp-message.js'
 

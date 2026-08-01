@@ -1,6 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
+import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotContext} from '../../context.js'
 
 export function buildChatKeyboard(t: BotContext['t'], chat: Chat) {
   const keyboard = new InlineKeyboard()

@@ -1,5 +1,5 @@
+import type {BotContext} from '@telegram/context.js'
 import {Composer} from 'grammy'
-import type {BotContext} from '../context.js'
 import {i18n as i18nMiddleware, sanitize} from '../lib/i18n.js'
 
 export const i18n = new Composer<BotContext>()

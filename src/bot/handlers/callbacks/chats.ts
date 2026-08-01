@@ -1,7 +1,7 @@
 import {config} from '@config'
+import type {BotContext} from '@telegram/context.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '../../../models/chat.js'
-import type {BotContext} from '../../context.js'
 import {buildChatsKeyboard} from '../../helpers/keyboards/chats.js'
 
 export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {

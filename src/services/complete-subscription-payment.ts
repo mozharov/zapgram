@@ -1,6 +1,7 @@
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import {logger} from '@infra/logger.js'
-import {bot} from '../bot/bot.js'
+import {bot} from '@infra/telegram/bot.js'
+import {notifier} from '@modules/notifications/notifier.js'
 import {translate} from '../bot/lib/i18n.js'
 import {getChatOrThrow} from '../models/chat.js'
 import {grantSubscriptionAccess} from '../models/subscription-access.js'
@@ -95,27 +96,19 @@ async function settle(payment: SubscriptionPayment): Promise<CompleteSubscriptio
 
     await deleteSubscriptionPayment(payment.id)
 
-    await bot.api
-      .sendMessage(payment.userId, await buildSubscriberMessage(payment, chat, user))
-      .catch((error: unknown) => {
-        logger.error({error}, 'Error while sending successful subscription payment to user.')
-      })
+    await notifier.send(payment.userId, await buildSubscriberMessage(payment, chat, user))
 
-    await bot.api
-      .sendMessage(
-        chat.ownerId,
-        translate('new-subscription-payment', chat.owner.languageCode, {
-          username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
-          title: chat.title,
-          type: payment.subscriptionType,
-          price: payment.price,
-          fee,
-          total: payment.price - fee,
-        }),
-      )
-      .catch((error: unknown) => {
-        logger.error({error}, 'Error while sending successful subscription payment to chat owner.')
-      })
+    await notifier.send(
+      chat.ownerId,
+      translate('new-subscription-payment', chat.owner.languageCode, {
+        username: user.username ? `@${user.username}` : (user.firstName ?? user.id),
+        title: chat.title,
+        type: payment.subscriptionType,
+        price: payment.price,
+        fee,
+        total: payment.price - fee,
+      }),
+    )
 
     return 'settled'
   } catch (error) {

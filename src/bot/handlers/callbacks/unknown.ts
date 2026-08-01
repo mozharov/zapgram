@@ -1,4 +1,4 @@
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 
 export async function unknownCallback(ctx: BotContext) {
   await ctx.deleteMessage()

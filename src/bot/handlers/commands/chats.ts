@@ -1,7 +1,7 @@
 import {config} from '@config'
+import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '../../../models/chat.js'
-import type {BotContext} from '../../context.js'
 import {buildChatsKeyboard} from '../../helpers/keyboards/chats.js'
 
 export const chatsCommand = async (ctx: BotContext) => {

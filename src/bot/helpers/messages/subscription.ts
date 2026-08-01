@@ -1,5 +1,5 @@
 import type {Chat, Subscription} from '@infra/db/types.js'
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {buildSubscriptionKeyboard} from '../keyboards/subscription.js'
 
 type SubscriptionWithChat = Subscription & {chat: Chat}

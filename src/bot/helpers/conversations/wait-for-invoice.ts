@@ -1,5 +1,5 @@
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'
 
 export async function waitForInvoice(conversation: BotConversation, ctx: ConversationContext) {

@@ -1,4 +1,4 @@
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {sendingToUser} from '../../conversations/sending-to-user.js'
 
 export const sendToUserCallback = async (ctx: BotContext) => {

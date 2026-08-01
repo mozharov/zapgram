@@ -1,13 +1,16 @@
+import {configureBot} from '@bootstrap/configure-bot.js'
 import {createConfig} from '@config'
 import {migrateDatabase} from '@infra/db/client.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
+import {bot} from '@infra/telegram/bot.js'
+import {deleteWebhook, setWebhook} from '@infra/telegram/webhook.js'
 import {startTunnel, stopTunnel} from '@infra/tunnel.js'
+import {registerHandlers} from '@telegram/composition.js'
+import type {BotContext} from '@telegram/context.js'
+import type {Bot} from 'grammy'
 import {startServer} from './app.js'
-import {bot} from './bot/bot.js'
-import {deleteWebhook, setWebhook} from './bot/webhook.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
-import {configureBot} from './services/bot.js'
 
 const config = (() => {
   try {
@@ -18,6 +21,8 @@ const config = (() => {
   }
 })()
 
+registerHandlers(bot as unknown as Bot<BotContext>)
+
 if (config.DB_MIGRATE) migrateDatabase()
 await lnbitsMasterWallet.checkStatus()
 
@@ -25,7 +30,9 @@ const app = startServer(() => {
   bot
     .init()
     .then(async () => {
-      if (config.NGROK_TOKEN) await startTunnel().then(url => setWebhook(url))
+      if (config.NGROK_TOKEN) {
+        await startTunnel().then(url => setWebhook(bot, url, config.BOT_WEBHOOK_SECRET))
+      }
       if (config.CONFIGURE_BOT) await configureBot()
       startCronJobs()
     })
@@ -46,7 +53,7 @@ async function shutdown(signal: string) {
   }, 10000)
 
   stopCronJobs()
-  await deleteWebhook()
+  await deleteWebhook(bot)
   if (config.NGROK_TOKEN) await stopTunnel()
 
   try {

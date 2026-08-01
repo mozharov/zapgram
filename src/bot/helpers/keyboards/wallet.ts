@@ -1,5 +1,5 @@
+import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotContext} from '../../context.js'
 
 export function buildWalletKeyboard(t: BotContext['t']) {
   return new InlineKeyboard()

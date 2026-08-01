@@ -1,5 +1,5 @@
 import type {Chat} from '@infra/db/types.js'
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {buildChatKeyboard} from '../keyboards/chat.js'
 
 export async function editMessageWithChat(ctx: BotContext, chat: Chat) {

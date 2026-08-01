@@ -1,5 +1,5 @@
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'
 
 const MAX_MEMO_LENGTH = 150

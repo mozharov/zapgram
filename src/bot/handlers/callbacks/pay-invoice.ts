@@ -1,4 +1,4 @@
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {payingInvoice} from '../../conversations/paying-invoice.js'
 
 export const payInvoiceCallback = async (ctx: BotContext) => {

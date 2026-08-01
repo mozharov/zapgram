@@ -1,5 +1,5 @@
+import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import type {BotContext} from '../../context.js'
 
 export function helpCommand(ctx: BotContext) {
   return ctx.reply(ctx.t('help'), {

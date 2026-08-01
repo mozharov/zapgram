@@ -1,4 +1,4 @@
-import type {BotContext} from '../../context.js'
+import type {BotContext} from '@telegram/context.js'
 import {connectingNWC} from '../../conversations/connecting-nwc.js'
 
 export const connectNwcCallback = async (ctx: BotContext) => {

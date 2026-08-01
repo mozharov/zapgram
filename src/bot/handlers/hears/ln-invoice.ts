@@ -1,5 +1,5 @@
+import type {BotContext} from '@telegram/context.js'
 import type {HearsContext} from 'grammy'
-import type {BotContext} from '../../context.js'
 import {payingInvoice} from '../../conversations/paying-invoice.js'
 
 export const lnInvoiceHears = async (ctx: HearsContext<BotContext>) => {

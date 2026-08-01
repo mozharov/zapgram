@@ -1,8 +1,8 @@
 import {config} from '@config'
 import {logger} from '@infra/logger.js'
+import {bot} from '@infra/telegram/bot.js'
 import {Elysia} from 'elysia'
 import {webhookCallback} from 'grammy'
-import {bot} from '../bot/bot.js'
 import {requestLogger} from '../middlewares/request-logger.js'
 
 const telegramWebhook = webhookCallback(bot, 'elysia', {
