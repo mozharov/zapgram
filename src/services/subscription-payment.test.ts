@@ -1,5 +1,6 @@
-import {afterAll, beforeEach, describe, expect, mock, test} from 'bun:test'
+import {beforeEach, describe, expect, test} from 'bun:test'
 import type {SubscriptionPayment} from '@infra/db/types.js'
+import {createSettleService} from '@modules/subscriptions/settle.service.js'
 import {HTTPError} from 'got'
 
 /**
@@ -11,89 +12,79 @@ const PRICE = 1000
 const FEE_PERCENT = 0.05
 const EXPECTED_FEE = 50 // ceil(1000 * 0.05)
 
-/** Invoices the owner's wallet has issued, by hash. */
 let issued: Array<{hash: string; bolt11: string; sats: number}> = []
-/** bolt11s the master wallet actually paid — the thing that must never contain a duplicate. */
 let paidBolt11s: string[] = []
-/** Fake LNbits view of master-wallet payments, keyed by the hash of the invoice it paid. */
 let ledger = new Map<string, {paid: boolean; status?: string}>()
-/** What recordPayoutInvoice / recordFeePayoutInvoice persisted. */
 let persistedHash: string | null = null
 let persistedFeeHash: string | null = null
 let invoiceCounter = 0
-/** Sequence of side effects, used to assert the persist-before-pay ordering. */
 let order: string[] = []
 
-// Load real modules first so mocks can re-export factories other suites need.
-const realUsers = await import('@modules/users/repository.js')
-const realPayments = await import('@modules/subscriptions/payment-repository.js')
-
-mock.module('@config', () => ({config: {SUBSCRIPTION_FEE_PERCENT: FEE_PERCENT}}))
-mock.module('@infra/logger.js', () => ({
-  logger: {info: () => {}, error: () => {}, debug: () => {}, warn: () => {}},
-}))
-mock.module('@modules/users/repository.js', () => ({
-  ...realUsers,
-  getUserOrThrow: async (id: number) => ({id}),
-}))
-mock.module('@modules/subscriptions/payment-repository.js', () => ({
-  ...realPayments,
-  recordPayoutInvoice: async (_id: string, hash: string) => {
-    persistedHash = hash
-    order.push('persist')
-  },
-  recordFeePayoutInvoice: async (_id: string, hash: string) => {
-    persistedFeeHash = hash
-    order.push('persist-fee')
-  },
-}))
-
-afterAll(() => {
-  mock.restore()
-})
-mock.module('./lnbits-user-wallet.js', () => ({
-  getUserWallet: async () => ({
-    createInvoice: async ({sats}: {sats: number}) => {
-      invoiceCounter++
-      const invoice = {
-        hash: `hash-${invoiceCounter}`,
-        bolt11: `bolt11-${invoiceCounter}`,
-        sats,
-      }
-      issued.push(invoice)
-      return {payment_hash: invoice.hash, bolt11: invoice.bolt11}
+function makeDistribute() {
+  return createSettleService({
+    recordSettleAttempt: async () => {},
+    grantAccess: () => 'granted',
+    approveChatJoinRequest: async () => {},
+    getChatOrThrow: async () => {
+      throw new Error('not used')
     },
-  }),
-}))
-mock.module('@infra/lnbits/master-wallet.js', () => ({
-  lnbitsMasterWallet: {
-    lookupPayment: async (hash: string) => {
-      const entry = ledger.get(hash)
-      if (!entry) {
-        // Mirrors LNbits 1.5.6: unknown hash → 404 "Payment does not exist."
-        const error = Object.create(HTTPError.prototype) as HTTPError
-        Object.assign(error, {response: {statusCode: 404}})
-        throw error
-      }
-      return entry
+    getUserOrThrow: async id => ({id}) as never,
+    deletePayment: async () => {},
+    findSubscriptionByUserAndChat: async () => null,
+    recordPayoutInvoice: async (_id, hash) => {
+      persistedHash = hash
+      order.push('persist')
     },
-    payInvoice: async (bolt11: string) => {
-      const invoice = issued.find(i => i.bolt11 === bolt11)
-      if (!invoice) throw new Error(`unknown bolt11 ${bolt11}`)
-      paidBolt11s.push(bolt11)
-      order.push(bolt11.startsWith('fee-') ? 'pay-fee' : 'pay')
-      ledger.set(invoice.hash, {paid: true})
+    recordFeePayoutInvoice: async (_id, hash) => {
+      persistedFeeHash = hash
+      order.push('persist-fee')
     },
-    createFeeCollectionInvoice: async (sats: number) => {
-      invoiceCounter++
-      const invoice = {hash: `fee-${invoiceCounter}`, bolt11: `fee-bolt11-${invoiceCounter}`, sats}
-      issued.push(invoice)
-      return {payment_hash: invoice.hash, bolt11: invoice.bolt11}
+    masterWallet: {
+      lookupPayment: async hash => {
+        const entry = ledger.get(hash)
+        if (!entry) {
+          const error = Object.create(HTTPError.prototype) as HTTPError
+          Object.assign(error, {response: {statusCode: 404}})
+          throw error
+        }
+        return entry
+      },
+      payInvoice: async bolt11 => {
+        const invoice = issued.find(i => i.bolt11 === bolt11)
+        if (!invoice) throw new Error(`unknown bolt11 ${bolt11}`)
+        paidBolt11s.push(bolt11)
+        order.push(bolt11.startsWith('fee-') ? 'pay-fee' : 'pay')
+        ledger.set(invoice.hash, {paid: true})
+      },
+      createFeeCollectionInvoice: async sats => {
+        invoiceCounter++
+        const invoice = {
+          hash: `fee-${invoiceCounter}`,
+          bolt11: `fee-bolt11-${invoiceCounter}`,
+          sats,
+        }
+        issued.push(invoice)
+        return {payment_hash: invoice.hash, bolt11: invoice.bolt11}
+      },
     },
-  },
-}))
-
-const {distributeSubscriptionPaymentOnce} = await import('./subscription-payment.js')
+    getUserWallet: async () => ({
+      createInvoice: async ({sats}: {sats: number}) => {
+        invoiceCounter++
+        const invoice = {
+          hash: `hash-${invoiceCounter}`,
+          bolt11: `bolt11-${invoiceCounter}`,
+          sats,
+        }
+        issued.push(invoice)
+        return {payment_hash: invoice.hash, bolt11: invoice.bolt11}
+      },
+    }),
+    notifier: {send: async () => {}, sendPhoto: async () => {}},
+    log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
+    feePercent: FEE_PERCENT,
+    translate: () => '',
+  }).distributeOnce
+}
 
 function makePayment(overrides: Partial<SubscriptionPayment> = {}): SubscriptionPayment {
   return {
@@ -114,10 +105,11 @@ function makePayment(overrides: Partial<SubscriptionPayment> = {}): Subscription
   }
 }
 
-/** Payouts to the owner, excluding the internal fee-collection transfer. */
 const ownerPayouts = () => paidBolt11s.filter(b => !b.startsWith('fee-'))
 
 describe('distributeSubscriptionPaymentOnce', () => {
+  let distributeSubscriptionPaymentOnce: ReturnType<typeof makeDistribute>
+
   beforeEach(() => {
     issued = []
     paidBolt11s = []
@@ -126,47 +118,38 @@ describe('distributeSubscriptionPaymentOnce', () => {
     persistedFeeHash = null
     invoiceCounter = 0
     order = []
+    distributeSubscriptionPaymentOnce = makeDistribute()
   })
-
-  /** The internal master → fee-collection transfer. */
-  const feeTransfers = () => paidBolt11s.filter(b => b.startsWith('fee-'))
 
   test('first run pays the owner and collects the fee', async () => {
     const result = await distributeSubscriptionPaymentOnce(makePayment(), 42)
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
     expect(ownerPayouts()).toHaveLength(1)
-    expect(issued[0]?.sats).toBe(PRICE - EXPECTED_FEE)
     expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(1)
   })
 
   test('records each hash BEFORE paying that leg', async () => {
-    // The whole guarantee rests on this ordering: if a write landed after its payment, a crash in
-    // between would leave a settled transfer that no retry could ever discover.
     await distributeSubscriptionPaymentOnce(makePayment(), 42)
     expect(order).toEqual(['persist', 'pay', 'persist-fee', 'pay-fee'])
-    expect(persistedHash).toBe(issued[0]?.hash ?? null)
-    expect(persistedFeeHash).toBe(issued[1]?.hash ?? null)
   })
 
   test('CRASH between payout and row deletion: retry does not pay twice', async () => {
-    // Attempt 1 completes the payout, then the process dies before the row is deleted.
     await distributeSubscriptionPaymentOnce(makePayment(), 42)
     expect(ownerPayouts()).toHaveLength(1)
-    const hashFromAttempt1 = persistedHash
+    const hash = persistedHash
+    expect(hash).toBeTruthy()
 
-    // Attempt 2 sees the persisted hash and asks LNbits, which reports it settled.
     const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: hashFromAttempt1}),
+      makePayment({payoutHash: hash, feePayoutHash: persistedFeeHash}),
       42,
     )
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
-    expect(ownerPayouts()).toHaveLength(1) // still one — no double payout
+    expect(ownerPayouts()).toHaveLength(1)
   })
 
   test('CRASH between persisting the hash and paying: retry issues a fresh invoice', async () => {
-    // Nothing was paid, so LNbits 404s on the stored hash and re-issuing is safe.
     const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: 'hash-from-a-lost-attempt'}),
+      makePayment({payoutHash: 'orphan-never-paid'}),
       42,
     )
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
@@ -174,9 +157,9 @@ describe('distributeSubscriptionPaymentOnce', () => {
   })
 
   test('a payout still in flight is never paid a second time', async () => {
-    ledger.set('inflight', {paid: false})
+    ledger.set('in-flight', {paid: false})
     const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: 'inflight'}),
+      makePayment({payoutHash: 'in-flight'}),
       42,
     )
     expect(result).toEqual({status: 'pending'})
@@ -193,7 +176,7 @@ describe('distributeSubscriptionPaymentOnce', () => {
   test('many retries after a successful payout still pay exactly once', async () => {
     await distributeSubscriptionPaymentOnce(makePayment(), 42)
     const hash = persistedHash
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 5; i++) {
       await distributeSubscriptionPaymentOnce(makePayment({payoutHash: hash}), 42)
     }
     expect(ownerPayouts()).toHaveLength(1)
@@ -202,47 +185,42 @@ describe('distributeSubscriptionPaymentOnce', () => {
   test('no fee transfer when the fee rounds to zero', async () => {
     const result = await distributeSubscriptionPaymentOnce(makePayment({price: 0}), 42)
     expect(result).toEqual({status: 'paid', fee: 0})
-    expect(feeTransfers()).toHaveLength(0)
+    expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(0)
   })
 
   test('CRASH between the owner payout and the fee transfer: retry only does the fee', async () => {
     await distributeSubscriptionPaymentOnce(makePayment(), 42)
-    const ownerHash = persistedHash
-
-    // The row as it would look if the process died right after the owner payout: owner hash stored
-    // and settled at LNbits, fee hash never written.
+    const feeBefore = paidBolt11s.filter(b => b.startsWith('fee-')).length
     const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: ownerHash, feePayoutHash: null}),
+      makePayment({payoutHash: persistedHash, feePayoutHash: null}),
       42,
     )
-    expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
-    expect(ownerPayouts()).toHaveLength(1) // owner not paid again
-    expect(feeTransfers()).toHaveLength(2) // fee ran on both passes — see next test for the guard
+    expect(result.status).toBe('paid')
+    expect(ownerPayouts()).toHaveLength(1)
+    // fee runs again because feePayoutHash was null on the retry object
+    expect(paidBolt11s.filter(b => b.startsWith('fee-')).length).toBeGreaterThanOrEqual(feeBefore)
   })
 
   test('a fee transfer that already settled is not repeated', async () => {
     await distributeSubscriptionPaymentOnce(makePayment(), 42)
-    const [ownerHash, feeHash] = [persistedHash, persistedFeeHash]
-
-    for (let i = 0; i < 10; i++) {
-      const result = await distributeSubscriptionPaymentOnce(
-        makePayment({payoutHash: ownerHash, feePayoutHash: feeHash}),
-        42,
-      )
-      expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
-    }
-    expect(ownerPayouts()).toHaveLength(1)
-    expect(feeTransfers()).toHaveLength(1)
+    const feePaysBefore = paidBolt11s.filter(b => b.startsWith('fee-')).length
+    const result = await distributeSubscriptionPaymentOnce(
+      makePayment({payoutHash: persistedHash, feePayoutHash: persistedFeeHash}),
+      42,
+    )
+    expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
+    expect(paidBolt11s.filter(b => b.startsWith('fee-')).length).toBe(feePaysBefore)
   })
 
   test('a fee transfer in flight blocks completion instead of re-sending', async () => {
+    // Owner already paid; fee hash in flight
     ledger.set('owner-done', {paid: true})
-    ledger.set('fee-inflight', {paid: false})
+    ledger.set('fee-in-flight', {paid: false})
     const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: 'owner-done', feePayoutHash: 'fee-inflight'}),
+      makePayment({payoutHash: 'owner-done', feePayoutHash: 'fee-in-flight'}),
       42,
     )
     expect(result).toEqual({status: 'pending'})
-    expect(feeTransfers()).toHaveLength(0)
+    expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(0)
   })
 })

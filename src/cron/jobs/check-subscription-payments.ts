@@ -6,8 +6,8 @@ import {
   deleteSubscriptionPayment,
   getSubscriptionPayments,
 } from '@modules/subscriptions/payment-repository.js'
+import {completeSubscriptionPayment} from '@modules/subscriptions/settle.js'
 import {CronJob} from 'cron'
-import {completeSubscriptionPayment} from '../../services/complete-subscription-payment.js'
 
 export const checkSubscriptionPaymentsJob = CronJob.from({
   cronTime: '0 */3 * * * *',
