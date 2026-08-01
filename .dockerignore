@@ -10,3 +10,4 @@ Dockerfile
 biome.json
 tsconfig.json
 *.md
+docker-compose.yaml
