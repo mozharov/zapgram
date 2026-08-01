@@ -1,0 +1,102 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      lnbits:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "8443"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Public HTTPS origin for Telegram webhook (no trailing slash)
+      HOST: ${HOST:?}
+      BOT_TOKEN: ${BOT_TOKEN:?}
+      BOT_WEBHOOK_SECRET: ${BOT_WEBHOOK_SECRET:?}
+      BOT_ID: ${BOT_ID:-8171167670}
+      BOT_NAME: ${BOT_NAME:-ZapGram}
+      BOT_USERNAME: ${BOT_USERNAME:-zap_gram_bot}
+      DB_URL: /app/data/main.db
+      DB_MIGRATE: ${DB_MIGRATE:-true}
+      # Internal compose DNS; use public URL only if you split LNbits out
+      LNBITS_URL: ${LNBITS_URL:-http://lnbits:5000}
+      LNBITS_ADMIN_KEY: ${LNBITS_ADMIN_KEY:?}
+      LNBITS_ADMIN_ID: ${LNBITS_ADMIN_ID:?}
+      LNBITS_FEE_COLLECTION_INVOICE_KEY: ${LNBITS_FEE_COLLECTION_INVOICE_KEY:?}
+      LNBITS_BEARER_TOKEN: ${LNBITS_BEARER_TOKEN:-}
+      SUBSCRIPTION_FEE_PERCENT: ${SUBSCRIPTION_FEE_PERCENT:-0.05}
+      CONFIGURE_BOT: ${CONFIGURE_BOT:-true}
+    volumes:
+      - bot-data:/app/data
+    expose:
+      - "8443"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:8443/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 500M
+
+  lnbits:
+    image: lnbits/lnbits:v1.5.6
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5000"
+      LNBITS_ADMIN_UI: ${LNBITS_ADMIN_UI:-true}
+      LNBITS_DATA_FOLDER: "/app/data"
+      LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?}
+    volumes:
+      - lnbits-data:/app/data
+    expose:
+      - "5000"
+    labels:
+      # Ofelia: graceful recycle every 4 days (PID 1 TERM → Docker restarts)
+      ofelia.enabled: "true"
+      ofelia.job-exec.lnbits-restart.schedule: "@every 96h"
+      ofelia.job-exec.lnbits-restart.command: "kill -TERM 1"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 1G
+
+  # Scheduled restart for LNbits (needs docker.sock).
+  ofelia:
+    image: mcuadros/ofelia:latest
+    restart: unless-stopped
+    depends_on:
+      - lnbits
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  bot-data:
+  lnbits-data:

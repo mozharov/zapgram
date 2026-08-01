@@ -13,10 +13,13 @@ const telegramWebhook = webhookCallback(bot, 'elysia', {
   },
 })
 
-export const router = new Elysia({name: 'router'}).use(requestLogger).post('/bot', async ctx => {
-  const update: unknown = ctx.body
-  if (update && typeof update === 'object') {
-    Object.assign(update, {reqId: ctx.reqId})
-  }
-  return telegramWebhook(ctx)
-})
+export const router = new Elysia({name: 'router'})
+  .use(requestLogger)
+  .get('/', () => 'ok')
+  .post('/bot', async ctx => {
+    const update: unknown = ctx.body
+    if (update && typeof update === 'object') {
+      Object.assign(update, {reqId: ctx.reqId})
+    }
+    return telegramWebhook(ctx)
+  })
