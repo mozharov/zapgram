@@ -1,5 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
 import {bot} from '@infra/telegram/bot.js'
+import {chatRoute, chatsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -12,20 +13,20 @@ export function buildChatsKeyboard(
   const keyboard = new InlineKeyboard()
   for (const chat of chats) {
     keyboard.row({
-      callback_data: `chat:${chat.id}`,
+      callback_data: chatRoute.build({chatId: chat.id}),
       text: chat.title,
     })
   }
   keyboard.row()
   if (page > 1) {
     keyboard.add({
-      callback_data: `chats:${page - 1}`,
+      callback_data: chatsPageRoute.build({page: page - 1}),
       text: t('button.prev'),
     })
   }
   if (hasNext) {
     keyboard.add({
-      callback_data: `chats:${page + 1}`,
+      callback_data: chatsPageRoute.build({page: page + 1}),
       text: t('button.next'),
     })
   }

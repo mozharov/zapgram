@@ -1,11 +1,12 @@
 import {config} from '@config'
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '@modules/chats/repository.js'
 import {buildChatsKeyboard} from '@modules/chats/telegram/keyboards/chats.js'
+import {chatsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 
 export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
-  let {page} = parseMatch(ctx.match)
+  let {page} = chatsPageRoute.parse(ctx.match)
   const limit = config.chatsPerPage
   const totalChats = await getAccessibleChatsCount(ctx.user.id)
   if (totalChats === 0) {
@@ -22,12 +23,4 @@ export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   return ctx.editMessageText(ctx.t('chats'), {
     reply_markup: buildChatsKeyboard(ctx.t, chats, page, hasNext),
   })
-}
-
-function parseMatch(match: string | RegExpMatchArray) {
-  const strPage = typeof match === 'string' ? undefined : match[1]
-  if (strPage === undefined) return {page: 1}
-  const page = parseInt(strPage, 10)
-  if (Number.isNaN(page) || page <= 0) return {page: 1}
-  return {page}
 }

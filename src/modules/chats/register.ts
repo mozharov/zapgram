@@ -1,4 +1,14 @@
 import {createConversation} from '@grammyjs/conversations'
+import {
+  chatChangePriceRoute,
+  chatCustomMessageRoute,
+  chatEditCustomMessageRoute,
+  chatPaidAccessRoute,
+  chatPaymentTypeRoute,
+  chatRemoveCustomMessageRoute,
+  chatRoute,
+  chatsPageRoute,
+} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Composer} from 'grammy'
 import {changingPrice} from './telegram/conversations/changing-price.js'
@@ -24,12 +34,12 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.use(createConversation(changingPrice))
   privateChat.use(createConversation(editCustomMessage))
   privateChat.command('chats', chatsCommand)
-  privateChat.callbackQuery(/^chats:(\d+)$/, chatsCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+)$/, chatCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):(on|off)-paid$/, turnPaidAccessCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):turn-(one_time|monthly)$/, turnPaymentTypeCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):change-price$/, changePriceCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):custom-message$/, customMessageCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):edit-custom-message$/, editCustomMessageCallback)
-  privateChat.callbackQuery(/^chat:(-?\d+):remove-custom-message$/, removeCustomMessageCallback)
+  privateChat.callbackQuery(chatsPageRoute.pattern, chatsCallback)
+  privateChat.callbackQuery(chatRoute.pattern, chatCallback)
+  privateChat.callbackQuery(chatPaidAccessRoute.pattern, turnPaidAccessCallback)
+  privateChat.callbackQuery(chatPaymentTypeRoute.pattern, turnPaymentTypeCallback)
+  privateChat.callbackQuery(chatChangePriceRoute.pattern, changePriceCallback)
+  privateChat.callbackQuery(chatCustomMessageRoute.pattern, customMessageCallback)
+  privateChat.callbackQuery(chatEditCustomMessageRoute.pattern, editCustomMessageCallback)
+  privateChat.callbackQuery(chatRemoveCustomMessageRoute.pattern, removeCustomMessageCallback)
 }

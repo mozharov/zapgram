@@ -1,3 +1,4 @@
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -35,6 +36,6 @@ function replyWithWaitForWallet(ctx: ConversationContext) {
       callback_data: 'nwc',
       text: ctx.t('button.nwc-wallet'),
     })
-    .row({callback_data: 'cancel', text: ctx.t('button.cancel')})
+    .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
   return ctx.reply(ctx.t('wait-for-wallet'), {reply_markup: keyboard})
 }

@@ -1,3 +1,4 @@
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -25,6 +26,8 @@ export async function waitForSats(conversation: BotConversation, ctx: Conversati
 
 function replyWithWaitForSats(ctx: ConversationContext) {
   return ctx.reply(ctx.t('wait-for-sats'), {
-    reply_markup: new InlineKeyboard([[{callback_data: 'cancel', text: ctx.t('button.cancel')}]]),
+    reply_markup: new InlineKeyboard([
+      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+    ]),
   })
 }

@@ -1,4 +1,5 @@
 import {createConversation} from '@grammyjs/conversations'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Composer} from 'grammy'
 import {connectingNWC} from './telegram/conversations/connecting-nwc.js'
@@ -18,12 +19,12 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.use(createConversation(connectingNWC))
   privateChat.command('wallet', walletCommand)
   privateChat.command('settings', settingsCommand)
-  privateChat.callbackQuery('wallet', walletCallback)
-  privateChat.callbackQuery('settings', settingsCallback)
-  privateChat.callbackQuery('group-settings', groupSettingsCallback)
-  privateChat.callbackQuery('disconnect-nwc', disconnectNwcCallback)
-  privateChat.callbackQuery('connect-nwc', connectNwcCallback)
-  privateChat.callbackQuery('toggle-nwc-tips', nwcTipsCallback)
-  privateChat.callbackQuery('cancel', replyWithWallet)
-  privateChat.callbackQuery('send-menu', sendMenuCallback)
+  privateChat.callbackQuery(staticCallback.wallet, walletCallback)
+  privateChat.callbackQuery(staticCallback.settings, settingsCallback)
+  privateChat.callbackQuery(staticCallback.groupSettings, groupSettingsCallback)
+  privateChat.callbackQuery(staticCallback.disconnectNwc, disconnectNwcCallback)
+  privateChat.callbackQuery(staticCallback.connectNwc, connectNwcCallback)
+  privateChat.callbackQuery(staticCallback.toggleNwcTips, nwcTipsCallback)
+  privateChat.callbackQuery(staticCallback.cancel, replyWithWallet)
+  privateChat.callbackQuery(staticCallback.sendMenu, sendMenuCallback)
 }

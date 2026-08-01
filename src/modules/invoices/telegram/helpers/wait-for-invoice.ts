@@ -1,9 +1,13 @@
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
 
 export async function waitForInvoice(conversation: BotConversation, ctx: ConversationContext) {
-  const keyboard = new InlineKeyboard().add({callback_data: 'cancel', text: ctx.t('button.cancel')})
+  const keyboard = new InlineKeyboard().add({
+    callback_data: staticCallback.cancel,
+    text: ctx.t('button.cancel'),
+  })
   const message = await ctx.reply(ctx.t('wait-for-invoice'), {reply_markup: keyboard})
   const msgContext = await conversation.waitForHears(/(lnbc[a-z0-9]+)/, {
     otherwise: async ctx => {

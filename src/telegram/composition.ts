@@ -4,6 +4,7 @@ import {register as registerSubscriptions} from '@modules/subscriptions/register
 import {register as registerTipping} from '@modules/tipping/register.js'
 import {register as registerWallet} from '@modules/wallet/register.js'
 import {walletCommand} from '@modules/wallet/telegram/handlers/wallet-command.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {errorHandler} from '@telegram/handlers/error.js'
 import {helpCommand} from '@telegram/handlers/help.js'
@@ -36,7 +37,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   // Shell commands available before feature modules
   privateChat.command('start', startCommand)
   privateChat.command('help', helpCommand)
-  privateChat.callbackQuery('help', helpCallback)
+  privateChat.callbackQuery(staticCallback.help, helpCallback)
 
   registerWallet(composer)
   registerTipping(composer)

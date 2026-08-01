@@ -1,10 +1,11 @@
 import {getSubscriptionById, updateSubscription} from '@modules/subscriptions/repository.js'
 import {editMessageWithSubscription} from '@modules/subscriptions/telegram/messages/subscription.js'
+import {subscriptionRenewRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
 
 export const toggleAutoRenewCallback = async (ctx: CallbackQueryContext<BotContext>) => {
-  const {id} = parseMatch(ctx.match)
+  const {subscriptionId: id} = subscriptionRenewRoute.parse(ctx.match)
 
   const subscription = await getSubscriptionById(id)
   if (!subscription) return ctx.editMessageText(ctx.t('subscription.not-found'))
@@ -13,10 +14,4 @@ export const toggleAutoRenewCallback = async (ctx: CallbackQueryContext<BotConte
   subscription.autoRenew = !subscription.autoRenew
 
   return editMessageWithSubscription(ctx, subscription)
-}
-
-function parseMatch(match: string | RegExpMatchArray) {
-  const id = typeof match === 'string' ? undefined : match[1]
-  if (id === undefined) throw new Error('Invalid callback match')
-  return {id}
 }

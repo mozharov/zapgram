@@ -2,6 +2,7 @@ import type {TranslationVariables} from '@grammyjs/i18n'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
+import {paySubscriptionRoute} from '@telegram/callback-data.js'
 import {InlineKeyboard, InputFile} from 'grammy'
 import QRCode from 'qrcode'
 import type {CompleteSubscriptionPaymentResult} from './settle.service.js'
@@ -173,12 +174,18 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       })
 
       const keyboard = new InlineKeyboard().row({
-        callback_data: `pay-sub:${subscriptionPayment.id}:wallet`,
+        callback_data: paySubscriptionRoute.build({
+          paymentId: subscriptionPayment.id,
+          from: 'wallet',
+        }),
         text: deps.translate('button.pay-subcription-with-wallet', user.languageCode),
       })
       if (user.nwcUrl) {
         keyboard.row({
-          callback_data: `pay-sub:${subscriptionPayment.id}:nwc`,
+          callback_data: paySubscriptionRoute.build({
+            paymentId: subscriptionPayment.id,
+            from: 'nwc',
+          }),
           text: deps.translate('button.pay-subcription-with-nwc', user.languageCode),
         })
       }

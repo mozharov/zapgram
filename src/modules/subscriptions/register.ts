@@ -1,3 +1,9 @@
+import {
+  paySubscriptionRoute,
+  subscriptionRenewRoute,
+  subscriptionRoute,
+  subscriptionsPageRoute,
+} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
@@ -15,8 +21,8 @@ export function register(composer: Composer<BotContext>): void {
 
   const privateChat = composer.chatType('private')
   privateChat.command('subscriptions', subscriptionsCommand)
-  privateChat.callbackQuery(/^subscriptions:(\d+)$/, subscriptionsCallback)
-  privateChat.callbackQuery(/^subscription:([a-f0-9-]+)$/, subscriptionCallback)
-  privateChat.callbackQuery(/^subscription:([a-f0-9-]+):renew$/, toggleAutoRenewCallback)
-  privateChat.callbackQuery(/^pay-sub:([a-f0-9-]+):(wallet|nwc)$/, paySubscriptionCallback)
+  privateChat.callbackQuery(subscriptionsPageRoute.pattern, subscriptionsCallback)
+  privateChat.callbackQuery(subscriptionRoute.pattern, subscriptionCallback)
+  privateChat.callbackQuery(subscriptionRenewRoute.pattern, toggleAutoRenewCallback)
+  privateChat.callbackQuery(paySubscriptionRoute.pattern, paySubscriptionCallback)
 }

@@ -2,6 +2,7 @@ import {sleep} from '@core/utils/sleep.js'
 import type {User} from '@infra/db/types.js'
 import {createOrUpdateChat, getChat, updateChat} from '@modules/chats/repository.js'
 import {getOrCreateUser} from '@modules/users/repository.js'
+import {chatRoute} from '@telegram/callback-data.js'
 import type {BaseContext} from '@telegram/context.js'
 import {getChatCreator} from '@telegram/helpers/chat-creator.js'
 import {translate} from '@telegram/i18n/i18n.js'
@@ -76,7 +77,7 @@ async function notifyOwner(ctx: Context, user: User, type: 'added' | 'removed') 
     })
   } else {
     keyboard.add({
-      callback_data: `chat:${ctx.chat.id}`,
+      callback_data: chatRoute.build({chatId: ctx.chat.id}),
       text: ctx.t('button.chat-settings'),
     })
   }

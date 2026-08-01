@@ -1,10 +1,11 @@
 import {getAccessibleChat, updateChat} from '@modules/chats/repository.js'
 import {editMessageWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {chatRemoveCustomMessageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
 
 export const removeCustomMessageCallback = async (ctx: CallbackQueryContext<BotContext>) => {
-  const {id} = parseMatch(ctx.match)
+  const {chatId: id} = chatRemoveCustomMessageRoute.parse(ctx.match)
   let chat = await getAccessibleChat(id)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
 
@@ -14,10 +15,4 @@ export const removeCustomMessageCallback = async (ctx: CallbackQueryContext<BotC
   })
 
   return editMessageWithChat(ctx, chat)
-}
-
-function parseMatch(match: string | RegExpMatchArray): {id: number} {
-  const strId = typeof match === 'string' ? undefined : match[1]
-  if (strId === undefined) throw new Error('Invalid callback match')
-  return {id: parseInt(strId, 10)}
 }

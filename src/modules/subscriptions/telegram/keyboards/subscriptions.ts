@@ -1,4 +1,5 @@
 import type {Chat, Subscription} from '@infra/db/types.js'
+import {subscriptionRoute, subscriptionsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -13,20 +14,20 @@ export function buildSubscriptionsKeyboard(
   const keyboard = new InlineKeyboard()
   for (const subscription of subscriptions) {
     keyboard.row({
-      callback_data: `subscription:${subscription.id}`,
+      callback_data: subscriptionRoute.build({subscriptionId: subscription.id}),
       text: subscription.chat.title,
     })
   }
   keyboard.row()
   if (page > 1) {
     keyboard.add({
-      callback_data: `subscriptions:${page - 1}`,
+      callback_data: subscriptionsPageRoute.build({page: page - 1}),
       text: t('button.prev'),
     })
   }
   if (hasNext) {
     keyboard.add({
-      callback_data: `subscriptions:${page + 1}`,
+      callback_data: subscriptionsPageRoute.build({page: page + 1}),
       text: t('button.next'),
     })
   }

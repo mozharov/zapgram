@@ -1,17 +1,12 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
-import {editMessageWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {chatRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
 
 export const chatCallback = async (ctx: CallbackQueryContext<BotContext>) => {
-  const {id} = parseMatch(ctx.match)
-  const chat = await getAccessibleChat(id)
+  const {chatId} = chatRoute.parse(ctx.match)
+  const chat = await getAccessibleChat(chatId)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
-  return editMessageWithChat(ctx, chat)
-}
-
-function parseMatch(match: string | RegExpMatchArray) {
-  const strId = typeof match === 'string' ? undefined : match[1]
-  if (strId === undefined) throw new Error('Invalid callback match')
-  return {id: parseInt(strId, 10)}
+  return replyWithChat(ctx, chat)
 }

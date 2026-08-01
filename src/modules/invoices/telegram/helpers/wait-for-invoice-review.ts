@@ -1,6 +1,7 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {Invoice} from '@getalby/lightning-tools'
 import {getPendingInvoiceBy} from '@modules/invoices/repository.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -19,7 +20,7 @@ export async function waitForInvoiceReview(
       text: ctx.t('button.confirm-pay-invoice'),
     })
     .add({
-      callback_data: 'cancel',
+      callback_data: staticCallback.cancel,
       text: ctx.t('button.cancel'),
     })
 

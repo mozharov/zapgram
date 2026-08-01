@@ -1,6 +1,7 @@
 import {ToYourselfError} from '@core/errors/to-yourself.js'
 import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet.js'
 import {getUserByUsername} from '@modules/users/repository.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -26,7 +27,9 @@ export async function waitForUser(conversation: BotConversation, ctx: Conversati
 
 function replyWithWaitForUser(ctx: ConversationContext) {
   return ctx.reply(ctx.t('wait-for-user'), {
-    reply_markup: new InlineKeyboard([[{callback_data: 'cancel', text: ctx.t('button.cancel')}]]),
+    reply_markup: new InlineKeyboard([
+      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+    ]),
   })
 }
 

@@ -1,5 +1,6 @@
 import {getAccessibleChat, updateChat} from '@modules/chats/repository.js'
 import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -21,7 +22,7 @@ export async function editCustomMessage(
   // Get Russian message
   const ruMessage = await ctx.reply(ctx.t('edit-custom-message.enter-russian'), {
     reply_markup: new InlineKeyboard().add({
-      callback_data: 'cancel',
+      callback_data: staticCallback.cancel,
       text: ctx.t('button.cancel'),
     }),
   })
@@ -58,7 +59,7 @@ export async function editCustomMessage(
   // Get English message
   const enMessage = await ctx.reply(ctx.t('edit-custom-message.enter-english'), {
     reply_markup: new InlineKeyboard().add({
-      callback_data: 'cancel',
+      callback_data: staticCallback.cancel,
       text: ctx.t('button.cancel'),
     }),
   })

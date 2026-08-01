@@ -1,4 +1,5 @@
 import type {SubscriptionPayment} from '@infra/db/types.js'
+import {paySubscriptionRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -9,13 +10,13 @@ export function buildSubscriptionPaymentKeyboard(
   const keyboard = new InlineKeyboard()
   if (payWallet) {
     keyboard.row({
-      callback_data: `pay-sub:${paymentId}:wallet`,
+      callback_data: paySubscriptionRoute.build({paymentId, from: 'wallet'}),
       text: t('button.pay-subcription-with-wallet'),
     })
   }
   if (payNWC) {
     keyboard.row({
-      callback_data: `pay-sub:${paymentId}:nwc`,
+      callback_data: paySubscriptionRoute.build({paymentId, from: 'nwc'}),
       text: t('button.pay-subcription-with-nwc'),
     })
   }

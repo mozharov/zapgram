@@ -1,3 +1,4 @@
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -8,7 +9,7 @@ export async function groupSettingsCallback(ctx: BotContext) {
       text: ctx.t('button.add-to-group'),
     })
     .row({
-      callback_data: 'settings',
+      callback_data: staticCallback.settings,
       text: ctx.t('button.back'),
     })
 

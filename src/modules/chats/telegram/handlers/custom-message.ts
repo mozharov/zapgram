@@ -1,25 +1,31 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
+import {
+  chatCustomMessageRoute,
+  chatEditCustomMessageRoute,
+  chatRemoveCustomMessageRoute,
+  chatRoute,
+} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 
 export const customMessageCallback = async (ctx: CallbackQueryContext<BotContext>) => {
-  const {id} = parseMatch(ctx.match)
+  const {chatId: id} = chatCustomMessageRoute.parse(ctx.match)
   const chat = await getAccessibleChat(id)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
 
   const keyboard = new InlineKeyboard().add({
-    callback_data: `chat:${chat.id}:edit-custom-message`,
+    callback_data: chatEditCustomMessageRoute.build({chatId: chat.id}),
     text: ctx.t('button.edit-custom-message'),
   })
   if (chat.customMessageRu || chat.customMessageEn) {
     keyboard.row({
-      callback_data: `chat:${chat.id}:remove-custom-message`,
+      callback_data: chatRemoveCustomMessageRoute.build({chatId: chat.id}),
       text: ctx.t('button.remove-custom-message'),
     })
   }
   keyboard.row({
-    callback_data: `chat:${chat.id}`,
+    callback_data: chatRoute.build({chatId: chat.id}),
     text: ctx.t('button.back'),
   })
   return ctx.editMessageText(
@@ -38,10 +44,4 @@ export const customMessageCallback = async (ctx: CallbackQueryContext<BotContext
       reply_markup: keyboard,
     },
   )
-}
-
-function parseMatch(match: string | RegExpMatchArray): {id: number} {
-  const strId = typeof match === 'string' ? undefined : match[1]
-  if (strId === undefined) throw new Error('Invalid callback match')
-  return {id: parseInt(strId, 10)}
 }

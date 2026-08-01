@@ -1,3 +1,4 @@
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -31,6 +32,6 @@ function replyWithWaitForMemo(ctx: ConversationContext) {
   return ctx.reply(ctx.t('wait-for-memo'), {
     reply_markup: new InlineKeyboard()
       .add({callback_data: 'skip', text: ctx.t('button.skip')})
-      .row({callback_data: 'cancel', text: ctx.t('button.cancel')}),
+      .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}),
   })
 }
