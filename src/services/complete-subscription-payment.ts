@@ -9,6 +9,7 @@ import {
   MAX_SETTLE_ATTEMPTS,
   recordSettleAttempt,
 } from '../models/subscription-payment.js'
+import {getSubscriptionByUserAndChat} from '../models/subscriptions.js'
 import {getUserOrThrow} from '../models/user.js'
 import {distributeSubscriptionPaymentOnce} from './subscription-payment.js'
 
@@ -95,13 +96,7 @@ async function settle(payment: SubscriptionPayment): Promise<CompleteSubscriptio
     await deleteSubscriptionPayment(payment.id)
 
     await bot.api
-      .sendMessage(
-        payment.userId,
-        translate('subscription-invoice.paid', user.languageCode, {
-          title: chat.title,
-          type: payment.subscriptionType,
-        }),
-      )
+      .sendMessage(payment.userId, await buildSubscriberMessage(payment, chat, user))
       .catch((error: unknown) => {
         logger.error({error}, 'Error while sending successful subscription payment to user.')
       })
@@ -127,4 +122,41 @@ async function settle(payment: SubscriptionPayment): Promise<CompleteSubscriptio
     logger.error({error, paymentHash: payment.paymentHash}, 'Error in completeSubscriptionPayment.')
     return 'kept'
   }
+}
+
+/**
+ * A renewal that settles here — because auto-renew handed it over, or because the subscriber paid a
+ * renewal invoice by hand — must not be announced as "access received": the subscriber never lost
+ * access, and that wording reads like something went wrong.
+ *
+ * Never throws. It runs after the payment row is deleted, so a failure here must not be mistaken for
+ * an unsettled payment; the neutral message is a fine fallback.
+ */
+async function buildSubscriberMessage(
+  payment: SubscriptionPayment,
+  chat: Awaited<ReturnType<typeof getChatOrThrow>>,
+  user: Awaited<ReturnType<typeof getUserOrThrow>>,
+) {
+  if (payment.kind === 'renewal') {
+    try {
+      const subscription = await getSubscriptionByUserAndChat(payment.userId, payment.chatId)
+      if (subscription?.endsAt) {
+        return translate('subscription-renewal.renewed', user.languageCode, {
+          title: chat.title,
+          expiryDate: subscription.endsAt,
+          price: payment.price,
+        })
+      }
+    } catch (error) {
+      logger.error(
+        {error, paymentId: payment.id},
+        'Could not read the renewed subscription; falling back to the generic paid message.',
+      )
+    }
+  }
+
+  return translate('subscription-invoice.paid', user.languageCode, {
+    title: chat.title,
+    type: payment.subscriptionType,
+  })
 }

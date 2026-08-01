@@ -322,6 +322,8 @@ subscription-invoice =
 subscription-renewal = 
     .success = <b>✅ Your subscription to "{$title}" has been automatically renewed until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
         Payment amount: <b>{$price} sats</b>
+    .renewed = <b>✅ Your subscription to "{$title}" has been extended until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+        Payment amount: <b>{$price} sats</b>
     .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
         <code>{$invoice}</code>
 

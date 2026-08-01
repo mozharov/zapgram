@@ -15,6 +15,7 @@ function basePayment(overrides: Partial<SubscriptionPayment> = {}): Subscription
     paymentHash: 'hash1',
     price: 1000,
     subscriptionType: 'monthly',
+    kind: 'join',
     settledAt: null,
     settleAttempts: 0,
     payoutHash: null,

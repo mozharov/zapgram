@@ -71,6 +71,13 @@
       "when": 1785586229665,
       "tag": "0009_subscription_payment_fee_payout_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785586693537,
+      "tag": "0010_subscription_payment_kind",
+      "breakpoints": true
     }
   ]
 }

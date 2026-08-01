@@ -178,6 +178,7 @@ async function attemptAutoRenewal(
       paymentRequest: invoice.bolt11,
       subscriptionType: 'monthly',
       price: subscription.price,
+      kind: 'renewal',
     })
 
     const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
@@ -264,6 +265,7 @@ async function createAndSendRenewalInvoice(subscription: Subscription, chat: Cha
       paymentRequest: invoice.bolt11,
       subscriptionType: 'monthly',
       price: subscription.price,
+      kind: 'renewal',
     })
 
     const keyboard = new InlineKeyboard().row({

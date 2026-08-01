@@ -92,6 +92,7 @@ function makePayment(overrides: Partial<SubscriptionPayment> = {}): Subscription
     paymentHash: 'subscriber-hash',
     price: PRICE,
     subscriptionType: 'monthly',
+    kind: 'join',
     settledAt: null,
     settleAttempts: 0,
     payoutHash: null,

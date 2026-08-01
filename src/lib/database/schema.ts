@@ -80,6 +80,14 @@ export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
   paymentHash: text('payment_hash').notNull(), // lnbits payment hash
   price: integer('price', {mode: 'number'}).notNull(), // satoshis
   subscriptionType: text('subscription_type', {enum: ['one_time', 'monthly']}).notNull(),
+  /**
+   * Whether this payment buys initial access or extends an existing subscription. Only used to pick
+   * the right message once it settles — telling a renewing subscriber they "received access" reads
+   * as if something was wrong.
+   */
+  kind: text('kind', {enum: ['join', 'renewal']})
+    .notNull()
+    .default('join'),
   /** Set when chat access has been granted; prevents double-extend on settle retry. */
   settledAt: integer('settled_at', {mode: 'timestamp'}),
   /**

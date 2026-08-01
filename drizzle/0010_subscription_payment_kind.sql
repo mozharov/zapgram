@@ -1,0 +1,1 @@
+ALTER TABLE `subscription_payments` ADD `kind` text DEFAULT 'join' NOT NULL;
