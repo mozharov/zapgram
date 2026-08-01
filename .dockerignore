@@ -2,6 +2,9 @@
 /dist
 /node_modules
 /test
+/.github
+/docs
+/.claude
 .dockerignore
 .gitignore
 .env*
@@ -12,3 +15,4 @@ biome.json
 tsconfig.json
 *.md
 docker-compose.yaml
+bunfig.toml

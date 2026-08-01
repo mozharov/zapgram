@@ -1,6 +1,7 @@
 /dist
 /node_modules
 /.cursor
+/.claude
 main.db*
 .DS_Store
 .env*
