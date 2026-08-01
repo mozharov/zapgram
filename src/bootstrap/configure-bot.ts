@@ -1,12 +1,17 @@
-import {config} from '@config'
-import {logger} from '@infra/logger.js'
-import {bot} from '@infra/telegram/bot.js'
+import type {AppConfig} from '@config'
+import type {AppLogger} from '@infra/logger.js'
 import {setWebhook} from '@infra/telegram/webhook.js'
 import {tunnelUrl} from '@infra/tunnel.js'
+import type {Bot, Context} from 'grammy'
 import type {ChatAdministratorRights} from 'grammy/types'
 
-export async function configureBot() {
-  logger.info('Setting bot commands, webhook and default admin rights...')
+export async function configureBot(deps: {
+  bot: Bot<Context>
+  config: AppConfig
+  log: AppLogger
+}): Promise<void> {
+  const {bot, config, log} = deps
+  log.info('Setting bot commands, webhook and default admin rights...')
   await bot.api.setMyCommands(
     [
       {
@@ -100,5 +105,5 @@ export async function configureBot() {
 
   await bot.api.setMyDefaultAdministratorRights({for_channels: true, rights})
   await bot.api.setMyDefaultAdministratorRights({for_channels: false, rights})
-  logger.info('Bot commands, webhook and default admin rights were set successfully')
+  log.info('Bot commands, webhook and default admin rights were set successfully')
 }
