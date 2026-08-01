@@ -12,7 +12,11 @@ export async function createOrUpdateChat(data: NewChat) {
       set: data,
     })
     .returning()
-    .then(res => res[0]!)
+    .then(res => {
+      const row = res[0]
+      if (row === undefined) throw new Error('Failed to create or update chat')
+      return row
+    })
 }
 
 export async function getChatOrThrow(id: Chat['id']) {
@@ -39,10 +43,12 @@ export async function getChat(criteria: Partial<Chat>) {
     .leftJoin(usersTable, eq(chatsTable.ownerId, usersTable.id))
     .where(and(...where))
     .then(res => {
-      if (!res[0]) return null
+      const row = res[0]
+      if (!row) return null
+      if (!row.users) throw new Error('Chat owner not found')
       return {
-        ...res[0].chats,
-        owner: res[0].users!,
+        ...row.chats,
+        owner: row.users,
       }
     })
 }
@@ -53,7 +59,11 @@ export async function updateChat(id: Chat['id'], criteria: Partial<Chat>) {
     .set(criteria)
     .where(eq(chatsTable.id, id))
     .returning()
-    .then(res => res[0]!)
+    .then(res => {
+      const row = res[0]
+      if (row === undefined) throw new Error('Chat not found after update')
+      return row
+    })
 }
 
 export function getPaginatedAccessibleChats(ownerId: Chat['ownerId'], page: number, limit: number) {
@@ -72,5 +82,5 @@ export async function getAccessibleChatsCount(ownerId: Chat['ownerId']) {
     .select({count: count()})
     .from(chatsTable)
     .where(and(eq(chatsTable.ownerId, ownerId), ne(chatsTable.status, 'no_access')))
-    .then(res => res[0]!.count)
+    .then(res => res[0]?.count ?? 0)
 }

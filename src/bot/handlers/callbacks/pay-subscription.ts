@@ -17,6 +17,11 @@ export const paySubscriptionCallback = async (ctx: CallbackQueryContext<BotConte
 }
 
 function parseMatch(match: string | RegExpMatchArray) {
-  const [, paymentId, from] = match
-  return {paymentId: paymentId!, from: from! as 'wallet' | 'nwc'}
+  if (typeof match === 'string') throw new Error('Invalid callback match')
+  const paymentId = match[1]
+  const from = match[2]
+  if (paymentId === undefined || (from !== 'wallet' && from !== 'nwc')) {
+    throw new Error('Invalid callback match')
+  }
+  return {paymentId, from}
 }

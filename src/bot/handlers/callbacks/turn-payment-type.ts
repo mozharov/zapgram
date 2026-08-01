@@ -15,10 +15,12 @@ function parseMatch(match: string | RegExpMatchArray): {
   id: number
   paymentType: 'one_time' | 'monthly'
 } {
-  const [, strId, paymentType] = match
-  const id = parseInt(strId!)
+  if (typeof match === 'string') throw new Error('Invalid callback match')
+  const strId = match[1]
+  const paymentType = match[2]
+  if (strId === undefined) throw new Error('Invalid callback match')
   if (paymentType !== 'one_time' && paymentType !== 'monthly') {
     throw new Error('Invalid payment type')
   }
-  return {id, paymentType}
+  return {id: parseInt(strId, 10), paymentType}
 }

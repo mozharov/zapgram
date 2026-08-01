@@ -1,5 +1,5 @@
+import path from 'node:path'
 import {I18n, type TranslationVariables} from '@grammyjs/i18n'
-import path from 'path'
 
 const directory = path.resolve(import.meta.dirname, '../locales')
 export const i18n = new I18n({

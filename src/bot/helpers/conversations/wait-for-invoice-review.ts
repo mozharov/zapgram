@@ -11,7 +11,7 @@ export async function waitForInvoiceReview(
   invoice: Invoice,
   isInternalWallet: boolean,
 ) {
-  const timestamp = await conversation.external(() => new Date().getTime())
+  const timestamp = await conversation.external(() => Date.now())
   const payCallback = `pay:${timestamp}` // avoid pay wrong invoice
   const keyboard = new InlineKeyboard()
     .add({

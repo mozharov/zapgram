@@ -12,7 +12,7 @@ export const changePriceCallback = async (ctx: CallbackQueryContext<BotContext>)
 }
 
 function parseMatch(match: string | RegExpMatchArray): {id: number} {
-  const [, strId] = match
-  const id = parseInt(strId!)
-  return {id}
+  const strId = typeof match === 'string' ? undefined : match[1]
+  if (strId === undefined) throw new Error('Invalid callback match')
+  return {id: parseInt(strId, 10)}
 }

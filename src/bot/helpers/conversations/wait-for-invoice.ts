@@ -14,5 +14,7 @@ export async function waitForInvoice(conversation: BotConversation, ctx: Convers
     },
   })
   await conversation.external(() => removeInlineKeyboard(message))
-  return msgContext.match[1]!
+  const invoice = msgContext.match[1]
+  if (invoice === undefined) throw new Error('Invoice match missing')
+  return invoice
 }

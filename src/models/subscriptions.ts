@@ -1,4 +1,4 @@
-import {randomUUID} from 'crypto'
+import {randomUUID} from 'node:crypto'
 import {and, count, desc, eq, gt, lte} from 'drizzle-orm'
 import {db} from '../lib/database/database.js'
 import {chatsTable, subscriptionsTable} from '../lib/database/schema.js'
@@ -9,7 +9,11 @@ export async function createSubscription(data: NewSubscription) {
     .insert(subscriptionsTable)
     .values({...data, id: randomUUID()})
     .returning()
-    .then(rows => rows[0]!)
+    .then(rows => {
+      const row = rows[0]
+      if (row === undefined) throw new Error('Failed to create subscription')
+      return row
+    })
 }
 
 export async function getSubscriptionByUserAndChat(
@@ -27,7 +31,11 @@ export async function updateSubscription(id: Subscription['id'], data: Partial<S
     .set(data)
     .where(eq(subscriptionsTable.id, id))
     .returning()
-    .then(rows => rows[0]!)
+    .then(rows => {
+      const row = rows[0]
+      if (row === undefined) throw new Error('Subscription not found after update')
+      return row
+    })
 }
 
 export async function getExpiredSubscriptions(limit?: number, offset?: number, date?: Date) {
@@ -50,7 +58,7 @@ export async function countExpiredSubscriptions(date?: Date) {
     .select({count: count()})
     .from(subscriptionsTable)
     .where(lte(subscriptionsTable.endsAt, date ?? new Date()))
-    .then(rows => rows[0]!.count)
+    .then(rows => rows[0]?.count ?? 0)
 }
 
 /**
@@ -87,7 +95,7 @@ export async function countSubscriptionsExpiringWithin(maxExpiryDate: Date, minE
         eq(subscriptionsTable.notificationSent, false),
       ),
     )
-    .then(rows => rows[0]!.count)
+    .then(rows => rows[0]?.count ?? 0)
 }
 
 export async function getUserActiveSubscriptions(
@@ -105,10 +113,13 @@ export async function getUserActiveSubscriptions(
     .limit(limit)
     .orderBy(desc(subscriptionsTable.createdAt))
     .then(rows =>
-      rows.map(row => ({
-        ...row.subscriptions,
-        chat: row.chats!,
-      })),
+      rows.map(row => {
+        if (!row.chats) throw new Error('Subscription chat not found')
+        return {
+          ...row.subscriptions,
+          chat: row.chats,
+        }
+      }),
     )
 }
 
@@ -117,7 +128,7 @@ export async function getUserActiveSubscriptionsCount(userId: Subscription['user
     .select({count: count()})
     .from(subscriptionsTable)
     .where(eq(subscriptionsTable.userId, userId))
-    .then(rows => rows[0]!.count)
+    .then(rows => rows[0]?.count ?? 0)
 }
 
 export async function getSubscriptionById(id: Subscription['id']) {
@@ -127,10 +138,12 @@ export async function getSubscriptionById(id: Subscription['id']) {
     .leftJoin(chatsTable, eq(subscriptionsTable.chatId, chatsTable.id))
     .where(eq(subscriptionsTable.id, id))
     .then(rows => {
-      if (!rows[0]) return null
+      const row = rows[0]
+      if (!row) return null
+      if (!row.chats) throw new Error('Subscription chat not found')
       return {
-        ...rows[0].subscriptions,
-        chat: rows[0].chats!,
+        ...row.subscriptions,
+        chat: row.chats,
       }
     })
 }

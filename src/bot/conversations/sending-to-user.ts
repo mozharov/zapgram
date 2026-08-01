@@ -1,3 +1,4 @@
+import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {getUserWallet, internalTransfer} from '../../services/lnbits-user-wallet.js'
 import {notifySatsReceived} from '../../services/notify-sats-received.js'
 import type {BotConversation, ConversationContext} from '../context.js'
@@ -17,7 +18,8 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   else {
     const toUserWallet = await getUserWallet(toUser.id)
     const invoice = await toUserWallet.createInvoice({sats})
-    await ctx.user.nwc!.payInvoice(invoice.bolt11)
+    if (!ctx.user.nwc) throw new NWCConnectionError()
+    await ctx.user.nwc.payInvoice(invoice.bolt11)
   }
 
   await notifySatsReceived(toUser.id, sats, ctx.user.username)

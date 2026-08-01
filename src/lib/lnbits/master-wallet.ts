@@ -37,7 +37,11 @@ class MasterWallet extends LNBitsAPI {
   async getWallet(userId: string) {
     return this.fetchWithSchema(`/users/api/v1/user/${userId}/wallet`, walletResponseSchema, {
       headers: this.getAuthHeaders(),
-    }).then(wallets => wallets[0]!)
+    }).then(wallets => {
+      const wallet = wallets[0]
+      if (wallet === undefined) throw new Error('LNbits wallet not found for user')
+      return wallet
+    })
   }
 
   async getUserByUsername(username: string) {

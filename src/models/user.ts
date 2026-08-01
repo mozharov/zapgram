@@ -20,9 +20,9 @@ export async function getUserByUsername(username: string) {
 
 export async function getUserBy(criteria: Partial<User>) {
   if (criteria.username) criteria.username = criteria.username.toLowerCase()
-  const where = Object.entries(criteria).map(([key, value]) =>
-    eq(usersTable[key as keyof User], value!),
-  )
+  const where = Object.entries(criteria)
+    .filter((entry): entry is [string, NonNullable<User[keyof User]>] => entry[1] != null)
+    .map(([key, value]) => eq(usersTable[key as keyof User], value))
   return db.query.usersTable.findFirst({where: and(...where)})
 }
 
@@ -36,7 +36,11 @@ export async function createOrUpdateUser(data: NewUser) {
       set: data,
     })
     .returning()
-    .then(res => res[0]!)
+    .then(res => {
+      const row = res[0]
+      if (row === undefined) throw new Error('Failed to create or update user')
+      return row
+    })
 }
 
 export async function updateUser(id: User['id'], data: Partial<User>) {
@@ -46,5 +50,9 @@ export async function updateUser(id: User['id'], data: Partial<User>) {
     .set(data)
     .where(eq(usersTable.id, id))
     .returning()
-    .then(res => res[0]!)
+    .then(res => {
+      const row = res[0]
+      if (row === undefined) throw new Error('User not found after update')
+      return row
+    })
 }

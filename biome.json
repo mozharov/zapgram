@@ -38,7 +38,20 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "preset": "recommended",
+      "correctness": {
+        "useParseIntRadix": "error"
+      },
+      "style": {
+        "noNonNullAssertion": "error",
+        "useNodejsImportProtocol": "error"
+      },
+      "suspicious": {
+        "noGlobalIsNan": "error"
+      },
+      "complexity": {
+        "useDateNow": "error"
+      }
     }
   }
 }

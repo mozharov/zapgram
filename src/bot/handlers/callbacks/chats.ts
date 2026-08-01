@@ -25,8 +25,9 @@ export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
 }
 
 function parseMatch(match: string | RegExpMatchArray) {
-  const [, strPage] = match
-  const page = parseInt(strPage!)
-  if (isNaN(page) || page <= 0) return {page: 1}
+  const strPage = typeof match === 'string' ? undefined : match[1]
+  if (strPage === undefined) return {page: 1}
+  const page = parseInt(strPage, 10)
+  if (Number.isNaN(page) || page <= 0) return {page: 1}
   return {page}
 }

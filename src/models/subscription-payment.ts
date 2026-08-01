@@ -1,4 +1,4 @@
-import {randomUUID} from 'crypto'
+import {randomUUID} from 'node:crypto'
 import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
 import {db} from '../lib/database/database.js'
 import {subscriptionPaymentsTable} from '../lib/database/schema.js'
@@ -20,7 +20,11 @@ export async function createSubscriptionPayment(data: NewSubscriptionPayment) {
     .insert(subscriptionPaymentsTable)
     .values({...data, id: randomUUID()})
     .returning()
-    .then(rows => rows[0]!)
+    .then(rows => {
+      const row = rows[0]
+      if (row === undefined) throw new Error('Failed to create subscription payment')
+      return row
+    })
 }
 
 export async function countSubscriptionPayments() {
@@ -28,7 +32,7 @@ export async function countSubscriptionPayments() {
     .select({count: count()})
     .from(subscriptionPaymentsTable)
     .where(settleable)
-    .then(rows => rows[0]!.count)
+    .then(rows => rows[0]?.count ?? 0)
 }
 
 /** Payments that ran out of settle attempts and now need a human to look at them. */

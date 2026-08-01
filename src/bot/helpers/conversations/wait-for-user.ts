@@ -17,7 +17,9 @@ export async function waitForUser(conversation: BotConversation, ctx: Conversati
       return conversation.halt({next: true})
     },
   })
-  const username = usernameContext.match[1]!.toLowerCase()
+  const matched = usernameContext.match[1]
+  if (matched === undefined) throw new Error('Username match missing')
+  const username = matched.toLowerCase()
   await conversation.external(() => removeInlineKeyboard(message))
   return validateUsername(ctx, username)
 }

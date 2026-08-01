@@ -12,8 +12,10 @@ export const turnPaidAccessCallback = async (ctx: CallbackQueryContext<BotContex
 }
 
 function parseMatch(match: string | RegExpMatchArray): {id: number; status: 'active' | 'inactive'} {
-  const [, strId, action] = match
-  const id = parseInt(strId!)
+  if (typeof match === 'string') throw new Error('Invalid callback match')
+  const strId = match[1]
+  const action = match[2]
+  if (strId === undefined) throw new Error('Invalid callback match')
   if (action !== 'on' && action !== 'off') throw new Error('Invalid action')
-  return {id, status: action === 'on' ? 'active' : 'inactive'}
+  return {id: parseInt(strId, 10), status: action === 'on' ? 'active' : 'inactive'}
 }

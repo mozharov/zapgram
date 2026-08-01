@@ -16,6 +16,7 @@ export const toggleAutoRenewCallback = async (ctx: CallbackQueryContext<BotConte
 }
 
 function parseMatch(match: string | RegExpMatchArray) {
-  const [, id] = match
-  return {id: id!}
+  const id = typeof match === 'string' ? undefined : match[1]
+  if (id === undefined) throw new Error('Invalid callback match')
+  return {id}
 }

@@ -29,8 +29,9 @@ export async function payingInvoice(
     const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
     feesPaid = payment.fee < 0 ? -payment.fee : 0
   } else {
-    await ctx.user.nwc!.payInvoice(invoice.paymentRequest)
-    const lookupResponse = await ctx.user.nwc!.lookupInvoice(invoice.paymentRequest)
+    if (!ctx.user.nwc) throw new NWCConnectionError()
+    await ctx.user.nwc.payInvoice(invoice.paymentRequest)
+    const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
     feesPaid = lookupResponse.fees_paid
   }
 

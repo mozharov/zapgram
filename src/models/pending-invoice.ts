@@ -8,7 +8,11 @@ export async function createPendingInvoice(data: NewPendingInvoice) {
     .insert(pendingInvoicesTable)
     .values(data)
     .returning()
-    .then(res => res[0]!)
+    .then(res => {
+      const row = res[0]
+      if (row === undefined) throw new Error('Failed to create pending invoice')
+      return row
+    })
 }
 
 export async function getPendingInvoiceBy(criteria: Partial<PendingInvoice>) {
@@ -37,7 +41,7 @@ export async function countPendingInvoices() {
   return db
     .select({count: count()})
     .from(pendingInvoicesTable)
-    .then(res => res[0]!.count)
+    .then(res => res[0]?.count ?? 0)
 }
 
 export async function deleteExpiredInvoices() {
