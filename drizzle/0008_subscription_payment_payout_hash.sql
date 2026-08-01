@@ -1,0 +1,1 @@
+ALTER TABLE `subscription_payments` ADD `payout_hash` text;

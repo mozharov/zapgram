@@ -80,5 +80,19 @@ export const subscriptionPaymentsTable = sqliteTable('subscription_payments', {
   paymentHash: text('payment_hash').notNull(), // lnbits payment hash
   price: integer('price', {mode: 'number'}).notNull(), // satoshis
   subscriptionType: text('subscription_type', {enum: ['one_time', 'monthly']}).notNull(),
+  /** Set when chat access has been granted; prevents double-extend on settle retry. */
+  settledAt: integer('settled_at', {mode: 'timestamp'}),
+  /**
+   * Settle attempts made after the invoice was confirmed paid. Once it reaches
+   * MAX_SETTLE_ATTEMPTS the cron stops picking the payment up, but the row is kept for review.
+   */
+  settleAttempts: integer('settle_attempts', {mode: 'number'}).notNull().default(0),
+  /**
+   * payment_hash of the owner payout invoice, written *before* it is paid. On a retry it lets us
+   * ask LNbits whether that payout already went through instead of issuing a second one.
+   */
+  payoutHash: text('payout_hash'),
+  /** Same idea as payoutHash, for the master → fee-collection wallet transfer. */
+  feePayoutHash: text('fee_payout_hash'),
   createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })

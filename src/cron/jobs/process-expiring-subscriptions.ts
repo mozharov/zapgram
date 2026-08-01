@@ -4,11 +4,17 @@ import {InputFile} from 'grammy/types'
 import QRCode from 'qrcode'
 import {bot} from '../../bot/bot.js'
 import {translate} from '../../bot/lib/i18n.js'
-import type {Chat, Subscription, User} from '../../lib/database/types.js'
+import type {Chat, Subscription, SubscriptionPayment, User} from '../../lib/database/types.js'
 import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
 import {logger} from '../../lib/logger.js'
+import {computeSubscriptionEndsAt} from '../../lib/subscriptions/policy.js'
 import {getChatOrThrow} from '../../models/chat.js'
-import {createSubscriptionPayment} from '../../models/subscription-payment.js'
+import {grantSubscriptionAccess} from '../../models/subscription-access.js'
+import {
+  createSubscriptionPayment,
+  deleteSubscriptionPayment,
+  getPendingPaymentForSubscription,
+} from '../../models/subscription-payment.js'
 import {
   countSubscriptionsExpiringWithin,
   getSubscriptionsExpiringWithin,
@@ -17,7 +23,7 @@ import {
 import {getUserOrThrow} from '../../models/user.js'
 import {getUserWallet} from '../../services/lnbits-user-wallet.js'
 // import {NostrWallet} from '../../lib/nostr-wallet.js'
-import {distributeSubscriptionPayment} from '../../services/subscription-payment.js'
+import {distributeSubscriptionPaymentOnce} from '../../services/subscription-payment.js'
 
 const BATCH_SIZE = 10
 const MS_BEFORE_EXPIRATION = 24 * 60 * 60 * 1000 // 24 hours
@@ -59,11 +65,15 @@ async function processExpiringSubscriptions() {
           const renewalResult = await attemptAutoRenewal(subscription, chat)
           logger.info({renewalResult, subscription}, 'Renewal result')
 
-          if (renewalResult.success) {
-            await updateSubscription(subscription.id, {
-              endsAt: renewalResult.newExpiryDate,
-              notificationSent: false,
-            })
+          if (renewalResult.status === 'handed_off') {
+            // The subscriber paid; the subscription payment cron owns the rest, notifications
+            // included. Saying anything here would duplicate its messages.
+            logger.info(
+              {subscriptionId: subscription.id},
+              'Renewal handed off to the subscription payment cron.',
+            )
+          } else if (renewalResult.status === 'renewed') {
+            // endsAt and notificationSent were already updated inside grantSubscriptionAccess.
             await bot.api
               .sendMessage(
                 subscription.userId,
@@ -118,31 +128,103 @@ async function processExpiringSubscriptions() {
   }
 }
 
+/**
+ * `renewed` — fully done here, this job sends the renewal messages.
+ * `handed_off` — the subscriber was charged and a payment row is on disk; the subscription payment
+ *   cron owns the rest. This job must stay quiet, or the user would get notified twice.
+ * `failed` — nothing was collected, fall back to sending a manual invoice.
+ */
+type RenewalOutcome =
+  | {status: 'renewed'; newExpiryDate: Date; fee: number}
+  | {status: 'handed_off'}
+  | {status: 'failed'}
+
+/**
+ * Charges the subscriber and settles the renewal.
+ *
+ * The payment row is written *before* the subscriber is charged, and is only removed once the money
+ * has reached the chat owner. Anything that goes wrong in between leaves that row on disk, where the
+ * subscription payment cron picks it up and finishes the job idempotently — so a failure can no
+ * longer collect money from a subscriber and deliver nothing.
+ */
 async function attemptAutoRenewal(
   subscription: Subscription,
   // user: User,
   chat: Chat,
-): Promise<{success: true; newExpiryDate: Date; fee: number} | {success: false}> {
+): Promise<RenewalOutcome> {
+  let payment: SubscriptionPayment
   try {
-    if (!subscription.autoRenew || !subscription.endsAt) return {success: false}
+    if (!subscription.autoRenew || !subscription.endsAt) return {status: 'failed'}
+
+    // An existing row means an earlier attempt is still owned by the settle cron. Charging again
+    // here is how a subscriber would get billed twice.
+    const inFlight = await getPendingPaymentForSubscription(
+      subscription.userId,
+      subscription.chatId,
+    )
+    if (inFlight) {
+      logger.info(
+        {subscriptionId: subscription.id, paymentId: inFlight.id},
+        'A subscription payment is already in flight; leaving this renewal to the settle cron.',
+      )
+      return {status: 'handed_off'}
+    }
 
     const invoice = await lnbitsMasterWallet.createInvoice(subscription.price, INVOICE_EXPIRY)
+    payment = await createSubscriptionPayment({
+      chatId: subscription.chatId,
+      userId: subscription.userId,
+      paymentHash: invoice.payment_hash,
+      paymentRequest: invoice.bolt11,
+      subscriptionType: 'monthly',
+      price: subscription.price,
+    })
 
     const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
     // TODO: automatic payment from NWC wallet. Additional checks are needed because LNBits doesn't mark the invoice as paid immediately. May need a separate cycle for funds distribution.
     // if (!paymentResult.success) {
     //   paymentResult = await attemptPaymentFromNWC(subscription, user, invoice.bolt11)
     // }
-    if (!paymentResult.success) return {success: false}
-
-    const fee = await distributeSubscriptionPayment(subscription.price, chat.ownerId)
-
-    const newExpiryDate = new Date(subscription.endsAt)
-    newExpiryDate.setDate(newExpiryDate.getDate() + 30)
-    return {success: true, newExpiryDate, fee}
+    if (!paymentResult.success) {
+      // Deliberately not deleted: "failed" here can also mean an ambiguous error on a charge that
+      // did go through. The settle cron asks LNbits and either completes it or drops it at expiry.
+      return {status: 'failed'}
+    }
   } catch (error) {
     logger.error({error, subscriptionId: subscription.id}, 'Error in attemptAutoRenewal')
-    return {success: false}
+    return {status: 'failed'}
+  }
+
+  // Past this point the subscriber has paid, so we never report failure — the row guarantees the
+  // renewal is completed by someone, and reporting failure would invoice the user a second time.
+  try {
+    const now = new Date()
+    const newExpiryDate = computeSubscriptionEndsAt({
+      subscriptionType: payment.subscriptionType,
+      existingEndsAt: subscription.endsAt,
+      now,
+    })
+    // Extends the subscription and marks the row settled in a single transaction.
+    grantSubscriptionAccess(payment, now)
+    if (!newExpiryDate) return {status: 'handed_off'} // monthly always yields a date; be safe
+
+    const payout = await distributeSubscriptionPaymentOnce(payment, chat.ownerId)
+    if (payout.status === 'pending') {
+      logger.info(
+        {subscriptionId: subscription.id, paymentId: payment.id},
+        'Renewal payout still in flight; the settle cron will finish it.',
+      )
+      return {status: 'handed_off'}
+    }
+
+    await deleteSubscriptionPayment(payment.id)
+    return {status: 'renewed', newExpiryDate, fee: payout.fee}
+  } catch (error) {
+    logger.error(
+      {error, subscriptionId: subscription.id, paymentId: payment.id},
+      'Renewal could not be completed here; leaving the payment row for the settle cron.',
+    )
+    return {status: 'handed_off'}
   }
 }
 

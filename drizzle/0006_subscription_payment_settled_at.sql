@@ -1,0 +1,1 @@
+ALTER TABLE `subscription_payments` ADD `settled_at` integer;
