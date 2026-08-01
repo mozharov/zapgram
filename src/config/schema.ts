@@ -3,6 +3,8 @@ import {z} from 'zod'
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   PORT: z.coerce.number().default(8443),
+  CHAT_RIGHTS_DELAY_MS: z.coerce.number().default(1500),
+  TEMP_MESSAGE_DELAY_MS: z.coerce.number().default(60_000),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   BOT_TOKEN: z.string().min(1),
   BOT_API_ROOT: z.string().optional(), // local Bot API server; tests point it at a fake

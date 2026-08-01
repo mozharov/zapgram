@@ -83,6 +83,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     masterWallet,
     baseUrl: config.LNBITS_URL,
     memoFooter: config.memoFooter,
+    log,
   })
 
   const settleService = createSettleService({

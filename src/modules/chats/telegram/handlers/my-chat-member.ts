@@ -8,6 +8,7 @@ import {getChatCreator} from '@telegram/helpers/chat-creator.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {type ChatTypeContext, InlineKeyboard} from 'grammy'
 import type {ChatMember, ChatMemberUpdated} from 'grammy/types'
+import {getRuntime} from '../../../../runtime.js'
 
 type Context = ChatTypeContext<BaseContext, 'supergroup' | 'channel'> & {
   myChatMember: ChatMemberUpdated
@@ -35,7 +36,8 @@ async function handleRightsRemoval(ctx: Context) {
 }
 
 async function handleRightsGrant(ctx: Context) {
-  await sleep(1500) // not sure why, but sometimes we need to wait a bit for the new permissions to take effect. Specifically for channels.
+  // Sometimes we need to wait for the new permissions to take effect, especially for channels.
+  await sleep(getRuntime().config.CHAT_RIGHTS_DELAY_MS)
   const chatOwner = await getChatCreator(ctx)
   if (!chatOwner) {
     ctx.log.error({chat: ctx.chat}, 'Cannot get chat creator of paid chat')

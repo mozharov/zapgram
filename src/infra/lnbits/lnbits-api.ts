@@ -4,7 +4,8 @@ import type {ZodType} from 'zod'
 import type {AppLogger} from '../logger.js'
 import {validateData} from '../validate.js'
 
-const limiter = new Bottleneck({
+/** Shared 30 rps budget against LNbits. Exported so tests can lift it; do not change in prod. */
+export const limiter = new Bottleneck({
   reservoir: 30,
   reservoirRefreshAmount: 30,
   reservoirRefreshInterval: 1000,

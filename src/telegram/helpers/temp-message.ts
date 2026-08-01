@@ -1,7 +1,6 @@
 import {sleep} from '@core/utils/sleep.js'
 import type {Context} from 'grammy'
-
-const defaultDelayMs = 60000
+import {getRuntime} from '../../runtime.js'
 
 export async function replyWithTempMessage(
   ctx: Context,
@@ -12,7 +11,7 @@ export async function replyWithTempMessage(
   },
 ) {
   const message = await ctx.reply(text, options?.other)
-  void sleep(options?.delayMs ?? defaultDelayMs).then(() =>
+  void sleep(options?.delayMs ?? getRuntime().config.TEMP_MESSAGE_DELAY_MS).then(() =>
     ctx.deleteMessages([message.message_id]).catch(() => null),
   )
 }
