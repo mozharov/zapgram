@@ -13,8 +13,8 @@ import {
 } from '@modules/subscriptions/payment-repository.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
-import {translate} from '../../bot/lib/i18n.js'
-import {getUserWallet} from '../../services/lnbits-user-wallet.js'
+import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
+import {translate} from '@telegram/i18n/i18n.js'
 import {
   type CompleteSubscriptionPaymentResult,
   createSettleService,

@@ -5,8 +5,8 @@ import {
   createSubscriptionPayment,
   getPendingPaymentForSubscription,
 } from '@modules/subscriptions/payment-repository.js'
-import {translate} from '../../bot/lib/i18n.js'
-import {getUserWallet} from '../../services/lnbits-user-wallet.js'
+import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
+import {translate} from '@telegram/i18n/i18n.js'
 import {createRenewalService} from './renewal.service.js'
 import {settleService} from './settle.js'
 

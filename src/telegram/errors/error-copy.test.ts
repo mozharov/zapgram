@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'bun:test'
 import type {AppErrorCode} from '@core/errors/app-error.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
-import {translate} from '../../bot/lib/i18n.js'
+import {translate} from '@telegram/i18n/i18n.js'
 
 const codes = Object.keys(errorTranslationKey) as AppErrorCode[]
 

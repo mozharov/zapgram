@@ -1,5 +1,6 @@
 import {configureBot} from '@bootstrap/configure-bot.js'
 import {createConfig} from '@config'
+import {startServer} from '@http/app.js'
 import {migrateDatabase} from '@infra/db/client.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
@@ -9,7 +10,6 @@ import {startTunnel, stopTunnel} from '@infra/tunnel.js'
 import {registerHandlers} from '@telegram/composition.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Bot} from 'grammy'
-import {startServer} from './app.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
 
 const config = (() => {

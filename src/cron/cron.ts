@@ -1,9 +1,9 @@
 import {logger} from '@infra/logger.js'
-import {checkExpiredSubscriptionsJob} from './jobs/check-expired-subscriptions.js'
-import {checkPendingInvoicesJob} from './jobs/check-pending-invoices.js'
-import {checkSubscriptionPaymentsJob} from './jobs/check-subscription-payments.js'
-import {deleteExpiredInvoicesJob} from './jobs/delete-expired-invoices.js'
-import {processExpiringSubscriptionsJob} from './jobs/process-expiring-subscriptions.js'
+import {checkPendingInvoicesJob} from '@modules/invoices/jobs/check-pending-invoices.js'
+import {deleteExpiredInvoicesJob} from '@modules/invoices/jobs/delete-expired-invoices.js'
+import {checkExpiredSubscriptionsJob} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
+import {checkSubscriptionPaymentsJob} from '@modules/subscriptions/jobs/check-subscription-payments.js'
+import {processExpiringSubscriptionsJob} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
 
 export function startCronJobs() {
   checkPendingInvoicesJob.start()
