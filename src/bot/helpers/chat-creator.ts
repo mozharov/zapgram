@@ -1,6 +1,6 @@
+import {getOrCreateUser} from '@modules/users/repository.js'
 import type {BaseContext} from '@telegram/context.js'
 import type {ChatTypeContext} from 'grammy'
-import {getOrCreateUser} from '../../models/user.js'
 
 type Context = ChatTypeContext<BaseContext, 'group' | 'supergroup' | 'channel'>
 

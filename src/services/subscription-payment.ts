@@ -4,9 +4,12 @@ import {classifyPayoutLookup, type PayoutState} from '@core/payments/payout-stat
 import type {SubscriptionPayment, User} from '@infra/db/types.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
+import {
+  recordFeePayoutInvoice,
+  recordPayoutInvoice,
+} from '@modules/subscriptions/payment-repository.js'
+import {getUserOrThrow} from '@modules/users/repository.js'
 import {HTTPError} from 'got'
-import {recordFeePayoutInvoice, recordPayoutInvoice} from '../models/subscription-payment.js'
-import {getUserOrThrow} from '../models/user.js'
 import {getUserWallet} from './lnbits-user-wallet.js'
 
 export type DistributeOnceResult = {status: 'paid'; fee: number} | {status: 'pending'}

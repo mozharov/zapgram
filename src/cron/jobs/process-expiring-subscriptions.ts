@@ -2,25 +2,25 @@ import {computeSubscriptionEndsAt} from '@core/subscriptions/policy.js'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
+import {getChatOrThrow} from '@modules/chats/repository.js'
 import {notifier} from '@modules/notifications/notifier.js'
+import {grantSubscriptionAccess} from '@modules/subscriptions/access.js'
+import {
+  createSubscriptionPayment,
+  deleteSubscriptionPayment,
+  getPendingPaymentForSubscription,
+} from '@modules/subscriptions/payment-repository.js'
+import {
+  countSubscriptionsExpiringWithin,
+  getSubscriptionsExpiringWithin,
+  updateSubscription,
+} from '@modules/subscriptions/repository.js'
+import {getUserOrThrow} from '@modules/users/repository.js'
 import {CronJob} from 'cron'
 import {InlineKeyboard} from 'grammy'
 import {InputFile} from 'grammy/types'
 import QRCode from 'qrcode'
 import {translate} from '../../bot/lib/i18n.js'
-import {getChatOrThrow} from '../../models/chat.js'
-import {grantSubscriptionAccess} from '../../models/subscription-access.js'
-import {
-  createSubscriptionPayment,
-  deleteSubscriptionPayment,
-  getPendingPaymentForSubscription,
-} from '../../models/subscription-payment.js'
-import {
-  countSubscriptionsExpiringWithin,
-  getSubscriptionsExpiringWithin,
-  updateSubscription,
-} from '../../models/subscriptions.js'
-import {getUserOrThrow} from '../../models/user.js'
 import {getUserWallet} from '../../services/lnbits-user-wallet.js'
 // import {NostrWallet} from '@infra/nostr/wallet.js'
 import {distributeSubscriptionPaymentOnce} from '../../services/subscription-payment.js'

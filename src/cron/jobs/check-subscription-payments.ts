@@ -1,12 +1,12 @@
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
-import {CronJob} from 'cron'
 import {
   countExhaustedSubscriptionPayments,
   countSubscriptionPayments,
   deleteSubscriptionPayment,
   getSubscriptionPayments,
-} from '../../models/subscription-payment.js'
+} from '@modules/subscriptions/payment-repository.js'
+import {CronJob} from 'cron'
 import {completeSubscriptionPayment} from '../../services/complete-subscription-payment.js'
 
 export const checkSubscriptionPaymentsJob = CronJob.from({

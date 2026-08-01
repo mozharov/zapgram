@@ -1,17 +1,17 @@
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import {logger} from '@infra/logger.js'
 import {bot} from '@infra/telegram/bot.js'
+import {getChatOrThrow} from '@modules/chats/repository.js'
 import {notifier} from '@modules/notifications/notifier.js'
-import {translate} from '../bot/lib/i18n.js'
-import {getChatOrThrow} from '../models/chat.js'
-import {grantSubscriptionAccess} from '../models/subscription-access.js'
+import {grantSubscriptionAccess} from '@modules/subscriptions/access.js'
 import {
   deleteSubscriptionPayment,
   MAX_SETTLE_ATTEMPTS,
   recordSettleAttempt,
-} from '../models/subscription-payment.js'
-import {getSubscriptionByUserAndChat} from '../models/subscriptions.js'
-import {getUserOrThrow} from '../models/user.js'
+} from '@modules/subscriptions/payment-repository.js'
+import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
+import {getUserOrThrow} from '@modules/users/repository.js'
+import {translate} from '../bot/lib/i18n.js'
 import {distributeSubscriptionPaymentOnce} from './subscription-payment.js'
 
 /**

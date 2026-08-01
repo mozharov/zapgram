@@ -1,11 +1,11 @@
 import {logger} from '@infra/logger.js'
 import {bot} from '@infra/telegram/bot.js'
-import {CronJob} from 'cron'
 import {
   countExpiredSubscriptions,
   deleteSubscription,
   getExpiredSubscriptions,
-} from '../../models/subscriptions.js'
+} from '@modules/subscriptions/repository.js'
+import {CronJob} from 'cron'
 
 export const checkExpiredSubscriptionsJob = CronJob.from({
   cronTime: '0 0 * * * *',

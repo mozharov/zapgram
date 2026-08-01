@@ -1,4 +1,4 @@
-import {beforeEach, describe, expect, mock, test} from 'bun:test'
+import {afterAll, beforeEach, describe, expect, mock, test} from 'bun:test'
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import {HTTPError} from 'got'
 
@@ -24,12 +24,20 @@ let invoiceCounter = 0
 /** Sequence of side effects, used to assert the persist-before-pay ordering. */
 let order: string[] = []
 
+// Load real modules first so mocks can re-export factories other suites need.
+const realUsers = await import('@modules/users/repository.js')
+const realPayments = await import('@modules/subscriptions/payment-repository.js')
+
 mock.module('@config', () => ({config: {SUBSCRIPTION_FEE_PERCENT: FEE_PERCENT}}))
 mock.module('@infra/logger.js', () => ({
   logger: {info: () => {}, error: () => {}, debug: () => {}, warn: () => {}},
 }))
-mock.module('../models/user.js', () => ({getUserOrThrow: async (id: number) => ({id})}))
-mock.module('../models/subscription-payment.js', () => ({
+mock.module('@modules/users/repository.js', () => ({
+  ...realUsers,
+  getUserOrThrow: async (id: number) => ({id}),
+}))
+mock.module('@modules/subscriptions/payment-repository.js', () => ({
+  ...realPayments,
   recordPayoutInvoice: async (_id: string, hash: string) => {
     persistedHash = hash
     order.push('persist')
@@ -39,6 +47,10 @@ mock.module('../models/subscription-payment.js', () => ({
     order.push('persist-fee')
   },
 }))
+
+afterAll(() => {
+  mock.restore()
+})
 mock.module('./lnbits-user-wallet.js', () => ({
   getUserWallet: async () => ({
     createInvoice: async ({sats}: {sats: number}) => {

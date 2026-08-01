@@ -1,6 +1,6 @@
+import {getSubscriptionById, updateSubscription} from '@modules/subscriptions/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
-import {getSubscriptionById, updateSubscription} from '../../../models/subscriptions.js'
 import {editMessageWithSubscription} from '../../helpers/messages/subscription.js'
 
 export const toggleAutoRenewCallback = async (ctx: CallbackQueryContext<BotContext>) => {

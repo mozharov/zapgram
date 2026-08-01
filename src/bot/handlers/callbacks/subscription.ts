@@ -1,6 +1,6 @@
+import {getSubscriptionById} from '@modules/subscriptions/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
-import {getSubscriptionById} from '../../../models/subscriptions.js'
 import {editMessageWithSubscription} from '../../helpers/messages/subscription.js'
 
 export const subscriptionCallback = async (ctx: CallbackQueryContext<BotContext>) => {

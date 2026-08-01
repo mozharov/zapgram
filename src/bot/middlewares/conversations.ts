@@ -4,13 +4,13 @@ import {
   type VersionedState,
 } from '@grammyjs/conversations'
 import {parseMode} from '@infra/telegram/parse-mode.js'
-import type {BotContext, ConversationContext} from '@telegram/context.js'
-import {Composer} from 'grammy'
 import {
   createOrUpdateConversation,
   deleteConversation,
   getConversation,
-} from '../../models/conversation.js'
+} from '@modules/conversations/repository.js'
+import type {BotContext, ConversationContext} from '@telegram/context.js'
+import {Composer} from 'grammy'
 import {attachUser} from './attach-user.js'
 import {i18n} from './i18n.js'
 import {lnbitsWallet} from './lnbits-wallet.js'

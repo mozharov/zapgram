@@ -1,10 +1,10 @@
 import {config} from '@config'
-import type {BotContext} from '@telegram/context.js'
-import type {CallbackQueryContext} from 'grammy'
 import {
   getUserActiveSubscriptions,
   getUserActiveSubscriptionsCount,
-} from '../../../models/subscriptions.js'
+} from '@modules/subscriptions/repository.js'
+import type {BotContext} from '@telegram/context.js'
+import type {CallbackQueryContext} from 'grammy'
 import {buildSubscriptionsKeyboard} from '../../helpers/keyboards/subscriptions.js'
 
 export const subscriptionsCallback = async (ctx: CallbackQueryContext<BotContext>) => {

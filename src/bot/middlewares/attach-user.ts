@@ -1,9 +1,9 @@
 import {FromBotError} from '@core/errors/from-bot.js'
 import type {User} from '@infra/db/types.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
+import {getOrCreateUser} from '@modules/users/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Middleware} from 'grammy'
-import {getOrCreateUser} from '../../models/user.js'
 
 export const attachUser: Middleware<Context> = async (ctx, next) => {
   if (!ctx.from) return next()

@@ -1,5 +1,5 @@
+import {updateChat} from '@modules/chats/repository.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {updateChat} from '../../models/chat.js'
 import {waitForSats} from '../helpers/conversations/wait-for-sats.js'
 import {replyWithChat} from '../helpers/messages/chat.js'
 

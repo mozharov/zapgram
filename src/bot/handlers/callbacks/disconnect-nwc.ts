@@ -1,5 +1,5 @@
+import {updateUser} from '@modules/users/repository.js'
 import type {BotContext} from '@telegram/context.js'
-import {updateUser} from '../../../models/user.js'
 import {replyWithWallet} from '../../helpers/messages/wallet.js'
 
 export const disconnectNwcCallback = async (ctx: BotContext) => {

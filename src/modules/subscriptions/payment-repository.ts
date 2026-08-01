@@ -1,0 +1,141 @@
+import {randomUUID} from 'node:crypto'
+import type {AppDatabase} from '@infra/db/client.js'
+import {db as defaultDb} from '@infra/db/client.js'
+import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import type {NewSubscriptionPayment, SubscriptionPayment} from '@infra/db/types.js'
+import {firstOrThrow} from '@infra/db/utils.js'
+import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
+
+/**
+ * The cron ticks every 3 minutes, so this is roughly a week of retries. Deliberately generous:
+ * a payment that reaches this point has already been collected from the subscriber, so giving up
+ * early would strand the chat owner's payout. Exhausted rows are never deleted — they stop being
+ * retried and stay in the table for manual review.
+ */
+export const MAX_SETTLE_ATTEMPTS = 3360
+
+export function createSubscriptionPaymentRepository(database: AppDatabase) {
+  const settleable = lt(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS)
+
+  return {
+    async create(data: NewSubscriptionPayment) {
+      return database
+        .insert(subscriptionPaymentsTable)
+        .values({...data, id: randomUUID()})
+        .returning()
+        .then(rows => firstOrThrow(rows, 'subscription payment'))
+    },
+
+    async countSettleable() {
+      return database
+        .select({count: count()})
+        .from(subscriptionPaymentsTable)
+        .where(settleable)
+        .then(rows => rows[0]?.count ?? 0)
+    },
+
+    /** Payments that ran out of settle attempts and now need a human to look at them. */
+    async countExhausted() {
+      return database
+        .select({count: count()})
+        .from(subscriptionPaymentsTable)
+        .where(gte(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS))
+        .then(rows => rows[0]?.count ?? 0)
+    },
+
+    async getSettleable(limit?: number, offset?: number) {
+      return database.query.subscriptionPaymentsTable.findMany({
+        limit,
+        offset,
+        where: settleable,
+        orderBy: desc(subscriptionPaymentsTable.id),
+      })
+    },
+
+    /** Must be persisted before the payout invoice is paid — see distributeSubscriptionPaymentOnce. */
+    async recordPayoutInvoice(
+      id: SubscriptionPayment['id'],
+      payoutHash: NonNullable<SubscriptionPayment['payoutHash']>,
+    ) {
+      await database
+        .update(subscriptionPaymentsTable)
+        .set({payoutHash})
+        .where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    /** Same ordering requirement as recordPayoutInvoice, for the fee-collection transfer. */
+    async recordFeePayoutInvoice(
+      id: SubscriptionPayment['id'],
+      feePayoutHash: NonNullable<SubscriptionPayment['feePayoutHash']>,
+    ) {
+      await database
+        .update(subscriptionPaymentsTable)
+        .set({feePayoutHash})
+        .where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    /**
+     * An in-flight payment for this subscription, if any. Auto-renewal checks this before charging
+     * the subscriber again: an existing row means a previous attempt is still owned by the settle cron.
+     */
+    async getPendingForSubscription(
+      userId: SubscriptionPayment['userId'],
+      chatId: SubscriptionPayment['chatId'],
+    ) {
+      return database.query.subscriptionPaymentsTable.findFirst({
+        where: and(
+          eq(subscriptionPaymentsTable.userId, userId),
+          eq(subscriptionPaymentsTable.chatId, chatId),
+        ),
+      })
+    },
+
+    async recordSettleAttempt(id: SubscriptionPayment['id']) {
+      await database
+        .update(subscriptionPaymentsTable)
+        .set({settleAttempts: sql`${subscriptionPaymentsTable.settleAttempts} + 1`})
+        .where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    async delete(id: SubscriptionPayment['id']) {
+      await database.delete(subscriptionPaymentsTable).where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    async findById(id: SubscriptionPayment['id']) {
+      return database.query.subscriptionPaymentsTable.findFirst({
+        where: eq(subscriptionPaymentsTable.id, id),
+      })
+    },
+  }
+}
+
+export type SubscriptionPaymentRepository = ReturnType<typeof createSubscriptionPaymentRepository>
+
+/** Legacy singleton — removed in step 11. */
+export const subscriptionPaymentsRepository = createSubscriptionPaymentRepository(defaultDb)
+
+export const createSubscriptionPayment = (data: NewSubscriptionPayment) =>
+  subscriptionPaymentsRepository.create(data)
+export const countSubscriptionPayments = () => subscriptionPaymentsRepository.countSettleable()
+export const countExhaustedSubscriptionPayments = () =>
+  subscriptionPaymentsRepository.countExhausted()
+export const getSubscriptionPayments = (limit?: number, offset?: number) =>
+  subscriptionPaymentsRepository.getSettleable(limit, offset)
+export const recordPayoutInvoice = (
+  id: SubscriptionPayment['id'],
+  payoutHash: NonNullable<SubscriptionPayment['payoutHash']>,
+) => subscriptionPaymentsRepository.recordPayoutInvoice(id, payoutHash)
+export const recordFeePayoutInvoice = (
+  id: SubscriptionPayment['id'],
+  feePayoutHash: NonNullable<SubscriptionPayment['feePayoutHash']>,
+) => subscriptionPaymentsRepository.recordFeePayoutInvoice(id, feePayoutHash)
+export const getPendingPaymentForSubscription = (
+  userId: SubscriptionPayment['userId'],
+  chatId: SubscriptionPayment['chatId'],
+) => subscriptionPaymentsRepository.getPendingForSubscription(userId, chatId)
+export const recordSettleAttempt = (id: SubscriptionPayment['id']) =>
+  subscriptionPaymentsRepository.recordSettleAttempt(id)
+export const deleteSubscriptionPayment = (id: SubscriptionPayment['id']) =>
+  subscriptionPaymentsRepository.delete(id)
+export const getSubscriptionPayment = (id: SubscriptionPayment['id']) =>
+  subscriptionPaymentsRepository.findById(id)

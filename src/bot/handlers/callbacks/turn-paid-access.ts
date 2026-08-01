@@ -1,6 +1,6 @@
+import {getAccessibleChat, updateChat} from '@modules/chats/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
-import {getAccessibleChat, updateChat} from '../../../models/chat.js'
 import {editMessageWithChat} from '../../helpers/messages/chat.js'
 
 export const turnPaidAccessCallback = async (ctx: CallbackQueryContext<BotContext>) => {

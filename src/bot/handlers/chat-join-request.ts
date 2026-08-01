@@ -1,12 +1,12 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {Chat} from '@infra/db/types.js'
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {getChat} from '@modules/chats/repository.js'
+import {createSubscriptionPayment} from '@modules/subscriptions/payment-repository.js'
+import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {ChatTypeContext} from 'grammy'
 import type {ChatJoinRequest} from 'grammy/types'
-import {getChat} from '../../models/chat.js'
-import {createSubscriptionPayment} from '../../models/subscription-payment.js'
-import {getSubscriptionByUserAndChat} from '../../models/subscriptions.js'
 import {buildSubscriptionPaymentKeyboard} from '../helpers/keyboards/subscription-payment.js'
 
 type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {

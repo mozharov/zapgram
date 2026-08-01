@@ -1,11 +1,11 @@
 import {logger} from '@infra/logger.js'
-import {CronJob} from 'cron'
-import {HTTPError} from 'got'
 import {
   countPendingInvoices,
   deletePendingInvoice,
   getPendingInvoices,
-} from '../../models/pending-invoice.js'
+} from '@modules/invoices/repository.js'
+import {CronJob} from 'cron'
+import {HTTPError} from 'got'
 import {getUserWallet} from '../../services/lnbits-user-wallet.js'
 import {notifyInvoicePaid} from '../../services/notify-invoice-paid.js'
 

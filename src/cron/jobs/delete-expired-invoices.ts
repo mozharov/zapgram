@@ -1,6 +1,6 @@
 import {logger} from '@infra/logger.js'
+import {deleteExpiredInvoices as deleteExpiredInvoicesFromDB} from '@modules/invoices/repository.js'
 import {CronJob} from 'cron'
-import {deleteExpiredInvoices as deleteExpiredInvoicesFromDB} from '../../models/pending-invoice.js'
 
 export const deleteExpiredInvoicesJob = CronJob.from({
   cronTime: '0 */10 * * * *',
