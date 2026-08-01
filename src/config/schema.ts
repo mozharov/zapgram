@@ -5,6 +5,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().default(8443),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   BOT_TOKEN: z.string().min(1),
+  BOT_API_ROOT: z.string().optional(), // local Bot API server; tests point it at a fake
   BOT_WEBHOOK_SECRET: z.string().min(1),
   BOT_ID: z.coerce.number().optional(),
   BOT_NAME: z.string().optional(),

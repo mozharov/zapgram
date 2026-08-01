@@ -65,7 +65,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const masterWallet = createMasterWallet(config)
   await masterWallet.checkStatus()
 
-  const bot = createBot<BotContext>(config.BOT_TOKEN, config.botInfo)
+  const bot = createBot<BotContext>(
+    config.BOT_TOKEN,
+    config.botInfo,
+    config.BOT_API_ROOT ? {apiRoot: config.BOT_API_ROOT} : undefined,
+  )
   const notifier = createTelegramNotifier(bot.api, log)
 
   const users = createUserRepository(db)
