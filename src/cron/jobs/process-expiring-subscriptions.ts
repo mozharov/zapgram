@@ -1,3 +1,4 @@
+import {computeSubscriptionEndsAt} from '@core/subscriptions/policy.js'
 import {CronJob} from 'cron'
 import {InlineKeyboard} from 'grammy'
 import {InputFile} from 'grammy/types'
@@ -7,7 +8,6 @@ import {translate} from '../../bot/lib/i18n.js'
 import type {Chat, Subscription, SubscriptionPayment, User} from '../../lib/database/types.js'
 import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
 import {logger} from '../../lib/logger.js'
-import {computeSubscriptionEndsAt} from '../../lib/subscriptions/policy.js'
 import {getChatOrThrow} from '../../models/chat.js'
 import {grantSubscriptionAccess} from '../../models/subscription-access.js'
 import {

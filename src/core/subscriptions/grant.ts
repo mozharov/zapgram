@@ -1,4 +1,4 @@
-import type {Subscription, SubscriptionPayment} from '../database/types.js'
+import type {Subscription, SubscriptionPayment} from '../../lib/database/types.js'
 import {computeSubscriptionEndsAt} from './policy.js'
 
 export type GrantSubscriptionAccessDeps = {

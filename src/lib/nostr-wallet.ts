@@ -1,10 +1,11 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
+import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
+import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {Nip47Error, Nip47ResponseValidationError, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
-import {InsufficientFundsError} from '../bot/errors/insufficient-funds.js'
-import {InvoiceAlreadyPaidError} from '../bot/errors/invoice-already-paid.js'
-import {NoNWCAnswerError} from '../bot/errors/no-nwc-answer.js'
-import {NWCPaymentFailedError} from '../bot/errors/nwc-payment-failed.js'
-import {NWCTimeoutError} from '../bot/errors/nwc-timeout.js'
-import {buildInvoiceMemo} from '../helpers/memo.js'
+import {config} from '../config.js'
 import {logger} from './logger.js'
 
 export class NostrWallet {
@@ -27,7 +28,7 @@ export class NostrWallet {
 
   // expiry is in seconds. Default is 1 day.
   public async createInvoice(msats: number, memo = '', expiry = 60 * 60 * 24 * 1) {
-    const description = buildInvoiceMemo(memo)
+    const description = buildInvoiceMemo(memo, config.memoFooter)
     return withTimeout(this.client.makeInvoice({amount: msats, description, expiry}))
   }
 

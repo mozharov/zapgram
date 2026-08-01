@@ -1,5 +1,5 @@
 import {beforeEach, describe, expect, test} from 'bun:test'
-import type {Subscription, SubscriptionPayment} from '../database/types.js'
+import type {Subscription, SubscriptionPayment} from '../../lib/database/types.js'
 import {type GrantSubscriptionAccessDeps, grantSubscriptionAccessIfNeeded} from './grant.js'
 import {ONE_MONTH_IN_MS} from './policy.js'
 

@@ -1,6 +1,7 @@
+import {AppError} from '@core/errors/app-error.js'
+import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import type {ErrorHandler} from 'grammy'
 import type {BotContext} from '../context.js'
-import {ExposedError} from '../errors/exposed-error.js'
 import {replyWithWallet} from '../helpers/messages/wallet.js'
 import {replyWithTempMessage} from '../helpers/temp-message.js'
 
@@ -10,8 +11,8 @@ export const errorHandler: ErrorHandler = async err => {
   ctx.log.error({error}, 'Bot error')
 
   const errorResponse =
-    error instanceof ExposedError
-      ? ctx.t(error.translationKey, error.translationParams)
+    error instanceof AppError
+      ? ctx.t(errorTranslationKey[error.code], error.params)
       : ctx.t('error.unknown')
 
   if (ctx.chat?.type === 'channel') return

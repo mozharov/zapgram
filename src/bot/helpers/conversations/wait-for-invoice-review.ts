@@ -1,6 +1,6 @@
+import {msatsToSats} from '@core/money/sats.js'
 import type {Invoice} from '@getalby/lightning-tools'
 import {InlineKeyboard} from 'grammy'
-import {msatsToSats} from '../../../lib/utils/sats.js'
 import {getPendingInvoiceBy} from '../../../models/pending-invoice.js'
 import type {BotConversation, ConversationContext} from '../../context.js'
 import {removeInlineKeyboard} from '../keyboard.js'

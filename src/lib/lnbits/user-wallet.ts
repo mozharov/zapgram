@@ -1,7 +1,8 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
-import {InsufficientFundsError} from '../../bot/errors/insufficient-funds.js'
-import {InvoiceAlreadyPaidError} from '../../bot/errors/invoice-already-paid.js'
-import {buildInvoiceMemo} from '../../helpers/memo.js'
+import {config} from '../../config.js'
 import {logger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
@@ -34,7 +35,7 @@ export class UserWallet extends LNBitsAPI {
         amount: sats,
         unit: 'sat',
         expiry,
-        memo: buildInvoiceMemo(memo),
+        memo: buildInvoiceMemo(memo, config.memoFooter),
       }),
     })
   }

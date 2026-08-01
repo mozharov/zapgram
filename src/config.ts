@@ -3,7 +3,7 @@ import type {UserFromGetMe} from 'grammy/types'
 import {z} from 'zod'
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production']).default('production'),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
   PORT: z.coerce.number().default(8443),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   BOT_TOKEN: z.string().min(1),

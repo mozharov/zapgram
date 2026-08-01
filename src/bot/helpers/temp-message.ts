@@ -1,5 +1,5 @@
+import {sleep} from '@core/utils/sleep.js'
 import type {Context} from 'grammy'
-import {sleep} from '../../lib/utils/sleep.js'
 
 const defaultDelayMs = 60000
 

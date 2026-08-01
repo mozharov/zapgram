@@ -1,11 +1,12 @@
+import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
+import {sanitizeMemo} from '@core/lightning/memo.js'
+import {satsToMsats} from '@core/money/sats.js'
 import {InputFile} from 'grammy'
 import QRCode from 'qrcode'
-import {sanitizeMemo} from '../../helpers/memo.js'
-import {decodeInvoice} from '../../lib/decoded-invoice.js'
-import {satsToMsats} from '../../lib/utils/sats.js'
+import {config} from '../../config.js'
 import {createPendingInvoice} from '../../models/pending-invoice.js'
 import type {BotContext, BotConversation, ConversationContext} from '../context.js'
-import {NWCConnectionError} from '../errors/nwc-connection.js'
 import {waitForMemo} from '../helpers/conversations/wait-for-memo.js'
 import {waitForSats} from '../helpers/conversations/wait-for-sats.js'
 import {waitForWallet} from '../helpers/conversations/wait-for-wallet.js'
@@ -53,7 +54,7 @@ async function replyWithQRCode(ctx: BotContext, paymentRequest: string): Promise
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
   const inputFile = new InputFile(buffer)
 
-  const memo = sanitizeMemo(invoice.description ?? '')
+  const memo = sanitizeMemo(invoice.description ?? '', config.memoFooter)
   await ctx.replyWithPhoto(inputFile, {
     caption: ctx.t('creating-invoice.created', {
       amount: invoice.satoshi,

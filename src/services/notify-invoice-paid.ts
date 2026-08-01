@@ -1,10 +1,11 @@
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
+import {sanitizeMemo} from '@core/lightning/memo.js'
+import {msatsToSats} from '@core/money/sats.js'
 import {bot} from '../bot/bot.js'
 import {translate} from '../bot/lib/i18n.js'
-import {sanitizeMemo} from '../helpers/memo.js'
+import {config} from '../config.js'
 import type {PendingInvoice, User} from '../lib/database/types.js'
-import {decodeInvoice} from '../lib/decoded-invoice.js'
 import {logger} from '../lib/logger.js'
-import {msatsToSats} from '../lib/utils/sats.js'
 import {getUserOrThrow} from '../models/user.js'
 import {getUserWallet} from './lnbits-user-wallet.js'
 
@@ -16,7 +17,7 @@ export async function notifyInvoicePaid(
   const wallet = await getUserWallet(user.id)
 
   const invoice = decodeInvoice(paymentRequest)
-  const memo = sanitizeMemo(invoice.description ?? '')
+  const memo = sanitizeMemo(invoice.description ?? '', config.memoFooter)
   await bot.api
     .sendMessage(
       user.id,

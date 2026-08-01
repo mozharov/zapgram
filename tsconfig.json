@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": ".",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
@@ -18,7 +18,18 @@
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,
     "allowJs": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@core/*": ["./src/core/*"],
+      "@infra/*": ["./src/infra/*"],
+      "@modules/*": ["./src/modules/*"],
+      "@telegram/*": ["./src/telegram/*"],
+      "@http/*": ["./src/http/*"],
+      "@jobs/*": ["./src/jobs/*"],
+      "@bootstrap/*": ["./src/bootstrap/*"],
+      "@config/*": ["./src/config/*"],
+      "@test/*": ["./test/*"]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }
