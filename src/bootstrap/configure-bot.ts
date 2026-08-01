@@ -1,7 +1,6 @@
 import type {AppConfig} from '@config'
 import type {AppLogger} from '@infra/logger.js'
 import {setWebhook} from '@infra/telegram/webhook.js'
-import {tunnelUrl} from '@infra/tunnel.js'
 import type {Bot, Context} from 'grammy'
 import type {ChatAdministratorRights} from 'grammy/types'
 
@@ -81,8 +80,7 @@ export async function configureBot(deps: {
     {scope: {type: 'all_group_chats'}, language_code: 'ru'},
   )
 
-  if (config.NGROK_TOKEN && tunnelUrl) await setWebhook(bot, tunnelUrl, config.BOT_WEBHOOK_SECRET)
-  else await setWebhook(bot, config.HOST, config.BOT_WEBHOOK_SECRET)
+  await setWebhook(bot, config.HOST, config.BOT_WEBHOOK_SECRET)
 
   const rights: ChatAdministratorRights = {
     can_delete_messages: true,

@@ -9,7 +9,6 @@ export const envSchema = z.object({
   BOT_ID: z.coerce.number().optional(),
   BOT_NAME: z.string().optional(),
   BOT_USERNAME: z.string().optional(),
-  NGROK_TOKEN: z.string().optional(),
   DB_URL: z.string().min(1),
   DB_MIGRATE: z.stringbool().default(true),
   LNBITS_URL: z.string().min(1),

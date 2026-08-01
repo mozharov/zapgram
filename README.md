@@ -15,7 +15,7 @@ bun install
 # typecheck + lint + tests
 bun run ci
 
-# local bot (needs .env; NGROK_TOKEN for webhook tunnel)
+# local bot (needs .env; HOST must be a public HTTPS URL)
 bun run start:dev
 ```
 

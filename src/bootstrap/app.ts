@@ -1,8 +1,7 @@
 import {configureBot} from '@bootstrap/configure-bot.js'
 import type {AppContainer} from '@bootstrap/container.js'
 import {startServer} from '@http/app.js'
-import {deleteWebhook, setWebhook} from '@infra/telegram/webhook.js'
-import {startTunnel, stopTunnel} from '@infra/tunnel.js'
+import {deleteWebhook} from '@infra/telegram/webhook.js'
 import {createScheduler, defaultJobDefinitions, type Scheduler} from '@jobs/scheduler.js'
 import {registerHandlers} from '@telegram/composition.js'
 
@@ -36,10 +35,6 @@ export function createApp(container: AppContainer): RunningApp {
           bot
             .init()
             .then(async () => {
-              if (config.NGROK_TOKEN) {
-                const url = await startTunnel(config, log)
-                await setWebhook(bot as never, url, config.BOT_WEBHOOK_SECRET)
-              }
               if (config.CONFIGURE_BOT) {
                 await configureBot({bot: bot as never, config, log})
               }
@@ -60,7 +55,6 @@ export function createApp(container: AppContainer): RunningApp {
       await scheduler.stop({drainTimeoutMs: 10_000})
 
       await deleteWebhook(bot as never)
-      if (config.NGROK_TOKEN) await stopTunnel(log)
 
       if (server) {
         await server.stop()
