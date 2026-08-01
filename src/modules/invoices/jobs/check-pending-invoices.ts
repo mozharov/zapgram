@@ -1,4 +1,5 @@
 import {logger} from '@infra/logger.js'
+import {runBatch} from '@jobs/run-batch.js'
 import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
 import {
   countPendingInvoices,
@@ -6,31 +7,16 @@ import {
   getPendingInvoices,
 } from '@modules/invoices/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
-import {CronJob} from 'cron'
 import {HTTPError} from 'got'
 
-export const checkPendingInvoicesJob = CronJob.from({
-  cronTime: '0 */2 * * * *',
-  onTick: checkPendingInvoices,
-  runOnInit: false,
-  waitForCompletion: true,
-})
-
-const BATCH_SIZE = 10
-async function checkPendingInvoices() {
+export async function checkPendingInvoices(): Promise<void> {
   try {
-    const total = await countPendingInvoices()
-    logger.info(`Found ${total} pending invoices.`)
-    if (total === 0) return
-
-    let processed = 0
-    for (let offset = 0; offset < total; offset += BATCH_SIZE) {
-      const invoices = await getPendingInvoices(BATCH_SIZE, offset)
-      if (invoices.length === 0) break
-
-      logger.info(`Processing batch of ${invoices.length} invoices.`)
-
-      for (const invoice of invoices) {
+    await runBatch({
+      name: 'pending invoices',
+      log: logger,
+      count: () => countPendingInvoices(),
+      fetch: (limit, offset) => getPendingInvoices(limit, offset),
+      process: async invoice => {
         try {
           const wallet = await getUserWallet(invoice.userId)
           const payment = await wallet.lookupPayment(invoice.paymentHash)
@@ -42,13 +28,13 @@ async function checkPendingInvoices() {
               },
             )
             await deletePendingInvoice(invoice.paymentRequest)
+            return 'done'
           }
+          return 'keep'
         } catch (error) {
           logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
 
-          // Handle specific error types
           if (error instanceof HTTPError && error.response.statusCode === 404) {
-            // Invoice not found on LNBits, likely expired or invalid
             logger.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
             await deletePendingInvoice(invoice.paymentRequest).catch((deleteError: unknown) => {
               logger.error(
@@ -56,20 +42,17 @@ async function checkPendingInvoices() {
                 `Failed to delete not-found invoice ${invoice.paymentRequest}`,
               )
             })
-          } else if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
-            // Timeout connecting to LNBits, keep the invoice for retry
-            logger.warn(`Timeout checking invoice ${invoice.paymentHash}. Will retry later.`)
-          } else {
-            // Other unexpected error
-            logger.error({error}, `Unhandled error processing invoice ${invoice.paymentHash}.`)
+            return 'done'
           }
+          if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
+            logger.warn(`Timeout checking invoice ${invoice.paymentHash}. Will retry later.`)
+            return 'keep'
+          }
+          logger.error({error}, `Unhandled error processing invoice ${invoice.paymentHash}.`)
+          return 'keep'
         }
-      }
-
-      processed += invoices.length
-    }
-
-    logger.info(`Finished processing ${processed} invoices.`)
+      },
+    })
   } catch (error) {
     logger.error({error}, 'Error in checkPendingInvoices job.')
   }

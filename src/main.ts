@@ -7,10 +7,10 @@ import {logger} from '@infra/logger.js'
 import {bot} from '@infra/telegram/bot.js'
 import {deleteWebhook, setWebhook} from '@infra/telegram/webhook.js'
 import {startTunnel, stopTunnel} from '@infra/tunnel.js'
+import {startCronJobs, stopCronJobs} from '@jobs/scheduler.js'
 import {registerHandlers} from '@telegram/composition.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Bot} from 'grammy'
-import {startCronJobs, stopCronJobs} from './cron/cron.js'
 
 const config = (() => {
   try {

@@ -1,5 +1,6 @@
 import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {logger} from '@infra/logger.js'
+import {runBatch} from '@jobs/run-batch.js'
 import {
   countExhaustedSubscriptionPayments,
   countSubscriptionPayments,
@@ -7,17 +8,8 @@ import {
   getSubscriptionPayments,
 } from '@modules/subscriptions/payment-repository.js'
 import {completeSubscriptionPayment} from '@modules/subscriptions/settle.js'
-import {CronJob} from 'cron'
 
-export const checkSubscriptionPaymentsJob = CronJob.from({
-  cronTime: '0 */3 * * * *',
-  onTick: checkSubscriptionPayments,
-  runOnInit: false,
-  waitForCompletion: true,
-})
-
-const BATCH_SIZE = 10
-async function checkSubscriptionPayments() {
+export async function checkSubscriptionPayments(): Promise<void> {
   try {
     const exhausted = await countExhaustedSubscriptionPayments()
     if (exhausted > 0) {
@@ -27,47 +19,32 @@ async function checkSubscriptionPayments() {
       )
     }
 
-    const total = await countSubscriptionPayments()
-    logger.info(`Found ${total} pending subcription payments.`)
-    if (total === 0) return
-
-    let processed = 0
-    // Settled and expired payments are deleted while we iterate, which shifts the remaining rows
-    // left. Advancing `offset` by a fixed BATCH_SIZE would therefore skip exactly as many payments
-    // as this batch removed, so it only moves past the rows that survived.
-    let offset = 0
-    while (true) {
-      const payments = await getSubscriptionPayments(BATCH_SIZE, offset)
-      if (payments.length === 0) break
-
-      logger.info(`Processing batch of ${payments.length} subscription payments.`)
-
-      let kept = 0
-      for (const payment of payments) {
+    await runBatch({
+      name: 'pending subscription payments',
+      log: logger,
+      count: () => countSubscriptionPayments(),
+      fetch: (limit, offset) => getSubscriptionPayments(limit, offset),
+      process: async payment => {
         try {
           const data = await lnbitsMasterWallet.lookupPayment(payment.paymentHash)
           if (data.paid) {
-            if ((await completeSubscriptionPayment(payment)) === 'kept') kept++
-          } else if (data.details.expiry && data.details.expiry < new Date()) {
+            return (await completeSubscriptionPayment(payment)) === 'kept' ? 'keep' : 'done'
+          }
+          if (data.details.expiry && data.details.expiry < new Date()) {
             logger.info({paymentHash: payment.paymentHash}, 'Subscription payment expired.')
             await deleteSubscriptionPayment(payment.id)
-          } else {
-            kept++
+            return 'done'
           }
+          return 'keep'
         } catch (error) {
           logger.error(
             {error, paymentHash: payment.paymentHash},
             'Error processing subscription payment.',
           )
-          kept++
+          return 'keep'
         }
-      }
-
-      processed += payments.length
-      offset += kept
-    }
-
-    logger.info(`Finished processing ${processed} subscription payments.`)
+      },
+    })
   } catch (error) {
     logger.error({error}, 'Error in checkSubscriptionPayments job.')
   }

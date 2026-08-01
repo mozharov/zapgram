@@ -1,5 +1,6 @@
 import type {Subscription} from '@infra/db/types.js'
 import {logger} from '@infra/logger.js'
+import {runBatch} from '@jobs/run-batch.js'
 import {getChatOrThrow} from '@modules/chats/repository.js'
 import {renewalService} from '@modules/subscriptions/renewal.js'
 import {
@@ -8,55 +9,25 @@ import {
   updateSubscription,
 } from '@modules/subscriptions/repository.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
-import {CronJob} from 'cron'
 
-const BATCH_SIZE = 10
 const MS_BEFORE_EXPIRATION = 24 * 60 * 60 * 1000 // 24 hours
 
-export const processExpiringSubscriptionsJob = CronJob.from({
-  cronTime: '0 30 * * * *',
-  onTick: processExpiringSubscriptions,
-  runOnInit: true,
-  waitForCompletion: true,
-})
-
-async function processExpiringSubscriptions() {
+export async function processExpiringSubscriptions(): Promise<void> {
   try {
     const now = new Date()
     const expiryThreshold = new Date(now.getTime() + MS_BEFORE_EXPIRATION)
-    const total = await countSubscriptionsExpiringWithin(expiryThreshold, now)
-    logger.info(`Found ${total} subscriptions expiring within 24 hours`)
-    if (total === 0) return
 
-    let processed = 0
-    for (let offset = 0; offset < total; offset += BATCH_SIZE) {
-      const subscriptions = await getSubscriptionsExpiringWithin(
-        expiryThreshold,
-        now,
-        BATCH_SIZE,
-        offset,
-      )
-      if (subscriptions.length === 0) break
-
-      logger.info(
-        `Processing batch of ${subscriptions.length} subscriptions expiring within 24 hours`,
-      )
-
-      for (const subscription of subscriptions) {
-        try {
-          await processOne(subscription)
-        } catch (error) {
-          logger.error(
-            {error, subscriptionId: subscription.id},
-            'Error processing expiring subscription',
-          )
-        }
-      }
-
-      processed += subscriptions.length
-    }
-
-    logger.info(`Finished processing ${processed} expiring subscriptions`)
+    await runBatch({
+      name: 'subscriptions expiring within 24 hours',
+      log: logger,
+      count: () => countSubscriptionsExpiringWithin(expiryThreshold, now),
+      fetch: (limit, offset) => getSubscriptionsExpiringWithin(expiryThreshold, now, limit, offset),
+      process: async subscription => {
+        await processOne(subscription)
+        // notificationSent / endsAt changes remove the row from the expiring window query
+        return 'done'
+      },
+    })
   } catch (error) {
     logger.error({error}, 'Error in processExpiringSubscriptions job')
   }
