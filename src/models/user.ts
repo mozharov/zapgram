@@ -1,7 +1,7 @@
+import {db} from '@infra/db/client.js'
+import {usersTable} from '@infra/db/schema.js'
+import type {NewUser, User} from '@infra/db/types.js'
 import {and, eq} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {usersTable} from '../lib/database/schema.js'
-import type {NewUser, User} from '../lib/database/types.js'
 
 export async function getOrCreateUser(data: NewUser) {
   return (await getUserBy(data)) ?? (await createOrUpdateUser(data))

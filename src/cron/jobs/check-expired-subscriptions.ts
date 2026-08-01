@@ -1,6 +1,6 @@
+import {logger} from '@infra/logger.js'
 import {CronJob} from 'cron'
 import {bot} from '../../bot/bot.js'
-import {logger} from '../../lib/logger.js'
 import {
   countExpiredSubscriptions,
   deleteSubscription,

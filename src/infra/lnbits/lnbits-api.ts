@@ -1,9 +1,8 @@
 import Bottleneck from 'bottleneck'
 import got, {HTTPError, type OptionsOfJSONResponseBody} from 'got'
 import type {ZodType} from 'zod'
-import {config} from '../../config.js'
 import {logger} from '../logger.js'
-import {validateData} from '../utils/validator.js'
+import {validateData} from '../validate.js'
 
 const limiter = new Bottleneck({
   reservoir: 30,
@@ -14,10 +13,11 @@ const limiter = new Bottleneck({
 })
 
 export class LNBitsAPI {
-  protected readonly url = config.LNBITS_URL
+  protected readonly url: string
   protected readonly headers: Record<string, string>
 
-  constructor({adminKey}: LNBitsAPIConfig) {
+  constructor({baseUrl, adminKey}: LNBitsAPIConfig) {
+    this.url = baseUrl
     this.headers = {
       'Content-type': 'application/json',
       Accept: 'application/json',
@@ -63,5 +63,6 @@ export class LNBitsAPI {
 }
 
 interface LNBitsAPIConfig {
+  baseUrl: string
   adminKey?: string
 }

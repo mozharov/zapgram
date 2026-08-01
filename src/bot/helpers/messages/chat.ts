@@ -1,4 +1,4 @@
-import type {Chat} from '../../../lib/database/types.js'
+import type {Chat} from '@infra/db/types.js'
 import type {BotContext} from '../../context.js'
 import {buildChatKeyboard} from '../keyboards/chat.js'
 

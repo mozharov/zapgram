@@ -1,7 +1,7 @@
+import {db} from '@infra/db/client.js'
+import {chatsTable, usersTable} from '@infra/db/schema.js'
+import type {Chat, NewChat} from '@infra/db/types.js'
 import {and, count, desc, eq, isNull, ne} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {chatsTable, usersTable} from '../lib/database/schema.js'
-import type {Chat, NewChat} from '../lib/database/types.js'
 
 export async function createOrUpdateChat(data: NewChat) {
   return db

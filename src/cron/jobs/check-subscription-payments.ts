@@ -1,6 +1,6 @@
+import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {logger} from '@infra/logger.js'
 import {CronJob} from 'cron'
-import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
-import {logger} from '../../lib/logger.js'
 import {
   countExhaustedSubscriptionPayments,
   countSubscriptionPayments,

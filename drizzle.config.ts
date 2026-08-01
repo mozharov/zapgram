@@ -3,7 +3,7 @@ import {config} from './src/config'
 
 export default defineConfig({
   out: './drizzle',
-  schema: './src/lib/database/schema.ts',
+  schema: './src/infra/db/schema.ts',
   dialect: 'sqlite',
   dbCredentials: {url: config.DB_URL},
 })

@@ -1,5 +1,5 @@
+import type {SubscriptionPayment} from '@infra/db/types.js'
 import {InlineKeyboard} from 'grammy'
-import type {SubscriptionPayment} from '../../../lib/database/types.js'
 import type {BotContext} from '../../context.js'
 
 export function buildSubscriptionPaymentKeyboard(

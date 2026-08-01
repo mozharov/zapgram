@@ -1,7 +1,7 @@
+import {config} from '@config'
 import {autoRetry} from '@grammyjs/auto-retry'
 import {createConversation} from '@grammyjs/conversations'
 import {Bot} from 'grammy'
-import {config} from '../config.js'
 import type {BotContext} from './context.js'
 import {changingPrice} from './conversations/changing-price.js'
 import {connectingNWC} from './conversations/connecting-nwc.js'

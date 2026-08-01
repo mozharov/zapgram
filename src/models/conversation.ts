@@ -1,7 +1,7 @@
+import {db} from '@infra/db/client.js'
+import {conversationsTable} from '@infra/db/schema.js'
+import type {Conversation, NewConversation} from '@infra/db/types.js'
 import {eq} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {conversationsTable} from '../lib/database/schema.js'
-import type {Conversation, NewConversation} from '../lib/database/types.js'
 
 export async function deleteConversation(key: Conversation['key']) {
   await db.delete(conversationsTable).where(eq(conversationsTable.key, key))

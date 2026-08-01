@@ -1,3 +1,4 @@
+import {config} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
@@ -5,8 +6,7 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {Nip47Error, Nip47ResponseValidationError, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
-import {config} from '../config.js'
-import {logger} from './logger.js'
+import {logger} from '../logger.js'
 
 export class NostrWallet {
   private readonly client: NWCClient

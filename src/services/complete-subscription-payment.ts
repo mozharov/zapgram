@@ -1,7 +1,7 @@
+import type {SubscriptionPayment} from '@infra/db/types.js'
+import {logger} from '@infra/logger.js'
 import {bot} from '../bot/bot.js'
 import {translate} from '../bot/lib/i18n.js'
-import type {SubscriptionPayment} from '../lib/database/types.js'
-import {logger} from '../lib/logger.js'
 import {getChatOrThrow} from '../models/chat.js'
 import {grantSubscriptionAccess} from '../models/subscription-access.js'
 import {

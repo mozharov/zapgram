@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto'
+import {db} from '@infra/db/client.js'
+import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import type {NewSubscriptionPayment, SubscriptionPayment} from '@infra/db/types.js'
 import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {subscriptionPaymentsTable} from '../lib/database/schema.js'
-import type {NewSubscriptionPayment, SubscriptionPayment} from '../lib/database/types.js'
 
 /**
  * The cron ticks every 3 minutes, so this is roughly a week of retries. Deliberately generous:

@@ -27,6 +27,7 @@
       "@http/*": ["./src/http/*"],
       "@jobs/*": ["./src/jobs/*"],
       "@bootstrap/*": ["./src/bootstrap/*"],
+      "@config": ["./src/config/index.ts"],
       "@config/*": ["./src/config/*"],
       "@test/*": ["./test/*"]
     }

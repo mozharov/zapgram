@@ -1,9 +1,9 @@
+import {config} from '@config'
+import {logger} from '@infra/logger.js'
+import {tunnelUrl} from '@infra/tunnel.js'
 import type {ChatAdministratorRights} from 'grammy/types'
 import {bot} from '../bot/bot.js'
 import {setWebhook} from '../bot/webhook.js'
-import {config} from '../config.js'
-import {logger} from '../lib/logger.js'
-import {tunnelUrl} from '../lib/tunnel.js'
 
 export async function configureBot() {
   logger.info('Setting bot commands, webhook and default admin rights...')

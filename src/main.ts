@@ -1,13 +1,22 @@
+import {createConfig} from '@config'
+import {migrateDatabase} from '@infra/db/client.js'
+import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {logger} from '@infra/logger.js'
+import {startTunnel, stopTunnel} from '@infra/tunnel.js'
 import {startServer} from './app.js'
 import {bot} from './bot/bot.js'
 import {deleteWebhook, setWebhook} from './bot/webhook.js'
-import {config} from './config.js'
 import {startCronJobs, stopCronJobs} from './cron/cron.js'
-import {migrateDatabase} from './lib/database/database.js'
-import {lnbitsMasterWallet} from './lib/lnbits/master-wallet.js'
-import {logger} from './lib/logger.js'
-import {startTunnel, stopTunnel} from './lib/tunnel.js'
 import {configureBot} from './services/bot.js'
+
+const config = (() => {
+  try {
+    return createConfig()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error)
+    process.exit(1)
+  }
+})()
 
 if (config.DB_MIGRATE) migrateDatabase()
 await lnbitsMasterWallet.checkStatus()

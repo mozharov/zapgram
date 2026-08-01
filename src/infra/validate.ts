@@ -1,11 +1,11 @@
 import type {ZodType} from 'zod'
-import {logger} from '../logger.js'
+import {logger} from './logger.js'
 
 export function validateData<T>(data: unknown, schema: ZodType<T>): T {
   try {
     return schema.parse(data)
   } catch (error) {
     logger.error({error, data}, 'Data validation failed')
-    throw new Error('Invalid data format')
+    throw new Error('Invalid data format', {cause: error})
   }
 }

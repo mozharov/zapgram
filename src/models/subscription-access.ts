@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto'
 import {grantSubscriptionAccessIfNeeded} from '@core/subscriptions/grant.js'
+import {db} from '@infra/db/client.js'
+import {subscriptionPaymentsTable, subscriptionsTable} from '@infra/db/schema.js'
+import type {SubscriptionPayment} from '@infra/db/types.js'
+import {logger} from '@infra/logger.js'
 import {and, eq} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {subscriptionPaymentsTable, subscriptionsTable} from '../lib/database/schema.js'
-import type {SubscriptionPayment} from '../lib/database/types.js'
-import {logger} from '../lib/logger.js'
 
 /**
  * Read the current subscription, create/extend it, and stamp `settledAt` in a single transaction.

@@ -1,5 +1,5 @@
+import type {Chat} from '@infra/db/types.js'
 import {InlineKeyboard} from 'grammy'
-import type {Chat} from '../../../lib/database/types.js'
 import {bot} from '../../bot.js'
 import type {BotContext} from '../../context.js'
 

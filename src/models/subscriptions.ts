@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto'
+import {db} from '@infra/db/client.js'
+import {chatsTable, subscriptionsTable} from '@infra/db/schema.js'
+import type {NewSubscription, Subscription} from '@infra/db/types.js'
 import {and, count, desc, eq, gt, lte} from 'drizzle-orm'
-import {db} from '../lib/database/database.js'
-import {chatsTable, subscriptionsTable} from '../lib/database/schema.js'
-import type {NewSubscription, Subscription} from '../lib/database/types.js'
 
 export async function createSubscription(data: NewSubscription) {
   return db

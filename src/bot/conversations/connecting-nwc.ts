@@ -1,6 +1,6 @@
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {NostrWallet} from '@infra/nostr/wallet.js'
 import {InlineKeyboard} from 'grammy'
-import {NostrWallet} from '../../lib/nostr-wallet.js'
 import {updateUser} from '../../models/user.js'
 import type {BotContext, BotConversation, ConversationContext} from '../context.js'
 import {removeInlineKeyboard} from '../helpers/keyboard.js'

@@ -1,4 +1,5 @@
-import {config} from '../../config.js'
+import type {AppConfig} from '@config'
+import {config} from '@config'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
   healthResponseSchema,
@@ -11,10 +12,22 @@ import {
 
 class MasterWallet extends LNBitsAPI {
   private readonly bearerToken?: string
+  private readonly feeCollectionInvoiceKey: string
 
-  constructor({adminKey, bearerToken}: {adminKey?: string; bearerToken?: string}) {
-    super({adminKey})
+  constructor({
+    baseUrl,
+    adminKey,
+    bearerToken,
+    feeCollectionInvoiceKey,
+  }: {
+    baseUrl: string
+    adminKey?: string
+    bearerToken?: string
+    feeCollectionInvoiceKey: string
+  }) {
+    super({baseUrl, adminKey})
     this.bearerToken = bearerToken
+    this.feeCollectionInvoiceKey = feeCollectionInvoiceKey
   }
 
   private getAuthHeaders() {
@@ -89,13 +102,22 @@ class MasterWallet extends LNBitsAPI {
       method: 'POST',
       body: JSON.stringify({out: false, amount: sats, unit: 'sat'}),
       headers: {
-        'X-Api-Key': config.LNBITS_FEE_COLLECTION_INVOICE_KEY,
+        'X-Api-Key': this.feeCollectionInvoiceKey,
       },
     })
   }
 }
 
-export const lnbitsMasterWallet = new MasterWallet({
-  adminKey: config.LNBITS_ADMIN_KEY,
-  bearerToken: config.LNBITS_BEARER_TOKEN,
-})
+export type MasterWalletInstance = MasterWallet
+
+export function createMasterWallet(cfg: AppConfig): MasterWallet {
+  return new MasterWallet({
+    baseUrl: cfg.LNBITS_URL,
+    adminKey: cfg.LNBITS_ADMIN_KEY,
+    bearerToken: cfg.LNBITS_BEARER_TOKEN,
+    feeCollectionInvoiceKey: cfg.LNBITS_FEE_COLLECTION_INVOICE_KEY,
+  })
+}
+
+/** Legacy singleton — removed in step 11 when bootstrap owns composition. */
+export const lnbitsMasterWallet = createMasterWallet(config)

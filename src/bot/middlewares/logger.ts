@@ -1,6 +1,6 @@
+import {logger as appLogger} from '@infra/logger.js'
 import type {Middleware} from 'grammy'
 import type {Update} from 'grammy/types'
-import {logger as appLogger} from '../../lib/logger.js'
 import type {BotContext} from '../context.js'
 
 export const logger: Middleware<BotContext & {update: Update & {reqId: string}}> = (ctx, next) => {

@@ -1,5 +1,5 @@
+import {config} from '@config'
 import type {CallbackQueryContext} from 'grammy'
-import {config} from '../../../config.js'
 import {
   getUserActiveSubscriptions,
   getUserActiveSubscriptionsCount,

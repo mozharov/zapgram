@@ -1,5 +1,5 @@
+import type {Chat, Subscription} from '@infra/db/types.js'
 import {InlineKeyboard} from 'grammy'
-import type {Chat, Subscription} from '../../../lib/database/types.js'
 import type {BotContext} from '../../context.js'
 
 type SubscriptionWithChat = Subscription & {chat: Chat}

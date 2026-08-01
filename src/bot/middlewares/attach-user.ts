@@ -1,7 +1,7 @@
 import {FromBotError} from '@core/errors/from-bot.js'
+import type {User} from '@infra/db/types.js'
+import {NostrWallet} from '@infra/nostr/wallet.js'
 import type {Middleware} from 'grammy'
-import type {User} from '../../lib/database/types.js'
-import {NostrWallet} from '../../lib/nostr-wallet.js'
 import {getOrCreateUser} from '../../models/user.js'
 import type {BotContext} from '../context.js'
 

@@ -1,5 +1,5 @@
+import {logger} from '@infra/logger.js'
 import {Elysia} from 'elysia'
-import {logger} from '../lib/logger.js'
 
 export const requestLogger = new Elysia({name: 'request-logger'})
   .derive({as: 'global'}, () => {

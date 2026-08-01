@@ -1,6 +1,6 @@
+import {logger} from '@infra/logger.js'
 import {CronJob} from 'cron'
 import {HTTPError} from 'got'
-import {logger} from '../../lib/logger.js'
 import {
   countPendingInvoices,
   deletePendingInvoice,

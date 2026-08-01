@@ -1,6 +1,6 @@
 import {beforeEach, describe, expect, mock, test} from 'bun:test'
+import type {SubscriptionPayment} from '@infra/db/types.js'
 import {HTTPError} from 'got'
-import type {SubscriptionPayment} from '../lib/database/types.js'
 
 /**
  * Exercises the real payout path against a fake LNbits, walking through the crash points that used
@@ -24,8 +24,8 @@ let invoiceCounter = 0
 /** Sequence of side effects, used to assert the persist-before-pay ordering. */
 let order: string[] = []
 
-mock.module('../config.js', () => ({config: {SUBSCRIPTION_FEE_PERCENT: FEE_PERCENT}}))
-mock.module('../lib/logger.js', () => ({
+mock.module('@config', () => ({config: {SUBSCRIPTION_FEE_PERCENT: FEE_PERCENT}}))
+mock.module('@infra/logger.js', () => ({
   logger: {info: () => {}, error: () => {}, debug: () => {}, warn: () => {}},
 }))
 mock.module('../models/user.js', () => ({getUserOrThrow: async (id: number) => ({id})}))
@@ -53,7 +53,7 @@ mock.module('./lnbits-user-wallet.js', () => ({
     },
   }),
 }))
-mock.module('../lib/lnbits/master-wallet.js', () => ({
+mock.module('@infra/lnbits/master-wallet.js', () => ({
   lnbitsMasterWallet: {
     lookupPayment: async (hash: string) => {
       const entry = ledger.get(hash)

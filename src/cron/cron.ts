@@ -1,4 +1,4 @@
-import {logger} from '../lib/logger.js'
+import {logger} from '@infra/logger.js'
 import {checkExpiredSubscriptionsJob} from './jobs/check-expired-subscriptions.js'
 import {checkPendingInvoicesJob} from './jobs/check-pending-invoices.js'
 import {checkSubscriptionPaymentsJob} from './jobs/check-subscription-payments.js'

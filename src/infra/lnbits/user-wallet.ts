@@ -1,8 +1,8 @@
+import {config} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
-import {config} from '../../config.js'
 import {logger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
@@ -19,8 +19,8 @@ export class UserWallet extends LNBitsAPI {
   /** Balance in millisatoshis */
   public readonly balance: number
 
-  constructor(adminKey: string, balance: number) {
-    super({adminKey})
+  constructor(adminKey: string, balance: number, baseUrl: string = config.LNBITS_URL) {
+    super({baseUrl, adminKey})
     this.balance = balance
   }
 

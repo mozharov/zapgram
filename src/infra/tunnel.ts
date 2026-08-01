@@ -1,5 +1,5 @@
+import {config} from '@config'
 import type {Listener} from '@ngrok/ngrok'
-import {config} from '../config.js'
 import {logger} from './logger.js'
 
 let tunnel: Listener | undefined

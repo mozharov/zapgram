@@ -1,5 +1,5 @@
+import {config} from '@config'
 import {InlineKeyboard} from 'grammy'
-import {config} from '../../../config.js'
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '../../../models/chat.js'
 import type {BotContext} from '../../context.js'
 import {buildChatsKeyboard} from '../../helpers/keyboards/chats.js'

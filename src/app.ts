@@ -1,6 +1,6 @@
+import {config} from '@config'
+import {logger} from '@infra/logger.js'
 import {Elysia} from 'elysia'
-import {config} from './config.js'
-import {logger} from './lib/logger.js'
 import {router} from './routes/router.js'
 
 export function createApp() {

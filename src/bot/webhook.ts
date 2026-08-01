@@ -1,4 +1,4 @@
-import {config} from '../config.js'
+import {config} from '@config'
 import {bot} from './bot.js'
 
 export async function setWebhook(url: string) {
