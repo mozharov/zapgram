@@ -43,8 +43,24 @@ export function createUserRepository(database: AppDatabase) {
       return user
     },
 
+    /**
+     * Returns the stored user, refreshing it when Telegram reports a changed profile.
+     *
+     * The refresh is load-bearing: `findByUsername` (used by `/tip @name`) reads the stored
+     * username, so a stale row makes tips fail — or, once someone else takes the old handle,
+     * routes sats to the wrong person.
+     */
     async getOrCreate(data: NewUser) {
-      return (await findById(data.id)) ?? (await createOrUpdate(data))
+      const existing = await findById(data.id)
+      if (!existing) return createOrUpdate(data)
+
+      const username = data.username?.toLowerCase()
+      const isCurrent =
+        (username === undefined || existing.username === username) &&
+        (data.firstName === undefined || existing.firstName === data.firstName) &&
+        (data.languageCode === undefined || existing.languageCode === data.languageCode)
+
+      return isCurrent ? existing : createOrUpdate(data)
     },
 
     createOrUpdate,

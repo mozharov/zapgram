@@ -36,13 +36,17 @@ export async function checkPendingInvoices(): Promise<void> {
 
           if (error instanceof HTTPError && error.response.statusCode === 404) {
             getRuntime().log.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
-            await deletePendingInvoice(invoice.paymentRequest).catch((deleteError: unknown) => {
-              getRuntime().log.error(
-                {error: deleteError},
-                `Failed to delete not-found invoice ${invoice.paymentRequest}`,
-              )
-            })
-            return 'done'
+            // Only report 'done' if the row actually went away — otherwise offset would not
+            // advance past a row that is still there and the batch would never finish.
+            return deletePendingInvoice(invoice.paymentRequest)
+              .then((): 'done' | 'keep' => 'done')
+              .catch((deleteError: unknown): 'done' | 'keep' => {
+                getRuntime().log.error(
+                  {error: deleteError},
+                  `Failed to delete not-found invoice ${invoice.paymentRequest}`,
+                )
+                return 'keep'
+              })
           }
           if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
             getRuntime().log.warn(

@@ -12,7 +12,6 @@ import {settingsCallback} from './telegram/handlers/settings-callback.js'
 import {settingsCommand} from './telegram/handlers/settings-command.js'
 import {walletCallback} from './telegram/handlers/wallet-callback.js'
 import {walletCommand} from './telegram/handlers/wallet-command.js'
-import {replyWithWallet} from './telegram/messages/wallet.js'
 
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
@@ -25,6 +24,8 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.callbackQuery(staticCallback.disconnectNwc, disconnectNwcCallback)
   privateChat.callbackQuery(staticCallback.connectNwc, connectNwcCallback)
   privateChat.callbackQuery(staticCallback.toggleNwcTips, nwcTipsCallback)
-  privateChat.callbackQuery(staticCallback.cancel, replyWithWallet)
+  // `cancel` is deliberately NOT registered here: it must run after every module's
+  // createConversation() so a conversation waiting for input can consume it first.
+  // See the terminal section of telegram/composition.ts.
   privateChat.callbackQuery(staticCallback.sendMenu, sendMenuCallback)
 }

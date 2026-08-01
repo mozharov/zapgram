@@ -4,6 +4,7 @@ import {register as registerSubscriptions} from '@modules/subscriptions/register
 import {register as registerTipping} from '@modules/tipping/register.js'
 import {register as registerWallet} from '@modules/wallet/register.js'
 import {walletCommand} from '@modules/wallet/telegram/handlers/wallet-command.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {errorHandler} from '@telegram/handlers/error.js'
@@ -45,7 +46,14 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   registerChats(composer)
   registerSubscriptions(composer)
 
-  // Terminal: catch-all unknown callbacks, then default private message → wallet
-  privateChat.on('callback_query', unknownCallback)
-  privateChat.on('message', walletCommand)
+  // Terminal handlers must live on a composer created AFTER the feature registers.
+  // grammY fixes a child composer's position in the parent chain at chatType() call time,
+  // so appending these to `privateChat` above would short-circuit every module registered
+  // below it — every command and callback would fall through to the wallet fallback.
+  // `cancel` belongs here too: it has to lose to any conversation currently waiting for
+  // input, and those conversations are installed inside the feature composers.
+  const privateFallback = composer.chatType('private')
+  privateFallback.callbackQuery(staticCallback.cancel, replyWithWallet)
+  privateFallback.on('callback_query', unknownCallback)
+  privateFallback.on('message', walletCommand)
 }
