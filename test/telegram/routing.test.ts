@@ -10,6 +10,9 @@ import {createTestDb} from '@test/helpers/db.js'
  * `register*()` calls they short-circuit every module — every command and every inline button
  * silently answers with the wallet fallback instead of its real handler.
  *
+ * Scope is routing only: this transformer sits outside createBot's own autoRetry/parseMode and
+ * disables them, so outgoing payload shape cannot be asserted here (see docs on the e2e harness).
+ *
  * The two terminal handlers are replaced with markers. A feature update must never reach them;
  * genuinely unroutable updates must (those are the positive controls that keep the negative
  * assertions honest).
@@ -96,7 +99,11 @@ async function buildBot() {
   const calls: string[] = []
   bot.api.config.use(async (_prev, method) => {
     calls.push(method)
-    return {message_id: 1, date: 1, chat: {id: 42, type: 'private'}, text: 'x'} as never
+    // Bot API envelope — a bare result makes grammY throw GrammyError.
+    return {
+      ok: true,
+      result: {message_id: 1, date: 1, chat: {id: 42, type: 'private'}, text: 'x'},
+    } as never
   })
   registerHandlers(bot as never)
   await bot.init()

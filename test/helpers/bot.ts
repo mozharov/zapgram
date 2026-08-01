@@ -16,8 +16,16 @@ export type FakeBot = {
 }
 
 /**
- * Bot with a fake API transformer that records outbound calls and returns
- * canned responses. Analogous to Elysia's app.handle(new Request(...)).
+ * Bot with a fake API transformer that records outbound calls and returns canned responses.
+ * Analogous to Elysia's app.handle(new Request(...)).
+ *
+ * SCOPE: routing only — "which handler answered this update".
+ *
+ * grammY runs the LAST installed transformer outermost, so this one intercepts the call before
+ * createBot's own `autoRetry()` and `parseMode('HTML')` and, by not calling `prev`, disables them.
+ * Outgoing payloads therefore carry no `parse_mode`, and a 429 never triggers a retry. Anything
+ * that asserts on the shape of an outgoing request — parse mode, HTML markup, InputFile multipart,
+ * retry behaviour — must drive the bot through a fake HTTP Bot API via `client.apiRoot` instead.
  */
 export function createFakeBot(token = '000000:test-token'): FakeBot {
   const bot = createBot(token)
@@ -30,8 +38,9 @@ export function createFakeBot(token = '000000:test-token'): FakeBot {
     const next = responses[responseIndex]
     responseIndex++
     if (next instanceof Error) throw next
-    // grammY expects a JSON-like payload; empty object is fine for most methods in tests.
-    return (next ?? {}) as never
+    // grammY expects the Bot API envelope. Returning a bare result (or {}) makes every call
+    // fail with "GrammyError: Call to '<method>' failed!".
+    return {ok: true, result: next ?? true} as never
   })
 
   return {
