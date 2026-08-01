@@ -6,7 +6,8 @@
     "start": "bun src/main.ts",
     "start:dev": "DEBUG=grammy* bun --watch src/main.ts",
     "fix": "biome check --write .",
-    "ci": "biome ci . && tsc -p tsconfig.json --noEmit"
+    "test": "bun test src/lib",
+    "ci-lint": "biome ci . && tsc -p tsconfig.json --noEmit"
   },
   "engines": {
     "bun": ">=1.3.0"

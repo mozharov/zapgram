@@ -4,6 +4,7 @@ import {translate} from '../../bot/lib/i18n.js'
 import type {SubscriptionPayment} from '../../lib/database/types.js'
 import {lnbitsMasterWallet} from '../../lib/lnbits/master-wallet.js'
 import {logger} from '../../lib/logger.js'
+import {computeSubscriptionEndsAt} from '../../lib/subscriptions/policy.js'
 import {getChatOrThrow} from '../../models/chat.js'
 import {
   countSubscriptionPayments,
@@ -65,18 +66,17 @@ async function checkSubscriptionPayments() {
   }
 }
 
-const ONE_MONTH_IN_MS = 30 * 24 * 60 * 60 * 1000
 async function completeSubscriptionPayment(payment: SubscriptionPayment) {
   try {
     logger.info({paymentHash: payment.paymentHash}, 'Subscription payment successful.')
+    const now = new Date()
     const subscription = await getSubscriptionByUserAndChat(payment.userId, payment.chatId)
     if (subscription) {
-      const endsAt =
-        payment.subscriptionType === 'one_time'
-          ? null
-          : subscription.endsAt && subscription.endsAt > new Date()
-            ? new Date(subscription.endsAt.getTime() + ONE_MONTH_IN_MS)
-            : new Date(Date.now() + ONE_MONTH_IN_MS)
+      const endsAt = computeSubscriptionEndsAt({
+        subscriptionType: payment.subscriptionType,
+        existingEndsAt: subscription.endsAt,
+        now,
+      })
       await updateSubscription(subscription.id, {
         price: payment.price,
         endsAt,
@@ -87,8 +87,11 @@ async function completeSubscriptionPayment(payment: SubscriptionPayment) {
         userId: payment.userId,
         chatId: payment.chatId,
         price: payment.price,
-        endsAt:
-          payment.subscriptionType === 'one_time' ? null : new Date(Date.now() + ONE_MONTH_IN_MS),
+        endsAt: computeSubscriptionEndsAt({
+          subscriptionType: payment.subscriptionType,
+          existingEndsAt: null,
+          now,
+        }),
       })
     }
     await deleteSubscriptionPayment(payment.id)
