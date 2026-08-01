@@ -1,14 +1,20 @@
-import type {Middleware} from 'koa'
+import {Elysia} from 'elysia'
 import {logger} from '../lib/logger.js'
 
-export const requestLogger: Middleware = async (ctx, next) => {
-  ctx.log = logger.child({reqId: ctx.req.id})
-
-  const startRequestTime = Date.now()
-  await next().catch((error: unknown) => {
-    ctx.log.error({error}, 'request error')
-    throw error
+export const requestLogger = new Elysia({name: 'request-logger'})
+  .derive({as: 'global'}, () => {
+    const reqId = Math.random().toString(36).substring(2, 10)
+    return {
+      reqId,
+      log: logger.child({reqId}),
+      startedAt: Date.now(),
+    }
   })
-  const responseTime = Date.now() - startRequestTime
-  ctx.log.info(`${ctx.method} ${ctx.url} - ${responseTime}ms`)
-}
+  .onAfterHandle({as: 'global'}, ({request, log, startedAt}) => {
+    const path = new URL(request.url).pathname
+    log.info(`${request.method} ${path} - ${Date.now() - startedAt}ms`)
+  })
+  .onError({as: 'global'}, ({code, error, log}) => {
+    if (code === 'NOT_FOUND' || !log) return
+    log.error({error}, 'request error')
+  })

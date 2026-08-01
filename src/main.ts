@@ -12,8 +12,7 @@ import {configureBot} from './services/bot.js'
 if (config.DB_MIGRATE) migrateDatabase()
 await lnbitsMasterWallet.checkStatus()
 
-const server = startServer()
-server.once('listening', () => {
+const app = startServer(() => {
   bot
     .init()
     .then(async () => {
@@ -41,12 +40,12 @@ async function shutdown(signal: string) {
   await deleteWebhook()
   if (config.NGROK_TOKEN) await stopTunnel()
 
-  server.close(error => {
-    if (error) {
-      logger.error({error}, 'Failed to close server')
-      process.exit(1)
-    }
+  try {
+    await app.stop()
     logger.info('Server closed')
     process.exit(0)
-  })
+  } catch (error) {
+    logger.error({error}, 'Failed to close server')
+    process.exit(1)
+  }
 }

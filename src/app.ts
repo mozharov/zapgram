@@ -1,19 +1,15 @@
-import {bodyParser} from '@koa/bodyparser'
-import Koa from 'koa'
+import {Elysia} from 'elysia'
 import {config} from './config.js'
 import {logger} from './lib/logger.js'
-import {requestLogger} from './middlewares/request-logger.js'
 import {router} from './routes/router.js'
 
-const app = new Koa()
-app.silent = true
+export function createApp() {
+  return new Elysia().use(router)
+}
 
-app.use(bodyParser())
-app.use(requestLogger)
-app.use(router.routes())
-
-export function startServer() {
-  return app.listen(config.PORT, () => {
+export function startServer(onListening?: () => void) {
+  return createApp().listen(config.PORT, () => {
     logger.info('App is running')
+    onListening?.()
   })
 }
