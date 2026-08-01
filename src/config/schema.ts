@@ -14,7 +14,6 @@ export const envSchema = z.object({
   DB_MIGRATE: z.stringbool().default(true),
   LNBITS_URL: z.string().min(1),
   LNBITS_ADMIN_KEY: z.string().min(1),
-  LNBITS_ADMIN_ID: z.string().min(1),
   LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
   LNBITS_BEARER_TOKEN: z.string().optional(),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
