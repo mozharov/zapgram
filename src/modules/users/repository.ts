@@ -1,10 +1,10 @@
 import {AppError} from '@core/errors/app-error.js'
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import {eq} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 
 export function createUserRepository(database: AppDatabase) {
   async function findById(id: User['id']) {
@@ -66,12 +66,9 @@ export function createUserRepository(database: AppDatabase) {
 
 export type UserRepository = ReturnType<typeof createUserRepository>
 
-/** Legacy singleton — removed in step 11. */
-export const usersRepository = createUserRepository(defaultDb)
-
-// Legacy function names used by existing call sites.
-export const getOrCreateUser = (data: NewUser) => usersRepository.getOrCreate(data)
-export const getUserOrThrow = (id: User['id']) => usersRepository.getOrThrow(id)
-export const getUserByUsername = (username: string) => usersRepository.findByUsername(username)
-export const createOrUpdateUser = (data: NewUser) => usersRepository.createOrUpdate(data)
-export const updateUser = (id: User['id'], data: Partial<User>) => usersRepository.update(id, data)
+export const getOrCreateUser = (data: NewUser) => getRuntime().users.getOrCreate(data)
+export const getUserOrThrow = (id: User['id']) => getRuntime().users.getOrThrow(id)
+export const getUserByUsername = (username: string) => getRuntime().users.findByUsername(username)
+export const createOrUpdateUser = (data: NewUser) => getRuntime().users.createOrUpdate(data)
+export const updateUser = (id: User['id'], data: Partial<User>) =>
+  getRuntime().users.update(id, data)

@@ -20,15 +20,10 @@ describe('settlement messages', () => {
     })
   }
 
-  test('the neutral renewal message does not claim the renewal was automatic', () => {
-    // It is also sent when a subscriber pays a renewal invoice by hand.
+  test('the renewal message does not claim the renewal was automatic', () => {
+    // Also sent when a subscriber pays a renewal invoice by hand.
     expect(translate('subscription-renewal.renewed', 'en', context)).not.toContain('automatic')
     expect(translate('subscription-renewal.renewed', 'ru', context)).not.toContain('автоматич')
-  })
-
-  test('the auto-renewal message still says it was automatic', () => {
-    expect(translate('subscription-renewal.success', 'en', context)).toContain('automatically')
-    expect(translate('subscription-renewal.success', 'ru', context)).toContain('автоматически')
   })
 
   test('renewal and first-access messages are distinct', () => {

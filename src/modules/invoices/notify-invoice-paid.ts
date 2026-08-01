@@ -1,4 +1,3 @@
-import {config} from '@config'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {sanitizeMemo} from '@core/lightning/memo.js'
 import {msatsToSats} from '@core/money/sats.js'
@@ -7,6 +6,7 @@ import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {getRuntime} from '../../runtime.js'
 
 export async function notifyInvoicePaid(
   paymentRequest: PendingInvoice['paymentRequest'],
@@ -16,7 +16,7 @@ export async function notifyInvoicePaid(
   const wallet = await getUserWallet(user.id)
 
   const invoice = decodeInvoice(paymentRequest)
-  const memo = sanitizeMemo(invoice.description ?? '', config.memoFooter)
+  const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
   await notifier.send(
     user.id,
     translate('received-incoming-invoice', user.languageCode, {

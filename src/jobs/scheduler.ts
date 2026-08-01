@@ -1,6 +1,5 @@
 import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
-import {logger as defaultLogger} from '@infra/logger.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
@@ -62,7 +61,7 @@ export function defaultJobDefinitions(): JobDefinition[] {
 
 export function createScheduler(
   jobDefinitions: JobDefinition[] = defaultJobDefinitions(),
-  log: AppLogger = defaultLogger,
+  log: AppLogger,
 ): Scheduler {
   /** In-flight tick promises per job — drained on stop for graceful shutdown. */
   const runningTicks = new Map<string, Promise<unknown>>()
@@ -126,23 +125,6 @@ export function createScheduler(
       return [...runningTicks.values()]
     },
   }
-}
-
-/** Default process-wide scheduler — wired by bootstrap; prefer container.scheduler. */
-export const scheduler = createScheduler()
-
-/** @deprecated Prefer container.scheduler.start() */
-export function startCronJobs(): void {
-  scheduler.start()
-}
-
-/** @deprecated Prefer await container.scheduler.stop() */
-export async function stopCronJobs(opts?: {drainTimeoutMs?: number}): Promise<{drained: boolean}> {
-  return scheduler.stop(opts)
-}
-
-export function getRunningJobTicks(): Promise<unknown>[] {
-  return scheduler.getRunningTicks()
 }
 
 export function getJobDefinitions(): readonly JobDefinition[] {

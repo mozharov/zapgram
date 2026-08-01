@@ -1,7 +1,7 @@
 import Bottleneck from 'bottleneck'
 import got, {HTTPError, type OptionsOfJSONResponseBody} from 'got'
 import type {ZodType} from 'zod'
-import {logger} from '../logger.js'
+import type {AppLogger} from '../logger.js'
 import {validateData} from '../validate.js'
 
 const limiter = new Bottleneck({
@@ -15,9 +15,11 @@ const limiter = new Bottleneck({
 export class LNBitsAPI {
   protected readonly url: string
   protected readonly headers: Record<string, string>
+  protected readonly log?: AppLogger
 
-  constructor({baseUrl, adminKey}: LNBitsAPIConfig) {
+  constructor({baseUrl, adminKey, log}: LNBitsAPIConfig) {
     this.url = baseUrl
+    this.log = log
     this.headers = {
       'Content-type': 'application/json',
       Accept: 'application/json',
@@ -35,7 +37,7 @@ export class LNBitsAPI {
         timeout: {request: 15000},
       }).catch((error: unknown) => {
         if (error instanceof HTTPError)
-          logger.error(
+          this.log?.error(
             {
               body: error.response.body as unknown,
               statusCode: error.response.statusCode,
@@ -54,7 +56,7 @@ export class LNBitsAPI {
     init?: OptionsOfJSONResponseBody,
   ) {
     const response = await this.fetch(path, init)
-    logger.debug(
+    this.log?.debug(
       {body: response.body as unknown},
       `${init?.method ?? 'GET'} ${path}: response body`,
     )
@@ -65,4 +67,5 @@ export class LNBitsAPI {
 interface LNBitsAPIConfig {
   baseUrl: string
   adminKey?: string
+  log?: AppLogger
 }

@@ -1,6 +1,6 @@
 import {msatsToSats} from '@core/money/sats.js'
-import {logger} from '@infra/logger.js'
 import type {BotContext} from '@telegram/context.js'
+import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
@@ -22,7 +22,7 @@ export async function editMessageWithWallet(ctx: BotContext) {
 async function getNWCBalance(ctx: BotContext) {
   if (ctx.user.nwc) {
     return ctx.user.nwc.getBalance().catch(async (error: unknown) => {
-      logger.error({error}, 'Failed to get NWC balance')
+      getRuntime().log.error({error}, 'Failed to get NWC balance')
       await ctx.reply(ctx.t('error.nwc-connection'))
       return null
     })

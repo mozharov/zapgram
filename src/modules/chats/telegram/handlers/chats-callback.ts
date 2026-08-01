@@ -1,13 +1,13 @@
-import {config} from '@config'
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '@modules/chats/repository.js'
 import {buildChatsKeyboard} from '@modules/chats/telegram/keyboards/chats.js'
 import {chatsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
+import {getRuntime} from '../../../../runtime.js'
 
 export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   let {page} = chatsPageRoute.parse(ctx.match)
-  const limit = config.chatsPerPage
+  const limit = getRuntime().config.chatsPerPage
   const totalChats = await getAccessibleChatsCount(ctx.user.id)
   if (totalChats === 0) {
     const keyboard = new InlineKeyboard().add({

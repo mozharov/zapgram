@@ -1,6 +1,5 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {Chat} from '@infra/db/types.js'
-import {lnbitsMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {getChat} from '@modules/chats/repository.js'
 import {createSubscriptionPayment} from '@modules/subscriptions/payment-repository.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
@@ -8,6 +7,7 @@ import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/
 import type {BotContext} from '@telegram/context.js'
 import type {ChatTypeContext} from 'grammy'
 import type {ChatJoinRequest} from 'grammy/types'
+import {getRuntime} from '../../../../runtime.js'
 
 type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
   chatJoinRequest: ChatJoinRequest
@@ -28,7 +28,7 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
 }
 
 async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
-  const invoice = await lnbitsMasterWallet.createInvoice(chat.price, EXPIRY)
+  const invoice = await getRuntime().masterWallet.createInvoice(chat.price, EXPIRY)
   const subscriptionPayment = await createSubscriptionPayment({
     chatId: chat.id,
     userId: ctx.user.id,

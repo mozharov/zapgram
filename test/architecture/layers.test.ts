@@ -33,7 +33,12 @@ const INFRA_FORBIDDEN = [
   /from\s+['"]\.\.\/.*\/jobs\//,
 ]
 
+// Modules must not import http/bootstrap.
+// Feature UI under modules/.../telegram may use @telegram; jobs may use @jobs.
+const MODULES_FORBIDDEN = [/from\s+['"]@http\//, /from\s+['"]@bootstrap\//]
+
 function listTsFiles(dir: string): string[] {
+  if (!statSync(dir, {throwIfNoEntry: false})?.isDirectory()) return []
   const out: string[] = []
   for (const name of readdirSync(dir)) {
     const full = join(dir, name)
@@ -49,9 +54,6 @@ function findForbidden(file: string, patterns: RegExp[]): string[] {
   const hits: string[] = []
   for (const line of text.split('\n')) {
     if (!line.includes('from ') && !line.includes('import(')) continue
-    // Temporary: pure domain functions still share Drizzle $inferSelect types from infra.
-    // Resolved when repositories own the types (step 5+).
-    if (/import\s+type\s+/.test(line) && line.includes('@infra/db/types')) continue
     for (const re of patterns) {
       if (re.test(line)) hits.push(line.trim())
     }
@@ -59,26 +61,26 @@ function findForbidden(file: string, patterns: RegExp[]): string[] {
   return hits
 }
 
+function collectViolations(dir: string, patterns: RegExp[]): string[] {
+  const violations: string[] = []
+  for (const file of listTsFiles(dir)) {
+    for (const hit of findForbidden(file, patterns)) {
+      violations.push(`${relative(ROOT, file)}: ${hit}`)
+    }
+  }
+  return violations
+}
+
 describe('architecture layer boundaries', () => {
   test('core has no forbidden imports', () => {
-    const files = listTsFiles(join(ROOT, 'core'))
-    const violations: string[] = []
-    for (const file of files) {
-      for (const hit of findForbidden(file, CORE_FORBIDDEN)) {
-        violations.push(`${relative(ROOT, file)}: ${hit}`)
-      }
-    }
-    expect(violations).toEqual([])
+    expect(collectViolations(join(ROOT, 'core'), CORE_FORBIDDEN)).toEqual([])
   })
 
   test('infra has no forbidden imports', () => {
-    const files = listTsFiles(join(ROOT, 'infra'))
-    const violations: string[] = []
-    for (const file of files) {
-      for (const hit of findForbidden(file, INFRA_FORBIDDEN)) {
-        violations.push(`${relative(ROOT, file)}: ${hit}`)
-      }
-    }
-    expect(violations).toEqual([])
+    expect(collectViolations(join(ROOT, 'infra'), INFRA_FORBIDDEN)).toEqual([])
+  })
+
+  test('modules has no forbidden imports', () => {
+    expect(collectViolations(join(ROOT, 'modules'), MODULES_FORBIDDEN)).toEqual([])
   })
 })

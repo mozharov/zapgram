@@ -236,7 +236,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
     } catch (error) {
       deps.log.error(
         {error, paymentHash: payment.paymentHash},
-        'Error in completeSubscriptionPayment.',
+        'Error settling subscription payment.',
       )
       return 'kept'
     }

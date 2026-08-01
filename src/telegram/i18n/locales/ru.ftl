@@ -320,8 +320,6 @@ subscription-invoice =
         В течение 5-ти минут ты получишь доступ к сообществу.
 
 subscription-renewal = 
-    .success = <b>✅ Твоя подписка на "{$title}" была автоматически продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>
-        Сумма оплаты: <b>{$price} сат</b>
     .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>
         Сумма оплаты: <b>{$price} сат</b>
     .need-payment = <b>⚠️ Твоя подписка на "{$title}" истекает через 24 часа. Оплати счёт Lightning на сумму {$price} сат, чтобы продлить доступ на месяц:</b>

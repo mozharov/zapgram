@@ -1,10 +1,10 @@
 import {AppError} from '@core/errors/app-error.js'
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {chatsTable, usersTable} from '@infra/db/schema.js'
 import type {Chat, NewChat} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import {and, count, desc, eq, ne} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 import type {ChatWithOwner} from './types.js'
 
 export function createChatRepository(database: AppDatabase) {
@@ -86,20 +86,17 @@ export function createChatRepository(database: AppDatabase) {
 
 export type ChatRepository = ReturnType<typeof createChatRepository>
 
-/** Legacy singleton — removed in step 11. */
-export const chatsRepository = createChatRepository(defaultDb)
-
-export const createOrUpdateChat = (data: NewChat) => chatsRepository.createOrUpdate(data)
-export const getChatOrThrow = (id: Chat['id']) => chatsRepository.getOrThrow(id)
-export const getAccessibleChat = (id: Chat['id']) => chatsRepository.findAccessibleById(id)
-/** @deprecated Prefer findByIdWithOwner(id). Accepts {id} for call-site compatibility. */
+export const createOrUpdateChat = (data: NewChat) => getRuntime().chats.createOrUpdate(data)
+export const getChatOrThrow = (id: Chat['id']) => getRuntime().chats.getOrThrow(id)
+export const getAccessibleChat = (id: Chat['id']) => getRuntime().chats.findAccessibleById(id)
 export const getChat = (criteria: {id: Chat['id']}) =>
-  chatsRepository.findByIdWithOwner(criteria.id)
-export const updateChat = (id: Chat['id'], data: Partial<Chat>) => chatsRepository.update(id, data)
+  getRuntime().chats.findByIdWithOwner(criteria.id)
+export const updateChat = (id: Chat['id'], data: Partial<Chat>) =>
+  getRuntime().chats.update(id, data)
 export const getPaginatedAccessibleChats = (
   ownerId: Chat['ownerId'],
   page: number,
   limit: number,
-) => chatsRepository.getPaginatedAccessible(ownerId, page, limit)
+) => getRuntime().chats.getPaginatedAccessible(ownerId, page, limit)
 export const getAccessibleChatsCount = (ownerId: Chat['ownerId']) =>
-  chatsRepository.getAccessibleCount(ownerId)
+  getRuntime().chats.getAccessibleCount(ownerId)

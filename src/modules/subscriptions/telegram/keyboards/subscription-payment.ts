@@ -1,10 +1,9 @@
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import {paySubscriptionRoute} from '@telegram/callback-data.js'
-import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
 export function buildSubscriptionPaymentKeyboard(
-  t: BotContext['t'],
+  t: (key: string) => string,
   {payNWC = false, payWallet = false, paymentId}: Args,
 ) {
   const keyboard = new InlineKeyboard()

@@ -44,6 +44,3 @@ export function createConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     chatsPerPage: 10,
   }
 }
-
-/** Legacy singleton — removed in step 11 when bootstrap owns composition. */
-export const config = createConfig()

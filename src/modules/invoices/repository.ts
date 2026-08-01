@@ -1,9 +1,9 @@
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {pendingInvoicesTable} from '@infra/db/schema.js'
 import type {NewPendingInvoice, PendingInvoice} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import {count, eq, lt} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 
 export function createInvoiceRepository(database: AppDatabase) {
   return {
@@ -59,23 +59,19 @@ export function createInvoiceRepository(database: AppDatabase) {
 
 export type InvoiceRepository = ReturnType<typeof createInvoiceRepository>
 
-/** Legacy singleton — removed in step 11. */
-export const invoicesRepository = createInvoiceRepository(defaultDb)
-
-export const createPendingInvoice = (data: NewPendingInvoice) => invoicesRepository.create(data)
-/** @deprecated Prefer findByPaymentRequest. Accepts {paymentRequest} for compatibility. */
+export const createPendingInvoice = (data: NewPendingInvoice) => getRuntime().invoices.create(data)
 export const getPendingInvoiceBy = (criteria: {
   paymentRequest?: PendingInvoice['paymentRequest']
   paymentHash?: PendingInvoice['paymentHash']
 }) => {
   if (criteria.paymentRequest)
-    return invoicesRepository.findByPaymentRequest(criteria.paymentRequest)
-  if (criteria.paymentHash) return invoicesRepository.findByPaymentHash(criteria.paymentHash)
+    return getRuntime().invoices.findByPaymentRequest(criteria.paymentRequest)
+  if (criteria.paymentHash) return getRuntime().invoices.findByPaymentHash(criteria.paymentHash)
   throw new Error('getPendingInvoiceBy requires paymentRequest or paymentHash')
 }
 export const deletePendingInvoice = (paymentRequest: PendingInvoice['paymentRequest']) =>
-  invoicesRepository.deleteByPaymentRequest(paymentRequest)
+  getRuntime().invoices.deleteByPaymentRequest(paymentRequest)
 export const getPendingInvoices = (limit?: number, offset?: number) =>
-  invoicesRepository.list(limit, offset)
-export const countPendingInvoices = () => invoicesRepository.count()
-export const deleteExpiredInvoices = () => invoicesRepository.deleteExpired()
+  getRuntime().invoices.list(limit, offset)
+export const countPendingInvoices = () => getRuntime().invoices.count()
+export const deleteExpiredInvoices = () => getRuntime().invoices.deleteExpired()

@@ -1,4 +1,3 @@
-import {config} from '@config'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {sanitizeMemo} from '@core/lightning/memo.js'
@@ -11,6 +10,7 @@ import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {InputFile} from 'grammy'
 import QRCode from 'qrcode'
+import {getRuntime} from '../../../../runtime.js'
 
 export async function creatingInvoice(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('creating-invoice'))
@@ -54,7 +54,7 @@ async function replyWithQRCode(ctx: BotContext, paymentRequest: string): Promise
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
   const inputFile = new InputFile(buffer)
 
-  const memo = sanitizeMemo(invoice.description ?? '', config.memoFooter)
+  const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
   await ctx.replyWithPhoto(inputFile, {
     caption: ctx.t('creating-invoice.created', {
       amount: invoice.satoshi,

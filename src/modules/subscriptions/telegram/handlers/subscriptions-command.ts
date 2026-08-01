@@ -1,13 +1,13 @@
-import {config} from '@config'
 import {
   getUserActiveSubscriptions,
   getUserActiveSubscriptionsCount,
 } from '@modules/subscriptions/repository.js'
 import {buildSubscriptionsKeyboard} from '@modules/subscriptions/telegram/keyboards/subscriptions.js'
 import type {BotContext} from '@telegram/context.js'
+import {getRuntime} from '../../../../runtime.js'
 
 export const subscriptionsCommand = async (ctx: BotContext) => {
-  const limit = config.chatsPerPage
+  const limit = getRuntime().config.chatsPerPage
   const totalSubscriptions = await getUserActiveSubscriptionsCount(ctx.user.id)
 
   if (totalSubscriptions === 0) return ctx.reply(ctx.t('subscriptions.empty'))

@@ -107,8 +107,8 @@ function makePayment(overrides: Partial<SubscriptionPayment> = {}): Subscription
 
 const ownerPayouts = () => paidBolt11s.filter(b => !b.startsWith('fee-'))
 
-describe('distributeSubscriptionPaymentOnce', () => {
-  let distributeSubscriptionPaymentOnce: ReturnType<typeof makeDistribute>
+describe('settleService.distributeOnce', () => {
+  let distributeOnce: ReturnType<typeof makeDistribute>
 
   beforeEach(() => {
     issued = []
@@ -118,28 +118,28 @@ describe('distributeSubscriptionPaymentOnce', () => {
     persistedFeeHash = null
     invoiceCounter = 0
     order = []
-    distributeSubscriptionPaymentOnce = makeDistribute()
+    distributeOnce = makeDistribute()
   })
 
   test('first run pays the owner and collects the fee', async () => {
-    const result = await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    const result = await distributeOnce(makePayment(), 42)
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
     expect(ownerPayouts()).toHaveLength(1)
     expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(1)
   })
 
   test('records each hash BEFORE paying that leg', async () => {
-    await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    await distributeOnce(makePayment(), 42)
     expect(order).toEqual(['persist', 'pay', 'persist-fee', 'pay-fee'])
   })
 
   test('CRASH between payout and row deletion: retry does not pay twice', async () => {
-    await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    await distributeOnce(makePayment(), 42)
     expect(ownerPayouts()).toHaveLength(1)
     const hash = persistedHash
     expect(hash).toBeTruthy()
 
-    const result = await distributeSubscriptionPaymentOnce(
+    const result = await distributeOnce(
       makePayment({payoutHash: hash, feePayoutHash: persistedFeeHash}),
       42,
     )
@@ -148,50 +148,44 @@ describe('distributeSubscriptionPaymentOnce', () => {
   })
 
   test('CRASH between persisting the hash and paying: retry issues a fresh invoice', async () => {
-    const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: 'orphan-never-paid'}),
-      42,
-    )
+    const result = await distributeOnce(makePayment({payoutHash: 'orphan-never-paid'}), 42)
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
     expect(ownerPayouts()).toHaveLength(1)
   })
 
   test('a payout still in flight is never paid a second time', async () => {
     ledger.set('in-flight', {paid: false})
-    const result = await distributeSubscriptionPaymentOnce(
-      makePayment({payoutHash: 'in-flight'}),
-      42,
-    )
+    const result = await distributeOnce(makePayment({payoutHash: 'in-flight'}), 42)
     expect(result).toEqual({status: 'pending'})
     expect(ownerPayouts()).toHaveLength(0)
   })
 
   test('a failed payout is re-issued', async () => {
     ledger.set('dead', {paid: false, status: 'failed'})
-    const result = await distributeSubscriptionPaymentOnce(makePayment({payoutHash: 'dead'}), 42)
+    const result = await distributeOnce(makePayment({payoutHash: 'dead'}), 42)
     expect(result).toEqual({status: 'paid', fee: EXPECTED_FEE})
     expect(ownerPayouts()).toHaveLength(1)
   })
 
   test('many retries after a successful payout still pay exactly once', async () => {
-    await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    await distributeOnce(makePayment(), 42)
     const hash = persistedHash
     for (let i = 0; i < 5; i++) {
-      await distributeSubscriptionPaymentOnce(makePayment({payoutHash: hash}), 42)
+      await distributeOnce(makePayment({payoutHash: hash}), 42)
     }
     expect(ownerPayouts()).toHaveLength(1)
   })
 
   test('no fee transfer when the fee rounds to zero', async () => {
-    const result = await distributeSubscriptionPaymentOnce(makePayment({price: 0}), 42)
+    const result = await distributeOnce(makePayment({price: 0}), 42)
     expect(result).toEqual({status: 'paid', fee: 0})
     expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(0)
   })
 
   test('CRASH between the owner payout and the fee transfer: retry only does the fee', async () => {
-    await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    await distributeOnce(makePayment(), 42)
     const feeBefore = paidBolt11s.filter(b => b.startsWith('fee-')).length
-    const result = await distributeSubscriptionPaymentOnce(
+    const result = await distributeOnce(
       makePayment({payoutHash: persistedHash, feePayoutHash: null}),
       42,
     )
@@ -202,9 +196,9 @@ describe('distributeSubscriptionPaymentOnce', () => {
   })
 
   test('a fee transfer that already settled is not repeated', async () => {
-    await distributeSubscriptionPaymentOnce(makePayment(), 42)
+    await distributeOnce(makePayment(), 42)
     const feePaysBefore = paidBolt11s.filter(b => b.startsWith('fee-')).length
-    const result = await distributeSubscriptionPaymentOnce(
+    const result = await distributeOnce(
       makePayment({payoutHash: persistedHash, feePayoutHash: persistedFeeHash}),
       42,
     )
@@ -216,7 +210,7 @@ describe('distributeSubscriptionPaymentOnce', () => {
     // Owner already paid; fee hash in flight
     ledger.set('owner-done', {paid: true})
     ledger.set('fee-in-flight', {paid: false})
-    const result = await distributeSubscriptionPaymentOnce(
+    const result = await distributeOnce(
       makePayment({payoutHash: 'owner-done', feePayoutHash: 'fee-in-flight'}),
       42,
     )

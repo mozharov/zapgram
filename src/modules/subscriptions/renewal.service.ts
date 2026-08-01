@@ -2,10 +2,10 @@ import type {TranslationVariables} from '@grammyjs/i18n'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
-import {paySubscriptionRoute} from '@telegram/callback-data.js'
-import {InlineKeyboard, InputFile} from 'grammy'
+import {InputFile} from 'grammy'
 import QRCode from 'qrcode'
 import type {CompleteSubscriptionPaymentResult} from './settle.service.js'
+import {buildSubscriptionPaymentKeyboard} from './telegram/keyboards/subscription-payment.js'
 
 /**
  * `renewed` — settle finished fully (access granted, owner paid, messages sent by settle).
@@ -35,10 +35,7 @@ export type RenewalServiceDeps = {
   getUserWallet: (userId: number) => Promise<{
     payInvoice: (bolt11: string) => Promise<unknown>
   }>
-  /**
-   * Single settlement path — grant access, pay owner, notify.
-   * Auto-renew no longer duplicates this logic (see TODO on the expiring-subscriptions job).
-   */
+  /** Single settlement path — grant access, pay owner, notify. */
   completePayment: (payment: SubscriptionPayment) => Promise<CompleteSubscriptionPaymentResult>
   notifier: Notifier
   log: AppLogger
@@ -58,11 +55,10 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
    * The payment row is written *before* the subscriber is charged. After a successful charge,
    * `completePayment` runs the single grant → pay owner → notify path. Anything that goes wrong
    * leaves that row on disk, where the subscription payment cron picks it up and finishes the job
-   * idempotently — so a failure can no longer collect money from a subscriber and deliver nothing.
+   * idempotently — so a failure cannot collect money from a subscriber and deliver nothing.
    */
   async function attemptAutoRenewal(
     subscription: Subscription,
-    // user: User,
     _chat: Chat,
   ): Promise<RenewalOutcome> {
     let payment: SubscriptionPayment
@@ -97,11 +93,8 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         kind: 'renewal',
       })
 
+      // TODO: also try NWC when balance payment fails (needs careful handling of LNbits lag).
       const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
-      // TODO: automatic payment from NWC wallet. Additional checks are needed because LNBits doesn't mark the invoice as paid immediately. May need a separate cycle for funds distribution.
-      // if (!paymentResult.success) {
-      //   paymentResult = await attemptPaymentFromNWC(subscription, user, invoice.bolt11)
-      // }
       if (!paymentResult.success) {
         // Deliberately not deleted: "failed" here can also mean an ambiguous error on a charge that
         // did go through. The settle cron asks LNbits and either completes it or drops it at expiry.
@@ -114,9 +107,7 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
 
     // Past this point the subscriber has paid, so we never report failure — the row guarantees the
     // renewal is completed by someone, and reporting failure would invoice the user a second time.
-    //
-    // Settlement (grant access → pay owner → notify) is owned exclusively by the settle service.
-    // Previously this job duplicated that path (see historical TODO on process-expiring-subscriptions).
+    // Settlement (grant → pay owner → notify) is owned exclusively by the settle service.
     try {
       const settleResult = await deps.completePayment(payment)
       if (settleResult === 'settled') return {status: 'renewed'}
@@ -149,17 +140,6 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     }
   }
 
-  // async function attemptPaymentFromNWC(subscription: Subscription, user: User, invoice: string) {
-  //   if (!user.nwcUrl) return {success: false}
-  //   deps.log.info(`Attempting payment from NWC for subscription ${subscription.id}`)
-  //   const nwc = new NostrWallet(user.nwcUrl)
-  //   const success = await nwc
-  //     .payInvoice(invoice, false)
-  //     .then(() => true)
-  //     .catch(() => false)
-  //   return {success}
-  // }
-
   async function createAndSendRenewalInvoice(subscription: Subscription, chat: Chat, user: User) {
     try {
       const invoice = await deps.masterWallet.createInvoice(chat.price, deps.invoiceExpirySeconds)
@@ -173,22 +153,14 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         kind: 'renewal',
       })
 
-      const keyboard = new InlineKeyboard().row({
-        callback_data: paySubscriptionRoute.build({
+      const keyboard = buildSubscriptionPaymentKeyboard(
+        key => deps.translate(key, user.languageCode),
+        {
           paymentId: subscriptionPayment.id,
-          from: 'wallet',
-        }),
-        text: deps.translate('button.pay-subcription-with-wallet', user.languageCode),
-      })
-      if (user.nwcUrl) {
-        keyboard.row({
-          callback_data: paySubscriptionRoute.build({
-            paymentId: subscriptionPayment.id,
-            from: 'nwc',
-          }),
-          text: deps.translate('button.pay-subcription-with-nwc', user.languageCode),
-        })
-      }
+          payWallet: true,
+          payNWC: Boolean(user.nwcUrl),
+        },
+      )
 
       const buffer = await QRCode.toBuffer(invoice.bolt11)
       const inputFile = new InputFile(buffer)

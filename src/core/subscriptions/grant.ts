@@ -1,8 +1,31 @@
-import type {Subscription, SubscriptionPayment} from '@infra/db/types.js'
-import {computeSubscriptionEndsAt} from './policy.js'
+import {computeSubscriptionEndsAt, type SubscriptionPaymentType} from './policy.js'
+
+/** Minimal subscription shape used by grant logic (persistence-agnostic). */
+export type GrantSubscription = {
+  id: string
+  userId: number
+  chatId: number
+  price: number
+  endsAt: Date | null
+  notificationSent: boolean
+}
+
+/** Minimal payment shape used by grant logic (persistence-agnostic). */
+export type GrantPayment = {
+  id: string
+  userId: number
+  chatId: number
+  price: number
+  paymentHash: string
+  subscriptionType: SubscriptionPaymentType
+  settledAt: Date | null
+}
 
 export type GrantSubscriptionAccessDeps = {
-  getSubscriptionByUserAndChat: (userId: number, chatId: number) => Subscription | null | undefined
+  getSubscriptionByUserAndChat: (
+    userId: number,
+    chatId: number,
+  ) => GrantSubscription | null | undefined
   createSubscription: (data: {
     userId: number
     chatId: number
@@ -11,7 +34,7 @@ export type GrantSubscriptionAccessDeps = {
   }) => void
   updateSubscription: (
     id: string,
-    data: Partial<Pick<Subscription, 'price' | 'endsAt' | 'notificationSent'>>,
+    data: Partial<Pick<GrantSubscription, 'price' | 'endsAt' | 'notificationSent'>>,
   ) => void
   markPaymentSettled: (paymentId: string, settledAt: Date) => void
   log: {info: (obj: unknown, msg?: string) => void}
@@ -25,7 +48,7 @@ export type GrantSubscriptionAccessDeps = {
  * double-extend window this guard exists to close. Callers pass tx-bound deps; tests pass fakes.
  */
 export function grantSubscriptionAccessIfNeeded(
-  payment: SubscriptionPayment,
+  payment: GrantPayment,
   deps: GrantSubscriptionAccessDeps,
   now: Date = new Date(),
 ): 'granted' | 'already_settled' {

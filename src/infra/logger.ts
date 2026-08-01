@@ -1,11 +1,10 @@
 import type {AppConfig} from '@config'
-import {config} from '@config'
 import pino from 'pino'
 import {serializeError} from 'serialize-error'
 
 export type AppLogger = Pick<pino.Logger, 'info' | 'error' | 'warn' | 'debug'>
 
-export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'> = config): pino.Logger {
+export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pino.Logger {
   const options: pino.LoggerOptions = {
     level: cfg.LOG_LEVEL,
     formatters: {
@@ -31,6 +30,3 @@ export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'> = co
 
   return pino(options)
 }
-
-/** Legacy singleton — removed in step 11 when bootstrap owns composition. */
-export const logger = createLogger(config)

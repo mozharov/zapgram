@@ -1,8 +1,8 @@
 import type {Chat} from '@infra/db/types.js'
-import {bot} from '@infra/telegram/bot.js'
 import {chatRoute, chatsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
+import {getRuntime} from '../../../../runtime.js'
 
 export function buildChatsKeyboard(
   t: BotContext['t'],
@@ -31,7 +31,7 @@ export function buildChatsKeyboard(
     })
   }
   return keyboard.row({
-    url: `https://t.me/${bot.botInfo.username}?startgroup=true`,
+    url: `https://t.me/${getRuntime().bot.botInfo.username}?startgroup=true`,
     text: t('button.add-chat'),
   })
 }

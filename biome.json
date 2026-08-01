@@ -4,6 +4,7 @@
     "includes": [
       "src/**",
       "test/**",
+      "docs/**",
       "bunfig.toml",
       "drizzle.config.ts",
       "biome.json",
@@ -53,5 +54,130 @@
         "useDateNow": "error"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@infra",
+                      "@infra/**",
+                      "@modules",
+                      "@modules/**",
+                      "@telegram",
+                      "@telegram/**",
+                      "@http",
+                      "@http/**",
+                      "@jobs",
+                      "@jobs/**",
+                      "@config",
+                      "@config/**",
+                      "@bootstrap",
+                      "@bootstrap/**"
+                    ],
+                    "message": "core must not import other app layers (Dependency Rule)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/infra/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@modules",
+                      "@modules/**",
+                      "@telegram",
+                      "@telegram/**",
+                      "@http",
+                      "@http/**",
+                      "@jobs",
+                      "@jobs/**",
+                      "@bootstrap",
+                      "@bootstrap/**"
+                    ],
+                    "message": "infra must not import presentation or module layers (Dependency Rule)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/modules/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@http",
+                      "@http/**",
+                      "@jobs",
+                      "@jobs/**",
+                      "@bootstrap",
+                      "@bootstrap/**"
+                    ],
+                    "message": "modules must not import http/jobs/bootstrap (Dependency Rule). Feature UI under modules/*/telegram may use @telegram/*."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/modules/**/*.service.ts",
+        "src/modules/**/repository.ts",
+        "src/modules/**/payment-repository.ts",
+        "src/modules/**/access.ts",
+        "src/modules/**/settle.ts",
+        "src/modules/**/settle.service.ts",
+        "src/modules/**/renewal.ts",
+        "src/modules/**/renewal.service.ts",
+        "src/modules/**/jobs/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@telegram", "@telegram/**"],
+                    "message": "Non-UI module code must not import @telegram/* (Dependency Rule)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

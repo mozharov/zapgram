@@ -1,7 +1,6 @@
 import type {AppLogger} from '@infra/logger.js'
-import {logger} from '@infra/logger.js'
-import {bot} from '@infra/telegram/bot.js'
 import type {Api, InputFile} from 'grammy'
+import {getRuntime} from '../../runtime.js'
 
 export type Notifier = {
   send(userId: number, text: string, opts?: Parameters<Api['sendMessage']>[2]): Promise<void>
@@ -12,10 +11,7 @@ export type Notifier = {
   ): Promise<void>
 }
 
-/**
- * Telegram-backed notifier. Methods never throw — they log and return
- * (matches the previous bot.api.sendMessage(...).catch(...) pattern).
- */
+/** Telegram-backed notifier. Methods never throw — they log and return. */
 export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
   return {
     async send(userId, text, opts) {
@@ -35,5 +31,8 @@ export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
   }
 }
 
-/** Legacy singleton — removed in step 11 when bootstrap owns composition. */
-export const notifier = createTelegramNotifier(bot.api, logger)
+/** Leaf convenience — uses bootstrap runtime. */
+export const notifier: Notifier = {
+  send: (...args) => getRuntime().notifier.send(...args),
+  sendPhoto: (...args) => getRuntime().notifier.sendPhoto(...args),
+}

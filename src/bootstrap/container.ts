@@ -4,19 +4,31 @@ import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
 import {createBot} from '@infra/telegram/bot.js'
-import {createChatRepository} from '@modules/chats/repository.js'
+import {type ChatRepository, createChatRepository} from '@modules/chats/repository.js'
+import {
+  type ConversationRepository,
+  createConversationRepository,
+} from '@modules/conversations/repository.js'
+import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
 import {createGrantSubscriptionAccess} from '@modules/subscriptions/access.js'
-import {createSubscriptionPaymentRepository} from '@modules/subscriptions/payment-repository.js'
+import {
+  createSubscriptionPaymentRepository,
+  type SubscriptionPaymentRepository,
+} from '@modules/subscriptions/payment-repository.js'
 import {createRenewalService, type RenewalService} from '@modules/subscriptions/renewal.service.js'
-import {createSubscriptionRepository} from '@modules/subscriptions/repository.js'
+import {
+  createSubscriptionRepository,
+  type SubscriptionRepository,
+} from '@modules/subscriptions/repository.js'
 import {createSettleService, type SettleService} from '@modules/subscriptions/settle.service.js'
-import {createUserRepository} from '@modules/users/repository.js'
-import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
+import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
+import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import type {Bot} from 'grammy'
 import type pino from 'pino'
+import {setRuntime} from '../runtime.js'
 
 const INVOICE_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
@@ -27,20 +39,28 @@ export type AppContainer = {
   bot: Bot<BotContext>
   masterWallet: MasterWalletInstance
   notifier: Notifier
+  users: UserRepository
+  chats: ChatRepository
+  subscriptions: SubscriptionRepository
+  payments: SubscriptionPaymentRepository
+  invoices: InvoiceRepository
+  conversations: ConversationRepository
+  grantAccess: ReturnType<typeof createGrantSubscriptionAccess>
+  getUserWallet: ReturnType<typeof createUserWalletFactory>
   settleService: SettleService
   renewalService: RenewalService
 }
 
 /**
- * Composition root: build all process dependencies in dependency order.
- * Legacy module-level singletons remain until step 11 for handlers/jobs that still import them.
+ * Composition root: build all process dependencies in dependency order and
+ * publish them via setRuntime() for leaf handlers/jobs.
  */
 export async function createContainer(env: NodeJS.ProcessEnv = process.env): Promise<AppContainer> {
   const config = createConfig(env)
   const log = createLogger(config) as AppLogger & pino.Logger
 
   const db = createDb(config.DB_URL)
-  if (config.DB_MIGRATE) migrateDb(db)
+  if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
   await masterWallet.checkStatus()
@@ -52,7 +72,14 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const chats = createChatRepository(db)
   const subscriptions = createSubscriptionRepository(db)
   const payments = createSubscriptionPaymentRepository(db)
+  const invoices = createInvoiceRepository(db)
+  const conversations = createConversationRepository(db)
   const grantAccess = createGrantSubscriptionAccess(db, log)
+  const getUserWallet = createUserWalletFactory({
+    masterWallet,
+    baseUrl: config.LNBITS_URL,
+    memoFooter: config.memoFooter,
+  })
 
   const settleService = createSettleService({
     recordSettleAttempt: id => payments.recordSettleAttempt(id),
@@ -87,14 +114,25 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     invoiceExpirySeconds: INVOICE_EXPIRY,
   })
 
-  return {
+  const container: AppContainer = {
     config,
     log,
     db,
     bot,
     masterWallet,
     notifier,
+    users,
+    chats,
+    subscriptions,
+    payments,
+    invoices,
+    conversations,
+    grantAccess,
+    getUserWallet,
     settleService,
     renewalService,
   }
+
+  setRuntime(container)
+  return container
 }

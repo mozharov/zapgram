@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto'
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {chatsTable, subscriptionsTable} from '@infra/db/schema.js'
 import type {NewSubscription, Subscription} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import {and, count, desc, eq, gt, lte} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 import type {SubscriptionWithChat} from './types.js'
 
 export function createSubscriptionRepository(database: AppDatabase) {
@@ -145,35 +145,33 @@ export function createSubscriptionRepository(database: AppDatabase) {
 
 export type SubscriptionRepository = ReturnType<typeof createSubscriptionRepository>
 
-/** Legacy singleton — removed in step 11. */
-export const subscriptionsRepository = createSubscriptionRepository(defaultDb)
-
-export const createSubscription = (data: NewSubscription) => subscriptionsRepository.create(data)
+export const createSubscription = (data: NewSubscription) => getRuntime().subscriptions.create(data)
 export const getSubscriptionByUserAndChat = (
   userId: Subscription['userId'],
   chatId: Subscription['chatId'],
-) => subscriptionsRepository.findByUserAndChat(userId, chatId)
+) => getRuntime().subscriptions.findByUserAndChat(userId, chatId)
 export const updateSubscription = (id: Subscription['id'], data: Partial<Subscription>) =>
-  subscriptionsRepository.update(id, data)
+  getRuntime().subscriptions.update(id, data)
 export const getExpiredSubscriptions = (limit?: number, offset?: number, date?: Date) =>
-  subscriptionsRepository.getExpired(limit, offset, date)
+  getRuntime().subscriptions.getExpired(limit, offset, date)
 export const deleteSubscription = (id: Subscription['id'], endsAt?: Date) =>
-  subscriptionsRepository.delete(id, endsAt)
-export const countExpiredSubscriptions = (date?: Date) => subscriptionsRepository.countExpired(date)
+  getRuntime().subscriptions.delete(id, endsAt)
+export const countExpiredSubscriptions = (date?: Date) =>
+  getRuntime().subscriptions.countExpired(date)
 export const getSubscriptionsExpiringWithin = (
   maxExpiryDate: Date,
   minExpiryDate: Date,
   limit: number,
   offset: number,
-) => subscriptionsRepository.getExpiringWithin(maxExpiryDate, minExpiryDate, limit, offset)
+) => getRuntime().subscriptions.getExpiringWithin(maxExpiryDate, minExpiryDate, limit, offset)
 export const countSubscriptionsExpiringWithin = (maxExpiryDate: Date, minExpiryDate: Date) =>
-  subscriptionsRepository.countExpiringWithin(maxExpiryDate, minExpiryDate)
+  getRuntime().subscriptions.countExpiringWithin(maxExpiryDate, minExpiryDate)
 export const getUserActiveSubscriptions = (
   userId: Subscription['userId'],
   page: number,
   limit: number,
-) => subscriptionsRepository.getUserActive(userId, page, limit)
+) => getRuntime().subscriptions.getUserActive(userId, page, limit)
 export const getUserActiveSubscriptionsCount = (userId: Subscription['userId']) =>
-  subscriptionsRepository.getUserActiveCount(userId)
+  getRuntime().subscriptions.getUserActiveCount(userId)
 export const getSubscriptionById = (id: Subscription['id']) =>
-  subscriptionsRepository.findByIdWithChat(id)
+  getRuntime().subscriptions.findByIdWithChat(id)

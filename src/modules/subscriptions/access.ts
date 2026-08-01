@@ -1,12 +1,11 @@
 import {randomUUID} from 'node:crypto'
 import {grantSubscriptionAccessIfNeeded} from '@core/subscriptions/grant.js'
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {subscriptionPaymentsTable, subscriptionsTable} from '@infra/db/schema.js'
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
-import {logger as defaultLogger} from '@infra/logger.js'
 import {and, eq} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 
 /**
  * Read the current subscription, create/extend it, and stamp `settledAt` in a single transaction.
@@ -15,10 +14,7 @@ import {and, eq} from 'drizzle-orm'
  *
  * Synchronous on purpose — see the note in `grantSubscriptionAccessIfNeeded`.
  */
-export function createGrantSubscriptionAccess(
-  database: AppDatabase,
-  log: AppLogger = defaultLogger,
-) {
+export function createGrantSubscriptionAccess(database: AppDatabase, log: AppLogger) {
   return function grantSubscriptionAccess(payment: SubscriptionPayment, now: Date = new Date()) {
     return database.transaction(tx =>
       grantSubscriptionAccessIfNeeded(
@@ -54,5 +50,7 @@ export function createGrantSubscriptionAccess(
   }
 }
 
-/** Legacy singleton — removed in step 11. */
-export const grantSubscriptionAccess = createGrantSubscriptionAccess(defaultDb)
+/** Leaf convenience — uses bootstrap runtime. */
+export function grantSubscriptionAccess(payment: SubscriptionPayment, now?: Date) {
+  return getRuntime().grantAccess(payment, now)
+}

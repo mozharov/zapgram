@@ -1,4 +1,3 @@
-import {logger} from '@infra/logger.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
 import {
@@ -8,12 +7,13 @@ import {
 } from '@modules/invoices/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {HTTPError} from 'got'
+import {getRuntime} from '../../../runtime.js'
 
 export async function checkPendingInvoices(): Promise<void> {
   try {
     await runBatch({
       name: 'pending invoices',
-      log: logger,
+      log: getRuntime().log,
       count: () => countPendingInvoices(),
       fetch: (limit, offset) => getPendingInvoices(limit, offset),
       process: async invoice => {
@@ -24,7 +24,7 @@ export async function checkPendingInvoices(): Promise<void> {
           if (payment.paid) {
             await notifyInvoicePaid(invoice.paymentRequest, invoice.userId).catch(
               (error: unknown) => {
-                logger.error({error}, 'Failed to notify user about paid invoice')
+                getRuntime().log.error({error}, 'Failed to notify user about paid invoice')
               },
             )
             await deletePendingInvoice(invoice.paymentRequest)
@@ -32,12 +32,12 @@ export async function checkPendingInvoices(): Promise<void> {
           }
           return 'keep'
         } catch (error) {
-          logger.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
+          getRuntime().log.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
 
           if (error instanceof HTTPError && error.response.statusCode === 404) {
-            logger.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
+            getRuntime().log.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
             await deletePendingInvoice(invoice.paymentRequest).catch((deleteError: unknown) => {
-              logger.error(
+              getRuntime().log.error(
                 {error: deleteError},
                 `Failed to delete not-found invoice ${invoice.paymentRequest}`,
               )
@@ -45,15 +45,20 @@ export async function checkPendingInvoices(): Promise<void> {
             return 'done'
           }
           if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
-            logger.warn(`Timeout checking invoice ${invoice.paymentHash}. Will retry later.`)
+            getRuntime().log.warn(
+              `Timeout checking invoice ${invoice.paymentHash}. Will retry later.`,
+            )
             return 'keep'
           }
-          logger.error({error}, `Unhandled error processing invoice ${invoice.paymentHash}.`)
+          getRuntime().log.error(
+            {error},
+            `Unhandled error processing invoice ${invoice.paymentHash}.`,
+          )
           return 'keep'
         }
       },
     })
   } catch (error) {
-    logger.error({error}, 'Error in checkPendingInvoices job.')
+    getRuntime().log.error({error}, 'Error in checkPendingInvoices job.')
   }
 }

@@ -2,6 +2,7 @@ import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {updateUser} from '@modules/users/repository.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
@@ -35,6 +36,8 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
 
 async function replyWithWaitForUrl(ctx: BotContext) {
   return ctx.reply(ctx.t('nwc.wait-url'), {
-    reply_markup: new InlineKeyboard([[{callback_data: 'cancel', text: ctx.t('button.cancel')}]]),
+    reply_markup: new InlineKeyboard([
+      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+    ]),
   })
 }

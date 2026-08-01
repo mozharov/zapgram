@@ -37,7 +37,7 @@ export function createApp(container: AppContainer): RunningApp {
             .init()
             .then(async () => {
               if (config.NGROK_TOKEN) {
-                const url = await startTunnel()
+                const url = await startTunnel(config, log)
                 await setWebhook(bot as never, url, config.BOT_WEBHOOK_SECRET)
               }
               if (config.CONFIGURE_BOT) {
@@ -60,7 +60,7 @@ export function createApp(container: AppContainer): RunningApp {
       await scheduler.stop({drainTimeoutMs: 10_000})
 
       await deleteWebhook(bot as never)
-      if (config.NGROK_TOKEN) await stopTunnel()
+      if (config.NGROK_TOKEN) await stopTunnel(log)
 
       if (server) {
         await server.stop()

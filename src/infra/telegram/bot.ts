@@ -1,4 +1,3 @@
-import {config} from '@config'
 import {autoRetry} from '@grammyjs/auto-retry'
 import {Bot, type Context} from 'grammy'
 import type {UserFromGetMe} from 'grammy/types'
@@ -14,6 +13,3 @@ export function createBot<C extends Context>(token: string, botInfo?: UserFromGe
   instance.api.config.use(parseMode('HTML'))
   return instance
 }
-
-/** Legacy singleton — handlers are registered separately via registerHandlers. Removed in step 11. */
-export const bot = createBot(config.BOT_TOKEN, config.botInfo)

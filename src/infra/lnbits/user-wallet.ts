@@ -1,9 +1,8 @@
-import {config} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
-import {logger} from '../logger.js'
+import type {AppLogger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
   balanceResponseSchema,
@@ -18,10 +17,18 @@ const DEFAULT_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 export class UserWallet extends LNBitsAPI {
   /** Balance in millisatoshis */
   public readonly balance: number
+  private readonly memoFooter: string
 
-  constructor(adminKey: string, balance: number, baseUrl: string = config.LNBITS_URL) {
-    super({baseUrl, adminKey})
+  constructor(
+    adminKey: string,
+    balance: number,
+    baseUrl: string,
+    memoFooter = '',
+    log?: AppLogger,
+  ) {
+    super({baseUrl, adminKey, log})
     this.balance = balance
+    this.memoFooter = memoFooter
   }
 
   /**
@@ -35,7 +42,7 @@ export class UserWallet extends LNBitsAPI {
         amount: sats,
         unit: 'sat',
         expiry,
-        memo: buildInvoiceMemo(memo, config.memoFooter),
+        memo: buildInvoiceMemo(memo, this.memoFooter),
       }),
     })
   }
@@ -47,7 +54,7 @@ export class UserWallet extends LNBitsAPI {
         out: true,
         bolt11: paymentRequest,
       }),
-    }).catch(handlePayInvoiceError) as Promise<PaymentResponse>
+    }).catch(error => handlePayInvoiceError(error, this.log)) as Promise<PaymentResponse>
   }
 
   /**
@@ -80,8 +87,8 @@ interface CreateInvoiceParams {
   expiry?: number
 }
 
-function handlePayInvoiceError(error: unknown) {
-  logger.error({error}, 'Error paying invoice')
+function handlePayInvoiceError(error: unknown, log?: AppLogger) {
+  log?.error({error}, 'Error paying invoice')
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {
       const {detail, status} = error.response.body as {detail: string; status: string}

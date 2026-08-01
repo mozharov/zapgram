@@ -4,6 +4,7 @@ import {NostrWallet} from '@infra/nostr/wallet.js'
 import {getOrCreateUser} from '@modules/users/repository.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Middleware} from 'grammy'
+import {getRuntime} from '../../runtime.js'
 
 export const attachUser: Middleware<Context> = async (ctx, next) => {
   if (!ctx.from) return next()
@@ -14,7 +15,10 @@ export const attachUser: Middleware<Context> = async (ctx, next) => {
     languageCode: ctx.from.language_code,
     firstName: ctx.from.first_name,
   })
-  if (ctx.user.nwcUrl) ctx.user.nwc = new NostrWallet(ctx.user.nwcUrl)
+  if (ctx.user.nwcUrl) {
+    const {config, log} = getRuntime()
+    ctx.user.nwc = new NostrWallet(ctx.user.nwcUrl, config.memoFooter, log)
+  }
   return next()
 }
 

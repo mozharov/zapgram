@@ -1,5 +1,4 @@
 import type {AppConfig} from '@config'
-import {config} from '@config'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
   healthResponseSchema,
@@ -118,6 +117,3 @@ export function createMasterWallet(cfg: AppConfig): MasterWallet {
     feeCollectionInvoiceKey: cfg.LNBITS_FEE_COLLECTION_INVOICE_KEY,
   })
 }
-
-/** Legacy singleton — removed in step 11 when bootstrap owns composition. */
-export const lnbitsMasterWallet = createMasterWallet(config)

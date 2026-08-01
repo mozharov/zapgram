@@ -1,4 +1,3 @@
-import {config} from '@config'
 import {
   getUserActiveSubscriptions,
   getUserActiveSubscriptionsCount,
@@ -7,10 +6,11 @@ import {buildSubscriptionsKeyboard} from '@modules/subscriptions/telegram/keyboa
 import {subscriptionsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
+import {getRuntime} from '../../../../runtime.js'
 
 export const subscriptionsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   let {page} = subscriptionsPageRoute.parse(ctx.match)
-  const limit = config.chatsPerPage
+  const limit = getRuntime().config.chatsPerPage
   const totalSubscriptions = await getUserActiveSubscriptionsCount(ctx.user.id)
 
   if (totalSubscriptions === 0) return ctx.editMessageText(ctx.t('subscriptions.empty'))

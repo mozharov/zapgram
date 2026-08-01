@@ -1,4 +1,3 @@
-import {config} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
@@ -6,17 +5,21 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {Nip47Error, Nip47ResponseValidationError, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
-import {logger} from '../logger.js'
+import type {AppLogger} from '../logger.js'
 
 export class NostrWallet {
   private readonly client: NWCClient
   public readonly nwcUrl: string
+  private readonly memoFooter: string
+  private readonly log?: AppLogger
 
-  constructor(nwcUrl: string) {
+  constructor(nwcUrl: string, memoFooter = '', log?: AppLogger) {
     this.client = new NWCClient({
       nostrWalletConnectUrl: nwcUrl,
     })
     this.nwcUrl = nwcUrl
+    this.memoFooter = memoFooter
+    this.log = log
   }
 
   /**
@@ -28,7 +31,7 @@ export class NostrWallet {
 
   // expiry is in seconds. Default is 1 day.
   public async createInvoice(msats: number, memo = '', expiry = 60 * 60 * 24 * 1) {
-    const description = buildInvoiceMemo(memo, config.memoFooter)
+    const description = buildInvoiceMemo(memo, this.memoFooter)
     return withTimeout(this.client.makeInvoice({amount: msats, description, expiry}))
   }
 
@@ -46,13 +49,13 @@ export class NostrWallet {
         const lookup = await this.lookupInvoice(invoice).catch(() => ({preimage: null}))
         if (lookup.preimage) return
       }
-      handlePayInvoiceError(error)
+      handlePayInvoiceError(error, this.log)
     }
   }
 }
 
-function handlePayInvoiceError(error: unknown) {
-  logger.error({error}, 'Error while paying invoice')
+function handlePayInvoiceError(error: unknown, log?: AppLogger) {
+  log?.error({error}, 'Error while paying invoice')
   if (
     error instanceof Nip47TimeoutError ||
     error instanceof NWCTimeoutError ||

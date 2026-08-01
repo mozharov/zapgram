@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto'
 import type {AppDatabase} from '@infra/db/client.js'
-import {db as defaultDb} from '@infra/db/client.js'
 import {subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {NewSubscriptionPayment, SubscriptionPayment} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
+import {getRuntime} from '../../runtime.js'
 
 /**
  * The cron ticks every 3 minutes, so this is roughly a week of retries. Deliberately generous:
@@ -52,7 +52,7 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
       })
     },
 
-    /** Must be persisted before the payout invoice is paid — see distributeSubscriptionPaymentOnce. */
+    /** Must be persisted before the payout invoice is paid — see settle.service distributeOnce. */
     async recordPayoutInvoice(
       id: SubscriptionPayment['id'],
       payoutHash: NonNullable<SubscriptionPayment['payoutHash']>,
@@ -111,31 +111,27 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
 
 export type SubscriptionPaymentRepository = ReturnType<typeof createSubscriptionPaymentRepository>
 
-/** Legacy singleton — removed in step 11. */
-export const subscriptionPaymentsRepository = createSubscriptionPaymentRepository(defaultDb)
-
 export const createSubscriptionPayment = (data: NewSubscriptionPayment) =>
-  subscriptionPaymentsRepository.create(data)
-export const countSubscriptionPayments = () => subscriptionPaymentsRepository.countSettleable()
-export const countExhaustedSubscriptionPayments = () =>
-  subscriptionPaymentsRepository.countExhausted()
+  getRuntime().payments.create(data)
+export const countSubscriptionPayments = () => getRuntime().payments.countSettleable()
+export const countExhaustedSubscriptionPayments = () => getRuntime().payments.countExhausted()
 export const getSubscriptionPayments = (limit?: number, offset?: number) =>
-  subscriptionPaymentsRepository.getSettleable(limit, offset)
+  getRuntime().payments.getSettleable(limit, offset)
 export const recordPayoutInvoice = (
   id: SubscriptionPayment['id'],
   payoutHash: NonNullable<SubscriptionPayment['payoutHash']>,
-) => subscriptionPaymentsRepository.recordPayoutInvoice(id, payoutHash)
+) => getRuntime().payments.recordPayoutInvoice(id, payoutHash)
 export const recordFeePayoutInvoice = (
   id: SubscriptionPayment['id'],
   feePayoutHash: NonNullable<SubscriptionPayment['feePayoutHash']>,
-) => subscriptionPaymentsRepository.recordFeePayoutInvoice(id, feePayoutHash)
+) => getRuntime().payments.recordFeePayoutInvoice(id, feePayoutHash)
 export const getPendingPaymentForSubscription = (
   userId: SubscriptionPayment['userId'],
   chatId: SubscriptionPayment['chatId'],
-) => subscriptionPaymentsRepository.getPendingForSubscription(userId, chatId)
+) => getRuntime().payments.getPendingForSubscription(userId, chatId)
 export const recordSettleAttempt = (id: SubscriptionPayment['id']) =>
-  subscriptionPaymentsRepository.recordSettleAttempt(id)
+  getRuntime().payments.recordSettleAttempt(id)
 export const deleteSubscriptionPayment = (id: SubscriptionPayment['id']) =>
-  subscriptionPaymentsRepository.delete(id)
+  getRuntime().payments.delete(id)
 export const getSubscriptionPayment = (id: SubscriptionPayment['id']) =>
-  subscriptionPaymentsRepository.findById(id)
+  getRuntime().payments.findById(id)

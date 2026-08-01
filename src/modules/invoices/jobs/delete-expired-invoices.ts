@@ -1,11 +1,11 @@
-import {logger} from '@infra/logger.js'
 import {deleteExpiredInvoices as deleteExpiredInvoicesFromDB} from '@modules/invoices/repository.js'
+import {getRuntime} from '../../../runtime.js'
 
 export async function deleteExpiredInvoices(): Promise<void> {
   try {
     const deleted = await deleteExpiredInvoicesFromDB()
-    logger.info(`Deleted ${deleted} expired invoices.`)
+    getRuntime().log.info(`Deleted ${deleted} expired invoices.`)
   } catch (error) {
-    logger.error({error}, 'Error in deleteExpiredInvoices job')
+    getRuntime().log.error({error}, 'Error in deleteExpiredInvoices job')
   }
 }
