@@ -39,6 +39,7 @@ export type FakeFailure = {
 export type FakeRequestMatch = {
   method: string
   path: string | RegExp
+  body?: (body: unknown) => boolean
 }
 
 type FailureRule = FakeFailure & {
@@ -245,8 +246,8 @@ export class LnbitsState {
     this.failures.push({...failure, match, once: false})
   }
 
-  takeFailure(method: string, path: string): FakeFailure | undefined {
-    const index = this.failures.findIndex(rule => matches(rule.match, method, path))
+  takeFailure(method: string, path: string, body?: unknown): FakeFailure | undefined {
+    const index = this.failures.findIndex(rule => matches(rule.match, method, path, body))
     if (index === -1) return undefined
 
     const rule = this.failures[index]
@@ -286,9 +287,12 @@ export function createLnbitsState(opts: {adminKey: string; feeCollectionKey: str
   return new LnbitsState(opts.adminKey, opts.feeCollectionKey)
 }
 
-function matches(match: FakeRequestMatch, method: string, path: string): boolean {
+function matches(match: FakeRequestMatch, method: string, path: string, body: unknown): boolean {
   if (match.method.toUpperCase() !== method.toUpperCase()) return false
-  if (typeof match.path === 'string') return match.path === path
-  match.path.lastIndex = 0
-  return match.path.test(path)
+  const pathMatches = (() => {
+    if (typeof match.path === 'string') return match.path === path
+    match.path.lastIndex = 0
+    return match.path.test(path)
+  })()
+  return pathMatches && (match.body?.(body) ?? true)
 }

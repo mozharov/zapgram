@@ -55,6 +55,12 @@ redelivered join request issues a second invoice for the same chat"): sending th
 `chat_join_request` update twice leaves two `subscription_payments` rows with two distinct payment
 hashes, two unpaid master-wallet invoices, and two invoice messages to the user. No error is logged.
 
+The settlement consequence is also confirmed by
+`test/e2e/scenarios/subscriptions-settle.e2e.test.ts` ("two paid one-time rows currently distribute
+the same access purchase twice"). With both rows marked paid, one job creates only one permanent
+subscription but removes both payment rows, pays the owner 950 sats twice, collects the 50-sat fee
+twice, and sends both sets of approval and payment notifications.
+
 ### How a user reaches it
 
 Two ways, neither of which needs anything unusual:
@@ -64,8 +70,9 @@ Two ways, neither of which needs anything unusual:
 - The user cancels their join request in the client and requests again, which is a second genuine
   `chat_join_request`. Both invoices stay payable for a day (`EXPIRY`).
 
-Whether a real subscriber would pay both invoices rather than one was not established — the
-duplicate row itself is confirmed, the double debit follows from the per-row settle guard.
+Whether a real subscriber would choose to pay both invoices rather than one was not measured. The
+duplicate invoice creation and the double settlement after both invoices are paid are independently
+confirmed.
 
 ### Fix sketch
 
@@ -174,6 +181,68 @@ Pass `ctx.chatJoinRequest.user_chat_id` as the first argument to `sendMessage`; 
 for the database payment owner and for `approveChatJoinRequest`, whose API explicitly expects a
 user ID. Update the shared invoice assertion and characterization test to require
 `chat_id=100004`.
+
+## A failed join approval does not stop subscription settlement
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+
+`settle` (`src/modules/subscriptions/settle.service.ts`) grants the subscription and then calls
+`approveChatJoinRequest`. Its local `.catch` only logs an error; settlement continues through both
+payout legs, deletes the only `subscription_payments` retry row, and sends the subscriber the
+`subscription-invoice.paid` message even though Telegram did not grant chat access.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes in
+`test/e2e/scenarios/subscriptions-settle.e2e.test.ts` ("an approval failure currently still pays
+out and deletes the retry row"). The chat is already `no_access`, and Telegram is configured to
+reject `approveChatJoinRequest` with a 400. The job still creates the subscription, transfers 950
+sats to the owner and 50 sats to the fee wallet, removes the payment row, and tells the subscriber
+that access was received. The approval failure is logged.
+
+The forced rejection and all later effects are confirmed. How often Telegram rejects approval in
+production, including after rights changes or a withdrawn join request, was not measured.
+
+### How a user reaches it
+
+The user pays while ZapGram can no longer approve the original request: the bot lost rights, the
+chat became inaccessible, the request disappeared, or Telegram returned a transient error. Their
+payment is finalized and cannot be retried by this job, but their membership was never approved.
+
+### Fix sketch
+
+Do not acknowledge access or delete the payment's retry state after a failed approval. Represent
+access delivery as a retryable step alongside the already idempotent grant and payout hashes. A
+permanent approval failure still needs bounded attempts and manual review, because the subscriber's
+invoice has already been paid and silently dropping either the access or the money is unsafe.
+
+## A pending fee payout is logged as an owner payout
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+
+`distributeOnce` (`src/modules/subscriptions/settle.service.ts`) returns only `{status: 'pending'}`;
+it does not identify which payout leg is pending. Its caller therefore always logs "Owner payout is
+still in flight" and attaches `payment.payoutHash`, even when the owner transfer is already paid and
+the pending hash is `feePayoutHash`.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes
+(`test/e2e/scenarios/subscriptions-settle.e2e.test.ts`, "a pending fee leg is currently logged as an
+owner payout"). The owner hash is settled and the fee hash is a master-wallet outgoing payment with
+`paid=false`. The row is correctly kept without another transfer, but the emitted diagnostic names
+the owner leg and records the already-paid owner hash instead of the pending fee hash.
+
+### How an operator reaches it
+
+Any fee transfer that remains pending at LNbits reaches this branch. The payment remains retryable,
+so funds are not duplicated, but the log sends incident response to the wrong transfer and hash.
+
+### Fix sketch
+
+Return the pending leg and hash from `distributeOnce`, for example
+`{status: 'pending', leg: 'fee', hash}`. Log those values in `settle` and keep the existing behavior
+of retaining the row until a later lookup resolves the transfer.
 
 ## Chat settings callbacks do not check ownership
 

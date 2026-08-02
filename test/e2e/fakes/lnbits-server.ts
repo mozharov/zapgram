@@ -35,7 +35,7 @@ export async function startFakeLnbits(opts: {
       if (body !== undefined) recorded.body = body
       requests.push(recorded)
 
-      const injectedFailure = state.takeFailure(request.method, url.pathname)
+      const injectedFailure = state.takeFailure(request.method, url.pathname, body)
       if (injectedFailure) return json(injectedFailure.body, injectedFailure.status)
 
       try {
@@ -163,9 +163,12 @@ function route({
 
   const paymentMatch = path.match(/^\/api\/v1\/payments\/([^/]+)$/)
   if (method === 'GET' && paymentMatch) {
-    if (!authenticatedWallet(request, state)) return json({detail: 'Unauthorized.'}, 401)
+    const wallet = authenticatedWallet(request, state)
+    if (!wallet) return json({detail: 'Unauthorized.'}, 401)
     const paymentHash = paymentMatch[1]
-    const payment = state.payments.find(candidate => candidate.paymentHash === paymentHash)
+    const payment = state.payments.find(
+      candidate => candidate.paymentHash === paymentHash && candidate.walletId === wallet.id,
+    )
     if (!payment) return json({detail: 'Payment not found.'}, 404)
     return json({
       paid: payment.paid,

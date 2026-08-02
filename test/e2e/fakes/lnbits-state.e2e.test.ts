@@ -75,6 +75,23 @@ describe('LnbitsState', () => {
     expect(receiver.balanceMsat).toBe(0)
     expect(invoice.paid).toBe(false)
   })
+
+  test('failure injection can target the request body', () => {
+    const state = createLnbitsState(keys)
+    const failure = {status: 503, body: {detail: 'pay unavailable'}}
+    state.failNext(
+      {
+        method: 'POST',
+        path: '/api/v1/payments',
+        body: body => Reflect.get(asRecord(body), 'out') === true,
+      },
+      failure,
+    )
+
+    expect(state.takeFailure('POST', '/api/v1/payments', {out: false})).toBeUndefined()
+    expect(state.takeFailure('POST', '/api/v1/payments', {out: true})).toEqual(failure)
+    expect(state.takeFailure('POST', '/api/v1/payments', {out: true})).toBeUndefined()
+  })
 })
 
 function walletFor(state: ReturnType<typeof createLnbitsState>, username: string) {
@@ -86,4 +103,8 @@ function walletFor(state: ReturnType<typeof createLnbitsState>, username: string
 
 function totalBalance(state: ReturnType<typeof createLnbitsState>) {
   return state.wallets.reduce((total, wallet) => total + wallet.balanceMsat, 0)
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }

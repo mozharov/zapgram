@@ -118,6 +118,25 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
+  test('scopes payment lookup to the authenticated wallet', async () => {
+    await withFake(async fake => {
+      const master = createMasterWallet(testConfig(fake.url))
+      const receiver = userWallet(fake, '100002')
+      const invoice = await receiver.client.createInvoice({sats: 21})
+
+      try {
+        await master.lookupPayment(invoice.payment_hash)
+        throw new Error('Expected a cross-wallet lookup to fail')
+      } catch (error) {
+        expect(error).toBeInstanceOf(HTTPError)
+        if (!(error instanceof HTTPError)) throw error
+        expect(error.response.statusCode).toBe(404)
+      }
+
+      expect((await receiver.client.lookupPayment(invoice.payment_hash)).paid).toBe(false)
+    })
+  })
+
   test('moves 21,000 msat between user wallets and keeps the total unchanged', async () => {
     await withFake(async fake => {
       const payer = userWallet(fake, '100001')
