@@ -16,15 +16,18 @@ export function mintInvoice({
   sats,
   description = '',
   expirySec = DEFAULT_EXPIRY_SEC,
+  timestampSec = Math.floor(Date.now() / 1000),
 }: {
   sats: number
   description?: string
   expirySec?: number
+  /** Issue time. Backdate it past `expirySec` to mint an invoice that is already expired. */
+  timestampSec?: number
 }): MintedInvoice {
   const paymentHash = randomBytes(32).toString('hex')
   const encoded = encode({
     satoshis: sats,
-    timestamp: Math.floor(Date.now() / 1000),
+    timestamp: timestampSec,
     tags: [
       {tagName: 'payment_hash', data: paymentHash},
       {tagName: 'description', data: description},
