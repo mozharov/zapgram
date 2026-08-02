@@ -1,6 +1,6 @@
 # ZapGram — agent notes
 
-Canonical agent instructions. `CLAUDE.md` is a symlink to this file.
+Canonical agent instructions.
 
 ## Stack
 
