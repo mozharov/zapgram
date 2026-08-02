@@ -515,3 +515,44 @@ purpose and needs its own expiry, which nothing implements today.
 
 Either way the two e2e cases above are the regression: they currently pin the asymmetry, so a fix
 has to rewrite them into one shared expectation.
+
+## Disconnect NWC still shows the NWC balance on the same reply
+
+**Status:** open. **Found:** 2026-08-02, while writing the NWC e2e suite.
+
+`disconnectNwcCallback` (`src/modules/wallet/telegram/handlers/disconnect-nwc.ts`) writes
+`nwcUrl: null` and `nwcTips: false` to the database, then calls `replyWithWallet(ctx)`. Wallet
+rendering reads NWC from `ctx.user.nwc` (`src/modules/wallet/telegram/messages/wallet.ts`), which
+`attachUser` built at the start of the request from the still-connected row. The handler never
+clears that in-memory field, so the “Wallet disconnected” confirmation is immediately followed by a
+wallet screen that still lists `<b>NWC:</b> … sats`.
+
+The database is correct. The next update rebuilds the context without NWC and shows the single
+`Balance:` line. Only the same-request reply is wrong.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes (`test/e2e/scenarios/nwc.e2e.test.ts`,
+"disconnecting NWC clears nwc_url and nwc_tips"): after `disconnect-nwc`, the user row has
+`nwcUrl: null` and `nwcTips: false`, but the third Telegram call of that update is a wallet message
+matching `/<b>NWC:<\/b>/`. The following `/wallet` then matches `/<b>Balance:<\/b>/` and has no NWC
+line.
+
+### How a user reaches it
+
+Settings → *Disconnect the NWC wallet*. They see “Wallet disconnected from ZapGram” and, under it, a
+wallet that still claims an NWC balance until they open the wallet again.
+
+### Fix sketch
+
+After the repository update, drop the live wallet from the context before rendering:
+
+```ts
+await updateUser(ctx.user.id, {nwcUrl: null, nwcTips: false})
+ctx.user.nwcUrl = null
+ctx.user.nwcTips = false
+ctx.user.nwc = undefined
+```
+
+The e2e case above is the regression: the same-request wallet reply should match the single-balance
+copy, and the extra “next `/wallet`” step becomes redundant.
