@@ -1,0 +1,581 @@
+import {afterEach, beforeEach, expect, test} from 'bun:test'
+import type {AppErrorCode} from '@core/errors/app-error.js'
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
+import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
+import {chatsTable, usersTable} from '@infra/db/schema.js'
+import {NostrWallet} from '@infra/nostr/wallet.js'
+import {paySubscriptionRoute, subscriptionRoute} from '@telegram/callback-data.js'
+import {errorTranslationKey} from '@telegram/errors/error-copy.js'
+import {translate} from '@telegram/i18n/i18n.js'
+import {eq} from 'drizzle-orm'
+import {mintInvoice} from '../fakes/bolt11.js'
+import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
+import {
+  seedChat,
+  seedPendingInvoice,
+  seedSubscription,
+  seedSubscriptionPayment,
+  seedUser,
+} from '../fixtures/seed.js'
+import {
+  groupReply,
+  groupText,
+  myChatMember,
+  privateCallback,
+  privateCommand,
+  privateText,
+  type TestUpdate,
+} from '../fixtures/updates.js'
+import {createE2E, type E2E} from '../harness.js'
+import {expectDelta, snapshot} from '../state.js'
+
+/**
+ * Domain errors as the user sees them: every AppErrorCode reaches the right Fluent copy, private
+ * chats get error + wallet, groups get a temporary message, channels stay silent, and copy is free
+ * of Fluent isolation marks and raw translation keys.
+ *
+ * `not_found` intentionally maps to `error.unknown`. NWC payment failures are forced through the
+ * real pay-subscription route by stubbing `NostrWallet.prototype.payInvoice` — the live NWC
+ * transport itself belongs to the dedicated NWC suite (step 4.13).
+ */
+
+const RAW_KEY = /\{[a-z0-9.-]+\}/i
+const FLUENT_MARKS = /[\u2068\u2069]/
+const NWC_URL = `nostr+walletconnect://${'aa'.repeat(32)}?relay=wss://relay.example&secret=${'bb'.repeat(32)}`
+
+type Locale = 'en' | 'ru'
+
+const ALL_CODES: AppErrorCode[] = [
+  'insufficient_funds',
+  'invoice_already_paid',
+  'invoice_parsing',
+  'nwc_timeout',
+  'nwc_connection',
+  'nwc_payment_failed',
+  'nwc_no_answer',
+  'no_recipient',
+  'to_bot',
+  'from_bot',
+  'to_yourself',
+  'user_has_no_wallet',
+  'not_found',
+  'unknown',
+]
+
+let e2e: E2E
+let restorePayInvoice: (() => void) | undefined
+
+beforeEach(async () => {
+  e2e = await createE2E()
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    languageCode: 'en',
+  })
+})
+
+afterEach(async () => {
+  restorePayInvoice?.()
+  restorePayInvoice = undefined
+  await e2e.dispose()
+})
+
+// --- Full AppErrorCode matrix ---
+
+test('error-copy maps every AppErrorCode, with not_found falling back to unknown', () => {
+  expect(Object.keys(errorTranslationKey).sort()).toEqual([...ALL_CODES].sort())
+  expect(errorTranslationKey.not_found).toBe('error.unknown')
+  expect(errorTranslationKey.unknown).toBe('error.unknown')
+  for (const code of ALL_CODES) {
+    const key = errorTranslationKey[code]
+    for (const locale of ['en', 'ru'] as const) {
+      const text = translate(key, locale)
+      expectCleanUserText(text)
+      if (code === 'not_found' || code === 'unknown') {
+        expect(text).toMatch(locale === 'en' ? /Unknown error occurred/ : /неизвестная ошибка/i)
+      } else {
+        expect(text).not.toMatch(locale === 'en' ? /Unknown error occurred/ : /неизвестная ошибка/i)
+      }
+    }
+  }
+})
+
+test('insufficient_funds is shown in a group as a temporary message', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  await expectGroupError(groupText('/tip 21 @user_b'), 'insufficient_funds', 'en')
+})
+
+test('insufficient_funds in private chat is error text plus the wallet screen', async () => {
+  const invoice = mintInvoice({sats: 100, description: 'too expensive'})
+  await e2e.send(privateText(invoice.bolt11))
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateCallback(payButton()))
+
+  expectPrivateErrorAndWallet('insufficient_funds', 'en')
+  await expectMoneyUnchanged(before)
+})
+
+test('invoice_already_paid keeps the payee pending row and shows the dedicated copy', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  const pending = await seedPendingInvoice(e2e, {userId: USER_B, sats: 21})
+  credit(USER_A, 1000)
+  e2e.ln.state.payInvoice({payerWallet: walletOf(USER_A), bolt11: pending.paymentRequest})
+  await e2e.send(privateText(pending.paymentRequest))
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateCallback(payButton()))
+
+  expectPrivateErrorAndWallet('invoice_already_paid', 'en')
+  const after = await snapshot(e2e)
+  expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
+  expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
+})
+
+test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', async () => {
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateText('lnbc1notavalidinvoice00'))
+
+  expectPrivateErrorAndWallet('invoice_parsing', 'en')
+  // Conversation enters before decode, so the opening "Paying..." line is also present.
+  expect(
+    e2e.tg.of('sendMessage').some(call => String(call.text).includes('Paying Lightning invoice')),
+  ).toBe(true)
+  await expectMoneyUnchanged(before)
+})
+
+test('nwc_connection is raised when paying a subscription invoice via NWC without a wallet', async () => {
+  await seedOwnerAndChat()
+  const payment = await seedSubscriptionPayment(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    paid: false,
+    price: 1000,
+  })
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})))
+
+  expectPrivateErrorAndWallet('nwc_connection', 'en')
+  await expectMoneyUnchanged(before)
+})
+
+for (const scenario of [
+  {
+    code: 'nwc_timeout' as const,
+    throwError: () => new NWCTimeoutError(),
+  },
+  {
+    code: 'nwc_payment_failed' as const,
+    throwError: () => new NWCPaymentFailedError(),
+  },
+  {
+    code: 'nwc_no_answer' as const,
+    throwError: () => new NoNWCAnswerError(),
+  },
+]) {
+  test(`${scenario.code} reaches the user through the NWC pay-subscription path`, async () => {
+    await seedOwnerAndChat()
+    await e2e.container.users.update(USER_A, {nwcUrl: NWC_URL})
+    const payment = await seedSubscriptionPayment(e2e, {
+      userId: USER_A,
+      chatId: CHAT_GROUP,
+      paid: false,
+      price: 1000,
+    })
+    stubNwcPayInvoice(() => {
+      throw scenario.throwError()
+    })
+    const before = await snapshot(e2e)
+
+    await e2e.send(
+      privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})),
+    )
+
+    expectPrivateErrorAndWallet(scenario.code, 'en')
+    await expectMoneyUnchanged(before)
+  })
+}
+
+test('no_recipient is reported when a group tip has no discoverable creator', async () => {
+  e2e.tg.reply('getChatAdministrators', [])
+  await expectGroupError(groupText('/tip'), 'no_recipient', 'en')
+})
+
+test('to_bot refuses a tip reply to a bot account', async () => {
+  await expectGroupError(
+    groupReply(
+      '/tip 21',
+      {
+        text: 'bot message',
+        from: {id: 900001, is_bot: true, username: 'helper_bot', first_name: 'Helper'},
+      },
+      {from: {id: USER_A, username: 'user_a'}},
+    ),
+    'to_bot',
+    'en',
+  )
+})
+
+test('from_bot rejects a private update from a bot account before creating a user', async () => {
+  await expectDelta(e2e, () => e2e.send(privateText('hello', {from: {is_bot: true}})), {
+    telegram: [{method: 'sendMessage', to: USER_A, text: expectedErrorPattern('from_bot', 'en')}],
+  })
+  // Seeded USER_A remains; the bot-from update creates nobody.
+  expect(await e2e.db.select().from(usersTable)).toEqual([expect.objectContaining({id: USER_A})])
+  expect(errorTextTo(USER_A)).toBe(expectedErrorText('from_bot', 'en'))
+  expectCleanUserText(errorTextTo(USER_A))
+  expect(errorMessages()).toEqual(['Bot error', 'Failed to reply with wallet in error handler'])
+})
+
+test('to_yourself refuses a tip to the sender username', async () => {
+  await expectGroupError(groupText('/tip 21 @user_a'), 'to_yourself', 'en')
+})
+
+test('user_has_no_wallet refuses a tip to an unknown username', async () => {
+  await expectGroupError(groupText('/tip 21 @missing_user'), 'user_has_no_wallet', 'en')
+})
+
+test('not_found is intentionally shown as the unknown error copy', async () => {
+  await seedOwnerAndChat()
+  const subscription = await seedSubscription(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    price: 1000,
+  })
+  // Leave a subscription whose chat row is gone so findByIdWithChat hits not_found.
+  const client = Reflect.get(e2e.db, '$client') as {run: (sql: string) => void}
+  client.run('PRAGMA foreign_keys = OFF')
+  await e2e.db.delete(chatsTable).where(eq(chatsTable.id, CHAT_GROUP))
+  client.run('PRAGMA foreign_keys = ON')
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateCallback(subscriptionRoute.build({subscriptionId: subscription.id})))
+
+  expectPrivateErrorAndWallet('not_found', 'en')
+  expect(errorTextTo(USER_A)).toBe(expectedErrorText('unknown', 'en'))
+  await expectMoneyUnchanged(before)
+})
+
+test('unknown surfaces for a non-AppError failure', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  credit(USER_A, 1000)
+  const original = e2e.container.getUserWallet
+  e2e.container.getUserWallet = async userId => {
+    const wallet = await original(userId)
+    return Object.assign(wallet, {
+      payInvoice: async () => {
+        throw new Error('Injected non-domain failure')
+      },
+    })
+  }
+
+  try {
+    await expectGroupError(groupText('/tip 21 @user_b'), 'unknown', 'en')
+  } finally {
+    e2e.container.getUserWallet = original
+  }
+})
+
+// --- Delivery modes ---
+
+test('a group error is a temporary message that is deleted', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  const before = await snapshot(e2e)
+
+  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+    telegram: [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        text: expectedErrorPattern('insufficient_funds', 'en'),
+      },
+      {method: 'deleteMessages', to: CHAT_GROUP},
+    ],
+  })
+
+  const after = await snapshot(e2e)
+  expect(after.db).toEqual(before.db)
+  expect(after.lnbits).toEqual(before.lnbits)
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
+test('a channel error is silent', async () => {
+  // Force an AppError inside the channel my_chat_member path; the error handler must not reply.
+  const original = e2e.container.users.getOrCreate
+  e2e.container.users.getOrCreate = async () => {
+    throw new InsufficientFundsError()
+  }
+  const before = await snapshot(e2e)
+  const telegramMark = e2e.tg.calls.length
+
+  try {
+    await e2e.send(myChatMember('channel', true, {chat: {id: CHAT_CHANNEL, title: 'E2E Channel'}}))
+  } finally {
+    e2e.container.users.getOrCreate = original
+  }
+
+  const after = await snapshot(e2e)
+  expect(after.db).toEqual(before.db)
+  expect(after.lnbits).toEqual(before.lnbits)
+  expect(e2e.tg.calls.slice(telegramMark).filter(call => call.method === 'sendMessage')).toEqual([])
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
+// --- Locales ---
+
+test('group tip errors use the sender language_code for en and ru', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+
+  for (const locale of ['en', 'ru'] as const) {
+    e2e.tg.reset()
+    e2e.logs.length = 0
+    // Refresh stored language so attachUser does not also write a users.changed delta mid-assert.
+    await e2e.container.users.update(USER_A, {languageCode: locale})
+    await expectGroupError(
+      groupText('/tip 21 @user_b', {
+        from: {id: USER_A, username: 'user_a', language_code: locale},
+      }),
+      'insufficient_funds',
+      locale,
+    )
+  }
+})
+
+test('changing language_code in an update refreshes the user and the next error text', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  expect((await e2e.container.users.findById(USER_A))?.languageCode).toBe('en')
+
+  await e2e.send(
+    privateCommand('/wallet', {
+      from: {id: USER_A, username: 'user_a', language_code: 'ru'},
+    }),
+  )
+  expect((await e2e.container.users.findById(USER_A))?.languageCode).toBe('ru')
+
+  e2e.tg.reset()
+  e2e.logs.length = 0
+  await expectGroupError(
+    groupText('/tip 21 @user_b', {
+      from: {id: USER_A, username: 'user_a', language_code: 'ru'},
+    }),
+    'insufficient_funds',
+    'ru',
+  )
+})
+
+test('job notifications use each recipient language_code, not the payer language', async () => {
+  await seedUser(e2e, {
+    id: OWNER,
+    username: 'chat_owner',
+    firstName: 'Chat Owner',
+    languageCode: 'en',
+  })
+  await e2e.container.users.update(USER_A, {languageCode: 'ru'})
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: OWNER,
+    status: 'active',
+    paymentType: 'one_time',
+    price: 1000,
+  })
+  await seedSubscriptionPayment(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    paid: true,
+    price: 1000,
+    subscriptionType: 'one_time',
+    kind: 'join',
+  })
+
+  await e2e.jobs.subscriptionPayments()
+
+  const messages = e2e.tg.of('sendMessage')
+  const subscriber = messages.find(call => Number(call.chat_id) === USER_A)
+  const owner = messages.find(call => Number(call.chat_id) === OWNER)
+  expect(String(subscriber?.text)).toMatch(/Доступ к сообществу/)
+  expect(String(owner?.text)).toMatch(/Subscription type/)
+  expect(String(owner?.text)).not.toMatch(/Тип подписки/)
+  expectCleanUserText(String(subscriber?.text))
+  expectCleanUserText(String(owner?.text))
+})
+
+// --- Wire format ---
+
+test('error replies are sent with HTML parse mode and no raw keys', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  await sendAndWaitForTempMessage(groupText('/tip 21 @user_b'))
+
+  const errorCall = e2e.tg
+    .of('sendMessage')
+    .find(call => String(call.text).includes('Insufficient funds'))
+  expect(errorCall?.parse_mode).toBe('HTML')
+  expectCleanUserText(String(errorCall?.text))
+})
+
+test('every AppErrorCode has a real e2e path in this file', () => {
+  const covered = new Set([
+    'insufficient_funds',
+    'invoice_already_paid',
+    'invoice_parsing',
+    'nwc_timeout',
+    'nwc_connection',
+    'nwc_payment_failed',
+    'nwc_no_answer',
+    'no_recipient',
+    'to_bot',
+    'from_bot',
+    'to_yourself',
+    'user_has_no_wallet',
+    'not_found',
+    'unknown',
+  ] satisfies AppErrorCode[])
+  expect([...covered].sort()).toEqual([...ALL_CODES].sort())
+})
+
+// --- helpers ---
+
+async function seedOwnerAndChat(): Promise<void> {
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active'})
+}
+
+function expectPrivateErrorAndWallet(code: AppErrorCode, locale: Locale): void {
+  const displayCode = code === 'not_found' ? 'unknown' : code
+  const expected = expectedErrorText(displayCode, locale)
+  const texts = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(texts).toContain(expected)
+  // Private error path: error reply then wallet. With NWC connected the wallet copy shows
+  // "ZapGram:" / "NWC:" lines instead of the single "Balance:" line.
+  const isWallet = (text: string) =>
+    text.includes('Balance:') || text.includes('NWC:') || /👛/.test(text)
+  expect(texts.some(isWallet)).toBe(true)
+  const errorIndex = texts.lastIndexOf(expected)
+  const walletIndex = texts.findIndex((text, index) => index > errorIndex && isWallet(text))
+  expect(errorIndex).toBeGreaterThanOrEqual(0)
+  expect(walletIndex).toBeGreaterThan(errorIndex)
+  expectCleanUserText(expected)
+  expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
+}
+
+async function expectGroupError(
+  update: TestUpdate,
+  code: AppErrorCode,
+  locale: Locale,
+): Promise<void> {
+  const before = await snapshot(e2e)
+  const displayCode = code === 'not_found' ? 'unknown' : code
+  const expected = expectedErrorText(displayCode, locale)
+
+  await sendAndWaitForTempMessage(update)
+
+  const after = await snapshot(e2e)
+  expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
+  expect(after.db.subscriptionPayments).toEqual(before.db.subscriptionPayments)
+  expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
+  expect(errorTextTo(CHAT_GROUP)).toBe(expected)
+  expectCleanUserText(expected)
+  expect(e2e.tg.of('deleteMessages').length).toBeGreaterThan(0)
+  expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
+}
+
+async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
+  const previousDeletes = e2e.tg.of('deleteMessages').length
+  await e2e.send(update)
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (e2e.tg.of('deleteMessages').length > previousDeletes) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary error message was never deleted')
+}
+
+async function expectMoneyUnchanged(before: Awaited<ReturnType<typeof snapshot>>): Promise<void> {
+  const after = await snapshot(e2e)
+  expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
+}
+
+function expectedErrorText(code: AppErrorCode, locale: Locale): string {
+  return translate(errorTranslationKey[code], locale)
+}
+
+function expectedErrorPattern(code: AppErrorCode, locale: Locale): RegExp {
+  const text = expectedErrorText(code, locale)
+  const plain = text.replace(/<[^>]+>/g, '').trim()
+  const fragment = plain.split('\n')[0]?.trim() ?? plain
+  return new RegExp(escapeRegExp(fragment))
+}
+
+function errorTextTo(chatId: number): string {
+  const call = e2e.tg
+    .of('sendMessage')
+    .find(payload => Number(payload.chat_id) === chatId && String(payload.text).includes('⚠️'))
+  if (!call) throw new Error(`No error sendMessage to ${chatId}`)
+  return String(call.text)
+}
+
+function expectCleanUserText(text: string): void {
+  expect(text).not.toMatch(RAW_KEY)
+  expect(text).not.toMatch(FLUENT_MARKS)
+  expect(text.length).toBeGreaterThan(0)
+}
+
+function payButton(): string {
+  const buttons = e2e.tg
+    .of('sendMessage')
+    .flatMap(call => {
+      const markup = call.reply_markup as
+        | {inline_keyboard?: {callback_data?: string}[][]}
+        | undefined
+      return markup?.inline_keyboard?.flat() ?? []
+    })
+    .map(button => button.callback_data)
+    .filter((data): data is string => typeof data === 'string' && data.startsWith('pay:'))
+  const button = buttons.at(-1)
+  if (!button) throw new Error('Pay button not found')
+  return button
+}
+
+function stubNwcPayInvoice(impl: () => Promise<void> | void): void {
+  const originalPay = NostrWallet.prototype.payInvoice
+  const originalLookup = NostrWallet.prototype.lookupInvoice
+  const originalBalance = NostrWallet.prototype.getBalance
+  // Keep the real NWCClient from dialing relays during these mapping tests.
+  NostrWallet.prototype.getBalance = async () => 0
+  NostrWallet.prototype.lookupInvoice = async () =>
+    ({preimage: null, fees_paid: 0}) as unknown as Awaited<ReturnType<NostrWallet['lookupInvoice']>>
+  NostrWallet.prototype.payInvoice = async function payInvoiceStub() {
+    await impl()
+  }
+  restorePayInvoice = () => {
+    NostrWallet.prototype.payInvoice = originalPay
+    NostrWallet.prototype.lookupInvoice = originalLookup
+    NostrWallet.prototype.getBalance = originalBalance
+  }
+}
+
+function credit(userId: number, sats: number): void {
+  e2e.ln.state.credit(walletOf(userId).id, sats * 1000)
+}
+
+function walletOf(userId: number) {
+  const user = e2e.ln.state.ensureUser(String(userId))
+  const wallet = e2e.ln.state.walletsOfUser(user.id)[0]
+  if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
+  return wallet
+}
+
+function errorMessages(): string[] {
+  return e2e.logs
+    .filter(log => log.level === 'error' || log.level === 50)
+    .map(log => String(log.msg ?? ''))
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
