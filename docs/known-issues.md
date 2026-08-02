@@ -244,6 +244,135 @@ Return the pending leg and hash from `distributeOnce`, for example
 `{status: 'pending', leg: 'fee', hash}`. Log those values in `settle` and keep the existing behavior
 of retaining the row until a later lookup resolves the transfer.
 
+## A failed auto-renewal creates a second manual payment
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+
+`attemptAutoRenewal` (`src/modules/subscriptions/renewal.service.ts`) creates a master-wallet
+invoice and persists its `subscription_payments` row before charging the subscriber. When that
+charge fails, the row is intentionally retained, but `processExpiringSubscriptions` then calls
+`createAndSendRenewalInvoice`, which creates another invoice and another row for the same renewal.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes in
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("an insufficient balance currently leaves
+two renewal payments for one reminder"). An expiring 1,000-sat subscription and an empty subscriber
+wallet produce two distinct unpaid master-wallet invoices and two `kind='renewal'` rows. Only the
+second payment request appears in the single Telegram reminder and its wallet button. No balance
+moves, and the subscription is marked `notificationSent=true`.
+
+The duplicate unpaid state is confirmed. A lost response after an actually successful charge was
+not simulated, so the more dangerous double-charge outcome remains a risk rather than a measured
+result.
+
+### How a user reaches it
+
+Any automatic balance charge that fails while the subscription is inside its 24-hour renewal window
+reaches this path, including ordinary insufficient balance. The subscriber sees one manual invoice;
+the first row remains hidden from that UI until the settlement or expiry job resolves it.
+
+### Fix sketch
+
+Return the already-created payment from `attemptAutoRenewal` and reuse its `paymentRequest` for the
+manual reminder instead of minting a second invoice. An ambiguous charge error must first be checked
+by payment hash; do not offer another payable invoice while the first charge may have succeeded.
+
+## Manual renewal invoices use the current chat price instead of the subscription price
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+
+`createAndSendRenewalInvoice` mints its BOLT11 with `chat.price`, but stores
+`subscription.price` in the payment row and renders that saved subscription price in the caption.
+Settlement also distributes `payment.price`, so the invoice amount and the accounting amount can
+diverge as soon as the owner changes the chat price for future subscribers.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes in
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("a manual renewal invoice currently uses the
+changed chat price instead of its saved price"). A subscription saved at 1,000 sats with a chat now
+priced at 2,000 sats produces a real decoded BOLT11 for 2,000 sats. Its payment row still says
+1,000, and the Telegram caption asks for 1,000. No payment was made in this characterization test,
+so the later balance residue and payout consequences were not measured.
+
+### How a user reaches it
+
+The chat owner changes the price after somebody has subscribed, and that subscriber later needs a
+manual renewal invoice. The UI promises that existing subscribers retain their price, but the
+Lightning invoice requests the current chat price instead.
+
+### Fix sketch
+
+Pass `subscription.price` to `masterWallet.createInvoice`, matching the row, caption and eventual
+payout. Keep `chat.price` only for new subscriptions.
+
+## A failed renewal reminder is marked as sent
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+
+`createAndSendRenewalInvoice` catches its own failures and returns no outcome. The Telegram notifier
+also logs and swallows `sendPhoto` failures. `processExpiringSubscriptions` therefore always writes
+`notificationSent=true` after the call, even when no usable reminder reached the subscriber.
+
+### Reproduction
+
+Two permanent E2E characterizations in
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` cover both sides:
+
+- a forced LNbits 503 while minting leaves no payment row and sends nothing, but still marks the
+  subscription notified;
+- a forced Telegram 400 leaves one unpaid payment row and records the rejected `sendPhoto`, then
+  also marks the subscription notified.
+
+In both cases the next job run is a no-op because the query excludes notified rows. The exact error
+is logged; the missing retry is confirmed.
+
+### How a user reaches it
+
+A transient LNbits, QR-generation or Telegram delivery failure happens during the only reminder
+inside the 24-hour window. QR generation was not failed separately, but it is inside the same caught
+block. The subscriber receives no payable reminder and automatic retry is disabled.
+
+### Fix sketch
+
+Make reminder creation return a success result and expose Telegram delivery failure to its caller.
+Set `notificationSent=true` only after the invoice and photo are both delivered; otherwise retain
+the row in the job query for a bounded retry.
+
+## A failed expiry unban deletes the only cleanup retry state
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+
+`checkExpiredSubscriptions`
+(`src/modules/subscriptions/jobs/check-expired-subscriptions.ts`) catches errors from both
+`banChatMember` and `unbanChatMember`, then deletes the subscription row regardless of either
+result. When ban succeeds but unban fails, no persisted row remains for retrying the operation that
+allows the former subscriber to request access again.
+
+### Reproduction
+
+Verified against the real container with the Telegram HTTP fake in
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("a failed unban currently deletes the only
+expiry retry state"). Telegram accepts `banChatMember` and returns 403 for `unbanChatMember`; the
+job logs the unban failure, deletes the subscription, and makes no Telegram call on the next run.
+
+The HTTP calls and lost database retry state are confirmed. The fake does not model Telegram
+membership, so the user remaining banned is inferred from the
+[Bot API contract](https://core.telegram.org/bots/api#unbanchatmember), not observed in the test.
+
+### How a user reaches it
+
+Telegram accepts the ban but the immediate unban fails because of a transient error or changed bot
+rights. The subscription disappears locally while the former subscriber may remain unable to submit
+a new join request.
+
+### Fix sketch
+
+Delete the subscription only after the unban succeeds. On failure, keep the row and return the batch
+verdict that advances safely while preserving it for a later retry; add bounded attempts and an
+operator alert for persistent permission failures.
+
 ## Chat settings callbacks do not check ownership
 
 **Status:** open. **Found:** 2026-08-02, while writing the routing e2e suite.
