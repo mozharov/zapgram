@@ -142,7 +142,7 @@ async function boot(
   registerHandlers(container.bot)
   await container.bot.init()
   // Drop the housekeeping getMe so it never shows up in a delta. A restart keeps everything the
-  // world sent before it — J5 asserts across the restart boundary.
+  // world sent before it, so a scenario can assert across the restart boundary.
   if (opts?.keepCalls) tg.calls.splice(mark)
   else tg.reset()
   return container
