@@ -340,38 +340,47 @@ Make reminder creation return a success result and expose Telegram delivery fail
 Set `notificationSent=true` only after the invoice and photo are both delivered; otherwise retain
 the row in the job query for a bounded retry.
 
-## A failed expiry unban deletes the only cleanup retry state
+## Expiry cleanup deletes the subscription even when ban or unban fails
 
 **Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
 
 `checkExpiredSubscriptions`
 (`src/modules/subscriptions/jobs/check-expired-subscriptions.ts`) catches errors from both
-`banChatMember` and `unbanChatMember`, then deletes the subscription row regardless of either
-result. When ban succeeds but unban fails, no persisted row remains for retrying the operation that
-allows the former subscriber to request access again.
+`banChatMember` and `unbanChatMember`, then always deletes the subscription row. Either Telegram
+failure therefore leaves the bot with no row to retry, and membership in the paid chat can diverge
+from the database:
+
+- **Ban fails:** the former subscriber may still be in the chat, but the subscription is gone — free
+  access with nothing left for a later kick.
+- **Unban fails after a successful ban:** the user may remain banned with no local row to retry the
+  unban that would let them request access again.
 
 ### Reproduction
 
 Verified against the real container with the Telegram HTTP fake in
-`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("a failed unban currently deletes the only
-expiry retry state"). Telegram accepts `banChatMember` and returns 403 for `unbanChatMember`; the
-job logs the unban failure, deletes the subscription, and makes no Telegram call on the next run.
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts`:
+
+- "a failed ban currently still deletes the expired row" — `banChatMember` returns 400; the job
+  still calls `unbanChatMember`, logs the ban error, and deletes the subscription.
+- "a failed unban currently deletes the only expiry retry state" — ban succeeds, unban returns 403;
+  the job logs the unban failure, deletes the subscription, and makes no Telegram call on the next
+  run.
 
 The HTTP calls and lost database retry state are confirmed. The fake does not model Telegram
-membership, so the user remaining banned is inferred from the
-[Bot API contract](https://core.telegram.org/bots/api#unbanchatmember), not observed in the test.
+membership, so “still in the chat” / “still banned” are inferred from the
+[Bot API contract](https://core.telegram.org/bots/api#unbanchatmember), not observed as chat state
+in the test.
 
 ### How a user reaches it
 
-Telegram accepts the ban but the immediate unban fails because of a transient error or changed bot
-rights. The subscription disappears locally while the former subscriber may remain unable to submit
-a new join request.
+Any transient Telegram error or missing bot right during the expiry tick. Ban failure is the quieter
+path (subscriber keeps reading the paid chat); unban failure is the louder one (they cannot rejoin).
 
 ### Fix sketch
 
-Delete the subscription only after the unban succeeds. On failure, keep the row and return the batch
-verdict that advances safely while preserving it for a later retry; add bounded attempts and an
-operator alert for persistent permission failures.
+Delete the subscription only after both ban and unban succeed. On either failure, keep the row and
+return the batch verdict that advances safely while preserving it for a later retry; add bounded
+attempts and an operator alert for persistent permission failures.
 
 ## Chat settings callbacks do not check ownership
 

@@ -117,6 +117,7 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
   expectNoErrors(e2e.logs)
 })
 
+// docs/known-issues.md — "A failed auto-renewal creates a second manual payment"
 test('an insufficient balance currently leaves two renewal payments for one reminder', async () => {
   const subscription = await seedExpiringSubscription(e2e, {price: PRICE})
   const before = await snapshot(e2e)
@@ -318,6 +319,7 @@ test('paying a manual renewal invoice reaches the common settlement path', async
   expectNoErrors(e2e.logs)
 })
 
+// docs/known-issues.md — "Manual renewal invoices use the current chat price instead of the subscription price"
 test(CHANGED_PRICE_TEST, async () => {
   await e2e.container.chats.update(CHAT_GROUP, {price: CHANGED_CHAT_PRICE})
   const subscription = await seedExpiringSubscription(e2e, {
@@ -336,6 +338,7 @@ test(CHANGED_PRICE_TEST, async () => {
   expectRenewalPayouts(0)
 })
 
+// docs/known-issues.md — "A failed renewal reminder is marked as sent"
 test('a manual invoice mint failure is still marked as notified', async () => {
   const subscription = await seedExpiringSubscription(e2e, {
     price: PRICE,
@@ -371,6 +374,7 @@ test('a manual invoice mint failure is still marked as notified', async () => {
   expect(e2e.ln.requests).toHaveLength(requestMark)
 })
 
+// docs/known-issues.md — "A failed renewal reminder is marked as sent"
 test('a rejected manual invoice photo is still marked as notified', async () => {
   const subscription = await seedExpiringSubscription(e2e, {
     price: PRICE,
@@ -435,7 +439,8 @@ test('an expired subscription is banned, unbanned and deleted once', async () =>
   expect(e2e.tg.calls).toHaveLength(telegramMark)
 })
 
-test('a failed ban still runs unban and deletes the expired row', async () => {
+// docs/known-issues.md — "Expiry cleanup deletes the subscription even when ban or unban fails"
+test('a failed ban currently still deletes the expired row', async () => {
   const subscription = await seedExpiringSubscription(e2e, {endsInMs: -60_000})
   e2e.tg.fail('banChatMember', {error_code: 400, description: 'Injected ban failure'})
   const before = await snapshot(e2e)
@@ -457,6 +462,7 @@ test('a failed ban still runs unban and deletes the expired row', async () => {
   expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
 })
 
+// docs/known-issues.md — "Expiry cleanup deletes the subscription even when ban or unban fails"
 test('a failed unban currently deletes the only expiry retry state', async () => {
   const subscription = await seedExpiringSubscription(e2e, {endsInMs: -60_000})
   e2e.tg.fail('unbanChatMember', {error_code: 403, description: 'Injected unban failure'})
