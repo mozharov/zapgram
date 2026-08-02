@@ -165,6 +165,126 @@ export function chatJoinRequest(
   })
 }
 
+/** Update types the bot registers no handler for. */
+export const unhandledUpdateTypes = [
+  'edited_message',
+  'channel_post',
+  'edited_channel_post',
+  'poll',
+  'poll_answer',
+  'chat_member',
+  'inline_query',
+  'chosen_inline_result',
+  'shipping_query',
+  'pre_checkout_query',
+  'message_reaction',
+] as const
+
+export type UnhandledUpdateType = (typeof unhandledUpdateTypes)[number]
+
+/**
+ * A realistic payload for an update type nothing handles.
+ *
+ * Realistic is the whole point: an update the bot drops because the payload is malformed would
+ * prove nothing about the update *type* being ignored.
+ */
+export function unhandledUpdate(type: UnhandledUpdateType, opts: CommonOptions = {}): TestUpdate {
+  const meta = nextMeta(opts)
+  const from = privateUser(opts.from)
+  return asUpdate({
+    update_id: meta.updateId,
+    reqId: meta.reqId,
+    [type]: unhandledPayload(type, from, meta.messageId),
+  })
+}
+
+function unhandledPayload(
+  type: UnhandledUpdateType,
+  from: User,
+  messageId: number,
+): Record<string, unknown> {
+  const editedAt = now()
+  switch (type) {
+    case 'edited_message':
+      return {
+        message_id: messageId,
+        date: editedAt - 60,
+        edit_date: editedAt,
+        text: 'edited text',
+        from,
+        chat: privateChat(from),
+      }
+    case 'channel_post':
+    case 'edited_channel_post': {
+      const chat = groupChat('channel')
+      return {
+        message_id: messageId,
+        date: editedAt - 60,
+        ...(type === 'edited_channel_post' ? {edit_date: editedAt} : {}),
+        text: 'Channel post',
+        chat,
+        sender_chat: chat,
+      }
+    }
+    case 'poll':
+      return {
+        id: `poll-${messageId}`,
+        question: 'Paid access?',
+        options: [{text: 'yes', voter_count: 0}],
+        total_voter_count: 0,
+        is_closed: false,
+        is_anonymous: true,
+        type: 'regular',
+        allows_multiple_answers: false,
+      }
+    case 'poll_answer':
+      return {poll_id: `poll-${messageId}`, user: from, option_ids: [0]}
+    case 'chat_member':
+      return {
+        chat: groupChat('supergroup'),
+        from,
+        date: editedAt,
+        old_chat_member: {status: 'left', user: from},
+        new_chat_member: {status: 'member', user: from},
+      }
+    case 'inline_query':
+      return {id: `inline-${messageId}`, from, query: '21', offset: '', chat_type: 'private'}
+    case 'chosen_inline_result':
+      return {result_id: `result-${messageId}`, from, query: '21'}
+    case 'shipping_query':
+      return {
+        id: `shipping-${messageId}`,
+        from,
+        invoice_payload: 'subscription',
+        shipping_address: {
+          country_code: 'DE',
+          state: '',
+          city: 'Berlin',
+          street_line1: 'Somestr. 1',
+          street_line2: '',
+          post_code: '10115',
+        },
+      }
+    case 'pre_checkout_query':
+      return {
+        id: `checkout-${messageId}`,
+        from,
+        currency: 'XTR',
+        total_amount: 100,
+        invoice_payload: 'subscription',
+      }
+    case 'message_reaction':
+      return {
+        chat: privateChat(from),
+        message_id: messageId,
+        user: from,
+        date: editedAt,
+        old_reaction: [],
+        new_reaction: [{type: 'emoji', emoji: '⚡'}],
+      }
+  }
+}
+
 export function newChatTitle(title: string, opts: CommonOptions = {}): TestUpdate {
   const update = groupText('', opts)
   const message = update.message
