@@ -88,3 +88,37 @@ Give the chats module an owner-scoped lookup (`findAccessibleByIdAndOwner(id, ow
 in all seven handlers, answering `chat.not-found` when it misses — the same copy the handlers
 already use, so a probe cannot distinguish "no such chat" from "not yours". Add the regression to
 the chats e2e scenario: a stranger's callback must change nothing and must not reveal the title.
+
+## The error handler repeats the read that just failed
+
+**Status:** open. **Found:** 2026-08-02, while writing the wallet e2e suite.
+
+After any error in a private chat, `errorHandler` (`src/telegram/handlers/error.ts`) sends the error
+copy and then appends the wallet screen. `replyWithWallet`
+(`src/modules/wallet/telegram/messages/wallet.ts`) reads the balance live — `GET /api/v1/wallet` —
+so when the error *was* a failed balance read, the handler immediately repeats it. `got` retries a
+failed GET twice with backoff, and nothing about the second round is visible to the user: the reply
+fails too and only the error copy is delivered.
+
+This is not wrong output — the user gets the right message — but it doubles the latency and the
+load on a service that is already failing.
+
+### Reproduction
+
+Measured against the real container with HTTP fakes (`test/e2e/scenarios/wallet.e2e.test.ts`, "a
+balance endpoint that stays down leaves the user with an error and the world untouched"): with
+`GET /api/v1/wallet` failing persistently, one `/wallet` command produces **8** requests to LNbits —
+2 to resolve the wallet, then 3 + 3 for the two balance reads — and takes ~6.3 s before the user
+sees a single message. Four `level=error` lines are logged, the last being
+`Failed to reply with wallet in error handler`.
+
+Measured for `/wallet`. That the same cost applies to *every* private-chat error during an LNbits
+outage follows from the error handler being shared, and was not measured separately.
+
+### Fix sketch
+
+`editMessageWithWallet` already renders from `ctx.user.wallet.balance`, which the `lnbitsWallet`
+middleware loaded moments earlier. Give the error handler the same non-fetching path instead of
+`replyWithWallet`, and have it tolerate a missing `ctx.user.wallet` — when the failure happened in
+the middleware itself there is no wallet on the context at all, which is what the last error line
+above is. Fixing this also removes the slowest test in the e2e suite.
