@@ -17,6 +17,7 @@ describe('LnbitsState', () => {
     expect(payer.balanceMsat).toBe(0)
     expect(receiver.balanceMsat).toBe(21_000)
     expect(totalBalance(state)).toBe(before)
+    expect(state.payments.filter(payment => payment.out)).toHaveLength(1)
   })
 
   test('does not move balance when the same invoice is paid twice', () => {

@@ -18,6 +18,11 @@ describe('settlement messages', () => {
       expect(message).toContain('2026') // the expiry date actually rendered
       expect(message).toMatch(/1\D?000/) // Fluent groups digits per locale: "1,000" / "1 000"
     })
+
+    test(`subscription-invoice.expired resolves in ${language}`, () => {
+      const message = translate('subscription-invoice.expired', language)
+      expect(message).not.toContain('subscription-invoice')
+    })
   }
 
   test('the renewal message does not claim the renewal was automatic', () => {

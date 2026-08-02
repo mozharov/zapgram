@@ -156,7 +156,13 @@ export class LnbitsState {
     payerWallet.balanceMsat -= totalMsat
     receiverWallet.balanceMsat += payment.amountMsat
     payment.paid = true
-    return payment
+    const outgoing: FakePayment = {
+      ...payment,
+      walletId: payerWallet.id,
+      out: true,
+    }
+    this.payments.push(outgoing)
+    return outgoing
   }
 
   credit(walletId: string, msats: number): void {

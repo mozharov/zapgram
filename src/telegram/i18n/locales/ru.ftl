@@ -318,6 +318,8 @@ subscription-invoice =
     }
     .paid-from-balance = <b>✅ Оплата прошла.</b>
         В течение 5-ти минут ты получишь доступ к сообществу.
+    .expired = <b>⚠️ Срок действия счёта на подписку истёк.</b>
+        Отправь новую заявку на вступление в чат, чтобы получить новый счёт.
 
 subscription-renewal = 
     .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>

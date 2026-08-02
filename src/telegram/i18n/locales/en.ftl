@@ -318,6 +318,8 @@ subscription-invoice =
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.
+    .expired = <b>⚠️ This subscription invoice has expired.</b>
+        Submit another request to join the chat to get a new invoice.
 
 subscription-renewal = 
     .renewed = <b>✅ Your subscription to "{$title}" has been extended until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
