@@ -94,10 +94,16 @@ list never shows a foreign chat — but nothing stops a handler from acting on o
 
 ### Reproduction
 
-Verified against the real container with HTTP fakes (throwaway e2e probe, not committed): with a
-chat owned by user `100003`, a callback query from user `100001` carrying
-`chat:<chatId>:on-paid` flipped `status` to `active`, returned the full chat card, and a following
-`chat:<chatId>:change-price` opened the price conversation. No error, no log line.
+Permanently covered against the real container with HTTP fakes by
+`test/e2e/scenarios/chats.e2e.test.ts` ("a different user can currently enable paid access for
+someone else's chat"). With a chat owned by user `100003`, a callback query from user `100001`
+carrying `chat:<chatId>:on-paid` changes `status` to `active` and returns an edited card containing
+the foreign chat's title. The test asserts the exact row change and Telegram call; no error is
+logged. It is a characterization of the open defect, not the desired behavior.
+
+The original throwaway probe also verified that a following `chat:<chatId>:change-price` opens the
+price conversation for the same non-owner. That broader write path is verified but does not yet
+have its own committed scenario.
 
 ### How a user reaches it without forging callback_data
 
@@ -117,8 +123,9 @@ keyboard was not established either way — the path above does not depend on it
 
 Give the chats module an owner-scoped lookup (`findAccessibleByIdAndOwner(id, ownerId)`) and use it
 in all seven handlers, answering `chat.not-found` when it misses — the same copy the handlers
-already use, so a probe cannot distinguish "no such chat" from "not yours". Add the regression to
-the chats e2e scenario: a stranger's callback must change nothing and must not reveal the title.
+already use, so a probe cannot distinguish "no such chat" from "not yours". Flip the committed
+characterization scenario after the fix: a stranger's callback must change nothing, must return the
+generic not-found card, and must not reveal the title.
 
 ## The error handler repeats the read that just failed
 
