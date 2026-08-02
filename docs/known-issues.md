@@ -3,6 +3,37 @@
 Confirmed defects that are not fixed yet. Each entry states how it was reproduced, so the fix can
 start from a failing test.
 
+## Tip receipts never show the sender
+
+**Status:** open. **Found:** 2026-08-02, while writing the tipping e2e suite.
+
+`notifySatsReceived` (`src/modules/tipping/notify-sats-received.ts`) passes the sender's username as
+the Fluent variable `username`. Both locale files branch on that value using variants `[true]` and
+`[no]`. An actual username such as `user_a` matches neither named variant, so Fluent chooses the
+default `[no]` branch and drops the `Sender: @user_a` line.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes
+(`test/e2e/scenarios/tipping.e2e.test.ts`, the private-send and `/tip 21 @user_b` scenarios): both
+paths call `notifySatsReceived(..., 'user_a')`, but the recipient only gets the amount and balance.
+The outgoing text contains no sender line. The transfer and both wallet balances are otherwise
+correct.
+
+### How a user reaches it
+
+Every successful tip from a user who has a Telegram username reaches it, both through `/tip` in a
+group and through the private send-to-user conversation. The recipient sees that sats arrived but
+cannot tell who sent them. Senders without a username intentionally use the same no-sender copy and
+are unaffected.
+
+### Fix sketch
+
+In both `en.ftl` and `ru.ftl`, make `[no]` the explicit no-username variant and use `*[other]` for
+the branch that renders `@{$username}`. Keep `notifySatsReceived` passing the actual username: the
+copy needs the value as well as the presence check. The two e2e assertions that currently pin the
+missing sender then become the regression by expecting the sender line.
+
 ## A repeated join request issues a second subscription invoice
 
 **Status:** open. **Found:** 2026-08-02, while writing the input-coverage e2e suite.
