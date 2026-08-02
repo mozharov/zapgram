@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'bun:test'
+import {mintInvoice} from './bolt11.js'
 import {createLnbitsState, FakeLnbitsError} from './lnbits-state.js'
 
 const keys = {adminKey: 'master-admin-key', feeCollectionKey: 'fee-collection-key'}
@@ -33,6 +34,22 @@ describe('LnbitsState', () => {
       FakeLnbitsError,
     )
     expect(state.snapshot()).toEqual(afterFirstPayment)
+  })
+
+  test('sends money out of the system when the invoice is not its own', () => {
+    const state = createLnbitsState(keys)
+    const payer = walletFor(state, '100001')
+    state.credit(payer.id, 50_000)
+    const external = mintInvoice({sats: 21, description: 'external'})
+    const feeMsat = state.feeReserveMsat(external.bolt11)
+
+    const payment = state.payInvoice({payerWallet: payer, bolt11: external.bolt11})
+
+    expect(payment.out).toBe(true)
+    expect(payment.paid).toBe(true)
+    expect(payment.feeMsat).toBe(feeMsat)
+    expect(payer.balanceMsat).toBe(50_000 - 21_000 - feeMsat)
+    expect(totalBalance(state)).toBe(payer.balanceMsat)
   })
 
   test('resolves master, fee collection and user API keys', () => {

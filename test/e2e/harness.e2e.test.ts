@@ -41,9 +41,13 @@ test('file mode restart rebuilds the container on the same database', async () =
   await e2e.send(privateCommand('/help'))
   const firstContainer = e2e.container
 
+  const before = [...e2e.tg.calls]
+
   await e2e.restart()
 
   expect(e2e.container).not.toBe(firstContainer)
   expect(await e2e.db.select().from(usersTable)).toHaveLength(1)
-  expect(e2e.tg.calls).toEqual([])
+  // The restart keeps the Bot API history and adds no getMe of its own.
+  expect(e2e.tg.calls).toEqual(before)
+  expect(e2e.tg.of('getMe')).toEqual([])
 })

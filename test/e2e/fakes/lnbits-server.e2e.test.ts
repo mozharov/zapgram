@@ -6,6 +6,7 @@ import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import {HTTPError} from 'got'
+import {mintInvoice} from './bolt11.js'
 import {type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
 
 const keys = {adminKey: 'master-admin-key', feeCollectionKey: 'fee-collection-key'}
@@ -55,7 +56,7 @@ describe('fake LNbits HTTP server', () => {
       fake.state.credit(payer.walletId, 100_000)
 
       const invoice = await receiver.client.createInvoice({sats: 21, memo: 'e2e transfer'})
-      expect(await payer.client.getFeeReserve(invoice.bolt11)).toBe(0)
+      expect(await payer.client.getFeeReserve(invoice.bolt11)).toBe(2000)
 
       const outgoing = await payer.client.payInvoice(invoice.bolt11)
       expect(outgoing.amount).toBe(-21_000)
@@ -141,6 +142,48 @@ describe('fake LNbits HTTP server', () => {
 
       expect(await wallet.client.getFeeReserve(invoice.bolt11)).toBeNumber()
       expect(fake.requests.at(-1)?.path).toBe('/api/v1/payments/fee-reserve')
+    })
+  })
+
+  test('quotes a fee reserve for an invoice the fake never issued', async () => {
+    await withFake(async fake => {
+      const wallet = userWallet(fake, '100001')
+      const external = mintInvoice({sats: 100_000, description: 'external'})
+
+      // The reserve scales with the amount: max(2000 msat, 1%). This is the branch
+      // wait-for-invoice-review.ts takes for every pasted invoice that is not ours.
+      expect(await wallet.client.getFeeReserve(external.bolt11)).toBe(1_000_000)
+    })
+  })
+
+  test('pays an external invoice, charging the fee reserve on top of the amount', async () => {
+    await withFake(async fake => {
+      const payer = userWallet(fake, '100001')
+      fake.state.credit(payer.walletId, 100_000)
+      const external = mintInvoice({sats: 21, description: 'external'})
+
+      const outgoing = await payer.client.payInvoice(external.bolt11)
+
+      expect(outgoing.amount).toBe(-21_000)
+      expect(outgoing.fee).toBe(-2000)
+      expect(await payer.client.getBalance()).toBe(77_000)
+      expect((await payer.client.lookupPayment(external.paymentHash)).paid).toBe(true)
+      await expect(payer.client.payInvoice(external.bolt11)).rejects.toBeInstanceOf(
+        InvoiceAlreadyPaidError,
+      )
+    })
+  })
+
+  test('refuses an external payment the balance cannot cover including the reserve', async () => {
+    await withFake(async fake => {
+      const payer = userWallet(fake, '100001')
+      fake.state.credit(payer.walletId, 21_000)
+      const external = mintInvoice({sats: 21, description: 'external'})
+
+      await expect(payer.client.payInvoice(external.bolt11)).rejects.toBeInstanceOf(
+        InsufficientFundsError,
+      )
+      expect(await payer.client.getBalance()).toBe(21_000)
     })
   })
 })

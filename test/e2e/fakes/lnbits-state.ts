@@ -1,4 +1,8 @@
-import {mintInvoice} from './bolt11.js'
+import {decodeMintedInvoice, mintInvoice} from './bolt11.js'
+
+/** Боевые значения LNbits: LNBITS_RESERVE_FEE_MIN (мсат) и LNBITS_RESERVE_FEE_PERCENT. */
+const RESERVE_FEE_MIN_MSAT = 2000
+const RESERVE_FEE_PERCENT = 1
 
 export type FakeWallet = {
   id: string
@@ -138,9 +142,22 @@ export class LnbitsState {
     return payment
   }
 
+  /**
+   * Резерв комиссии по произвольному инвойсу. LNbits считает его из суммы декодированного bolt11,
+   * поэтому чужой инвойс тут так же легален, как свой.
+   */
+  feeReserveMsat(bolt11: string): number {
+    const decoded = decodeMintedInvoice(bolt11)
+    if (!decoded) throw new FakeLnbitsError(520, {status: 'failed', detail: 'Failed to decode.'})
+    return Math.max(
+      RESERVE_FEE_MIN_MSAT,
+      Math.ceil((decoded.amountMsat * RESERVE_FEE_PERCENT) / 100),
+    )
+  }
+
   payInvoice({payerWallet, bolt11}: {payerWallet: FakeWallet; bolt11: string}): FakePayment {
-    const payment = this.payments.find(candidate => candidate.bolt11 === bolt11)
-    if (!payment) throw new FakeLnbitsError(404, {detail: 'Invoice not found.'})
+    const payment = this.payments.find(candidate => candidate.bolt11 === bolt11 && !candidate.out)
+    if (!payment) return this.payExternalInvoice({payerWallet, bolt11})
     if (payment.paid) {
       throw new FakeLnbitsError(520, {status: 'failed', detail: 'Invoice already paid.'})
     }
@@ -163,6 +180,45 @@ export class LnbitsState {
     }
     this.payments.push(outgoing)
     return outgoing
+  }
+
+  /**
+   * Оплата инвойса, выпущенного вне фейка. Деньги уходят из системы: у плательщика списывается
+   * сумма плюс комиссия, кошелька-получателя нет. Поэтому такой платёж ломает
+   * expectLedgerBalanced — это ожидаемо, инвариант держится только на внутренних переводах.
+   */
+  private payExternalInvoice({
+    payerWallet,
+    bolt11,
+  }: {
+    payerWallet: FakeWallet
+    bolt11: string
+  }): FakePayment {
+    const decoded = decodeMintedInvoice(bolt11)
+    if (!decoded) throw new FakeLnbitsError(520, {status: 'failed', detail: 'Failed to decode.'})
+
+    const feeMsat = this.feeReserveMsat(bolt11)
+    if (payerWallet.balanceMsat < decoded.amountMsat + feeMsat) {
+      throw new FakeLnbitsError(520, {status: 'failed', detail: 'Insufficient balance.'})
+    }
+    if (this.payments.some(candidate => candidate.paymentHash === decoded.paymentHash)) {
+      throw new FakeLnbitsError(520, {status: 'failed', detail: 'Invoice already paid.'})
+    }
+
+    payerWallet.balanceMsat -= decoded.amountMsat + feeMsat
+    const payment: FakePayment = {
+      paymentHash: decoded.paymentHash,
+      bolt11,
+      walletId: payerWallet.id,
+      amountMsat: decoded.amountMsat,
+      out: true,
+      paid: true,
+      feeMsat,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      memo: decoded.description,
+    }
+    this.payments.push(payment)
+    return payment
   }
 
   credit(walletId: string, msats: number): void {

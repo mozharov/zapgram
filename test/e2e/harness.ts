@@ -114,7 +114,7 @@ export async function createE2E(opts?: {
 
       clearRuntime()
       closeDatabase(e2e.db)
-      const next = await boot(env, tg)
+      const next = await boot(env, tg, {keepCalls: true})
       e2e.container = next
       e2e.db = next.db
     },
@@ -132,11 +132,19 @@ export async function createE2E(opts?: {
   return e2e
 }
 
-async function boot(env: Record<string, string>, tg: FakeTelegram): Promise<AppContainer> {
+async function boot(
+  env: Record<string, string>,
+  tg: FakeTelegram,
+  opts?: {keepCalls?: boolean},
+): Promise<AppContainer> {
+  const mark = tg.calls.length
   const container = await createContainer(env)
   registerHandlers(container.bot)
   await container.bot.init()
-  tg.reset()
+  // Drop the housekeeping getMe so it never shows up in a delta. A restart keeps everything the
+  // world sent before it — J5 asserts across the restart boundary.
+  if (opts?.keepCalls) tg.calls.splice(mark)
+  else tg.reset()
   return container
 }
 

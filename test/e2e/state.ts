@@ -7,8 +7,8 @@ import type {
   SubscriptionPayment,
   User,
 } from '@infra/db/types.js'
-import {getTableName} from 'drizzle-orm'
-import type {SQLiteTable} from 'drizzle-orm/sqlite-core'
+import {getTableName, is} from 'drizzle-orm'
+import {SQLiteTable} from 'drizzle-orm/sqlite-core'
 import type {TgCall} from './fakes/telegram-server.js'
 import type {E2E} from './harness.js'
 
@@ -47,7 +47,9 @@ type DbExpectation = {
 
 export async function snapshot(e2e: E2E): Promise<WorldState> {
   const db = emptyDbState()
-  for (const table of Object.values(schema)) {
+  // Tables only: schema.js may also export indexes, relations or helpers, and those are not rows.
+  // A genuinely new table still throws in dbKey() — WorldState must learn about it deliberately.
+  for (const table of Object.values(schema).filter(value => is(value, SQLiteTable))) {
     const key = dbKey(getTableName(table))
     const rows = await selectAll(e2e, table)
     Reflect.set(db, key, normalizeDbRows(rows))

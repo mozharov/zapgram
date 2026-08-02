@@ -43,13 +43,18 @@ test('all update factories produce updates accepted by the real bot', async () =
 })
 
 test('privateCommand uses the full command length and supports a manual update id', async () => {
-  const update = privateCommand('/wallet', {updateId: 4242, reqId: 'manual-request'})
+  // /settings, not /wallet: the plain-text fallback IS walletCommand, so /wallet would look
+  // identical whether grammY recognized the command or dropped it into the fallback.
+  const update = privateCommand('/settings', {updateId: 4242, reqId: 'manual-request'})
   expect(update.update_id).toBe(4242)
   expect(update.reqId).toBe('manual-request')
   expect(update.message?.entities).toEqual([
-    {type: 'bot_command', offset: 0, length: '/wallet'.length},
+    {type: 'bot_command', offset: 0, length: '/settings'.length},
   ])
 
   await e2e.send(update)
-  expect(e2e.tg.of('sendMessage')).toHaveLength(1)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Settings/)
+
+  await e2e.send(privateText('/settings'))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet/)
 })

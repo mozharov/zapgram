@@ -129,10 +129,8 @@ function route({
     const wallet = authenticatedWallet(request, state)
     if (!wallet) return json({detail: 'Unauthorized.'}, 401)
     const bolt11 = url.searchParams.get('invoice')
-    if (!bolt11 || !state.payments.some(payment => payment.bolt11 === bolt11)) {
-      return json({detail: 'Invoice not found.'}, 404)
-    }
-    return json({fee_reserve: 0})
+    if (!bolt11) return json({detail: 'invoice is required'}, 400)
+    return json({fee_reserve: state.feeReserveMsat(bolt11)})
   }
 
   if (method === 'POST' && path === '/api/v1/payments') {
