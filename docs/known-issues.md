@@ -74,6 +74,107 @@ by auto-renewal for exactly this reason. Before creating the invoice, reuse a pe
 not expired — resend its `paymentRequest` instead of minting a new one — and only create a payment
 when there is none. The e2e case above then flips from "a second invoice" to "the same invoice".
 
+## An expired subscription still approves a new join request
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+
+`chatJoinRequestHandler` (`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`) treats
+any row returned by `findByUserAndChat` as active. That repository lookup
+(`src/modules/subscriptions/repository.ts`) filters only by `(userId, chatId)` and never checks
+`endsAt`, so a monthly subscription whose end time is already in the past takes the same immediate
+approval path as a permanent or current subscription.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes
+(`test/e2e/scenarios/subscriptions-join.e2e.test.ts`, "an expired subscription is currently approved
+before cleanup runs"): an active monthly chat and a subscription ending one minute in the past
+produce one `approveChatJoinRequest` call with the exact chat and user IDs. No invoice or
+`subscription_payments` row is created and no wallet balance moves.
+
+### How a user reaches it
+
+`check-expired-subscriptions` runs when the scheduler starts and then hourly. Between `endsAt` and
+the next run, a former subscriber who submits another join request is admitted without paying
+again. A delayed or failing cleanup extends that window.
+
+### Fix sketch
+
+Make the lookup used by the join handler mean *current* subscription: permanent rows
+(`endsAt IS NULL`) or rows with `endsAt > now`. Keep the cleanup job responsible for banning and
+deleting expired rows, but do not let its schedule define authorization. The committed
+characterization test then becomes the regression by expecting a new join invoice and no approval.
+
+## A rounded balance can expose an unusable subscription payment button
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+
+`replyWithSubscriptionInvoice` (`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`)
+converts the user's millisatoshi balance with `msatsToSats` before checking it against the integer
+chat price. `msatsToSats` (`src/core/money/sats.ts`) uses `Math.round`, so a balance half a satoshi
+below the price rounds up and is presented as sufficient even though the wallet cannot fund the
+invoice.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes
+(`test/e2e/scenarios/subscriptions-join.e2e.test.ts`, "a rounded-up insufficient balance currently
+offers the wallet button"): a 1,000-sat chat with a 999,500-msat wallet produces the exact
+`pay-sub:<paymentId>:wallet` button. The saved and decoded BOLT11 is for 1,000,000 msat, while the
+wallet remains 500 msat short. The displayed button is confirmed; rejection after selecting it is
+inferred from those exact amounts and is not exercised by this join scenario.
+
+### How a user reaches it
+
+Any internal wallet balance in the final half-satoshi below a chat's integer price reaches this
+branch. The join message offers payment from the ZapGram balance even though that balance is
+smaller than the invoice amount.
+
+### Fix sketch
+
+Compare like units without rounding:
+`ctx.user.wallet.balance >= satsToMsats(chat.price)`. Keep `msatsToSats` for display-only values.
+After the fix, the committed characterization test should expect an empty keyboard for 999,500
+msat and retain the exact-price test as the positive boundary.
+
+## Join invoices ignore the request's private-chat identifier
+
+**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+
+The Telegram Bot API gives every `ChatJoinRequest` a `user_chat_id`: the identifier the bot may use
+to contact the applicant during the short join-request window. In
+`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`,
+`replyWithSubscriptionInvoice` ignores that field and sends the invoice to `ctx.user.id` instead.
+The API defines `from.id` as a user identifier and `user_chat_id` as a private-chat identifier; it
+does not make their equality part of the contract.
+
+### Reproduction
+
+Verified against the real container with HTTP fakes
+(`test/e2e/scenarios/subscriptions-join.e2e.test.ts`,
+"the invoice currently ignores the join request private-chat id"): a valid `chat_join_request` with
+applicant ID `100001` and `user_chat_id` `100004` produces `sendMessage(chat_id=100001)`. The
+dedicated private-chat ID is never read. The payment row and invoice are otherwise correct.
+
+The field's purpose and five-minute contact window are documented in the
+[Telegram Bot API `ChatJoinRequest` contract](https://core.telegram.org/bots/api#chatjoinrequest).
+The contract defect is confirmed by the payload above; how often production Telegram currently
+emits numerically different IDs was not measured.
+
+### How a user reaches it
+
+An applicant who has not already opened the bot's private chat depends on the temporary contact
+route attached to their join request. If its chat ID differs from the user ID, ZapGram addresses the
+invoice to the wrong peer. Telegram may reject that target; if it does, the caught failure is logged
+and the payment remains while the applicant receives no invoice.
+
+### Fix sketch
+
+Pass `ctx.chatJoinRequest.user_chat_id` as the first argument to `sendMessage`; keep `ctx.user.id`
+for the database payment owner and for `approveChatJoinRequest`, whose API explicitly expects a
+user ID. Update the shared invoice assertion and characterization test to require
+`chat_id=100004`.
+
 ## Chat settings callbacks do not check ownership
 
 **Status:** open. **Found:** 2026-08-02, while writing the routing e2e suite.
