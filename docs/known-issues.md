@@ -34,53 +34,6 @@ the branch that renders `@{$username}`. Keep `notifySatsReceived` passing the ac
 copy needs the value as well as the presence check. The two e2e assertions that currently pin the
 missing sender then become the regression by expecting the sender line.
 
-## A repeated join request issues a second subscription invoice
-
-**Status:** open. **Found:** 2026-08-02, while writing the input-coverage e2e suite.
-
-`chatJoinRequestHandler` (`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`) only
-checks for an existing *subscription* before issuing an invoice. It never looks for an in-flight
-`subscription_payments` row, so every join request mints a fresh master-wallet invoice and inserts
-another payment row for the same `(userId, chatId)`.
-
-Settlement is guarded per row, not per subscriber: `grantSubscriptionAccessIfNeeded`
-(`src/core/subscriptions/grant.ts`) skips only when *that row's* `settledAt` is set. Two paid rows
-therefore settle twice — the subscriber is debited twice and the chat owner is paid out twice,
-which for a `one_time` chat buys the subscriber nothing the first payment did not already give.
-
-### Reproduction
-
-Verified against the real container with HTTP fakes (`test/e2e/scenarios/input.e2e.test.ts`, "a
-redelivered join request issues a second invoice for the same chat"): sending the identical
-`chat_join_request` update twice leaves two `subscription_payments` rows with two distinct payment
-hashes, two unpaid master-wallet invoices, and two invoice messages to the user. No error is logged.
-
-The settlement consequence is also confirmed by
-`test/e2e/scenarios/subscriptions-settle.e2e.test.ts` ("two paid one-time rows currently distribute
-the same access purchase twice"). With both rows marked paid, one job creates only one permanent
-subscription but removes both payment rows, pays the owner 950 sats twice, collects the 50-sat fee
-twice, and sends both sets of approval and payment notifications.
-
-### How a user reaches it
-
-Two ways, neither of which needs anything unusual:
-
-- Telegram redelivers an update it did not get a `200` for — a dropped connection or a restart
-  mid-request is enough. Nothing between the webhook and the handler remembers `update_id`.
-- The user cancels their join request in the client and requests again, which is a second genuine
-  `chat_join_request`. Both invoices stay payable for a day (`EXPIRY`).
-
-Whether a real subscriber would choose to pay both invoices rather than one was not measured. The
-duplicate invoice creation and the double settlement after both invoices are paid are independently
-confirmed.
-
-### Fix sketch
-
-The repository already has the lookup this needs: `getPendingForSubscription(userId, chatId)`, used
-by auto-renewal for exactly this reason. Before creating the invoice, reuse a pending row that has
-not expired — resend its `paymentRequest` instead of minting a new one — and only create a payment
-when there is none. The e2e case above then flips from "a second invoice" to "the same invoice".
-
 ## An expired subscription still approves a new join request
 
 **Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.

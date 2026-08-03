@@ -63,7 +63,8 @@ Choose the narrowest test level that still crosses the boundary under test:
 - Do not call `createApp()` in tests: cron constructs `runOnInit` jobs immediately.
 - Do not assert `randomUUID()` values or absolute timestamps. Read generated values from the
   database and compare deltas.
-- End every money scenario by asserting the number of payouts, not only that a payout occurred.
+- End every money scenario by asserting exact owner, fee, and duplicate-refund payout counts,
+  including the legs that must remain at zero.
 - Add every new `callback_data` route to the E2E coverage registry immediately; otherwise CI must
   fail.
 - `test/setup.ts` supplies test environment variables through the `bunfig.toml` preload.
@@ -71,8 +72,10 @@ Choose the narrowest test level that still crosses the boundary under test:
   complete explicit env object to `createContainer(env)`, including `DB_MIGRATE=true`,
   `BOT_API_ROOT`, `SUBSCRIPTION_FEE_PERCENT`, `CHAT_RIGHTS_DELAY_MS`, and
   `TEMP_MESSAGE_DELAY_MS`.
-- UI language comes from the update's `from.language_code`; notification language comes from
-  `users.language_code`. These are different paths, so tests must choose the one they exercise.
+- UI language uses the valid IETF tag in the update's `from.language_code`; a missing or invalid
+  update tag falls back to `users.language_code`, then English. Background notifications use
+  `users.language_code` directly. Both paths resolve primary `ru` to Russian and everything else
+  to English, so tests must choose the path and stored/update values they exercise.
 
 ## Checks
 
