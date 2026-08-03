@@ -470,16 +470,18 @@ test('the custom-message conversation stores both language variants', async () =
 })
 
 for (const customJoin of [
-  {locale: 'en', selected: /A special welcome/, other: 'Особое приветствие'},
-  {locale: 'ru', selected: /Особое приветствие/, other: 'A special welcome'},
+  {languageCode: 'en', selected: /A special welcome/, other: 'Особое приветствие'},
+  {languageCode: 'en-US', selected: /A special welcome/, other: 'Особое приветствие'},
+  {languageCode: 'ru', selected: /Особое приветствие/, other: 'A special welcome'},
+  {languageCode: 'ru-RU', selected: /Особое приветствие/, other: 'A special welcome'},
 ] as const) {
-  test(`an exact ${customJoin.locale} locale receives its custom join message`, async () => {
+  test(`${customJoin.languageCode} selects the matching custom join message`, async () => {
     await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
     await seedUser(e2e, {
       id: USER_B,
       username: 'user_b',
       firstName: 'User B',
-      languageCode: customJoin.locale,
+      languageCode: customJoin.languageCode,
     })
     await seedChat(e2e, {
       id: CHAT_GROUP,
@@ -499,7 +501,7 @@ for (const customJoin of [
               id: USER_B,
               username: 'user_b',
               first_name: 'User B',
-              language_code: customJoin.locale,
+              language_code: customJoin.languageCode,
             },
           }),
         ),

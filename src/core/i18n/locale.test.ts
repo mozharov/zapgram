@@ -1,5 +1,18 @@
 import {describe, expect, test} from 'bun:test'
-import {resolveAppLocale} from './locale.js'
+import {normalizeTelegramLanguageCode, resolveAppLocale} from './locale.js'
+
+describe('normalizeTelegramLanguageCode', () => {
+  test('canonicalizes valid Telegram IETF language tags', () => {
+    expect(normalizeTelegramLanguageCode(' RU-ru ')).toBe('ru-RU')
+    expect(normalizeTelegramLanguageCode('sr-latn')).toBe('sr-Latn')
+  })
+
+  test('rejects missing and invalid tags', () => {
+    expect(normalizeTelegramLanguageCode(undefined)).toBeUndefined()
+    expect(normalizeTelegramLanguageCode('')).toBeUndefined()
+    expect(normalizeTelegramLanguageCode('not_a_tag')).toBeUndefined()
+  })
+})
 
 describe('resolveAppLocale', () => {
   test('maps Russian Telegram tags to ru', () => {

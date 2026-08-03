@@ -52,6 +52,17 @@ test('getOrCreate does not clobber stored fields the caller omitted', async () =
   expect(user?.languageCode).toBe('ru')
 })
 
+test('getOrCreate preserves languageCode when another profile field changes without it', async () => {
+  const users = repo()
+  await users.getOrCreate({id: 1, username: 'old', firstName: 'A', languageCode: 'ru-RU'})
+
+  await users.getOrCreate({id: 1, username: 'new', firstName: 'A', languageCode: undefined})
+
+  const user = await users.findById(1)
+  expect(user?.username).toBe('new')
+  expect(user?.languageCode).toBe('ru-RU')
+})
+
 test('username lookups are case-insensitive on write and read', async () => {
   const users = repo()
   await users.getOrCreate({id: 1, username: 'MiXeD', firstName: 'A'})

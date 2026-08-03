@@ -3,8 +3,7 @@ import {CHAT_CHANNEL, CHAT_GROUP, USER_A} from './ids.js'
 
 export type TestUpdate = Update & {reqId: string}
 
-type LanguageCode = 'en' | 'ru'
-type FromOverrides = Partial<Omit<User, 'language_code'>> & {language_code?: LanguageCode}
+type FromOverrides = Partial<Omit<User, 'language_code'>> & {language_code?: string}
 type CommonOptions = {
   from?: FromOverrides
   chat?: Record<string, unknown>

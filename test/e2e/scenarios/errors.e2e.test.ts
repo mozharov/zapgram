@@ -333,21 +333,31 @@ test('a channel error is silent', async () => {
 
 // --- Locales ---
 
-test('group tip errors use the sender language_code for en and ru', async () => {
+test('update responses normalize Telegram language tags and preserve a usable fallback', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
 
-  for (const locale of ['en', 'ru'] as const) {
+  const cases = [
+    {languageCode: 'ru', stored: 'en', locale: 'ru', persisted: 'ru'},
+    {languageCode: 'ru-RU', stored: 'en', locale: 'ru', persisted: 'ru-RU'},
+    {languageCode: 'en', stored: 'ru', locale: 'en', persisted: 'en'},
+    {languageCode: 'en-US', stored: 'ru', locale: 'en', persisted: 'en-US'},
+    {languageCode: 'sr-Latn', stored: 'ru', locale: 'en', persisted: 'sr-Latn'},
+    {languageCode: undefined, stored: 'ru-RU', locale: 'ru', persisted: 'ru-RU'},
+    {languageCode: 'not_a_tag', stored: 'ru-RU', locale: 'ru', persisted: 'ru-RU'},
+  ] as const
+
+  for (const {languageCode, stored, locale, persisted} of cases) {
     e2e.tg.reset()
     e2e.logs.length = 0
-    // Refresh stored language so attachUser does not also write a users.changed delta mid-assert.
-    await e2e.container.users.update(USER_A, {languageCode: locale})
+    await e2e.container.users.update(USER_A, {languageCode: stored})
     await expectGroupError(
       groupText('/tip 21 @user_b', {
-        from: {id: USER_A, username: 'user_a', language_code: locale},
+        from: {id: USER_A, username: 'user_a', language_code: languageCode},
       }),
       'insufficient_funds',
       locale,
     )
+    expect((await e2e.container.users.findById(USER_A))?.languageCode).toBe(persisted)
   }
 })
 
@@ -373,14 +383,14 @@ test('changing language_code in an update refreshes the user and the next error 
   )
 })
 
-test('job notifications use each recipient language_code, not the payer language', async () => {
+test('job notifications normalize each stored language_code independently', async () => {
   await seedUser(e2e, {
     id: OWNER,
     username: 'chat_owner',
     firstName: 'Chat Owner',
-    languageCode: 'en',
+    languageCode: 'sr-Latn',
   })
-  await e2e.container.users.update(USER_A, {languageCode: 'ru'})
+  await e2e.container.users.update(USER_A, {languageCode: 'ru-RU'})
   await seedChat(e2e, {
     id: CHAT_GROUP,
     ownerId: OWNER,

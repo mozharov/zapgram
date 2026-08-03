@@ -66,3 +66,24 @@ describe('duplicate subscription refund', () => {
     )
   })
 })
+
+describe('stored Telegram language tags', () => {
+  test.each([
+    ['ru', /Повторный платёж/],
+    ['ru-RU', /Повторный платёж/],
+    ['en', /A repeated subscription payment/],
+    ['en-US', /A repeated subscription payment/],
+    ['sr-Latn', /A repeated subscription payment/],
+    ['not_a_tag', /A repeated subscription payment/],
+  ])('normalizes %s for background notifications', (language, expected) => {
+    expect(translate('subscription-invoice.duplicate-refunded', language, {price: 1000})).toMatch(
+      expected,
+    )
+  })
+
+  test('uses English when a background notification has no stored tag', () => {
+    expect(translate('subscription-invoice.duplicate-refunded', undefined, {price: 1000})).toMatch(
+      /A repeated subscription payment/,
+    )
+  })
+})

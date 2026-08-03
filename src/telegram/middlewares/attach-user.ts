@@ -1,4 +1,5 @@
 import {FromBotError} from '@core/errors/from-bot.js'
+import {normalizeTelegramLanguageCode} from '@core/i18n/locale.js'
 import type {User} from '@infra/db/types.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {getOrCreateUser} from '@modules/users/repository.js'
@@ -12,7 +13,7 @@ export const attachUser: Middleware<Context> = async (ctx, next) => {
   ctx.user = await getOrCreateUser({
     id: ctx.from.id,
     username: ctx.from.username,
-    languageCode: ctx.from.language_code,
+    languageCode: normalizeTelegramLanguageCode(ctx.from.language_code),
     firstName: ctx.from.first_name,
   })
   if (ctx.user.nwcUrl) {
