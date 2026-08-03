@@ -278,7 +278,10 @@ payout. Keep `chat.price` only for new subscriptions.
 
 ## A failed renewal reminder is marked as sent
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Fixed:** 2026-08-03 — `createAndSendRenewalInvoice` returns delivery success; notifier
+`send`/`sendPhoto` return booleans; `notificationSent` is set only after a delivered photo, and
+failures leave the row for the next expiring-job tick (e2e covers mint 503 and Telegram 400).
 
 `createAndSendRenewalInvoice` catches its own failures and returns no outcome. The Telegram notifier
 also logs and swallows `sendPhoto` failures. `processExpiringSubscriptions` therefore always writes
@@ -289,13 +292,13 @@ also logs and swallows `sendPhoto` failures. `processExpiringSubscriptions` ther
 Two permanent E2E characterizations in
 `test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` cover both sides:
 
-- a forced LNbits 503 while minting leaves no payment row and sends nothing, but still marks the
-  subscription notified;
-- a forced Telegram 400 leaves one unpaid payment row and records the rejected `sendPhoto`, then
-  also marks the subscription notified.
+- a forced LNbits 503 while minting leaves no payment row and sends nothing; after the fix the
+  subscription stays unnotified and the next tick delivers the reminder;
+- a forced Telegram 400 leaves one unpaid payment row and records the rejected `sendPhoto`; after
+  the fix the subscription stays unnotified and the next tick reuses that payment and delivers.
 
-In both cases the next job run is a no-op because the query excludes notified rows. The exact error
-is logged; the missing retry is confirmed.
+Previously both paths marked notified and made the next job run a no-op. The exact error was
+logged; the missing retry was confirmed.
 
 ### How a user reaches it
 

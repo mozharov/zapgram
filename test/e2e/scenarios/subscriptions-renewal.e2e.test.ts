@@ -350,7 +350,7 @@ test(CHANGED_PRICE_TEST, async () => {
 })
 
 // docs/known-issues.md — "A failed renewal reminder is marked as sent"
-test('a manual invoice mint failure is still marked as notified', async () => {
+test('a manual invoice mint failure is retried and not marked notified', async () => {
   const subscription = await seedExpiringSubscription(e2e, {
     price: PRICE,
     autoRenew: false,
@@ -365,35 +365,23 @@ test('a manual invoice mint failure is still marked as notified', async () => {
   )
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
-    db: {
-      subscriptions: {
-        changed: 1,
-        match: rows => expectNotificationMarked(rows, subscription),
-      },
-    },
-  })
+  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {})
 
-  const after = await snapshot(e2e)
-  expectLedgerBalanced(before, after)
+  const afterFail = await snapshot(e2e)
+  expectLedgerBalanced(before, afterFail)
+  expectWorldUnchanged(before, afterFail)
   expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
   expect(e2e.tg.calls).toEqual([])
   expect(errorMessages()).toEqual(['Error in createAndSendRenewalInvoice'])
-
-  const requestMark = e2e.ln.requests.length
-  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {})
-  expect(e2e.ln.requests).toHaveLength(requestMark)
-})
-
-// docs/known-issues.md — "A failed renewal reminder is marked as sent"
-test('a rejected manual invoice photo is still marked as notified', async () => {
-  const subscription = await seedExpiringSubscription(e2e, {
-    price: PRICE,
-    autoRenew: false,
+  expect(await requiredSubscription()).toMatchObject({
+    id: subscription.id,
+    notificationSent: false,
   })
-  e2e.tg.fail('sendPhoto', {error_code: 400, description: 'Injected delivery failure'})
-  const before = await snapshot(e2e)
 
+  // failNext is one-shot; the next tick mints and delivers, then marks notified.
+  // Prior error logs stay on the harness — only assert the successful retry delta.
+  const errorMark = errorMessages().length
+  const beforeRetry = await snapshot(e2e)
   await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
     db: {
       subscriptions: {
@@ -409,18 +397,67 @@ test('a rejected manual invoice photo is still marked as notified', async () => 
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [{method: 'sendPhoto', to: USER_A, text: /истекает через 24 часа/}],
   })
+  const afterRetry = await snapshot(e2e)
+  expectLedgerBalanced(beforeRetry, afterRetry)
+  expect(errorMessages()).toHaveLength(errorMark)
+  const payment = await onlySubscriptionPayment()
+  expect(decodeMintedInvoice(payment.paymentRequest)?.amountMsat).toBe(PRICE * 1000)
+  expect(String(requiredPhoto().caption)).toContain(payment.paymentRequest)
+})
 
-  const after = await snapshot(e2e)
-  expectLedgerBalanced(before, after)
-  expect(errorMessages()).toEqual(['Failed to send Telegram photo'])
+// docs/known-issues.md — "A failed renewal reminder is marked as sent"
+test('a rejected manual invoice photo is retried and not marked notified', async () => {
+  const subscription = await seedExpiringSubscription(e2e, {
+    price: PRICE,
+    autoRenew: false,
+  })
+  e2e.tg.fail('sendPhoto', {error_code: 400, description: 'Injected delivery failure'})
+  const before = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {
+        added: 1,
+        match: rows => expectRenewalPayment(rows[0]?.after, PRICE),
+      },
+    },
+    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+    telegram: [{method: 'sendPhoto', to: USER_A, text: /истекает через 24 часа/}],
+  })
+
+  const afterFail = await snapshot(e2e)
+  expectLedgerBalanced(before, afterFail)
+  expect(errorMessages()).toEqual([
+    'Failed to send Telegram photo',
+    'Renewal reminder photo was not delivered',
+  ])
   const payment = await onlySubscriptionPayment()
   expect(String(requiredPhoto().caption)).toContain(payment.paymentRequest)
+  expect(await requiredSubscription()).toMatchObject({
+    id: subscription.id,
+    notificationSent: false,
+  })
 
+  // One-shot fail is spent; retry reuses the same payment and delivers the photo.
   const requestMark = e2e.ln.requests.length
-  const telegramMark = e2e.tg.calls.length
-  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {})
+  const errorMark = errorMessages().length
+  const beforeRetry = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
+    db: {
+      subscriptions: {
+        changed: 1,
+        match: rows => expectNotificationMarked(rows, subscription),
+      },
+    },
+    telegram: [{method: 'sendPhoto', to: USER_A, text: /истекает через 24 часа/}],
+  })
+  const afterRetry = await snapshot(e2e)
+  expectLedgerBalanced(beforeRetry, afterRetry)
   expect(e2e.ln.requests).toHaveLength(requestMark)
-  expect(e2e.tg.calls).toHaveLength(telegramMark)
+  expect(errorMessages()).toHaveLength(errorMark)
+  expect(await onlySubscriptionPayment()).toMatchObject({id: payment.id})
+  expect(String(requiredPhoto().caption)).toContain(payment.paymentRequest)
 })
 
 test('an expired subscription is banned, unbanned and deleted once', async () => {

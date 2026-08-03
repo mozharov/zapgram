@@ -46,7 +46,15 @@ export type RenewalServiceDeps = {
 
 export type RenewalService = {
   attemptAutoRenewal: (subscription: Subscription, chat: Chat) => Promise<RenewalOutcome>
-  createAndSendRenewalInvoice: (subscription: Subscription, chat: Chat, user: User) => Promise<void>
+  /**
+   * `true` only when the subscriber received a usable renewal reminder (invoice minted or
+   * reused, and Telegram accepted the photo). Callers must not set `notificationSent` otherwise.
+   */
+  createAndSendRenewalInvoice: (
+    subscription: Subscription,
+    chat: Chat,
+    user: User,
+  ) => Promise<boolean>
 }
 
 export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
@@ -162,8 +170,15 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
   /**
    * Sends a manual renewal reminder. Reuses an in-flight renewal payment when auto-charge already
    * minted one — never a second BOLT11 for the same window, which would leave an orphan unpaid row.
+   *
+   * Returns whether the photo was delivered. Mint/QR/Telegram failures leave the subscription
+   * unmarked so the expiring job can retry on a later run.
    */
-  async function createAndSendRenewalInvoice(subscription: Subscription, chat: Chat, user: User) {
+  async function createAndSendRenewalInvoice(
+    subscription: Subscription,
+    chat: Chat,
+    user: User,
+  ): Promise<boolean> {
     try {
       let subscriptionPayment = await deps.getPendingPaymentForSubscription(
         subscription.userId,
@@ -200,7 +215,7 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
 
       const buffer = await QRCode.toBuffer(bolt11)
       const inputFile = new InputFile(buffer)
-      await deps.notifier.sendPhoto(user.id, inputFile, {
+      const delivered = await deps.notifier.sendPhoto(user.id, inputFile, {
         caption: deps.translate('subscription-renewal.need-payment', user.languageCode, {
           title: chat.title,
           price: subscription.price,
@@ -209,11 +224,20 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         show_caption_above_media: true,
         reply_markup: keyboard,
       })
+      if (!delivered) {
+        deps.log.error(
+          {subscriptionId: subscription.id, userId: user.id, paymentId: subscriptionPayment.id},
+          'Renewal reminder photo was not delivered',
+        )
+        return false
+      }
+      return true
     } catch (error) {
       deps.log.error(
         {error, subscriptionId: subscription.id, userId: user.id},
         'Error in createAndSendRenewalInvoice',
       )
+      return false
     }
   }
 

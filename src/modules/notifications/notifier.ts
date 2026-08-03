@@ -3,29 +3,35 @@ import type {Api, InputFile} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
 export type Notifier = {
-  send(userId: number, text: string, opts?: Parameters<Api['sendMessage']>[2]): Promise<void>
+  /** `true` when Telegram accepted the message; `false` after a logged failure. Never throws. */
+  send(userId: number, text: string, opts?: Parameters<Api['sendMessage']>[2]): Promise<boolean>
+  /** `true` when Telegram accepted the photo; `false` after a logged failure. Never throws. */
   sendPhoto(
     userId: number,
     file: InputFile | string,
     opts?: Parameters<Api['sendPhoto']>[2],
-  ): Promise<void>
+  ): Promise<boolean>
 }
 
-/** Telegram-backed notifier. Methods never throw — they log and return. */
+/** Telegram-backed notifier. Methods never throw — they log and return success/failure. */
 export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
   return {
     async send(userId, text, opts) {
       try {
         await api.sendMessage(userId, text, opts)
+        return true
       } catch (error) {
         log.error({error}, 'Failed to send Telegram message')
+        return false
       }
     },
     async sendPhoto(userId, file, opts) {
       try {
         await api.sendPhoto(userId, file, opts)
+        return true
       } catch (error) {
         log.error({error}, 'Failed to send Telegram photo')
+        return false
       }
     },
   }

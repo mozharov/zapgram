@@ -59,7 +59,20 @@ async function processOne(subscription: Subscription): Promise<'done' | 'keep'> 
     return 'done'
   }
 
-  await renewalService.createAndSendRenewalInvoice(subscription, chat, user)
+  const reminderDelivered = await renewalService.createAndSendRenewalInvoice(
+    subscription,
+    chat,
+    user,
+  )
+  if (!reminderDelivered) {
+    // Stay in the expiring window so a later run can retry mint/delivery. `keep` advances
+    // offset past this row for this tick without claiming the reminder was sent.
+    getRuntime().log.info(
+      {subscriptionId: subscription.id},
+      'Renewal reminder was not delivered; leaving the subscription for a later retry.',
+    )
+    return 'keep'
+  }
   await updateSubscription(subscription.id, {notificationSent: true})
   getRuntime().log.info(`Notification sent for subscription ID: ${subscription.id}`)
   return 'done'

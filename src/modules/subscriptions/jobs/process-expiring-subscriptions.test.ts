@@ -42,6 +42,8 @@ mock.module('@modules/users/repository.js', () => ({
 mock.module('@modules/chats/repository.js', () => ({
   getChatOrThrow: async () => ({id: -100, title: 'C', price: 1000, ownerId: 2, owner: {}}),
 }))
+let invoiceDelivered = true
+
 mock.module('@modules/subscriptions/renewal.js', () => ({
   renewalService: {
     attemptAutoRenewal: async () => {
@@ -49,7 +51,8 @@ mock.module('@modules/subscriptions/renewal.js', () => ({
       return renewalOutcome
     },
     createAndSendRenewalInvoice: async () => {
-      invoicesSent.push('sent')
+      invoicesSent.push(invoiceDelivered ? 'sent' : 'failed')
+      return invoiceDelivered
     },
   },
 }))
@@ -76,8 +79,9 @@ const {processExpiringSubscriptions} = await import(
   '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
 )
 
-function reset(outcome: typeof renewalOutcome) {
+function reset(outcome: typeof renewalOutcome, delivered = true) {
   renewalOutcome = outcome
+  invoiceDelivered = delivered
   leftWindow = false
   fetchCalls = 0
   offsets = []
@@ -97,6 +101,15 @@ test('a failed renewal sends the manual invoice and marks the notification', asy
   await processExpiringSubscriptions()
   expect(invoicesSent).toEqual(['sent'])
   expect(updates).toEqual([{id: 'sub-1', data: {notificationSent: true}}])
+  expect(fetchCalls).toBeLessThanOrEqual(FETCH_CAP)
+})
+
+test('an undelivered reminder keeps the row for a later retry', async () => {
+  reset({status: 'failed'}, false)
+  await processExpiringSubscriptions()
+  expect(invoicesSent).toEqual(['failed'])
+  expect(updates).toEqual([])
+  expect(offsets).toEqual([0, 1])
   expect(fetchCalls).toBeLessThanOrEqual(FETCH_CAP)
 })
 
