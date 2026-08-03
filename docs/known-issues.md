@@ -314,7 +314,9 @@ the row in the job query for a bounded retry.
 
 ## Expiry cleanup deletes the subscription even when ban or unban fails
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Fixed:** 2026-08-03 — delete only after ban and unban both succeed; either Telegram failure
+returns `keep` so the row stays for the next tick (e2e covers ban 400 and unban 403 with retry).
 
 `checkExpiredSubscriptions`
 (`src/modules/subscriptions/jobs/check-expired-subscriptions.ts`) catches errors from both
@@ -332,14 +334,14 @@ from the database:
 Verified against the real container with the Telegram HTTP fake in
 `test/e2e/scenarios/subscriptions-renewal.e2e.test.ts`:
 
-- "a failed ban currently still deletes the expired row" — `banChatMember` returns 400; the job
-  still calls `unbanChatMember`, logs the ban error, and deletes the subscription.
-- "a failed unban currently deletes the only expiry retry state" — ban succeeds, unban returns 403;
-  the job logs the unban failure, deletes the subscription, and makes no Telegram call on the next
-  run.
+- "a failed ban keeps the expired row for a later kick retry" — `banChatMember` returns 400; after
+  the fix the job does not unban or delete, and the next tick completes the kick.
+- "a failed unban keeps the expired row for a later unban retry" — ban succeeds, unban returns 403;
+  after the fix the row stays and the next tick finishes ban → unban → delete.
 
-The HTTP calls and lost database retry state are confirmed. The fake does not model Telegram
-membership, so “still in the chat” / “still banned” are inferred from the
+Previously both paths deleted the only retry state. The HTTP calls and lost database retry state
+were confirmed. The fake does not model Telegram membership, so “still in the chat” / “still banned”
+are inferred from the
 [Bot API contract](https://core.telegram.org/bots/api#unbanchatmember), not observed as chat state
 in the test.
 

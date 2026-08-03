@@ -489,34 +489,29 @@ test('an expired subscription is banned, unbanned and deleted once', async () =>
 })
 
 // docs/known-issues.md — "Expiry cleanup deletes the subscription even when ban or unban fails"
-test('a failed ban currently still deletes the expired row', async () => {
+test('a failed ban keeps the expired row for a later kick retry', async () => {
   const subscription = await seedExpiringSubscription(e2e, {endsInMs: -60_000})
   e2e.tg.fail('banChatMember', {error_code: 400, description: 'Injected ban failure'})
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.jobs.expiredSubscriptions(), {
-    db: {
-      subscriptions: {
-        removed: 1,
-        match: rows => expect(rows[0]?.before).toMatchObject({id: subscription.id}),
-      },
-    },
-    telegram: expiryTelegramCalls(),
+    telegram: [{method: 'banChatMember', to: CHAT_GROUP}],
   })
 
-  const after = await snapshot(e2e)
-  expectLedgerBalanced(before, after)
-  expectExactExpiryCalls()
+  const afterFail = await snapshot(e2e)
+  expectLedgerBalanced(before, afterFail)
+  expect(afterFail.db).toEqual(before.db)
+  expect(e2e.tg.of('banChatMember')).toHaveLength(1)
+  expect(e2e.tg.of('unbanChatMember')).toHaveLength(0)
   expect(errorMessages()).toEqual(['Error while banning user from chat.'])
-  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
-})
+  // findByUserAndChat hides expired rows; assert the kick retry state is still on disk.
+  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([
+    expect.objectContaining({id: subscription.id}),
+  ])
 
-// docs/known-issues.md — "Expiry cleanup deletes the subscription even when ban or unban fails"
-test('a failed unban currently deletes the only expiry retry state', async () => {
-  const subscription = await seedExpiringSubscription(e2e, {endsInMs: -60_000})
-  e2e.tg.fail('unbanChatMember', {error_code: 403, description: 'Injected unban failure'})
-  const before = await snapshot(e2e)
-
+  // One-shot fail is spent; the next tick completes ban → unban → delete.
+  const errorMark = errorMessages().length
+  const beforeRetry = await snapshot(e2e)
   await expectDelta(e2e, () => e2e.jobs.expiredSubscriptions(), {
     db: {
       subscriptions: {
@@ -526,16 +521,49 @@ test('a failed unban currently deletes the only expiry retry state', async () =>
     },
     telegram: expiryTelegramCalls(),
   })
+  const afterRetry = await snapshot(e2e)
+  expectLedgerBalanced(beforeRetry, afterRetry)
+  expect(errorMessages()).toHaveLength(errorMark)
+  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
+})
 
-  const after = await snapshot(e2e)
-  expectLedgerBalanced(before, after)
+// docs/known-issues.md — "Expiry cleanup deletes the subscription even when ban or unban fails"
+test('a failed unban keeps the expired row for a later unban retry', async () => {
+  const subscription = await seedExpiringSubscription(e2e, {endsInMs: -60_000})
+  e2e.tg.fail('unbanChatMember', {error_code: 403, description: 'Injected unban failure'})
+  const before = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.jobs.expiredSubscriptions(), {
+    telegram: expiryTelegramCalls(),
+  })
+
+  const afterFail = await snapshot(e2e)
+  expectLedgerBalanced(before, afterFail)
+  expect(afterFail.db).toEqual(before.db)
   expectExactExpiryCalls()
   expect(errorMessages()).toEqual(['Error while unbanning user from chat.'])
-  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
+  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([
+    expect.objectContaining({id: subscription.id}),
+  ])
 
-  const telegramMark = e2e.tg.calls.length
-  await expectDelta(e2e, () => e2e.jobs.expiredSubscriptions(), {})
-  expect(e2e.tg.calls).toHaveLength(telegramMark)
+  // One-shot fail is spent; the next tick redoes ban → unban and deletes.
+  const errorMark = errorMessages().length
+  const beforeRetry = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.expiredSubscriptions(), {
+    db: {
+      subscriptions: {
+        removed: 1,
+        match: rows => expect(rows[0]?.before).toMatchObject({id: subscription.id}),
+      },
+    },
+    telegram: expiryTelegramCalls(),
+  })
+  const afterRetry = await snapshot(e2e)
+  expectLedgerBalanced(beforeRetry, afterRetry)
+  expect(errorMessages()).toHaveLength(errorMark)
+  expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
+  expect(e2e.tg.of('banChatMember')).toHaveLength(2)
+  expect(e2e.tg.of('unbanChatMember')).toHaveLength(2)
 })
 
 test('expiry includes the exact end instant but not the following second', async () => {
