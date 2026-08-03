@@ -166,7 +166,7 @@ describe('settleService.distributeOnce', () => {
   test('a payout still in flight is never paid a second time', async () => {
     ledger.set('in-flight', {paid: false})
     const result = await distributeOnce(makePayment({payoutHash: 'in-flight'}), 42)
-    expect(result).toEqual({status: 'pending'})
+    expect(result).toEqual({status: 'pending', leg: 'owner', hash: 'in-flight'})
     expect(ownerPayouts()).toHaveLength(0)
   })
 
@@ -224,7 +224,7 @@ describe('settleService.distributeOnce', () => {
       makePayment({payoutHash: 'owner-done', feePayoutHash: 'fee-in-flight'}),
       42,
     )
-    expect(result).toEqual({status: 'pending'})
+    expect(result).toEqual({status: 'pending', leg: 'fee', hash: 'fee-in-flight'})
     expect(paidBolt11s.filter(b => b.startsWith('fee-'))).toHaveLength(0)
   })
 })

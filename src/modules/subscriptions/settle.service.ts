@@ -11,7 +11,12 @@ import {MAX_SETTLE_ATTEMPTS} from './payment-repository.js'
 
 export type CompleteSubscriptionPaymentResult = 'settled' | 'kept'
 
-export type DistributeOnceResult = {status: 'paid'; fee: number} | {status: 'pending'}
+export type DistributePendingLeg = 'owner' | 'fee'
+
+export type DistributeOnceResult =
+  | {status: 'paid'; fee: number}
+  | {status: 'pending'; leg: DistributePendingLeg; hash: string | null}
+
 export type RefundDuplicateResult = {status: 'credited'} | {status: 'pending'}
 
 export type SettleServiceDeps = {
@@ -78,7 +83,9 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
       createInvoice: () => createOwnerPayoutInvoice(chatOwnerId, payment.price - fee),
       persistHash: hash => deps.recordPayoutInvoice(payment.id, hash),
     })
-    if (ownerLeg === 'pending') return {status: 'pending'}
+    if (ownerLeg === 'pending') {
+      return {status: 'pending', leg: 'owner', hash: payment.payoutHash}
+    }
 
     if (fee > 0) {
       const feeLeg = await settleLeg({
@@ -88,7 +95,9 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         createInvoice: () => deps.masterWallet.createFeeCollectionInvoice(fee),
         persistHash: hash => deps.recordFeePayoutInvoice(payment.id, hash),
       })
-      if (feeLeg === 'pending') return {status: 'pending'}
+      if (feeLeg === 'pending') {
+        return {status: 'pending', leg: 'fee', hash: payment.feePayoutHash}
+      }
     }
 
     return {status: 'paid', fee}
@@ -255,9 +264,10 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
       }
 
       if (payout.status === 'pending') {
+        const legLabel = payout.leg === 'owner' ? 'Owner payout' : 'Fee collection'
         deps.log.info(
-          {paymentId: payment.id, payoutHash: payment.payoutHash},
-          'Owner payout is still in flight at LNbits; re-checking on the next tick.',
+          {paymentId: payment.id, leg: payout.leg, hash: payout.hash},
+          `${legLabel} is still in flight at LNbits; re-checking on the next tick.`,
         )
         return 'kept'
       }

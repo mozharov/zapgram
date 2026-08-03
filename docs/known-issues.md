@@ -181,7 +181,9 @@ invoice has already been paid and silently dropping either the access or the mon
 
 ## A pending fee payout is logged as an owner payout
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+**Fixed:** 2026-08-03 — `distributeOnce` returns `{status:'pending', leg, hash}`; settle logs the
+pending leg and its hash (fee collection vs owner payout).
 
 `distributeOnce` (`src/modules/subscriptions/settle.service.ts`) returns only `{status: 'pending'}`;
 it does not identify which payout leg is pending. Its caller therefore always logs "Owner payout is

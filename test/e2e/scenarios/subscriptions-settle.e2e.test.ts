@@ -152,7 +152,7 @@ test('an owner payout still in flight keeps the row and preserves its hash', asy
   expectNoErrors(e2e.logs)
 })
 
-test('a pending fee leg is currently logged as an owner payout', async () => {
+test('a pending fee leg is logged as fee collection with the fee hash', async () => {
   await recreateWorld({env: {LOG_LEVEL: 'info'}})
   const payment = await seedPaidSettlement()
   const ownerInvoice = payPayout(walletForUser(OWNER), OWNER_PAYOUT)
@@ -181,13 +181,17 @@ test('a pending fee leg is currently logged as an owner payout', async () => {
   const after = await snapshot(e2e)
   expectLedgerBalanced(before, after)
   expectPayouts(OWNER, 1, 0)
-  const misleading = e2e.logs
+  const pendingLog = e2e.logs
     .slice(logMark)
     .find(
-      log => log.msg === 'Owner payout is still in flight at LNbits; re-checking on the next tick.',
+      log =>
+        log.msg === 'Fee collection is still in flight at LNbits; re-checking on the next tick.',
     )
-  expect(misleading).toMatchObject({payoutHash: ownerInvoice.paymentHash})
-  expect(misleading?.payoutHash).not.toBe(feePending.paymentHash)
+  expect(pendingLog).toMatchObject({
+    leg: 'fee',
+    hash: feePending.paymentHash,
+  })
+  expect(pendingLog?.hash).not.toBe(ownerInvoice.paymentHash)
   expectNoErrors(e2e.logs)
 })
 
