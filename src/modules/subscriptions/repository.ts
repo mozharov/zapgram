@@ -3,7 +3,7 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {chatsTable, subscriptionsTable} from '@infra/db/schema.js'
 import type {NewSubscription, Subscription} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {and, count, desc, eq, gt, lte} from 'drizzle-orm'
+import {and, count, desc, eq, gt, isNull, lte, or} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 import type {SubscriptionWithChat} from './types.js'
 
@@ -17,9 +17,22 @@ export function createSubscriptionRepository(database: AppDatabase) {
         .then(rows => firstOrThrow(rows, 'subscription'))
     },
 
-    async findByUserAndChat(userId: Subscription['userId'], chatId: Subscription['chatId']) {
+    /**
+     * Current access only: permanent (`endsAt` null) or not yet expired.
+     * Expired rows stay until cleanup bans the user; they must not authorize a free re-join.
+     * Grant/renewal look up any row themselves so they can extend an expired record in place.
+     */
+    async findByUserAndChat(
+      userId: Subscription['userId'],
+      chatId: Subscription['chatId'],
+      now: Date = new Date(),
+    ) {
       return database.query.subscriptionsTable.findFirst({
-        where: and(eq(subscriptionsTable.userId, userId), eq(subscriptionsTable.chatId, chatId)),
+        where: and(
+          eq(subscriptionsTable.userId, userId),
+          eq(subscriptionsTable.chatId, chatId),
+          or(isNull(subscriptionsTable.endsAt), gt(subscriptionsTable.endsAt, now)),
+        ),
       })
     },
 

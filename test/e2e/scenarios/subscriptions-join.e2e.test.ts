@@ -147,8 +147,7 @@ test('a current subscription approves the join request without issuing an invoic
   expectNoErrors(e2e.logs)
 })
 
-test('an expired subscription is currently approved before cleanup runs', async () => {
-  // Characterization of the open expiry-check defect in docs/known-issues.md.
+test('an expired subscription requires a new join invoice before cleanup runs', async () => {
   await seedActiveChat({paymentType: 'monthly'})
   await seedSubscription(e2e, {
     userId: USER_A,
@@ -159,17 +158,26 @@ test('an expired subscription is currently approved before cleanup runs', async 
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'approveChatJoinRequest', to: CHAT_GROUP}],
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
+    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
   })
 
-  expect(e2e.tg.last('approveChatJoinRequest')).toEqual({
-    chat_id: CHAT_GROUP,
-    user_id: USER_A,
-    parse_mode: 'HTML',
+  expect(e2e.tg.of('approveChatJoinRequest')).toHaveLength(0)
+  const [payment] = await e2e.db.select().from(subscriptionPaymentsTable)
+  expect(payment).toMatchObject({
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    price: PRICE,
+    kind: 'join',
+    subscriptionType: 'monthly',
+    settledAt: null,
   })
-  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
   expectLedgerBalanced(before, await snapshot(e2e))
-  expectNoPaidMasterPayouts()
+  expectNoPaidMasterPayouts(PRICE)
   expectNoErrors(e2e.logs)
 })
 

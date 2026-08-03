@@ -85,8 +85,9 @@ describe('subscription repository', () => {
   test('delete does not remove a subscription whose endsAt moved forward', async () => {
     const db = createTestDb()
     const {subscriptions} = await seed(db)
-    const endsAt = new Date('2026-06-01T12:00:00.000Z')
-    const later = new Date('2026-07-01T12:00:00.000Z')
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    const endsAt = now
+    const later = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
     const sub = await subscriptions.create({
       userId: 2,
@@ -100,8 +101,7 @@ describe('subscription repository', () => {
 
     await subscriptions.delete(sub.id, endsAt)
 
-    const stillThere = await subscriptions.findByUserAndChat(2, -100)
-    // findByUserAndChat returns first match — we may have only one row
+    const stillThere = await subscriptions.findByUserAndChat(2, -100, now)
     const byId = await subscriptions.findByIdWithChat(sub.id)
     expect(byId).not.toBeNull()
     expect(byId?.endsAt?.getTime()).toBe(later.getTime())
@@ -116,5 +116,52 @@ describe('subscription repository', () => {
     await subscriptions.create(data)
 
     await expect(subscriptions.create(data)).rejects.toThrow()
+  })
+
+  test('findByUserAndChat returns only permanent or not-yet-expired rows', async () => {
+    const db = createTestDb()
+    const {subscriptions, chats} = await seed(db)
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    await chats.createOrUpdate({
+      id: -101,
+      title: 'Permanent Chat',
+      type: 'supergroup',
+      ownerId: 1,
+      status: 'active',
+      price: 1000,
+      paymentType: 'one_time',
+    })
+    await chats.createOrUpdate({
+      id: -102,
+      title: 'Current Monthly',
+      type: 'supergroup',
+      ownerId: 1,
+      status: 'active',
+      price: 1000,
+      paymentType: 'monthly',
+    })
+
+    await subscriptions.create({
+      userId: 2,
+      chatId: -100,
+      price: 1000,
+      endsAt: new Date(now.getTime() - 60_000),
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -101,
+      price: 1000,
+      endsAt: null,
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -102,
+      price: 1000,
+      endsAt: new Date(now.getTime() + 60_000),
+    })
+
+    expect(await subscriptions.findByUserAndChat(2, -100, now)).toBeUndefined()
+    expect((await subscriptions.findByUserAndChat(2, -101, now))?.chatId).toBe(-101)
+    expect((await subscriptions.findByUserAndChat(2, -102, now))?.chatId).toBe(-102)
   })
 })

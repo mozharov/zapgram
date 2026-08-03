@@ -45,7 +45,7 @@ describe('grantSubscriptionAccess on real DB', () => {
     const now = new Date('2026-03-01T12:00:00.000Z')
     expect(grant(payment, now)).toBe('granted')
 
-    const afterFirst = await subscriptions.findByUserAndChat(2, -100)
+    const afterFirst = await subscriptions.findByUserAndChat(2, -100, now)
     expect(afterFirst).toBeDefined()
     if (!afterFirst) throw new Error('expected subscription after grant')
     const firstEndsAt = afterFirst.endsAt
@@ -58,7 +58,7 @@ describe('grantSubscriptionAccess on real DB', () => {
 
     expect(grant(settledPayment, now)).toBe('already_settled')
 
-    const afterSecond = await subscriptions.findByUserAndChat(2, -100)
+    const afterSecond = await subscriptions.findByUserAndChat(2, -100, now)
     expect(afterSecond?.endsAt?.getTime()).toBe(firstEndsAt.getTime())
   })
 })

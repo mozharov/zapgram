@@ -38,7 +38,9 @@ missing sender then become the regression by expecting the sender line.
 
 ## An expired subscription still approves a new join request
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Fixed:** 2026-08-03 — `findByUserAndChat` only returns permanent or `endsAt > now` rows; join e2e
+expects a new invoice and no `approveChatJoinRequest` for an expired seed.
 
 `chatJoinRequestHandler` (`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`) treats
 any row returned by `findByUserAndChat` as active. That repository lookup
