@@ -247,7 +247,10 @@ by payment hash; do not offer another payable invoice while the first charge may
 
 ## Manual renewal invoices use the current chat price instead of the subscription price
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Fixed:** 2026-08-03 — `createAndSendRenewalInvoice` mints BOLT11 with `subscription.price`,
+matching the payment row, caption, and settle payout; e2e expects a 1,000-sat invoice when the
+chat list price is 2,000.
 
 `createAndSendRenewalInvoice` mints its BOLT11 with `chat.price`, but stores
 `subscription.price` in the payment row and renders that saved subscription price in the caption.
@@ -257,11 +260,10 @@ diverge as soon as the owner changes the chat price for future subscribers.
 ### Reproduction
 
 Verified against the real container with HTTP fakes in
-`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("a manual renewal invoice currently uses the
-changed chat price instead of its saved price"). A subscription saved at 1,000 sats with a chat now
-priced at 2,000 sats produces a real decoded BOLT11 for 2,000 sats. Its payment row still says
-1,000, and the Telegram caption asks for 1,000. No payment was made in this characterization test,
-so the later balance residue and payout consequences were not measured.
+`test/e2e/scenarios/subscriptions-renewal.e2e.test.ts` ("a manual renewal invoice uses the saved
+subscription price when the chat price has changed"). A subscription saved at 1,000 sats with a chat
+now priced at 2,000 sats used to produce a real decoded BOLT11 for 2,000 sats. Its payment row still
+said 1,000, and the Telegram caption asked for 1,000. After the fix the BOLT11 is also 1,000 sats.
 
 ### How a user reaches it
 

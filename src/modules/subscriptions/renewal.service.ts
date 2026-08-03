@@ -170,8 +170,11 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         subscription.chatId,
       )
       if (!subscriptionPayment) {
+        // Existing subscribers keep subscription.price when the owner changes chat.price for
+        // new joiners. Invoice amount, payment row, caption, and settle payout all use that
+        // locked price — never the current chat list price.
         const invoice = await deps.masterWallet.createInvoice(
-          chat.price,
+          subscription.price,
           deps.invoiceExpirySeconds,
         )
         subscriptionPayment = await deps.createSubscriptionPayment({

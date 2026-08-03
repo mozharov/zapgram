@@ -33,8 +33,8 @@ const OWNER_PAYOUT = PRICE - FEE
 const EXPIRING_FETCH_CAP = 50
 const FAILURE = {status: 503, body: {detail: 'Injected renewal failure'}}
 const CHANGED_PRICE_TEST = [
-  'a manual renewal invoice currently uses the changed chat price',
-  'instead of its saved price',
+  'a manual renewal invoice uses the saved subscription price',
+  'when the chat price has changed',
 ].join(' ')
 
 let e2e: E2E
@@ -338,11 +338,11 @@ test(CHANGED_PRICE_TEST, async () => {
     autoRenew: false,
   })
 
-  const {payment, photo} = await issueManualRenewal(subscription, CHANGED_CHAT_PRICE)
+  const {payment, photo} = await issueManualRenewal(subscription, PRICE)
 
   expect(payment.price).toBe(PRICE)
   const decoded = decodeMintedInvoice(payment.paymentRequest)
-  expect(decoded?.amountMsat).toBe(CHANGED_CHAT_PRICE * 1000)
+  expect(decoded?.amountMsat).toBe(PRICE * 1000)
   expect(String(photo.caption)).toContain(payment.paymentRequest)
   expect(String(photo.caption)).toMatch(/сумму 1\D?000 сат/)
   expect(String(photo.caption)).not.toMatch(/сумму 2\D?000 сат/)
