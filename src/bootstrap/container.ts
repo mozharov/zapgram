@@ -109,12 +109,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const settleService = createSettleService({
     recordSettleAttempt: id => payments.recordSettleAttempt(id),
+    claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
+    markWinnerCompleted: (id, processedAt) => payments.markWinnerCompleted(id, processedAt),
     grantAccess,
     approveChatJoinRequest: (chatId, userId) =>
       bot.api.approveChatJoinRequest(chatId, userId).then(() => undefined),
     getChatOrThrow: id => chats.getOrThrow(id),
     getUserOrThrow: id => users.getOrThrow(id),
-    deletePayment: id => payments.delete(id),
     findSubscriptionByUserAndChat: (userId, chatId) =>
       subscriptions.findByUserAndChat(userId, chatId),
     recordPayoutInvoice: (id, hash) => payments.recordPayoutInvoice(id, hash),

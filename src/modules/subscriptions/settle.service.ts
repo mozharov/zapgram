@@ -1,5 +1,6 @@
 import {computeSubscriptionFee} from '@core/money/fee.js'
 import {classifyPayoutLookup, type PayoutState} from '@core/payments/payout-state.js'
+import type {PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
 import type {SubscriptionPayment, User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
@@ -15,11 +16,12 @@ export type RefundDuplicateResult = {status: 'credited'} | {status: 'pending'}
 
 export type SettleServiceDeps = {
   recordSettleAttempt: (id: string) => Promise<void>
+  claimPaidAttempt: (id: string, claimedAt?: Date) => Promise<PaidAttemptOutcome>
+  markWinnerCompleted: (id: string, processedAt?: Date) => Promise<void>
   grantAccess: (payment: SubscriptionPayment, now?: Date) => 'granted' | 'already_settled'
   approveChatJoinRequest: (chatId: number, userId: number) => Promise<void>
   getChatOrThrow: (id: number) => Promise<ChatWithOwner>
   getUserOrThrow: (id: number) => Promise<User>
-  deletePayment: (id: string) => Promise<void>
   findSubscriptionByUserAndChat: (
     userId: number,
     chatId: number,
@@ -184,10 +186,14 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
   async function complete(
     payment: SubscriptionPayment,
   ): Promise<CompleteSubscriptionPaymentResult> {
+    const outcome = await deps.claimPaidAttempt(payment.id, now())
+    if (outcome === 'already_processed') return 'settled'
+
     const attempt = payment.settleAttempts + 1
     await deps.recordSettleAttempt(payment.id)
 
-    const result = await settle(payment)
+    const result =
+      outcome === 'winner' ? await settleWinner(payment) : await settleDuplicate(payment)
 
     if (result === 'kept' && attempt >= MAX_SETTLE_ATTEMPTS) {
       deps.log.error(
@@ -206,7 +212,9 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
    * instead of dropping the owner's payout on the floor. Re-running is safe: `settledAt` stops the
    * subscription from being extended twice.
    */
-  async function settle(payment: SubscriptionPayment): Promise<CompleteSubscriptionPaymentResult> {
+  async function settleWinner(
+    payment: SubscriptionPayment,
+  ): Promise<CompleteSubscriptionPaymentResult> {
     try {
       deps.log.info({paymentHash: payment.paymentHash}, 'Subscription payment successful.')
       deps.grantAccess(payment, now())
@@ -248,7 +256,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
       }
       const fee = payout.fee
 
-      await deps.deletePayment(payment.id)
+      await deps.markWinnerCompleted(payment.id, now())
 
       await deps.notifier.send(payment.userId, await buildSubscriberMessage(payment, chat, user))
 
@@ -269,6 +277,37 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
       deps.log.error(
         {error, paymentHash: payment.paymentHash},
         'Error settling subscription payment.',
+      )
+      return 'kept'
+    }
+  }
+
+  /** Refund a paid non-winning attempt without granting access or paying the chat owner again. */
+  async function settleDuplicate(
+    payment: SubscriptionPayment,
+  ): Promise<CompleteSubscriptionPaymentResult> {
+    try {
+      const user = await deps.getUserOrThrow(payment.userId)
+      const refund = await refundDuplicate(payment)
+      if (refund.status === 'pending') {
+        deps.log.info(
+          {paymentId: payment.id, refundPayoutHash: payment.refundPayoutHash},
+          'Duplicate payment refund is still in flight at LNbits; re-checking on the next tick.',
+        )
+        return 'kept'
+      }
+
+      await deps.notifier.send(
+        payment.userId,
+        deps.translate('subscription-invoice.duplicate-refunded', user.languageCode, {
+          price: payment.price,
+        }),
+      )
+      return 'settled'
+    } catch (error) {
+      deps.log.error(
+        {error, paymentHash: payment.paymentHash},
+        'Error refunding duplicate subscription payment.',
       )
       return 'kept'
     }

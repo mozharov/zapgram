@@ -194,6 +194,24 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
           .get()
         if (!attempt) throw new Error(`Subscription payment ${id} not found`)
 
+        // Compatibility producers create a one-to-one legacy intent with the same id as its only
+        // payment. Keep their historical cleanup behavior while shared intents retain their audit.
+        if (attempt.intentId === id) {
+          const deleted = tx
+            .delete(subscriptionIntentsTable)
+            .where(
+              and(
+                eq(subscriptionIntentsTable.id, attempt.intentId),
+                eq(subscriptionIntentsTable.status, 'won'),
+                eq(subscriptionIntentsTable.winnerAttemptId, id),
+              ),
+            )
+            .returning({id: subscriptionIntentsTable.id})
+            .get()
+          if (!deleted) throw new Error(`Subscription payment ${id} is not the claimed winner`)
+          return
+        }
+
         const completedAttempt = tx
           .update(subscriptionPaymentsTable)
           .set({attemptStatus: 'processed', processedAt, isCurrent: false})
@@ -252,6 +270,7 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
         where: and(
           eq(subscriptionPaymentsTable.userId, userId),
           eq(subscriptionPaymentsTable.chatId, chatId),
+          pending,
         ),
       })
     },

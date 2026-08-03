@@ -6,6 +6,7 @@ import {createTestDb} from '@test/helpers/db.js'
 import {createFakeNotifier} from '@test/helpers/fakes/notifier.js'
 import {HTTPError} from 'got'
 import {createGrantSubscriptionAccess} from './access.js'
+import {createSubscriptionIntentRepository} from './intent-repository.js'
 import {createSubscriptionPaymentRepository, MAX_SETTLE_ATTEMPTS} from './payment-repository.js'
 import {createSubscriptionRepository} from './repository.js'
 import {createSettleService, type SettleServiceDeps} from './settle.service.js'
@@ -17,6 +18,7 @@ function silentLog() {
 describe('settle service (characterization)', () => {
   let db: ReturnType<typeof createTestDb>
   let payments: ReturnType<typeof createSubscriptionPaymentRepository>
+  let intents: ReturnType<typeof createSubscriptionIntentRepository>
   let subscriptions: ReturnType<typeof createSubscriptionRepository>
   let users: ReturnType<typeof createUserRepository>
   let chats: ReturnType<typeof createChatRepository>
@@ -30,6 +32,7 @@ describe('settle service (characterization)', () => {
   beforeEach(async () => {
     db = createTestDb()
     payments = createSubscriptionPaymentRepository(db)
+    intents = createSubscriptionIntentRepository(db)
     subscriptions = createSubscriptionRepository(db)
     users = createUserRepository(db)
     chats = createChatRepository(db)
@@ -57,11 +60,12 @@ describe('settle service (characterization)', () => {
     const log = silentLog()
     return {
       recordSettleAttempt: id => payments.recordSettleAttempt(id),
+      claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
+      markWinnerCompleted: (id, processedAt) => payments.markWinnerCompleted(id, processedAt),
       grantAccess: createGrantSubscriptionAccess(db, log),
       approveChatJoinRequest: async () => {},
       getChatOrThrow: id => chats.getOrThrow(id),
       getUserOrThrow: id => users.getOrThrow(id),
-      deletePayment: id => payments.delete(id),
       findSubscriptionByUserAndChat: (userId, chatId) =>
         subscriptions.findByUserAndChat(userId, chatId),
       recordPayoutInvoice: (id, hash) => payments.recordPayoutInvoice(id, hash),
@@ -329,5 +333,65 @@ describe('settle service (characterization)', () => {
     await expect(settle.refundDuplicate(payment)).rejects.toThrow('processed without a refund')
     expect(paidBolt11s).toEqual([])
     expect(invoiceSats).toEqual([])
+  })
+
+  test('13. complete routes one shared-intent winner to payout and the duplicate to refund', async () => {
+    const intent = await intents.create({userId: 2, chatId: -100, kind: 'join'})
+    const winner = await createPayment({
+      intentId: intent.id,
+      paymentRequest: 'lnbc-winner',
+      paymentHash: 'subscriber-winner',
+    })
+    const duplicate = await createPayment({
+      intentId: intent.id,
+      paymentRequest: 'lnbc-duplicate',
+      paymentHash: 'subscriber-duplicate',
+      isCurrent: false,
+    })
+    const settle = buildService()
+
+    expect(await settle.complete(winner)).toBe('settled')
+    notifier.calls.length = 0
+    expect(await settle.complete(duplicate)).toBe('settled')
+
+    expect(invoiceSats).toEqual([950, 1000])
+    expect(await payments.findById(winner.id)).toMatchObject({
+      attemptStatus: 'processed',
+      refundedAt: null,
+    })
+    expect(await payments.findById(duplicate.id)).toMatchObject({
+      attemptStatus: 'processed',
+      refundedAt: expect.any(Date),
+    })
+    expect(notifier.calls).toEqual([
+      expect.objectContaining({kind: 'send', userId: 2, text: expect.stringContaining('credited')}),
+    ])
+  })
+
+  test('14. complete does not notify while a duplicate refund is pending', async () => {
+    const intent = await intents.create({userId: 2, chatId: -100, kind: 'join'})
+    const winner = await createPayment({
+      intentId: intent.id,
+      paymentRequest: 'lnbc-pending-winner',
+      paymentHash: 'subscriber-pending-winner',
+    })
+    const duplicate = await createPayment({
+      intentId: intent.id,
+      paymentRequest: 'lnbc-pending-duplicate',
+      paymentHash: 'subscriber-pending-duplicate',
+      refundPayoutHash: 'refund-in-flight',
+      isCurrent: false,
+    })
+    ledger.set('refund-in-flight', {paid: false})
+    const settle = buildService()
+    await settle.complete(winner)
+    notifier.calls.length = 0
+
+    expect(await settle.complete(duplicate)).toBe('kept')
+    expect(notifier.calls).toEqual([])
+    expect(await payments.findById(duplicate.id)).toMatchObject({
+      attemptStatus: 'pending',
+      refundedAt: null,
+    })
   })
 })

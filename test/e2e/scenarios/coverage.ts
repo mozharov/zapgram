@@ -287,6 +287,7 @@ export const scenarioCoverage = {
       'users.insert',
       'subscriptions.insert',
       'subscriptions.update',
+      'subscription_intents.update',
       'subscription_intents.delete',
       'subscription_payments.update',
       'subscription_payments.delete',

@@ -55,3 +55,14 @@ describe('subscription invoice remaining time', () => {
     expect(message).toContain(expected)
   })
 })
+
+describe('duplicate subscription refund', () => {
+  test.each([
+    ['en', 'A repeated subscription payment of 1,000 sats was credited'],
+    ['ru', 'Повторный платёж за подписку на 1 000 сат зачислен'],
+  ])('resolves the confirmed refund message in %s', (language, expected) => {
+    expect(translate('subscription-invoice.duplicate-refunded', language, {price: 1000})).toContain(
+      expected,
+    )
+  })
+})

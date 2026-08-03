@@ -3,6 +3,7 @@ import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/sch
 import {createChatRepository} from '@modules/chats/repository.js'
 import {createUserRepository} from '@modules/users/repository.js'
 import {createTestDb} from '@test/helpers/db.js'
+import {eq} from 'drizzle-orm'
 import {createSubscriptionIntentRepository} from './intent-repository.js'
 import {createSubscriptionPaymentRepository, MAX_SETTLE_ATTEMPTS} from './payment-repository.js'
 
@@ -79,6 +80,12 @@ describe('subscription payment repository', () => {
     const found = await payments.getPendingForSubscription(2, -100)
     expect(found?.id).toBe(created.id)
     expect(found?.paymentHash).toBe('hash-pending')
+
+    await db
+      .update(subscriptionPaymentsTable)
+      .set({attemptStatus: 'processed', processedAt: new Date('2026-06-01T12:00:00.000Z')})
+      .where(eq(subscriptionPaymentsTable.id, created.id))
+    expect(await payments.getPendingForSubscription(2, -100)).toBeUndefined()
   })
 
   test('creates and deletes a one-to-one legacy intent for old producers', async () => {

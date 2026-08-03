@@ -23,13 +23,14 @@ let order: string[] = []
 function makeDistribute() {
   return createSettleService({
     recordSettleAttempt: async () => {},
+    claimPaidAttempt: async () => 'winner',
+    markWinnerCompleted: async () => {},
     grantAccess: () => 'granted',
     approveChatJoinRequest: async () => {},
     getChatOrThrow: async () => {
       throw new Error('not used')
     },
     getUserOrThrow: async id => ({id}) as never,
-    deletePayment: async () => {},
     findSubscriptionByUserAndChat: async () => null,
     recordPayoutInvoice: async (_id, hash) => {
       persistedHash = hash

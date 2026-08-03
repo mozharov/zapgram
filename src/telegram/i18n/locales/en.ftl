@@ -332,6 +332,9 @@ subscription-invoice =
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.
+    .duplicate-refunded = <b>↩️ A repeated subscription payment of {$price} sats was credited to your ZapGram balance.</b>
+
+        Access and the payment to the community owner were processed only once.
     .expired = <b>⚠️ This subscription invoice has expired.</b>
         Submit another request to join the chat to get a new invoice.
 

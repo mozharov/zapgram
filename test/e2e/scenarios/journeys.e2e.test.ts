@@ -226,7 +226,9 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
 
   const subscription = await requiredSubscription()
   expect(subscription.endsAt).toBeNull()
-  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
+  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([
+    expect.objectContaining({id: payment.id, attemptStatus: 'processed', refundedAt: null}),
+  ])
   expectPayouts(1)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
@@ -358,7 +360,12 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   })
 
   expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
-  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toHaveLength(1)
+  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({id: payment.id, attemptStatus: 'processed'}),
+      expect.objectContaining({attemptStatus: 'pending'}),
+    ]),
+  )
   expectPayouts(2)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
@@ -589,10 +596,22 @@ async function settleJoin(
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
-      subscriptionIntents: {removed: 1},
+      subscriptionIntents: {
+        changed: 1,
+        match: rows =>
+          expect(rows[0]?.after).toMatchObject({
+            status: 'completed',
+            winnerAttemptId: payment.id,
+          }),
+      },
       subscriptionPayments: {
-        removed: 1,
-        match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id}),
+        changed: 1,
+        match: rows =>
+          expect(rows[0]?.after).toMatchObject({
+            id: payment.id,
+            attemptStatus: 'processed',
+            processedAt: expect.any(Date),
+          }),
       },
     },
     lnbits: {
@@ -709,7 +728,9 @@ function requiredEnd(subscription: Subscription): Date {
 }
 
 async function onlySubscriptionPayment(): Promise<SubscriptionPayment> {
-  const rows = await e2e.db.query.subscriptionPaymentsTable.findMany()
+  const rows = (await e2e.db.query.subscriptionPaymentsTable.findMany()).filter(
+    payment => payment.attemptStatus === 'pending',
+  )
   const payment = rows[0]
   if (rows.length !== 1 || !payment) {
     throw new Error(`Expected one subscription payment, got ${rows.length}`)

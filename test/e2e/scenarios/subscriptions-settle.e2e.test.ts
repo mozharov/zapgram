@@ -136,6 +136,7 @@ test('an owner payout still in flight keeps the row and preserves its hash', asy
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows => expectKeptPayment(rows, payment, {payoutHash: pending.paymentHash}),
@@ -164,6 +165,7 @@ test('a pending fee leg is currently logged as an owner payout', async () => {
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows =>
@@ -218,6 +220,7 @@ test('a restart after payout invoice creation still pays the owner exactly once'
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows => expectKeptPayment(rows, payment),
@@ -289,6 +292,7 @@ test('a restart between owner and fee legs never repeats the owner payout', asyn
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows => expectKeptPayment(rows, payment),
@@ -417,6 +421,7 @@ test('the last pending attempt reaches the limit and is excluded from the next r
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows =>
@@ -444,40 +449,53 @@ test('the last pending attempt reaches the limit and is excluded from the next r
   expectPayouts(OWNER, 0, 0)
 })
 
-test('two paid one-time rows currently distribute the same access purchase twice', async () => {
-  const first = await seedPaidSettlement()
-  const second = await seedSubscriptionPayment(e2e, {paid: true})
+test('two paid attempts of one intent pay the owner once and refund the duplicate in full', async () => {
+  const {first, second} = await seedSharedAttempts({firstPaid: true, secondPaid: true})
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
-      subscriptionIntents: {removed: 2},
+      subscriptionIntents: {
+        changed: 1,
+        match: rows =>
+          expect(rows[0]?.after).toMatchObject({
+            status: 'completed',
+            winnerAttemptId: expect.any(String),
+          }),
+      },
       subscriptionPayments: {
-        removed: 2,
+        changed: 2,
         match: rows => {
-          expect(rows.map(row => asRecord(row.before)?.id).sort()).toEqual(
+          expect(rows.map(row => asRecord(row.after)?.id).sort()).toEqual(
             [first.id, second.id].sort(),
           )
+          expect(rows.map(row => asRecord(row.after)?.attemptStatus)).toEqual([
+            'processed',
+            'processed',
+          ])
         },
       },
     },
     lnbits: {
       balances: {
         'master wallet': -2 * PRICE,
-        [walletForUser(OWNER).name]: 2 * OWNER_PAYOUT,
-        [feeWallet().name]: 2 * FEE,
+        [walletForUser(OWNER).name]: OWNER_PAYOUT,
+        [feeWallet().name]: FEE,
+        [walletForUser(USER_A).name]: PRICE,
       },
       payments: [
-        {out: false, sats: OWNER_PAYOUT, times: 2},
-        {out: true, sats: OWNER_PAYOUT, times: 2},
-        {out: false, sats: FEE, times: 2},
-        {out: true, sats: FEE, times: 2},
+        {out: false, sats: OWNER_PAYOUT, times: 1},
+        {out: true, sats: OWNER_PAYOUT, times: 1},
+        {out: false, sats: FEE, times: 1},
+        {out: true, sats: FEE, times: 1},
+        {out: false, sats: PRICE, times: 1},
+        {out: true, sats: PRICE, times: 1},
       ],
     },
     telegram: [
       ...successfulTelegramCalls(USER_A, OWNER),
-      ...successfulTelegramCalls(USER_A, OWNER),
+      {method: 'sendMessage', to: USER_A, text: /repeated subscription payment.*credited/},
     ],
   })
 
@@ -486,8 +504,199 @@ test('two paid one-time rows currently distribute the same access purchase twice
   expect(await e2e.container.db.query.subscriptionsTable.findMany()).toEqual([
     expect.objectContaining({userId: USER_A, chatId: CHAT_GROUP, endsAt: null}),
   ])
-  expectPayouts(OWNER, 2, 2)
+  expectPayouts(OWNER, 1, 1)
+  expectPayoutsExactly(e2e.ln, {toWallet: walletForUser(USER_A), sats: PRICE, times: 1})
+  const attempts = await Promise.all([
+    e2e.container.payments.findById(first.id),
+    e2e.container.payments.findById(second.id),
+  ])
+  expect(attempts.filter(attempt => attempt?.refundedAt)).toHaveLength(1)
+  expect(attempts.filter(attempt => attempt?.settledAt)).toHaveLength(1)
+
+  const settled = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {})
+  expectWorldUnchanged(settled, await snapshot(e2e))
+  expectPayouts(OWNER, 1, 1)
+  expectPayoutsExactly(e2e.ln, {toWallet: walletForUser(USER_A), sats: PRICE, times: 1})
   expectNoErrors(e2e.logs)
+})
+
+test('a refund retry after failure before hash persistence succeeds once after restart', async () => {
+  await recreateWorld({mode: 'file'})
+  const duplicate = await preparePaidDuplicate('ru')
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => {
+        const record = asRecord(body)
+        return record?.out === false && record.amount === PRICE
+      },
+    },
+    FAILURE,
+  )
+  const beforeFailure = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+  })
+
+  const afterFailure = await requiredPayment(duplicate.id)
+  expect(afterFailure).toMatchObject({
+    refundPayoutHash: null,
+    refundedAt: null,
+    attemptStatus: 'pending',
+  })
+  expectLedgerBalanced(beforeFailure, await snapshot(e2e))
+  expectAllSettlementPayouts(0)
+  expect(e2e.tg.of('sendMessage')).toHaveLength(2)
+
+  await e2e.restart()
+  const beforeRetry = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+    lnbits: {
+      balances: {'master wallet': -PRICE, [walletForUser(USER_A).name]: PRICE},
+      payments: [
+        {out: false, sats: PRICE, times: 1},
+        {out: true, sats: PRICE, times: 1},
+      ],
+    },
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Повторный платёж.*зачислен/}],
+  })
+
+  expectLedgerBalanced(beforeRetry, await snapshot(e2e))
+  expect(await requiredPayment(duplicate.id)).toMatchObject({
+    refundPayoutHash: expect.any(String),
+    refundedAt: expect.any(Date),
+    attemptStatus: 'processed',
+  })
+  expectAllSettlementPayouts(1)
+})
+
+test('a persisted refund hash is recovered through 404 without paying twice', async () => {
+  await recreateWorld({mode: 'file'})
+  const duplicate = await preparePaidDuplicate('ru')
+  e2e.ln.state.failNext(
+    {method: 'POST', path: '/api/v1/payments', body: body => asRecord(body)?.out === true},
+    FAILURE,
+  )
+
+  await e2e.jobs.subscriptionPayments()
+  const afterFailure = await requiredPayment(duplicate.id)
+  if (!afterFailure.refundPayoutHash) throw new Error('Refund hash was not persisted')
+  expect(afterFailure).toMatchObject({refundedAt: null, attemptStatus: 'pending'})
+  const orphan = e2e.ln.state.payments.find(
+    payment => payment.paymentHash === afterFailure.refundPayoutHash && !payment.out,
+  )
+  expect(orphan).toMatchObject({paid: false, walletId: walletForUser(USER_A).id})
+  expectAllSettlementPayouts(0)
+
+  await e2e.restart()
+  const requestMark = e2e.ln.requests.length
+  const beforeRetry = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+    lnbits: {
+      balances: {'master wallet': -PRICE, [walletForUser(USER_A).name]: PRICE},
+      payments: [
+        {out: false, sats: PRICE, times: 1},
+        {out: true, sats: PRICE, times: 1},
+      ],
+    },
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Повторный платёж.*зачислен/}],
+  })
+
+  expectLedgerBalanced(beforeRetry, await snapshot(e2e))
+  expect(
+    e2e.ln.requests
+      .slice(requestMark)
+      .some(request => request.path === `/api/v1/payments/${afterFailure.refundPayoutHash}`),
+  ).toBe(true)
+  expect(orphan?.paid).toBe(false)
+  expect((await requiredPayment(duplicate.id)).refundPayoutHash).not.toBe(
+    afterFailure.refundPayoutHash,
+  )
+  expectAllSettlementPayouts(1)
+})
+
+test('a crash after the actual refund payment confirms it after restart without a second payout', async () => {
+  await recreateWorld({mode: 'file'})
+  const duplicate = await preparePaidDuplicate('ru')
+  const payInvoice = e2e.container.masterWallet.payInvoice.bind(e2e.container.masterWallet)
+  let crashOnce = true
+  e2e.container.masterWallet.payInvoice = async bolt11 => {
+    const result = await payInvoice(bolt11)
+    if (crashOnce) {
+      crashOnce = false
+      throw new Error('Injected crash after actual refund payment')
+    }
+    return result
+  }
+  const beforeFailure = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+    lnbits: {
+      balances: {'master wallet': -PRICE, [walletForUser(USER_A).name]: PRICE},
+      payments: [
+        {out: false, sats: PRICE, times: 1},
+        {out: true, sats: PRICE, times: 1},
+      ],
+    },
+  })
+
+  expectLedgerBalanced(beforeFailure, await snapshot(e2e))
+  expect(await requiredPayment(duplicate.id)).toMatchObject({
+    refundPayoutHash: expect.any(String),
+    refundedAt: null,
+    attemptStatus: 'pending',
+  })
+  expectAllSettlementPayouts(1)
+
+  await e2e.restart()
+  const beforeRetry = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Повторный платёж.*зачислен/}],
+  })
+
+  expectLedgerBalanced(beforeRetry, await snapshot(e2e))
+  expect(await requiredPayment(duplicate.id)).toMatchObject({
+    refundedAt: expect.any(Date),
+    attemptStatus: 'processed',
+  })
+  expectAllSettlementPayouts(1)
+})
+
+test('a pending refund reaches the retry budget without notification and raises the alert', async () => {
+  const duplicate = await preparePaidDuplicate('ru', MAX_SETTLE_ATTEMPTS - 1)
+  const pending = seedPendingOutgoing(walletForUser(USER_A), PRICE)
+  await e2e.container.payments.recordRefundInvoice(duplicate.id, pending.paymentHash)
+  const messageMark = e2e.tg.of('sendMessage').length
+  const beforeLastAttempt = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {subscriptionPayments: {changed: 1}},
+  })
+
+  expectLedgerBalanced(beforeLastAttempt, await snapshot(e2e))
+  expect(await requiredPayment(duplicate.id)).toMatchObject({
+    settleAttempts: MAX_SETTLE_ATTEMPTS,
+    refundPayoutHash: pending.paymentHash,
+    refundedAt: null,
+    attemptStatus: 'pending',
+  })
+  expect(e2e.tg.of('sendMessage')).toHaveLength(messageMark)
+  expectAllSettlementPayouts(0)
+  expect(errorMessages()).toContain(EXHAUSTED_PAYMENT_ERROR)
+
+  const logMark = e2e.logs.length
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {})
+  expect(errorMessages(logMark)).toEqual([
+    'Subscription payments are stuck past their settle attempt budget and need manual review.',
+  ])
+  expectAllSettlementPayouts(0)
 })
 
 test('an approval failure currently still pays out and deletes the retry row', async () => {
@@ -592,6 +801,77 @@ async function seedSettlementActors(): Promise<void> {
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active', price: PRICE})
 }
 
+async function seedSharedAttempts(options: {
+  firstPaid: boolean
+  secondPaid: boolean
+  languageCode?: 'en' | 'ru'
+  secondSettleAttempts?: number
+}): Promise<{first: SubscriptionPayment; second: SubscriptionPayment}> {
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner', languageCode: 'en'})
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'subscriber',
+    firstName: 'Subscriber',
+    languageCode: options.languageCode ?? 'en',
+  })
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: OWNER,
+    title: 'E2E paid chat',
+    status: 'active',
+    price: PRICE,
+    paymentType: 'one_time',
+  })
+  const intent = await e2e.container.subscriptionIntents.create({
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    kind: 'join',
+  })
+  const first = await seedSubscriptionPayment(e2e, {
+    intentId: intent.id,
+    isCurrent: false,
+    paid: options.firstPaid,
+  })
+  const second = await seedSubscriptionPayment(e2e, {
+    intentId: intent.id,
+    isCurrent: true,
+    paid: options.secondPaid,
+    settleAttempts: options.secondSettleAttempts,
+  })
+  return {first, second}
+}
+
+async function preparePaidDuplicate(
+  languageCode: 'en' | 'ru',
+  settleAttempts = 0,
+): Promise<SubscriptionPayment> {
+  const {first, second} = await seedSharedAttempts({
+    firstPaid: true,
+    secondPaid: false,
+    languageCode,
+    secondSettleAttempts: settleAttempts,
+  })
+  await e2e.jobs.subscriptionPayments()
+  expect(await requiredPayment(first.id)).toMatchObject({
+    attemptStatus: 'processed',
+    settledAt: expect.any(Date),
+  })
+  expect(await requiredPayment(second.id)).toMatchObject({
+    attemptStatus: 'pending',
+    refundedAt: null,
+  })
+  expectAllSettlementPayouts(0)
+
+  const incoming = e2e.ln.state.payments.find(
+    payment => payment.paymentHash === second.paymentHash && !payment.out,
+  )
+  if (!incoming) throw new Error('Duplicate subscriber invoice was not found')
+  const payer = walletForUser(USER_A)
+  e2e.ln.state.credit(payer.id, incoming.amountMsat)
+  e2e.ln.state.payInvoice({payerWallet: payer, bolt11: incoming.bolt11})
+  return second
+}
+
 async function expectSuccessfulSettlement(
   payment: SubscriptionPayment,
   options: {ownerId?: number; userId?: number; fee?: number} = {},
@@ -663,6 +943,7 @@ async function expectLookupFailure(payment: SubscriptionPayment, errorMessage: s
           })
         },
       },
+      subscriptionIntents: {changed: 1},
       subscriptionPayments: {
         changed: 1,
         match: rows => expectKeptPayment(rows, payment),
@@ -752,6 +1033,15 @@ function expectPayouts(ownerId: number, ownerTimes: number, feeTimes: number): v
     times: ownerTimes,
   })
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: FEE, times: feeTimes})
+}
+
+function expectAllSettlementPayouts(refundTimes: number): void {
+  expectPayouts(OWNER, 1, 1)
+  expectPayoutsExactly(e2e.ln, {
+    toWallet: walletForUser(USER_A),
+    sats: PRICE,
+    times: refundTimes,
+  })
 }
 
 function walletForUser(userId: number): FakeWallet {

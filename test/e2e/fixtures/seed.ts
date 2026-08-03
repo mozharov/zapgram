@@ -116,6 +116,7 @@ export async function seedSubscriptionPayment(
   }
 
   return e2e.container.payments.create({
+    intentId: opts.intentId,
     userId,
     chatId: opts.chatId ?? CHAT_GROUP,
     paymentRequest: invoice.bolt11,
@@ -123,10 +124,16 @@ export async function seedSubscriptionPayment(
     price,
     subscriptionType: opts.subscriptionType ?? 'one_time',
     kind: opts.kind ?? 'join',
+    expiresAt: opts.expiresAt,
+    isCurrent: opts.isCurrent,
+    attemptStatus: opts.attemptStatus,
+    processedAt: opts.processedAt,
     settledAt: opts.settledAt,
     settleAttempts: opts.settleAttempts,
     payoutHash: opts.payoutHash,
     feePayoutHash: opts.feePayoutHash,
+    refundPayoutHash: opts.refundPayoutHash,
+    refundedAt: opts.refundedAt,
   })
 }
 
