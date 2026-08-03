@@ -30,6 +30,7 @@ import {
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
 
 /**
  * Domain errors as the user sees them: every AppErrorCode reaches the right Fluent copy, private
@@ -63,6 +64,8 @@ const ALL_CODES: AppErrorCode[] = [
   'not_found',
   'unknown',
 ]
+
+export const COVERS = scenarioCoverage.errors
 
 let e2e: E2E
 let restorePayInvoice: (() => void) | undefined

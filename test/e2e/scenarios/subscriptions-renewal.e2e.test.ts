@@ -17,6 +17,9 @@ import {
 import {privatePhotoCaptionCallback} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage['subscriptions-renewal']
 
 /**
  * Monthly subscription lifecycle after initial access: charge or invoice an expiring subscriber,

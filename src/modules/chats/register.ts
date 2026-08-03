@@ -25,6 +25,8 @@ import {removeCustomMessageCallback} from './telegram/handlers/remove-custom-mes
 import {turnPaidAccessCallback} from './telegram/handlers/turn-paid-access.js'
 import {turnPaymentTypeCallback} from './telegram/handlers/turn-payment-type.js'
 
+export const chatsCommands = ['chats'] as const
+
 export function register(composer: Composer<BotContext>): void {
   const paidChat = composer.chatType(['supergroup', 'channel'])
   paidChat.on('my_chat_member', myChatMemberHandler)
@@ -33,7 +35,7 @@ export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
   privateChat.use(createConversation(changingPrice))
   privateChat.use(createConversation(editCustomMessage))
-  privateChat.command('chats', chatsCommand)
+  privateChat.command(chatsCommands[0], chatsCommand)
   privateChat.callbackQuery(chatsPageRoute.pattern, chatsCallback)
   privateChat.callbackQuery(chatRoute.pattern, chatCallback)
   privateChat.callbackQuery(chatPaidAccessRoute.pattern, turnPaidAccessCallback)

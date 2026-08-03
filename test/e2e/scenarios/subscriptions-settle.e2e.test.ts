@@ -8,6 +8,9 @@ import {CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscriptionPayment, seedUser} from '../fixtures/seed.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage['subscriptions-settle']
 
 /**
  * The settlement half of paid subscriptions. The subscriber invoice is already paid when each

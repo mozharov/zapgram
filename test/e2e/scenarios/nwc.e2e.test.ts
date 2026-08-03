@@ -14,6 +14,9 @@ import {
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.nwc
 
 /**
  * NWC-positive branches of §7.3 and §7.5.

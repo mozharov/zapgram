@@ -23,6 +23,9 @@ import {
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.chats
 
 /**
  * Paid-chat administration from Telegram updates all the way through the real repositories.

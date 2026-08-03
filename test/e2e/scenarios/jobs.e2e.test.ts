@@ -17,6 +17,7 @@ import {
 } from '../fixtures/seed.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
 
 /**
  * Cron jobs as batch walkers: empty ticks stay quiet, oversize queues finish, one bad row cannot
@@ -42,6 +43,8 @@ const ALL_JOBS = [
   'expiredSubscriptions',
   'expiringSubscriptions',
 ] as const
+
+export const COVERS = scenarioCoverage.jobs
 
 let e2e: E2E
 

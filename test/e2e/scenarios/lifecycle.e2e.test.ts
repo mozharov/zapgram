@@ -8,6 +8,9 @@ import {getRuntime} from '../../../src/runtime.js'
 import {USER_A} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
 import {createE2E, type E2E} from '../harness.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.lifecycle
 
 /**
  * Process lifecycle outside request handling: migrations land the full schema, a dead LNbits

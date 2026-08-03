@@ -15,6 +15,9 @@ import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.invoices
 
 /**
  * Lightning invoices and the six conversations that surround them.

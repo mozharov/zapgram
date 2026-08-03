@@ -14,6 +14,9 @@ import {
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.input
 
 /**
  * What the bot does with input it was not designed for: update types nobody handles, the same

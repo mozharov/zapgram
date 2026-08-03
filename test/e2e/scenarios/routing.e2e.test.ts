@@ -8,6 +8,9 @@ import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
 import {groupText, privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.routing
 
 /**
  * Routing for the fully composed bot.

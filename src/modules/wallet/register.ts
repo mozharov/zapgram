@@ -13,11 +13,13 @@ import {settingsCommand} from './telegram/handlers/settings-command.js'
 import {walletCallback} from './telegram/handlers/wallet-callback.js'
 import {walletCommand} from './telegram/handlers/wallet-command.js'
 
+export const walletCommands = ['wallet', 'settings'] as const
+
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
   privateChat.use(createConversation(connectingNWC))
-  privateChat.command('wallet', walletCommand)
-  privateChat.command('settings', settingsCommand)
+  privateChat.command(walletCommands[0], walletCommand)
+  privateChat.command(walletCommands[1], settingsCommand)
   privateChat.callbackQuery(staticCallback.wallet, walletCallback)
   privateChat.callbackQuery(staticCallback.settings, settingsCallback)
   privateChat.callbackQuery(staticCallback.groupSettings, groupSettingsCallback)

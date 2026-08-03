@@ -6,6 +6,9 @@ import {seedUser} from '../fixtures/seed.js'
 import {privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.http
 
 /**
  * HTTP edge of the process: health check, Telegram webhook secret, request id stamping, and

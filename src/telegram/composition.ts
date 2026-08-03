@@ -19,6 +19,8 @@ import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
 import {logger} from '@telegram/middlewares/logger.js'
 import type {Bot} from 'grammy'
 
+export const shellCommands = ['start', 'help'] as const
+
 /**
  * Registers all grammY middleware and feature modules.
  * Order is load-bearing: errorBoundary → conversations → logger → i18n,
@@ -36,8 +38,8 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.use(lnbitsWallet)
 
   // Shell commands available before feature modules
-  privateChat.command('start', startCommand)
-  privateChat.command('help', helpCommand)
+  privateChat.command(shellCommands[0], startCommand)
+  privateChat.command(shellCommands[1], helpCommand)
   privateChat.callbackQuery(staticCallback.help, helpCallback)
 
   registerWallet(composer)
