@@ -2,9 +2,11 @@
 /node_modules
 /.cursor
 /.claude
-main.db*
+/.agents
 /data
 /temp
+/.grok
+main.db*
 .DS_Store
 .env*
 !.env*.example

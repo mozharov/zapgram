@@ -5,6 +5,8 @@
 /.github
 /docs
 /.claude
+/.grok
+/.agents
 /temp
 /data
 .dockerignore
