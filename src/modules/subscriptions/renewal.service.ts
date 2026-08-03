@@ -162,7 +162,10 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       const lookup = await deps.masterWallet.lookupPayment(paymentHash)
       return lookup.paid
     } catch (error) {
-      deps.log.error({error, paymentHash}, 'Could not look up renewal invoice after a charge failure')
+      deps.log.error(
+        {error, paymentHash},
+        'Could not look up renewal invoice after a charge failure',
+      )
       return false
     }
   }

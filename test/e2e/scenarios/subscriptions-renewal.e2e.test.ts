@@ -158,7 +158,9 @@ test('an insufficient balance reuses one renewal payment for the manual reminder
   ])
   const masterId = masterWallet().id
   const masterInvoices = e2e.ln.state.payments.filter(candidate => {
-    return !candidate.out && candidate.walletId === masterId && candidate.amountMsat === PRICE * 1000
+    return (
+      !candidate.out && candidate.walletId === masterId && candidate.amountMsat === PRICE * 1000
+    )
   })
   expect(masterInvoices).toHaveLength(1)
   expect(masterInvoices[0]?.paymentHash).toBe(payment.paymentHash)

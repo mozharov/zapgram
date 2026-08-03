@@ -184,7 +184,7 @@ describe('settle service (characterization)', () => {
       },
       log: {
         ...silentLog(),
-        error: (_obj, msg) => {
+        error: (_obj: unknown, msg?: string) => {
           if (msg) logErrors.push(msg)
         },
       },
@@ -207,7 +207,7 @@ describe('settle service (characterization)', () => {
       },
       log: {
         ...silentLog(),
-        error: (_obj, msg) => {
+        error: (_obj: unknown, msg?: string) => {
           if (msg) logErrors.push(msg)
         },
       },
