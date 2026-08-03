@@ -413,7 +413,9 @@ generic not-found card, and must not reveal the title.
 
 ## The error handler repeats the read that just failed
 
-**Status:** open. **Found:** 2026-08-02, while writing the wallet e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the wallet e2e suite.
+**Fixed:** 2026-08-03 — error handler uses `replyWithCachedWallet` (middleware balance, no live
+GET); missing wallet is a no-op. E2E expects one failed GET sequence plus error + wallet copy.
 
 After any error in a private chat, `errorHandler` (`src/telegram/handlers/error.ts`) sends the error
 copy and then appends the wallet screen. `replyWithWallet`
@@ -429,115 +431,47 @@ load on a service that is already failing.
 
 Measured against the real container with HTTP fakes (`test/e2e/scenarios/wallet.e2e.test.ts`, "a
 balance endpoint that stays down leaves the user with an error and the world untouched"): with
-`GET /api/v1/wallet` failing persistently, one `/wallet` command produces **8** requests to LNbits —
-2 to resolve the wallet, then 3 + 3 for the two balance reads — and takes ~6.3 s before the user
-sees a single message. Four `level=error` lines are logged, the last being
-`Failed to reply with wallet in error handler`.
-
-Measured for `/wallet`. That the same cost applies to *every* private-chat error during an LNbits
-outage follows from the error handler being shared, and was not measured separately.
-
-### Fix sketch
-
-`editMessageWithWallet` already renders from `ctx.user.wallet.balance`, which the `lnbitsWallet`
-middleware loaded moments earlier. Give the error handler the same non-fetching path instead of
-`replyWithWallet`, and have it tolerate a missing `ctx.user.wallet` — when the failure happened in
-the middleware itself there is no wallet on the context at all, which is what the last error line
-above is. Fixing this also removes the slowest test in the e2e suite.
+`GET /api/v1/wallet` failing persistently, one `/wallet` command used to produce **8** requests to
+LNbits — 2 to resolve the wallet, then 3 + 3 for the two balance reads. After the fix only the
+command's live read is retried (3), and the error handler appends the cached-balance wallet screen.
 
 ## Whether a command interrupts a conversation depends on registration order
 
-**Status:** open. **Found:** 2026-08-02, while writing the invoices/conversations e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the invoices/conversations e2e suite.
+**Fixed:** 2026-08-03 — all six `createConversation(...)` plugins are installed in
+`registerHandlers` after `attachUser`/`lnbitsWallet` and before any command; module `register.ts`
+files no longer register them. E2E: `/wallet` cancels both `creatingInvoice` and `connectingNWC`.
 
 A waiting conversation only sees an update if the conversation's `createConversation(...)` sits
-above the handler that would otherwise take it. Each module registers its own conversations
-(`modules/*/register.ts`) at the point in `registerHandlers` where the module is composed
-(`src/telegram/composition.ts`), so the six conversations end up scattered through the chain and
-each one interrupts a different set of commands:
-
-| conversation | registered in | commands above it (so they bypass it) |
-|---|---|---|
-| `connectingNWC` | wallet, before its own commands | `/start`, `/help` |
-| `sendingToUser` | tipping | + `/wallet`, `/settings` |
-| `payingInvoice`, `creatingInvoice` | invoices | + `/wallet`, `/settings` |
-| `changingPrice`, `editCustomMessage` | chats | + `/chats` and every chat callback |
-
-A bypassed conversation is not ended — it stays in `conversations` waiting for the same answer, and
-claims the *next* message instead.
+above the handler that would otherwise take it. Each module used to register its own conversations
+at the point in `registerHandlers` where the module is composed, so the six conversations ended up
+scattered through the chain and each one interrupted a different set of commands.
 
 ### Reproduction
 
-Verified against the real container with HTTP fakes (`test/e2e/scenarios/invoices.e2e.test.ts`,
-"a command registered before the conversation answers without ending it" and "the same command
-cancels a conversation that was registered before it"):
+Verified against the real container with HTTP fakes (`test/e2e/scenarios/invoices.e2e.test.ts`):
 
-- with `creatingInvoice` waiting for an amount, `/wallet` renders the wallet screen, sends nothing
-  else and leaves the `conversations` row byte-identical. The following `/chats` is then read as the
-  amount: the user gets `⚠️ Invalid amount of sats`, `❌ Action canceled` and only then their chat
-  list.
-- with `connectingNWC` waiting for a URL, the identical `/wallet` is consumed by the conversation
-  instead: `⚠️ Invalid NWC URL`, `❌ Action canceled`, wallet screen.
-
-A `help` callback behaves the same way as `/wallet` in the first case and was measured too.
-
-### How a user reaches it
-
-Tapping ⚡️ *Create invoice*, deciding against it, and typing any command other than one the active
-conversation happens to sit above. Nothing unusual is required and no error is logged.
-
-### Fix sketch
-
-Make the rule uniform rather than incidental: install all six `createConversation(...)` in
-`registerHandlers` immediately after the `conversations` middleware, before any command or callback
-handler, and delete them from the module `register.ts` files. Every command then reaches the active
-conversation and cancels it — the `connectingNWC` behaviour above, which is the one users can
-already rely on today.
-
-The trade-off is that `/start` and `/help` start cancelling conversations too. If that is not
-wanted, the alternative is the opposite rule — a `filter` in front of the conversation plugin that
-lets `bot_command` messages through untouched — but then the abandoned conversation survives on
-purpose and needs its own expiry, which nothing implements today.
-
-Either way the two e2e cases above are the regression: they currently pin the asymmetry, so a fix
-has to rewrite them into one shared expectation.
+- with `creatingInvoice` waiting for an amount, `/wallet` previously left the conversation open;
+  after the fix it cancels like every other active conversation.
+- with `connectingNWC` waiting for a URL, `/wallet` already cancelled; both paths now share that
+  expectation.
 
 ## Disconnect NWC still shows the NWC balance on the same reply
 
-**Status:** open. **Found:** 2026-08-02, while writing the NWC e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the NWC e2e suite.
+**Fixed:** 2026-08-03 — after clearing the DB, `disconnectNwcCallback` also clears `ctx.user.nwc`
+(and related fields) so the same-request wallet reply is the single-balance copy.
 
 `disconnectNwcCallback` (`src/modules/wallet/telegram/handlers/disconnect-nwc.ts`) writes
 `nwcUrl: null` and `nwcTips: false` to the database, then calls `replyWithWallet(ctx)`. Wallet
 rendering reads NWC from `ctx.user.nwc` (`src/modules/wallet/telegram/messages/wallet.ts`), which
 `attachUser` built at the start of the request from the still-connected row. The handler never
-clears that in-memory field, so the “Wallet disconnected” confirmation is immediately followed by a
-wallet screen that still lists `<b>NWC:</b> … sats`.
-
-The database is correct. The next update rebuilds the context without NWC and shows the single
-`Balance:` line. Only the same-request reply is wrong.
+cleared that in-memory field, so the “Wallet disconnected” confirmation was immediately followed by
+a wallet screen that still listed `<b>NWC:</b> … sats`.
 
 ### Reproduction
 
 Verified against the real container with HTTP fakes (`test/e2e/scenarios/nwc.e2e.test.ts`,
 "disconnecting NWC clears nwc_url and nwc_tips"): after `disconnect-nwc`, the user row has
-`nwcUrl: null` and `nwcTips: false`, but the third Telegram call of that update is a wallet message
-matching `/<b>NWC:<\/b>/`. The following `/wallet` then matches `/<b>Balance:<\/b>/` and has no NWC
-line.
-
-### How a user reaches it
-
-Settings → *Disconnect the NWC wallet*. They see “Wallet disconnected from ZapGram” and, under it, a
-wallet that still claims an NWC balance until they open the wallet again.
-
-### Fix sketch
-
-After the repository update, drop the live wallet from the context before rendering:
-
-```ts
-await updateUser(ctx.user.id, {nwcUrl: null, nwcTips: false})
-ctx.user.nwcUrl = null
-ctx.user.nwcTips = false
-ctx.user.nwc = undefined
-```
-
-The e2e case above is the regression: the same-request wallet reply should match the single-balance
-copy, and the extra “next `/wallet`” step becomes redundant.
+`nwcUrl: null` and `nwcTips: false`, and the same-request wallet message matches
+`/<b>Balance:<\/b>/` with no NWC line.

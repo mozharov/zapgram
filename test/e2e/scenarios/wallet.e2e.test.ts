@@ -186,21 +186,20 @@ test('a transient 500 on the balance endpoint never reaches the user', async () 
 test('a balance endpoint that stays down leaves the user with an error and the world untouched', async () => {
   credit(BALANCE_SATS)
   e2e.ln.state.failAlways({method: 'GET', path: '/api/v1/wallet'}, {status: 500, body: {}})
+  const mark = e2e.ln.requests.length
 
-  // Only one message: the error handler tries to append the wallet screen and that read fails
-  // the same way. Slow on purpose — a 500 on a GET is retried twice with backoff, and the
-  // failed reply pays for the same retries a second time.
+  // Command fails the live balance read; the error handler appends the wallet screen from the
+  // middleware-cached balance without a second GET (which would only add got retries).
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Unknown error occurred/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /Unknown error occurred/},
+      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+    ],
   })
 
-  expect(errorMessages()).toEqual([
-    'GET /api/v1/wallet: HTTP error',
-    'Bot error',
-    'GET /api/v1/wallet: HTTP error',
-    'Failed to reply with wallet in error handler',
-  ])
-}, 30_000)
+  expect(lnPathsSince(mark).filter(path => path === 'GET /api/v1/wallet')).toHaveLength(3)
+  expect(errorMessages()).toEqual(['GET /api/v1/wallet: HTTP error', 'Bot error'])
+}, 15_000)
 
 function credit(sats: number): void {
   const lnUser = e2e.ln.state.ensureUser(String(USER_A))
