@@ -107,6 +107,29 @@ describe('subscription payment repository', () => {
     expect(await db.select().from(subscriptionIntentsTable)).toEqual([])
   })
 
+  test('deleting the last attempt also closes its empty open intent', async () => {
+    const db = createTestDb()
+    await seedOwnerAndChat(db)
+    const intents = createSubscriptionIntentRepository(db)
+    const payments = createSubscriptionPaymentRepository(db)
+    const intent = await intents.create({userId: 2, chatId: -100, kind: 'join'})
+    const payment = await payments.create({
+      intentId: intent.id,
+      userId: 2,
+      chatId: -100,
+      paymentRequest: 'lnbc-open',
+      paymentHash: 'hash-open',
+      price: 1000,
+      subscriptionType: 'monthly',
+      kind: 'join',
+    })
+
+    await payments.delete(payment.id)
+
+    expect(await db.select().from(subscriptionPaymentsTable)).toEqual([])
+    expect(await db.select().from(subscriptionIntentsTable)).toEqual([])
+  })
+
   test('allows only one current attempt per shared intent', async () => {
     const db = createTestDb()
     await seedOwnerAndChat(db)

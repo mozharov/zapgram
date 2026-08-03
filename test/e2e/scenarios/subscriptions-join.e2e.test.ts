@@ -1,7 +1,8 @@
-import {afterEach, beforeEach, expect, test} from 'bun:test'
-import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import {afterEach, beforeEach, expect, setSystemTime, test} from 'bun:test'
+import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {SubscriptionPayment} from '@infra/db/types.js'
 import {paySubscriptionRoute} from '@telegram/callback-data.js'
+import {eq} from 'drizzle-orm'
 import {expectNoErrors, expectPayoutsExactly, expectWorldUnchanged} from '../asserts.js'
 import {decodeMintedInvoice} from '../fakes/bolt11.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
@@ -53,6 +54,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  setSystemTime()
   await e2e.dispose()
 })
 
@@ -217,6 +219,150 @@ test('a Telegram delivery failure is logged without losing the payment record', 
 
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([payment])
   expect(errorMessages()).toEqual(['Error while sending message to user about chat join request'])
+})
+
+test('a sequential repeated join request reuses one invoice and reports remaining time', async () => {
+  const {payment, telegram: firstMessage} = await issueJoinInvoice({
+    text: /valid for another.*hour/,
+  })
+
+  const before = await snapshot(e2e)
+  const requestMark = e2e.ln.requests.length
+  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: USER_A,
+        text: new RegExp(escapeRegex(payment.paymentRequest)),
+      },
+    ],
+  })
+
+  const secondMessage = e2e.tg.last('sendMessage')
+  if (!secondMessage) throw new Error('Repeated invoice message was not sent')
+  expect(secondMessage.text).toBe(firstMessage.text)
+  expect(invoiceMintRequestsSince(requestMark)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([payment])
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoPaidMasterPayouts()
+  expectNoErrors(e2e.logs)
+})
+
+test('parallel repeated join requests converge on one current attempt and one BOLT11', async () => {
+  await seedActiveChat()
+  const before = await snapshot(e2e)
+  const requestMark = e2e.ln.requests.length
+
+  await expectDelta(
+    e2e,
+    () => Promise.all([e2e.send(joinUpdate()), e2e.send(joinUpdate())]).then(() => undefined),
+    {
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
+      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+      telegram: [
+        {method: 'sendMessage', to: USER_A, text: /valid for another/},
+        {method: 'sendMessage', to: USER_A, text: /valid for another/},
+      ],
+    },
+  )
+
+  const [payment] = await e2e.db.select().from(subscriptionPaymentsTable)
+  if (!payment) throw new Error('Parallel join invoice was not stored')
+  expect(payment.isCurrent).toBe(true)
+  expect(invoiceMintRequestsSince(requestMark)).toHaveLength(1)
+  const messages = e2e.tg.of('sendMessage')
+  expect(messages).toHaveLength(2)
+  expect(messages.every(message => String(message.text).includes(payment.paymentRequest))).toBe(
+    true,
+  )
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoPaidMasterPayouts()
+  expectNoErrors(e2e.logs)
+})
+
+test('an invoice with exactly one hour remaining is reused and reports one hour', async () => {
+  const {payment} = await issueJoinInvoice({text: /valid for another/})
+  const now = currentWholeSecond()
+  setSystemTime(now)
+  await setAttemptExpiry(payment.id, new Date(now.getTime() + HOUR_MS))
+  const requestMark = e2e.ln.requests.length
+
+  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
+    telegram: [{method: 'sendMessage', to: USER_A, text: /valid for another <b>1 hour<\/b>/}],
+  })
+
+  expect(invoiceMintRequestsSince(requestMark)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toHaveLength(1)
+  expectNoPaidMasterPayouts()
+  expectNoErrors(e2e.logs)
+})
+
+test('an invoice below one hour is replaced without deleting the previous attempt', async () => {
+  const {payment: previous} = await issueJoinInvoice({text: /valid for another/})
+  const now = currentWholeSecond()
+  setSystemTime(now)
+  await setAttemptExpiry(previous.id, new Date(now.getTime() + HOUR_MS - 1000))
+  const before = await snapshot(e2e)
+  const requestMark = e2e.ln.requests.length
+
+  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
+    db: {
+      subscriptionPayments: {added: 1, changed: 1},
+    },
+    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /valid for another/}],
+  })
+
+  const attempts = await e2e.db.select().from(subscriptionPaymentsTable)
+  expect(attempts).toHaveLength(2)
+  expect(attempts).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({id: previous.id, isCurrent: false, attemptStatus: 'pending'}),
+      expect.objectContaining({isCurrent: true, attemptStatus: 'pending'}),
+    ]),
+  )
+  expect(attempts.filter(attempt => attempt.isCurrent)).toHaveLength(1)
+  expect(invoiceMintRequestsSince(requestMark)).toHaveLength(1)
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoPaidMasterPayouts()
+  expectNoErrors(e2e.logs)
+})
+
+test('a restart after mint and failed reply reuses the persisted attempt', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({mode: 'file'})
+  await seedUser(e2e, {id: OWNER, username: 'chat_owner', firstName: 'Chat Owner'})
+  await seedApplicant('ru')
+  await seedActiveChat()
+  e2e.tg.fail('sendMessage', {
+    error_code: 500,
+    description: 'Internal Server Error: connection closed after mint',
+  })
+
+  await e2e.send(joinUpdate({locale: 'ru'}))
+  const [persisted] = await e2e.db.select().from(subscriptionPaymentsTable)
+  if (!persisted) throw new Error('Minted attempt was not persisted before Telegram reply')
+  const requestMark = e2e.ln.requests.length
+  await e2e.restart()
+
+  await expectDelta(e2e, () => e2e.send(joinUpdate({locale: 'ru'})), {
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: USER_A,
+        text: new RegExp(escapeRegex(persisted.paymentRequest)),
+      },
+    ],
+  })
+
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Счёт действителен ещё/)
+  expect(invoiceMintRequestsSince(requestMark)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([persisted])
+  expect(await e2e.db.select().from(subscriptionIntentsTable)).toHaveLength(1)
+  expectNoPaidMasterPayouts()
 })
 
 async function issueJoinInvoice(options: JoinInvoiceOptions) {
@@ -431,4 +577,26 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+async function setAttemptExpiry(paymentId: string, expiresAt: Date): Promise<void> {
+  await e2e.db
+    .update(subscriptionPaymentsTable)
+    .set({expiresAt})
+    .where(eq(subscriptionPaymentsTable.id, paymentId))
+}
+
+function invoiceMintRequestsSince(mark: number) {
+  return e2e.ln.requests
+    .slice(mark)
+    .filter(request => request.method === 'POST' && request.path === '/api/v1/payments')
+    .filter(request => request.body && Reflect.get(request.body, 'out') === false)
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function currentWholeSecond(): Date {
+  return new Date(Math.floor(Date.now() / 1000) * 1000)
 }

@@ -41,3 +41,17 @@ describe('settlement messages', () => {
     expect(joined).toContain('Access')
   })
 })
+
+describe('subscription invoice remaining time', () => {
+  test.each([
+    ['en', 0, 1, '1 minute'],
+    ['en', 1, 0, '1 hour'],
+    ['en', 23, 59, '23 hours and 59 minutes'],
+    ['ru', 0, 1, '1 минуту'],
+    ['ru', 2, 0, '2 часа'],
+    ['ru', 5, 21, '5 часов и 21 минуту'],
+  ])('%s renders %s hours and %s minutes', (language, hours, minutes, expected) => {
+    const message = translate('subscription-invoice.remaining-time', language, {hours, minutes})
+    expect(message).toContain(expected)
+  })
+})

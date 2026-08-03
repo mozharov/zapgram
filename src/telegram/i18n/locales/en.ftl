@@ -308,7 +308,21 @@ subscription-invoice =
 
     <b>After successful payment, I will immediately grant you access to the community.</b>
 
-    <i>The invoice is valid for 24 hours. To request a new invoice, submit another request to join the chat.</i>
+    {$remaining}
+    .remaining-time = <i>The invoice is valid for another <b>{$hours ->
+        [0] {$minutes ->
+            [one] {$minutes} minute
+           *[other] {$minutes} minutes
+        }
+       *[other] {$hours ->
+            [one] {$hours} hour
+           *[other] {$hours} hours
+        }{$minutes ->
+            [0] { "" }
+            [one] { " " }and {$minutes} minute
+           *[other] { " " }and {$minutes} minutes
+        }
+    }</b>.</i>
     .paid = <b>✅ Access to the community "{$title}" received.</b>
 
     {$type ->

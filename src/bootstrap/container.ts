@@ -17,6 +17,10 @@ import {
   type SubscriptionIntentRepository,
 } from '@modules/subscriptions/intent-repository.js'
 import {
+  createJoinInvoiceService,
+  type JoinInvoiceService,
+} from '@modules/subscriptions/join-invoice.service.js'
+import {
   createSubscriptionPaymentRepository,
   type SubscriptionPaymentRepository,
 } from '@modules/subscriptions/payment-repository.js'
@@ -47,6 +51,7 @@ export type AppContainer = {
   chats: ChatRepository
   subscriptions: SubscriptionRepository
   subscriptionIntents: SubscriptionIntentRepository
+  joinInvoiceService: JoinInvoiceService
   payments: SubscriptionPaymentRepository
   invoices: InvoiceRepository
   conversations: ConversationRepository
@@ -81,6 +86,16 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const chats = createChatRepository(db)
   const subscriptions = createSubscriptionRepository(db)
   const subscriptionIntents = createSubscriptionIntentRepository(db)
+  const joinInvoiceService = createJoinInvoiceService({
+    reserveInvoiceAttempt: (identity, now) =>
+      subscriptionIntents.reserveInvoiceAttempt(identity, now),
+    finalizeReservedAttempt: (intentId, reservationId, data, now) =>
+      subscriptionIntents.finalizeReservedAttempt(intentId, reservationId, data, now),
+    releaseAttemptReservation: (intentId, reservationId) =>
+      subscriptionIntents.releaseAttemptReservation(intentId, reservationId),
+    createInvoice: (sats, expirySeconds) => masterWallet.createInvoice(sats, expirySeconds),
+    invoiceExpirySeconds: INVOICE_EXPIRY,
+  })
   const payments = createSubscriptionPaymentRepository(db)
   const invoices = createInvoiceRepository(db)
   const conversations = createConversationRepository(db)
@@ -138,6 +153,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     chats,
     subscriptions,
     subscriptionIntents,
+    joinInvoiceService,
     payments,
     invoices,
     conversations,

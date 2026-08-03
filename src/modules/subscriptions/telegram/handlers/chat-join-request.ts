@@ -1,7 +1,6 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
-import {createSubscriptionPayment} from '@modules/subscriptions/payment-repository.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import type {BotContext} from '@telegram/context.js'
@@ -12,8 +11,6 @@ import {getRuntime} from '../../../../runtime.js'
 type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
   chatJoinRequest: ChatJoinRequest
 }
-
-const EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 export const chatJoinRequestHandler = async (ctx: Context) => {
   const {chat: tgChat} = ctx.chatJoinRequest
@@ -28,35 +25,41 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
 }
 
 async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
-  const invoice = await getRuntime().masterWallet.createInvoice(chat.price, EXPIRY)
-  const subscriptionPayment = await createSubscriptionPayment({
+  const invoice = await getRuntime().joinInvoiceService.getOrCreate({
     chatId: chat.id,
     userId: ctx.user.id,
-    paymentHash: invoice.payment_hash,
-    paymentRequest: invoice.bolt11,
+    kind: 'join',
     subscriptionType: chat.paymentType,
     price: chat.price,
   })
+  if (!invoice) return
+
   const walletSats = msatsToSats(ctx.user.wallet.balance)
   const nwcSats = msatsToSats((await ctx.user.nwc?.getBalance()) ?? 0)
 
   const keyboard = buildSubscriptionPaymentKeyboard(ctx.t, {
     payNWC: nwcSats >= chat.price,
     payWallet: walletSats >= chat.price,
-    paymentId: subscriptionPayment.id,
+    paymentId: invoice.attempt.id,
   })
 
   const locale = await ctx.i18n.getLocale()
   const message = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
+  const remainingHours = Math.floor(invoice.remainingMinutes / 60)
+  const remainingMinutes = invoice.remainingMinutes % 60
+  const remaining = ctx.t('subscription-invoice.remaining-time', {
+    hours: remainingHours,
+    minutes: remainingMinutes,
+  })
   await ctx.api
     .sendMessage(
       ctx.user.id,
       ctx.t('subscription-invoice.created', {
         message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
-        amount: invoice.amount,
-        invoice: invoice.bolt11,
+        invoice: invoice.attempt.paymentRequest,
         type: chat.paymentType,
         price: chat.price,
+        remaining,
       }),
       {reply_markup: keyboard, link_preview_options: {is_disabled: true}},
     )

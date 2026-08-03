@@ -43,6 +43,7 @@ const writeOperations = [
   'subscriptions.update',
   'subscriptions.delete',
   'subscription_intents.insert',
+  'subscription_intents.update',
   'subscription_intents.delete',
   'subscription_payments.insert',
   'subscription_payments.update',

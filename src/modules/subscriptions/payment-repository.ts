@@ -283,7 +283,7 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
             .where(
               and(
                 eq(subscriptionIntentsTable.id, payment.intentId),
-                eq(subscriptionIntentsTable.status, 'legacy'),
+                inArray(subscriptionIntentsTable.status, ['legacy', 'open']),
               ),
             )
             .run()

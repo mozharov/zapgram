@@ -308,7 +308,24 @@ subscription-invoice =
 
     <b>После успешной оплаты, я сразу предоставу тебе доступ к сообществу.</b>
 
-    <i>Счёт действителен 24 часа. Чтобы запросить новый счёт, отправь повторную заявку на вступление в чат.</i>
+    {$remaining}
+    .remaining-time = <i>Счёт действителен ещё <b>{$hours ->
+        [0] {$minutes ->
+            [one] {$minutes} минуту
+            [few] {$minutes} минуты
+           *[many] {$minutes} минут
+        }
+       *[other] {$hours ->
+            [one] {$hours} час
+            [few] {$hours} часа
+           *[many] {$hours} часов
+        }{$minutes ->
+            [0] { "" }
+            [one] { " " }и {$minutes} минуту
+            [few] { " " }и {$minutes} минуты
+           *[many] { " " }и {$minutes} минут
+        }
+    }</b>.</i>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>
 
     {$type ->

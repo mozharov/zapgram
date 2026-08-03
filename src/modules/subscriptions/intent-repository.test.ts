@@ -208,4 +208,33 @@ describe('subscription intent repository', () => {
     ).rejects.toThrow('no longer active')
     expect(await db.select().from(subscriptionPaymentsTable)).toEqual([])
   })
+
+  test('changed invoice terms replace a reusable current attempt', async () => {
+    const db = createTestDb()
+    await seedOwnerAndChat(db)
+    const intents = createSubscriptionIntentRepository(db)
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    const firstReservation = await intents.reserveInvoiceAttempt(identity, now)
+    if (firstReservation.action !== 'reserved') throw new Error('Expected first reservation')
+    const first = await intents.finalizeReservedAttempt(
+      firstReservation.intent.id,
+      firstReservation.reservationId,
+      {
+        paymentRequest: 'lnbc-old-price',
+        paymentHash: 'hash-old-price',
+        price: 1000,
+        subscriptionType: 'monthly',
+        expiresAt: new Date('2026-06-02T12:00:00.000Z'),
+      },
+      now,
+    )
+
+    const replacement = await intents.reserveInvoiceAttempt(
+      {...identity, price: 2000, subscriptionType: 'monthly'},
+      new Date('2026-06-01T12:01:00.000Z'),
+    )
+
+    expect(replacement.action).toBe('reserved')
+    expect(first.isCurrent).toBe(true)
+  })
 })

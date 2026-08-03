@@ -14,6 +14,8 @@ import {and, desc, eq, inArray} from 'drizzle-orm'
 export const ATTEMPT_RESERVATION_TTL_MS = 5 * 60 * 1000
 
 type IntentIdentity = Pick<NewSubscriptionIntent, 'userId' | 'chatId' | 'kind'>
+type InvoiceIntentRequest = IntentIdentity &
+  Partial<Pick<NewSubscriptionPayment, 'price' | 'subscriptionType'>>
 
 export type ReserveInvoiceAttemptResult =
   | {
@@ -107,7 +109,7 @@ export function createSubscriptionIntentRepository(database: AppDatabase) {
     },
 
     async reserveInvoiceAttempt(
-      identity: IntentIdentity,
+      identity: InvoiceIntentRequest,
       now = new Date(),
       reservationTtlMs = ATTEMPT_RESERVATION_TTL_MS,
     ): Promise<ReserveInvoiceAttemptResult> {
@@ -120,7 +122,7 @@ export function createSubscriptionIntentRepository(database: AppDatabase) {
         if (intent.status !== 'open') return {action: 'closed', intent}
 
         const attempt = currentAttempt(tx, intent.id)
-        if (attempt) {
+        if (attempt && matchesRequestedTerms(attempt, identity)) {
           const reuse = decideInvoiceReuse({expiryDate: attempt.expiresAt, now})
           if (reuse.action === 'reuse') {
             return {
@@ -257,3 +259,14 @@ export function createSubscriptionIntentRepository(database: AppDatabase) {
 }
 
 export type SubscriptionIntentRepository = ReturnType<typeof createSubscriptionIntentRepository>
+
+function matchesRequestedTerms(
+  attempt: SubscriptionPayment,
+  request: InvoiceIntentRequest,
+): boolean {
+  return (
+    (request.price === undefined || attempt.price === request.price) &&
+    (request.subscriptionType === undefined ||
+      attempt.subscriptionType === request.subscriptionType)
+  )
+}

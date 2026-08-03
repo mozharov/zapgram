@@ -79,29 +79,29 @@ test('the ignored update types are the ones Telegram can deliver to this bot', (
 
 // --- The same update delivered twice ---
 
-test('a redelivered join request issues a second invoice for the same chat', async () => {
+test('a redelivered join request reuses the current invoice for the same chat', async () => {
   await seedUser(e2e, {id: OWNER})
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active', price: CHAT_PRICE})
   const update = chatJoinRequest('supergroup', {from: {id: USER_A}})
   await e2e.send(update)
 
-  // Telegram redelivers an update it never got a 200 for. Nothing between the webhook and the
-  // handler remembers update_id, so the second delivery runs the whole handler again.
+  const firstPayment = (await e2e.db.select().from(subscriptionPaymentsTable))[0]
+  if (!firstPayment) throw new Error('First join invoice was not stored')
+
+  // Telegram can redeliver an update it never got a 200 for. The handler runs again, but the
+  // active join intent makes it return the same safely reusable invoice.
   await expectDelta(e2e, () => e2e.send(update), {
-    db: {
-      subscriptionIntents: {added: 1},
-      subscriptionPayments: {added: 1},
-    },
-    lnbits: {payments: [{out: false, sats: CHAT_PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: USER_A,
+        text: new RegExp(escapeRegex(firstPayment.paymentRequest)),
+      },
+    ],
   })
 
-  // Two live invoices for one join request: paying both charges the subscriber twice and pays the
-  // owner twice, because settlement is guarded per payment row. See docs/known-issues.md.
   const payments = await e2e.db.select().from(subscriptionPaymentsTable)
-  expect(payments).toHaveLength(2)
-  expect(new Set(payments.map(payment => payment.paymentHash)).size).toBe(2)
-  expect(payments.every(payment => payment.settledAt === null)).toBe(true)
+  expect(payments).toEqual([firstPayment])
   expectNoErrors(e2e.logs)
 })
 
@@ -344,4 +344,8 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
