@@ -211,7 +211,9 @@ of retaining the row until a later lookup resolves the transfer.
 
 ## A failed auto-renewal creates a second manual payment
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-renewal e2e suite.
+**Fixed:** 2026-08-03 — after a failed auto-charge, look up the invoice by hash; if unpaid, the
+manual reminder reuses the existing payment row instead of minting a second BOLT11.
 
 `attemptAutoRenewal` (`src/modules/subscriptions/renewal.service.ts`) creates a master-wallet
 invoice and persists its `subscription_payments` row before charging the subscriber. When that

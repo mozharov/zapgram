@@ -121,8 +121,7 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
   expectNoErrors(e2e.logs)
 })
 
-// docs/known-issues.md — "A failed auto-renewal creates a second manual payment"
-test('an insufficient balance currently leaves two renewal payments for one reminder', async () => {
+test('an insufficient balance reuses one renewal payment for the manual reminder', async () => {
   const subscription = await seedExpiringSubscription(e2e, {price: PRICE})
   const before = await snapshot(e2e)
 
@@ -132,45 +131,37 @@ test('an insufficient balance currently leaves two renewal payments for one remi
         changed: 1,
         match: rows => expectNotificationMarked(rows, subscription),
       },
-      subscriptionIntents: {added: 2},
+      subscriptionIntents: {added: 1},
       subscriptionPayments: {
-        added: 2,
+        added: 1,
         match: rows => {
-          for (const row of rows) expectRenewalPayment(row.after, PRICE)
+          expect(rows).toHaveLength(1)
+          expectRenewalPayment(rows[0]?.after, PRICE)
         },
       },
     },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 2}]},
+    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [{method: 'sendPhoto', to: USER_A, text: /истекает через 24 часа/}],
   })
 
   const after = await snapshot(e2e)
   expectLedgerBalanced(before, after)
   const payments = await e2e.db.query.subscriptionPaymentsTable.findMany()
-  expect(new Set(payments.map(payment => payment.paymentHash)).size).toBe(2)
-  expect(
-    payments.every(
-      payment => decodeMintedInvoice(payment.paymentRequest)?.amountMsat === PRICE * 1000,
-    ),
-  ).toBe(true)
+  expect(payments).toHaveLength(1)
+  const [payment] = payments
+  if (!payment) throw new Error('Renewal payment was not found')
+  expect(decodeMintedInvoice(payment.paymentRequest)?.amountMsat).toBe(PRICE * 1000)
   const photo = requiredPhoto()
-  const advertised = payments.find(payment =>
-    String(photo.caption).includes(payment.paymentRequest),
-  )
-  expect(advertised).toBeDefined()
-  if (!advertised) throw new Error('Advertised renewal payment was not found')
+  expect(String(photo.caption)).toContain(payment.paymentRequest)
   expect(callbackDataOf(photo)).toEqual([
-    paySubscriptionRoute.build({paymentId: advertised.id, from: 'wallet'}),
+    paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
   ])
-  expect(payments.filter(payment => payment.id !== advertised.id)).toHaveLength(1)
   const masterId = masterWallet().id
-  const masterInvoices = e2e.ln.state.payments.filter(payment => {
-    return !payment.out && payment.walletId === masterId && payment.amountMsat === PRICE * 1000
+  const masterInvoices = e2e.ln.state.payments.filter(candidate => {
+    return !candidate.out && candidate.walletId === masterId && candidate.amountMsat === PRICE * 1000
   })
-  expect(masterInvoices).toHaveLength(2)
-  const visibleInvoice = masterInvoices[1]
-  if (!visibleInvoice) throw new Error('Visible renewal invoice was not found')
-  expect(advertised.paymentHash).toBe(visibleInvoice.paymentHash)
+  expect(masterInvoices).toHaveLength(1)
+  expect(masterInvoices[0]?.paymentHash).toBe(payment.paymentHash)
   expect(errorMessages()).toEqual([
     'POST /api/v1/payments: HTTP error',
     'Error paying invoice',

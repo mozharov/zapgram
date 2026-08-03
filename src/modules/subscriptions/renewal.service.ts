@@ -31,6 +31,7 @@ export type RenewalServiceDeps = {
   }) => Promise<SubscriptionPayment>
   masterWallet: {
     createInvoice: (sats: number, expiry: number) => Promise<{payment_hash: string; bolt11: string}>
+    lookupPayment: (paymentHash: string) => Promise<{paid: boolean}>
   }
   getUserWallet: (userId: number) => Promise<{
     payInvoice: (bolt11: string) => Promise<unknown>
@@ -96,9 +97,17 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       // TODO: also try NWC when balance payment fails (needs careful handling of LNbits lag).
       const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
       if (!paymentResult.success) {
-        // Deliberately not deleted: "failed" here can also mean an ambiguous error on a charge that
-        // did go through. The settle cron asks LNbits and either completes it or drops it at expiry.
-        return {status: 'failed'}
+        // An ambiguous wallet error must not open a second payable invoice while this one may
+        // already be paid. Ask LNbits by hash; if paid, continue into settle. If not, keep the row
+        // and let createAndSendRenewalInvoice reuse this paymentRequest for the manual reminder.
+        if (await isMasterInvoicePaid(payment.paymentHash)) {
+          deps.log.info(
+            {subscriptionId: subscription.id, paymentId: payment.id},
+            'Balance charge reported failure but the renewal invoice is paid; settling it.',
+          )
+        } else {
+          return {status: 'failed'}
+        }
       }
     } catch (error) {
       deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptAutoRenewal')
@@ -140,19 +149,43 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     }
   }
 
+  async function isMasterInvoicePaid(paymentHash: string): Promise<boolean> {
+    try {
+      const lookup = await deps.masterWallet.lookupPayment(paymentHash)
+      return lookup.paid
+    } catch (error) {
+      deps.log.error({error, paymentHash}, 'Could not look up renewal invoice after a charge failure')
+      return false
+    }
+  }
+
+  /**
+   * Sends a manual renewal reminder. Reuses an in-flight renewal payment when auto-charge already
+   * minted one — never a second BOLT11 for the same window, which would leave an orphan unpaid row.
+   */
   async function createAndSendRenewalInvoice(subscription: Subscription, chat: Chat, user: User) {
     try {
-      const invoice = await deps.masterWallet.createInvoice(chat.price, deps.invoiceExpirySeconds)
-      const subscriptionPayment = await deps.createSubscriptionPayment({
-        chatId: subscription.chatId,
-        userId: subscription.userId,
-        paymentHash: invoice.payment_hash,
-        paymentRequest: invoice.bolt11,
-        subscriptionType: 'monthly',
-        price: subscription.price,
-        kind: 'renewal',
-      })
+      let subscriptionPayment = await deps.getPendingPaymentForSubscription(
+        subscription.userId,
+        subscription.chatId,
+      )
+      if (!subscriptionPayment) {
+        const invoice = await deps.masterWallet.createInvoice(
+          chat.price,
+          deps.invoiceExpirySeconds,
+        )
+        subscriptionPayment = await deps.createSubscriptionPayment({
+          chatId: subscription.chatId,
+          userId: subscription.userId,
+          paymentHash: invoice.payment_hash,
+          paymentRequest: invoice.bolt11,
+          subscriptionType: 'monthly',
+          price: subscription.price,
+          kind: 'renewal',
+        })
+      }
 
+      const bolt11 = subscriptionPayment.paymentRequest
       const keyboard = buildSubscriptionPaymentKeyboard(
         key => deps.translate(key, user.languageCode),
         {
@@ -162,13 +195,13 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         },
       )
 
-      const buffer = await QRCode.toBuffer(invoice.bolt11)
+      const buffer = await QRCode.toBuffer(bolt11)
       const inputFile = new InputFile(buffer)
       await deps.notifier.sendPhoto(user.id, inputFile, {
         caption: deps.translate('subscription-renewal.need-payment', user.languageCode, {
           title: chat.title,
           price: subscription.price,
-          invoice: invoice.bolt11,
+          invoice: bolt11,
         }),
         show_caption_above_media: true,
         reply_markup: keyboard,
