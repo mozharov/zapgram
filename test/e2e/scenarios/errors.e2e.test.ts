@@ -232,7 +232,8 @@ test('from_bot rejects a private update from a bot account before creating a use
   expect(await e2e.db.select().from(usersTable)).toEqual([expect.objectContaining({id: USER_A})])
   expect(errorTextTo(USER_A)).toBe(expectedErrorText('from_bot', 'en'))
   expectCleanUserText(errorTextTo(USER_A))
-  expect(errorMessages()).toEqual(['Bot error', 'Failed to reply with wallet in error handler'])
+  // attachUser throws before ctx.user/wallet exist; replyWithCachedWallet no-ops quietly.
+  expect(errorMessages()).toEqual(['Bot error'])
 })
 
 test('to_yourself refuses a tip to the sender username', async () => {

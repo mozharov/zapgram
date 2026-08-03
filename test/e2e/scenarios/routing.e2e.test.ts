@@ -394,9 +394,8 @@ test('an update from a bot account is rejected before a user row is created', as
   })
 
   expect(await e2e.db.select().from(usersTable)).toEqual([])
-  // Two errors, both expected: FromBotError itself, then the wallet screen the error handler
-  // always tries to append — it needs ctx.user, which attachUser never got to set.
-  expect(errorMessages()).toEqual(['Bot error', 'Failed to reply with wallet in error handler'])
+  // FromBotError only: attachUser never set ctx.user, so replyWithCachedWallet no-ops.
+  expect(errorMessages()).toEqual(['Bot error'])
 })
 
 function joinedOutput(): string {
