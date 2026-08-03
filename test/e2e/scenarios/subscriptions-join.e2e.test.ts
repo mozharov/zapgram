@@ -69,15 +69,15 @@ test('a fresh join request creates one linked one-time payment and no pay button
   expect(payment.subscriptionType).toBe('one_time')
 })
 
-test('the invoice currently ignores the join request private-chat id', async () => {
-  // Characterization of the open user_chat_id contract defect in docs/known-issues.md.
-  const {telegram} = await issueJoinInvoice({
+test('the invoice is sent to the join request private-chat id', async () => {
+  const {telegram, payment} = await issueJoinInvoice({
     userChatId: JOIN_USER_CHAT,
     text: /Access to private community/,
   })
 
-  expect(telegram.chat_id).toBe(USER_A)
-  expect(telegram.chat_id).not.toBe(JOIN_USER_CHAT)
+  expect(telegram.chat_id).toBe(JOIN_USER_CHAT)
+  expect(telegram.chat_id).not.toBe(USER_A)
+  expect(payment.userId).toBe(USER_A)
 })
 
 test('an exact wallet balance offers the wallet button on a monthly channel invoice', async () => {
@@ -383,6 +383,8 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
 
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
+  // Default fixture sets user_chat_id = from.id; an explicit override exercises the private-chat peer.
+  const invoiceChatId = options.userChatId ?? USER_A
   await expectDelta(
     e2e,
     () => e2e.send(joinUpdate({chatType, locale, userChatId: options.userChatId})),
@@ -408,7 +410,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
         },
       },
       lnbits: {payments: [{out: false, sats: price, times: 1}]},
-      telegram: [{method: 'sendMessage', to: USER_A, text: options.text}],
+      telegram: [{method: 'sendMessage', to: invoiceChatId, text: options.text}],
     },
   )
 
@@ -472,7 +474,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
   const telegram = e2e.tg.last('sendMessage')
   if (!telegram) throw new Error('Subscription invoice message was not attempted')
   expect(telegram).toMatchObject({
-    chat_id: USER_A,
+    chat_id: invoiceChatId,
     parse_mode: 'HTML',
     link_preview_options: {is_disabled: true},
   })

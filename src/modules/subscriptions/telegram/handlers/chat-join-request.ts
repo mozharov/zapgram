@@ -24,7 +24,7 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
   return replyWithSubscriptionInvoice(ctx, chat)
 }
 
-async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
+async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
   const invoice = await getRuntime().joinInvoiceService.getOrCreate({
     chatId: chat.id,
     userId: ctx.user.id,
@@ -50,9 +50,10 @@ async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
     hours: remainingHours,
     minutes: remainingMinutes,
   })
+  // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
   await ctx.api
     .sendMessage(
-      ctx.user.id,
+      ctx.chatJoinRequest.user_chat_id,
       ctx.t('subscription-invoice.created', {
         message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
         invoice: invoice.attempt.paymentRequest,

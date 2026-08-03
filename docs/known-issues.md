@@ -105,7 +105,9 @@ msat and retain the exact-price test as the positive boundary.
 
 ## Join invoices ignore the request's private-chat identifier
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Fixed:** 2026-08-03 — join invoice `sendMessage` uses `chatJoinRequest.user_chat_id`; payment owner
+and approve still use `user.id`; e2e requires `chat_id=100004` when it differs from the applicant.
 
 The Telegram Bot API gives every `ChatJoinRequest` a `user_chat_id`: the identifier the bot may use
 to contact the applicant during the short join-request window. In
