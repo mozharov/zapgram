@@ -176,10 +176,10 @@ wait-for-wallet = <b>👛 Select Wallet</b>
 
 sats-received = <b>📩 You received {$amount} sats</b>. 
     {$username -> 
-    [true] Sender: @{$username}.
+    [no] Balance: <b>{$balance} sats</b>
+    *[other] Sender: @{$username}.
 
         Balance: <b>{$balance} sats</b>
-    *[no] Balance: <b>{$balance} sats</b>
     }
 
 wait-for-invoice = <b>🗳 Send or forward a message with a Lightning invoice to this chat.</b>

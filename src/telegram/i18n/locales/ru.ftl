@@ -176,10 +176,10 @@ wait-for-wallet = <b>👛 Выбери кошелёк</b>
 
 sats-received = <b>📩 Тебе пришло {$amount} сат</b>. 
     {$username -> 
-    [true] Отправитель: @{$username}.
+    [no] Баланс: <b>{$balance} сат</b>
+    *[other] Отправитель: @{$username}.
 
         Баланс: <b>{$balance} сат</b>
-    *[no] Баланс: <b>{$balance} сат</b>
     }
 
 wait-for-invoice = <b>🗳 Отправь или перешли в этот чат сообщение с Lightning-счётом.</b>

@@ -5,7 +5,9 @@ start from a failing test.
 
 ## Tip receipts never show the sender
 
-**Status:** open. **Found:** 2026-08-02, while writing the tipping e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the tipping e2e suite.
+**Fixed:** 2026-08-03 — Fluent variants in `en.ftl`/`ru.ftl` use `[no]` for no-username and
+`*[other]` for a real username; tipping e2e asserts `Sender: @user_a`.
 
 `notifySatsReceived` (`src/modules/tipping/notify-sats-received.ts`) passes the sender's username as
 the Fluent variable `username`. Both locale files branch on that value using variants `[true]` and

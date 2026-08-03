@@ -71,9 +71,8 @@ test('the private send conversation transfers sats and closes after the amount',
     {conversationRemoved: true},
   )
 
-  // The copy has a sender branch, but a real username currently selects the no-sender branch.
-  // This is pinned as current behaviour in docs/known-issues.md.
-  expect(notificationTo(USER_B)).not.toContain('Sender:')
+  expect(notificationTo(USER_B)).toContain('Sender: @user_a')
+  expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats<\/b>/)
 })
 
 // --- Group recipient resolution ---
@@ -93,8 +92,8 @@ test('/tip with an amount and username pays that stored user', async () => {
     ],
   )
 
+  expect(notificationTo(USER_B)).toContain('Sender: @user_a')
   expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats<\/b>/)
-  expect(notificationTo(USER_B)).not.toContain('Sender:')
 })
 
 test('replying to a user provisions their wallet and pays them', async () => {
