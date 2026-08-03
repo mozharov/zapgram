@@ -236,6 +236,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
     () => e2e.send(joinUpdate({chatType, locale, userChatId: options.userChatId})),
     {
       db: {
+        subscriptionIntents: {added: 1},
         subscriptionPayments: {
           added: 1,
           match: rows => {

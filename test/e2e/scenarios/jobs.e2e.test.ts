@@ -483,6 +483,7 @@ test('subscription payments deletes an expired unpaid invoice once', async () =>
 
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
+      subscriptionIntents: {removed: 1},
       subscriptionPayments: {
         removed: 1,
         match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id}),

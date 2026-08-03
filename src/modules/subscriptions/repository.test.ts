@@ -31,6 +31,19 @@ describe('subscription repository', () => {
     const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000)
     const past = new Date(now.getTime() - 60 * 60 * 1000)
 
+    const chats = createChatRepository(db)
+    for (const id of [-101, -102, -103]) {
+      await chats.createOrUpdate({
+        id,
+        title: `Paid Chat ${id}`,
+        type: 'supergroup',
+        ownerId: 1,
+        status: 'active',
+        price: 1000,
+        paymentType: 'monthly',
+      })
+    }
+
     await subscriptions.create({
       userId: 2,
       chatId: -100,
@@ -40,21 +53,21 @@ describe('subscription repository', () => {
     })
     await subscriptions.create({
       userId: 2,
-      chatId: -100,
+      chatId: -101,
       price: 1000,
       endsAt: in12h,
       notificationSent: true, // already notified
     })
     await subscriptions.create({
       userId: 2,
-      chatId: -100,
+      chatId: -102,
       price: 1000,
       endsAt: in48h, // outside 24h window if max is now+24h
       notificationSent: false,
     })
     await subscriptions.create({
       userId: 2,
-      chatId: -100,
+      chatId: -103,
       price: 1000,
       endsAt: past, // already expired
       notificationSent: false,
@@ -93,5 +106,15 @@ describe('subscription repository', () => {
     expect(byId).not.toBeNull()
     expect(byId?.endsAt?.getTime()).toBe(later.getTime())
     expect(stillThere?.id).toBe(sub.id)
+  })
+
+  test('rejects a second subscription for the same user and chat', async () => {
+    const db = createTestDb()
+    const {subscriptions} = await seed(db)
+    const data = {userId: 2, chatId: -100, price: 1000}
+
+    await subscriptions.create(data)
+
+    await expect(subscriptions.create(data)).rejects.toThrow()
   })
 })

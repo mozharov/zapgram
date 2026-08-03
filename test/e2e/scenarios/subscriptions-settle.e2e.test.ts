@@ -247,7 +247,10 @@ test('a restart after payout invoice creation still pays the owner exactly once'
   const retryLogMark = e2e.logs.length
 
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
-    db: {subscriptionPayments: {removed: 1}},
+    db: {
+      subscriptionIntents: {removed: 1},
+      subscriptionPayments: {removed: 1},
+    },
     lnbits: {
       balances: {
         'master wallet': -PRICE,
@@ -320,7 +323,10 @@ test('a restart between owner and fee legs never repeats the owner payout', asyn
   const retryLogMark = e2e.logs.length
 
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
-    db: {subscriptionPayments: {removed: 1}},
+    db: {
+      subscriptionIntents: {removed: 1},
+      subscriptionPayments: {removed: 1},
+    },
     lnbits: {
       balances: {'master wallet': -FEE, [feeWallet().name]: FEE},
       payments: [
@@ -350,6 +356,7 @@ test('an expired unpaid subscription invoice is deleted without moving money', a
 
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
+      subscriptionIntents: {removed: 1},
       subscriptionPayments: {
         removed: 1,
         match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id, settleAttempts: 0}),
@@ -445,6 +452,7 @@ test('two paid one-time rows currently distribute the same access purchase twice
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {removed: 2},
       subscriptionPayments: {
         removed: 2,
         match: rows => {
@@ -610,6 +618,7 @@ async function expectSuccessfulSettlement(
           })
         },
       },
+      subscriptionIntents: {removed: 1},
       subscriptionPayments: {
         removed: 1,
         match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id}),

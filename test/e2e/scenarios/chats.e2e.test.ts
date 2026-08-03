@@ -505,6 +505,7 @@ for (const customJoin of [
         ),
       {
         db: {
+          subscriptionIntents: {added: 1},
           subscriptionPayments: {
             added: 1,
             match: rows => {
@@ -574,7 +575,10 @@ test('removing a custom message restores the default join copy', async () => {
         }),
       ),
     {
-      db: {subscriptionPayments: {added: 1}},
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
       lnbits: {payments: [{out: false, sats: CHAT_PRICE, times: 1}]},
       telegram: [
         {method: 'sendMessage', to: USER_B, text: /Access to private community "E2E paid chat"/},

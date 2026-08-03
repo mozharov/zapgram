@@ -64,6 +64,7 @@ test('subscription seed helpers use relative expiry and add no extra rows', asyn
   await seedUser(e2e, {id: OWNER})
   await seedUser(e2e)
   await seedActivePaidChat(e2e)
+  await seedActivePaidChat(e2e, {id: CHAT_GROUP - 1})
   await expectDelta(
     e2e,
     async () => {
@@ -77,7 +78,7 @@ test('subscription seed helpers use relative expiry and add no extra rows', asyn
     e2e,
     async () => {
       await seedExpiringSubscription(e2e, {
-        chatId: CHAT_GROUP,
+        chatId: CHAT_GROUP - 1,
         userId: USER_A,
         endsInMs: 30_000,
       })
@@ -100,7 +101,10 @@ test('seedSubscriptionPayment synchronizes paid state with the fake ledger', asy
       await seedSubscriptionPayment(e2e, {paid: true, price: 1000})
     },
     {
-      db: {subscriptionPayments: {added: 1}},
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
       lnbits: {
         balances: {'master wallet': 1000},
         payments: [

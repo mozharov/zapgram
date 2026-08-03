@@ -132,6 +132,7 @@ test('an insufficient balance currently leaves two renewal payments for one remi
         changed: 1,
         match: rows => expectNotificationMarked(rows, subscription),
       },
+      subscriptionIntents: {added: 2},
       subscriptionPayments: {
         added: 2,
         match: rows => {
@@ -307,6 +308,7 @@ test('paying a manual renewal invoice reaches the common settlement path', async
         changed: 1,
         match: rows => expectRenewedSubscription(rows, subscriptionBeforeSettle),
       },
+      subscriptionIntents: {removed: 1},
       subscriptionPayments: {
         removed: 1,
         match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id}),
@@ -407,6 +409,7 @@ test('a rejected manual invoice photo is still marked as notified', async () => 
         changed: 1,
         match: rows => expectNotificationMarked(rows, subscription),
       },
+      subscriptionIntents: {added: 1},
       subscriptionPayments: {
         added: 1,
         match: rows => expectRenewalPayment(rows[0]?.after, PRICE),
@@ -511,7 +514,9 @@ test('expiry includes the exact end instant but not the following second', async
   const now = new Date('2030-01-02T03:04:05.000Z')
   setSystemTime(now)
   const exact = await seedSubscription(e2e, {price: PRICE, endsAt: now})
+  await seedChat(e2e, {id: CHAT_GROUP - 1, status: 'active', paymentType: 'monthly'})
   const future = await seedSubscription(e2e, {
+    chatId: CHAT_GROUP - 1,
     price: PRICE,
     endsAt: new Date(now.getTime() + 1000),
   })
@@ -559,6 +564,7 @@ async function issueManualRenewal(subscription: Subscription, invoiceSats: numbe
         changed: 1,
         match: rows => expectNotificationMarked(rows, subscription),
       },
+      subscriptionIntents: {added: 1},
       subscriptionPayments: {
         added: 1,
         match: rows => expectRenewalPayment(rows[0]?.after, PRICE),

@@ -1,8 +1,7 @@
 import {randomUUID} from 'node:crypto'
 import type {AppDatabase} from '@infra/db/client.js'
-import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {NewSubscriptionPayment, SubscriptionPayment} from '@infra/db/types.js'
-import {firstOrThrow} from '@infra/db/utils.js'
 import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
@@ -19,11 +18,45 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
 
   return {
     async create(data: NewSubscriptionPayment) {
-      return database
-        .insert(subscriptionPaymentsTable)
-        .values({...data, id: randomUUID()})
-        .returning()
-        .then(rows => firstOrThrow(rows, 'subscription payment'))
+      const paymentId = randomUUID()
+      const intentId = data.intentId ?? paymentId
+      return database.transaction(tx => {
+        // Compatibility bridge for producers that move to shared open intents in stage C.
+        if (!data.intentId) {
+          tx.insert(subscriptionIntentsTable)
+            .values({
+              id: intentId,
+              userId: data.userId,
+              chatId: data.chatId,
+              kind: data.kind ?? 'join',
+              status: 'legacy',
+            })
+            .run()
+        } else {
+          const intent = tx
+            .select({
+              userId: subscriptionIntentsTable.userId,
+              chatId: subscriptionIntentsTable.chatId,
+              kind: subscriptionIntentsTable.kind,
+            })
+            .from(subscriptionIntentsTable)
+            .where(eq(subscriptionIntentsTable.id, intentId))
+            .get()
+          if (
+            !intent ||
+            intent.userId !== data.userId ||
+            intent.chatId !== data.chatId ||
+            intent.kind !== (data.kind ?? 'join')
+          ) {
+            throw new Error('Subscription payment does not match its intent')
+          }
+        }
+        return tx
+          .insert(subscriptionPaymentsTable)
+          .values({...data, id: paymentId, intentId})
+          .returning()
+          .get()
+      })
     },
 
     async countSettleable() {
@@ -98,7 +131,31 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
     },
 
     async delete(id: SubscriptionPayment['id']) {
-      await database.delete(subscriptionPaymentsTable).where(eq(subscriptionPaymentsTable.id, id))
+      database.transaction(tx => {
+        const payment = tx
+          .select({intentId: subscriptionPaymentsTable.intentId})
+          .from(subscriptionPaymentsTable)
+          .where(eq(subscriptionPaymentsTable.id, id))
+          .get()
+        tx.delete(subscriptionPaymentsTable).where(eq(subscriptionPaymentsTable.id, id)).run()
+        const remainingAttempts = payment
+          ? (tx
+              .select({count: count()})
+              .from(subscriptionPaymentsTable)
+              .where(eq(subscriptionPaymentsTable.intentId, payment.intentId))
+              .get()?.count ?? 0)
+          : 0
+        if (payment && remainingAttempts === 0) {
+          tx.delete(subscriptionIntentsTable)
+            .where(
+              and(
+                eq(subscriptionIntentsTable.id, payment.intentId),
+                eq(subscriptionIntentsTable.status, 'legacy'),
+              ),
+            )
+            .run()
+        }
+      })
     },
 
     async findById(id: SubscriptionPayment['id']) {

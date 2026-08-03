@@ -2,6 +2,7 @@ import type {
   chatsTable,
   conversationsTable,
   pendingInvoicesTable,
+  subscriptionIntentsTable,
   subscriptionPaymentsTable,
   subscriptionsTable,
   usersTable,
@@ -26,6 +27,12 @@ export type Subscription = typeof subscriptionsTable.$inferSelect
 export type SubscriptionInsert = typeof subscriptionsTable.$inferInsert
 export type NewSubscription = Omit<SubscriptionInsert, 'id'>
 
+export type SubscriptionIntent = typeof subscriptionIntentsTable.$inferSelect
+export type SubscriptionIntentInsert = typeof subscriptionIntentsTable.$inferInsert
+export type NewSubscriptionIntent = Omit<SubscriptionIntentInsert, 'id'>
+
 export type SubscriptionPayment = typeof subscriptionPaymentsTable.$inferSelect
 export type SubscriptionPaymentInsert = typeof subscriptionPaymentsTable.$inferInsert
-export type NewSubscriptionPayment = Omit<SubscriptionPaymentInsert, 'id'>
+export type NewSubscriptionPayment = Omit<SubscriptionPaymentInsert, 'id' | 'intentId'> & {
+  intentId?: string
+}

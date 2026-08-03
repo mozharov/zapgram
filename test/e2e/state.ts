@@ -4,6 +4,7 @@ import type {
   Conversation,
   PendingInvoice,
   Subscription,
+  SubscriptionIntent,
   SubscriptionPayment,
   User,
 } from '@infra/db/types.js'
@@ -19,6 +20,7 @@ export type WorldState = {
     users: User[]
     chats: Chat[]
     subscriptions: Subscription[]
+    subscriptionIntents: SubscriptionIntent[]
     subscriptionPayments: SubscriptionPayment[]
     pendingInvoices: PendingInvoice[]
     conversations: Conversation[]
@@ -312,6 +314,7 @@ function emptyDbState(): WorldState['db'] {
     users: [],
     chats: [],
     subscriptions: [],
+    subscriptionIntents: [],
     subscriptionPayments: [],
     pendingInvoices: [],
     conversations: [],
@@ -323,6 +326,7 @@ function dbKey(tableName: string): DbKey {
     users: 'users',
     chats: 'chats',
     subscriptions: 'subscriptions',
+    subscription_intents: 'subscriptionIntents',
     subscription_payments: 'subscriptionPayments',
     pending_invoices: 'pendingInvoices',
     conversations: 'conversations',
@@ -339,7 +343,7 @@ function normalizeDbRows(rows: unknown[]): unknown[] {
 }
 
 function normalizeDbValue(value: unknown, key?: string): unknown {
-  if (key === 'createdAt' || key === 'expiresAt') return '<ts>'
+  if (key === 'createdAt' || key === 'updatedAt' || key === 'expiresAt') return '<ts>'
   if (Array.isArray(value)) return value.map(item => normalizeDbValue(item))
   if (value instanceof Date) return new Date(value)
   if (!value || typeof value !== 'object') return value

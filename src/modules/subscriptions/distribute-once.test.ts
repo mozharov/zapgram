@@ -89,6 +89,7 @@ function makeDistribute() {
 function makePayment(overrides: Partial<SubscriptionPayment> = {}): SubscriptionPayment {
   return {
     id: 'pay-1',
+    intentId: 'intent-1',
     userId: 10,
     chatId: -100,
     paymentRequest: 'lnbc-subscriber',
@@ -96,10 +97,16 @@ function makePayment(overrides: Partial<SubscriptionPayment> = {}): Subscription
     price: PRICE,
     subscriptionType: 'monthly',
     kind: 'join',
+    expiresAt: null,
+    isCurrent: true,
+    attemptStatus: 'pending',
+    processedAt: null,
     settledAt: null,
     settleAttempts: 0,
     payoutHash: null,
     feePayoutHash: null,
+    refundPayoutHash: null,
+    refundedAt: null,
     createdAt: new Date('2026-02-01T00:00:00.000Z'),
     ...overrides,
   }

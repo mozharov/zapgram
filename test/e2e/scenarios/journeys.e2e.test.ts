@@ -314,7 +314,11 @@ test('a monthly subscription renews, expires and can begin again in one world', 
     notificationSent: false,
   })
   await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
-    db: {subscriptions: {changed: 1}, subscriptionPayments: {added: 1}},
+    db: {
+      subscriptions: {changed: 1},
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [{method: 'sendPhoto', to: USER_A, text: /expires in 24 hours/}],
   })
@@ -329,7 +333,10 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   if (!manualInvoice) throw new Error('Manual renewal invoice not found in fake LNbits')
   manualInvoice.expiresAt = new Date(Date.now() - 1000)
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
-    db: {subscriptionPayments: {removed: 1}},
+    db: {
+      subscriptionIntents: {removed: 1},
+      subscriptionPayments: {removed: 1},
+    },
   })
 
   await e2e.container.subscriptions.update(renewed.id, {endsAt: new Date(Date.now() - 1000)})
@@ -342,7 +349,10 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   })
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    db: {subscriptionPayments: {added: 1}},
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
   })
@@ -525,6 +535,7 @@ async function requestJoin(
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
     db: {
       ...(options.userAdded === false ? {} : {users: {added: 1}}),
+      subscriptionIntents: {added: 1},
       subscriptionPayments: {added: 1},
     },
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
@@ -578,6 +589,7 @@ async function settleJoin(
   await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
     db: {
       subscriptions: {added: 1},
+      subscriptionIntents: {removed: 1},
       subscriptionPayments: {
         removed: 1,
         match: rows => expect(rows[0]?.before).toMatchObject({id: payment.id}),

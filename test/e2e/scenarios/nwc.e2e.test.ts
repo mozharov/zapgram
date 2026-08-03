@@ -280,7 +280,10 @@ test('a join invoice offers the NWC button when the NWC balance covers the price
         }),
       ),
     {
-      db: {subscriptionPayments: {added: 1}},
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
       lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
       telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
     },

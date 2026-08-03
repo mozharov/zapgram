@@ -88,7 +88,10 @@ test('a redelivered join request issues a second invoice for the same chat', asy
   // Telegram redelivers an update it never got a 200 for. Nothing between the webhook and the
   // handler remembers update_id, so the second delivery runs the whole handler again.
   await expectDelta(e2e, () => e2e.send(update), {
-    db: {subscriptionPayments: {added: 1}},
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
     lnbits: {payments: [{out: false, sats: CHAT_PRICE, times: 1}]},
     telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
   })
