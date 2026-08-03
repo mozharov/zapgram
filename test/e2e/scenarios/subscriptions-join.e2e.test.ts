@@ -110,16 +110,14 @@ test('a wallet balance above the price still offers only the wallet button', asy
   expect(callbackDataOf(telegram).some(data => data.endsWith(':nwc'))).toBe(false)
 })
 
-test('a rounded-up insufficient balance currently offers the wallet button', async () => {
-  // Characterization of the open millisatoshi-rounding defect in docs/known-issues.md.
-  const {payment, telegram} = await issueJoinInvoice({
+test('a half-satoshi short balance does not offer the wallet button', async () => {
+  const {telegram} = await issueJoinInvoice({
     walletMsat: PRICE * 1000 - 500,
     text: /Access to private community/,
   })
 
-  expect(callbackDataOf(telegram)).toEqual([
-    paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
-  ])
+  expect(callbackDataOf(telegram)).toEqual([])
+  expect(buttonsOf(telegram)).toEqual([])
 })
 
 test('a current subscription approves the join request without issuing an invoice', async () => {

@@ -1,4 +1,4 @@
-import {msatsToSats} from '@core/money/sats.js'
+import {satsToMsats} from '@core/money/sats.js'
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
@@ -34,12 +34,11 @@ async function replyWithSubscriptionInvoice(ctx: BotContext, chat: Chat) {
   })
   if (!invoice) return
 
-  const walletSats = msatsToSats(ctx.user.wallet.balance)
-  const nwcSats = msatsToSats((await ctx.user.nwc?.getBalance()) ?? 0)
-
+  // Compare in msats so half-satoshi rounding cannot show an unfundable pay button.
+  const priceMsats = satsToMsats(chat.price)
   const keyboard = buildSubscriptionPaymentKeyboard(ctx.t, {
-    payNWC: nwcSats >= chat.price,
-    payWallet: walletSats >= chat.price,
+    payNWC: ((await ctx.user.nwc?.getBalance()) ?? 0) >= priceMsats,
+    payWallet: ctx.user.wallet.balance >= priceMsats,
     paymentId: invoice.attempt.id,
   })
 

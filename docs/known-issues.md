@@ -71,7 +71,9 @@ characterization test then becomes the regression by expecting a new join invoic
 
 ## A rounded balance can expose an unusable subscription payment button
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-join e2e suite.
+**Fixed:** 2026-08-03 — join invoice keyboard compares wallet/NWC balances in msats via
+`satsToMsats(chat.price)`; e2e expects an empty keyboard for 999,500 msat.
 
 `replyWithSubscriptionInvoice` (`src/modules/subscriptions/telegram/handlers/chat-join-request.ts`)
 converts the user's millisatoshi balance with `msatsToSats` before checking it against the integer
