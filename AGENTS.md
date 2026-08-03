@@ -37,6 +37,43 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Tests
+
+Choose the narrowest test level that still crosses the boundary under test:
+
+| Level | Location | Replaced dependencies | Use for |
+|---|---|---|---|
+| Unit | Co-located `*.test.ts` | All external dependencies through a `deps` object | Pure logic in `core/**`, policies, and calculations |
+| Repository | Co-located `*.test.ts` | Database only, through `createTestDb()` | Queries, filters, and idempotency |
+| E2E | `test/e2e/scenarios/*.e2e.test.ts` | Telegram Bot API and LNbits, both over HTTP | Anything that passes through a handler, conversation, or job |
+
+- Build an E2E world only through `createContainer()`. Hand-assembling dependencies misses wiring
+  bugs; that is how completely broken private-message routing escaped detection.
+- Name scenario files `*.e2e.test.ts`. `bun test` does not discover `*.e2e.ts`.
+- `createTestDb()` returns `AppDatabase` directly, not `{db}`.
+- Never mock the conversations plugin in tests. `createConversation()` throws without it.
+- Fake LNbits in E2E with an HTTP server, not replacement wallet objects. Object replacement
+  bypasses `got`, Bottleneck, zod schemas, and 520/404 error mapping.
+- Do not replace LNbits wallets with objects above the unit level. The object fake at
+  `test/helpers/fakes/lnbits.ts` was removed for this reason. The only live helper in that directory
+  is `test/helpers/fakes/notifier.ts`, used by `settle.service` unit tests.
+- The LNbits fake must produce real, decodable BOLT11 invoices. Placeholder strings break
+  `decodeInvoice` and silently remove assertions.
+- NWC cannot be faked over HTTP. It is the only integration where `mock.module` is allowed in E2E.
+- Do not call `createApp()` in tests: cron constructs `runOnInit` jobs immediately.
+- Do not assert `randomUUID()` values or absolute timestamps. Read generated values from the
+  database and compare deltas.
+- End every money scenario by asserting the number of payouts, not only that a payout occurred.
+- Add every new `callback_data` route to the E2E coverage registry immediately; otherwise CI must
+  fail.
+- `test/setup.ts` supplies test environment variables through the `bunfig.toml` preload.
+  `NODE_ENV=test` must remain in the config enum. On top of that preload, the E2E harness passes a
+  complete explicit env object to `createContainer(env)`, including `DB_MIGRATE=true`,
+  `BOT_API_ROOT`, `SUBSCRIPTION_FEE_PERCENT`, `CHAT_RIGHTS_DELAY_MS`, and
+  `TEMP_MESSAGE_DELAY_MS`.
+- UI language comes from the update's `from.language_code`; notification language comes from
+  `users.language_code`. These are different paths, so tests must choose the one they exercise.
+
 ## Checks
 
 ```bash
