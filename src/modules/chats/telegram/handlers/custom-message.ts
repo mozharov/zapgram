@@ -1,4 +1,4 @@
-import {getAccessibleChat} from '@modules/chats/repository.js'
+import {getAccessibleChatForOwner} from '@modules/chats/repository.js'
 import {
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
@@ -11,7 +11,7 @@ import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 
 export const customMessageCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   const {chatId: id} = chatCustomMessageRoute.parse(ctx.match)
-  const chat = await getAccessibleChat(id)
+  const chat = await getAccessibleChatForOwner(id, ctx.user.id)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
 
   const keyboard = new InlineKeyboard().add({

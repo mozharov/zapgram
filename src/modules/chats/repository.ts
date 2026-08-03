@@ -48,6 +48,21 @@ export function createChatRepository(database: AppDatabase) {
       })
     },
 
+    /**
+     * Chat settings lookups must be owner-scoped: the list is filtered by owner, but callback
+     * data can still target a foreign chat after ownership transfer. Same null for missing and
+     * not-yours so probes cannot distinguish the two.
+     */
+    async findAccessibleByIdAndOwner(id: Chat['id'], ownerId: Chat['ownerId']) {
+      return database.query.chatsTable.findFirst({
+        where: and(
+          eq(chatsTable.id, id),
+          eq(chatsTable.ownerId, ownerId),
+          ne(chatsTable.status, 'no_access'),
+        ),
+      })
+    },
+
     async getOrThrow(id: Chat['id']): Promise<ChatWithOwner> {
       const chat = await findByIdWithOwner(id)
       if (!chat) throw new AppError('not_found', {message: `Chat ${id} not found`})
@@ -89,6 +104,8 @@ export type ChatRepository = ReturnType<typeof createChatRepository>
 export const createOrUpdateChat = (data: NewChat) => getRuntime().chats.createOrUpdate(data)
 export const getChatOrThrow = (id: Chat['id']) => getRuntime().chats.getOrThrow(id)
 export const getAccessibleChat = (id: Chat['id']) => getRuntime().chats.findAccessibleById(id)
+export const getAccessibleChatForOwner = (id: Chat['id'], ownerId: Chat['ownerId']) =>
+  getRuntime().chats.findAccessibleByIdAndOwner(id, ownerId)
 export const getChat = (criteria: {id: Chat['id']}) =>
   getRuntime().chats.findByIdWithOwner(criteria.id)
 export const updateChat = (id: Chat['id'], data: Partial<Chat>) =>

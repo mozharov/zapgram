@@ -1,4 +1,4 @@
-import {getAccessibleChat, updateChat} from '@modules/chats/repository.js'
+import {getAccessibleChatForOwner, updateChat} from '@modules/chats/repository.js'
 import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -13,7 +13,7 @@ export async function editCustomMessage(
   ctx: ConversationContext,
   {chatId}: {chatId: number},
 ) {
-  const chat = await getAccessibleChat(chatId)
+  const chat = await getAccessibleChatForOwner(chatId, ctx.user.id)
   if (!chat) {
     await ctx.reply(ctx.t('chat.not-found'))
     return conversation.halt()

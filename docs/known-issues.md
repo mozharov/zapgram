@@ -358,7 +358,10 @@ attempts and an operator alert for persistent permission failures.
 
 ## Chat settings callbacks do not check ownership
 
-**Status:** open. **Found:** 2026-08-02, while writing the routing e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the routing e2e suite.
+**Fixed:** 2026-08-03 — `findAccessibleByIdAndOwner` / `getAccessibleChatForOwner` used by all
+seven chat-settings handlers and the custom-message conversation; non-owner gets `chat.not-found`
+with no row change (e2e).
 
 Every chat-settings handler resolves the chat with `getAccessibleChat(id)`
 (`src/modules/chats/repository.ts`), which filters only on `status != 'no_access'`. None of them
@@ -377,11 +380,10 @@ list never shows a foreign chat — but nothing stops a handler from acting on o
 ### Reproduction
 
 Permanently covered against the real container with HTTP fakes by
-`test/e2e/scenarios/chats.e2e.test.ts` ("a different user can currently enable paid access for
-someone else's chat"). With a chat owned by user `100003`, a callback query from user `100001`
-carrying `chat:<chatId>:on-paid` changes `status` to `active` and returns an edited card containing
-the foreign chat's title. The test asserts the exact row change and Telegram call; no error is
-logged. It is a characterization of the open defect, not the desired behavior.
+`test/e2e/scenarios/chats.e2e.test.ts` ("a different user cannot enable paid access for someone
+else's chat"). With a chat owned by user `100003`, a callback query from user `100001` carrying
+`chat:<chatId>:on-paid` previously changed `status` to `active` and returned an edited card with
+the foreign title. After the fix the row is unchanged and the reply is the generic not-found card.
 
 The original throwaway probe also verified that a following `chat:<chatId>:change-price` opens the
 price conversation for the same non-owner. That broader write path is verified but does not yet

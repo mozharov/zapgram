@@ -280,7 +280,7 @@ for (const cardCase of cardCases) {
   })
 }
 
-test("a different user can currently enable paid access for someone else's chat", async () => {
+test("a different user cannot enable paid access for someone else's chat", async () => {
   await seedOwner()
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedChat(e2e, {
@@ -289,24 +289,20 @@ test("a different user can currently enable paid access for someone else's chat"
     title: 'Foreign paid chat',
     status: 'inactive',
   })
+  const before = await snapshot(e2e)
 
-  // This pins the confirmed defect in docs/known-issues.md. Once handlers scope lookups by owner,
-  // the same scenario should expect an unchanged row and the generic not-found card.
   await expectDelta(
     e2e,
     () =>
       e2e.send(privateCallback(chatPaidAccessRoute.build({chatId: CHAT_GROUP, status: 'active'}))),
     {
-      db: {
-        chats: {
-          changed: 1,
-          match: rows => expectOnlyChatChanges(rows, {status: 'active'}),
-        },
-      },
-      telegram: [{method: 'editMessageText', to: USER_A, text: /Foreign paid chat/}],
+      telegram: [{method: 'editMessageText', to: USER_A, text: /Chat not found/}],
     },
   )
 
+  const after = await snapshot(e2e)
+  expect(after.db).toEqual(before.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).not.toContain('Foreign paid chat')
   expectEditedNotSent(e2e.tg)
   expectNoErrors(e2e.logs)
 })
