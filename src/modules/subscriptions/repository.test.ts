@@ -1,0 +1,167 @@
+import {describe, expect, test} from 'bun:test'
+import {createChatRepository} from '@modules/chats/repository.js'
+import {createUserRepository} from '@modules/users/repository.js'
+import {createTestDb} from '@test/helpers/db.js'
+import {createSubscriptionRepository} from './repository.js'
+
+async function seed(db: ReturnType<typeof createTestDb>) {
+  const users = createUserRepository(db)
+  const chats = createChatRepository(db)
+  const subscriptions = createSubscriptionRepository(db)
+  await users.createOrUpdate({id: 1, languageCode: 'en', firstName: 'Owner'})
+  await users.createOrUpdate({id: 2, languageCode: 'en', firstName: 'Sub'})
+  await chats.createOrUpdate({
+    id: -100,
+    title: 'Paid Chat',
+    type: 'supergroup',
+    ownerId: 1,
+    status: 'active',
+    price: 1000,
+    paymentType: 'monthly',
+  })
+  return {users, chats, subscriptions}
+}
+
+describe('subscription repository', () => {
+  test('getExpiringWithin respects the window and notificationSent flag', async () => {
+    const db = createTestDb()
+    const {subscriptions} = await seed(db)
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    const in12h = new Date(now.getTime() + 12 * 60 * 60 * 1000)
+    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000)
+    const past = new Date(now.getTime() - 60 * 60 * 1000)
+
+    const chats = createChatRepository(db)
+    for (const id of [-101, -102, -103]) {
+      await chats.createOrUpdate({
+        id,
+        title: `Paid Chat ${id}`,
+        type: 'supergroup',
+        ownerId: 1,
+        status: 'active',
+        price: 1000,
+        paymentType: 'monthly',
+      })
+    }
+
+    await subscriptions.create({
+      userId: 2,
+      chatId: -100,
+      price: 1000,
+      endsAt: in12h,
+      notificationSent: false,
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -101,
+      price: 1000,
+      endsAt: in12h,
+      notificationSent: true, // already notified
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -102,
+      price: 1000,
+      endsAt: in48h, // outside 24h window if max is now+24h
+      notificationSent: false,
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -103,
+      price: 1000,
+      endsAt: past, // already expired
+      notificationSent: false,
+    })
+
+    const maxExpiry = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    const found = await subscriptions.getExpiringWithin(maxExpiry, now, 50, 0)
+    expect(found).toHaveLength(1)
+    expect(found[0]?.endsAt?.getTime()).toBe(in12h.getTime())
+    expect(found[0]?.notificationSent).toBe(false)
+
+    expect(await subscriptions.countExpiringWithin(maxExpiry, now)).toBe(1)
+  })
+
+  test('delete does not remove a subscription whose endsAt moved forward', async () => {
+    const db = createTestDb()
+    const {subscriptions} = await seed(db)
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    const endsAt = now
+    const later = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    const sub = await subscriptions.create({
+      userId: 2,
+      chatId: -100,
+      price: 1000,
+      endsAt,
+    })
+
+    // Concurrent renewal already extended endsAt past the "now" used for delete.
+    await subscriptions.update(sub.id, {endsAt: later})
+
+    await subscriptions.delete(sub.id, endsAt)
+
+    const stillThere = await subscriptions.findByUserAndChat(2, -100, now)
+    const byId = await subscriptions.findByIdWithChat(sub.id)
+    expect(byId).not.toBeNull()
+    expect(byId?.endsAt?.getTime()).toBe(later.getTime())
+    expect(stillThere?.id).toBe(sub.id)
+  })
+
+  test('rejects a second subscription for the same user and chat', async () => {
+    const db = createTestDb()
+    const {subscriptions} = await seed(db)
+    const data = {userId: 2, chatId: -100, price: 1000}
+
+    await subscriptions.create(data)
+
+    await expect(subscriptions.create(data)).rejects.toThrow()
+  })
+
+  test('findByUserAndChat returns only permanent or not-yet-expired rows', async () => {
+    const db = createTestDb()
+    const {subscriptions, chats} = await seed(db)
+    const now = new Date('2026-06-01T12:00:00.000Z')
+    await chats.createOrUpdate({
+      id: -101,
+      title: 'Permanent Chat',
+      type: 'supergroup',
+      ownerId: 1,
+      status: 'active',
+      price: 1000,
+      paymentType: 'one_time',
+    })
+    await chats.createOrUpdate({
+      id: -102,
+      title: 'Current Monthly',
+      type: 'supergroup',
+      ownerId: 1,
+      status: 'active',
+      price: 1000,
+      paymentType: 'monthly',
+    })
+
+    await subscriptions.create({
+      userId: 2,
+      chatId: -100,
+      price: 1000,
+      endsAt: new Date(now.getTime() - 60_000),
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -101,
+      price: 1000,
+      endsAt: null,
+    })
+    await subscriptions.create({
+      userId: 2,
+      chatId: -102,
+      price: 1000,
+      endsAt: new Date(now.getTime() + 60_000),
+    })
+
+    expect(await subscriptions.findByUserAndChat(2, -100, now)).toBeUndefined()
+    expect((await subscriptions.findByUserAndChat(2, -101, now))?.chatId).toBe(-101)
+    expect((await subscriptions.findByUserAndChat(2, -102, now))?.chatId).toBe(-102)
+  })
+})

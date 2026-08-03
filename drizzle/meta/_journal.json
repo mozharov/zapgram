@@ -43,6 +43,48 @@
       "when": 1743508079484,
       "tag": "0005_majestic_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785583319135,
+      "tag": "0006_subscription_payment_settled_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1785584905741,
+      "tag": "0007_subscription_payment_settle_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1785585626050,
+      "tag": "0008_subscription_payment_payout_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785586229665,
+      "tag": "0009_subscription_payment_fee_payout_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785586693537,
+      "tag": "0010_subscription_payment_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1785752943856,
+      "tag": "0011_subscription_intents",
+      "breakpoints": true
     }
   ]
 }

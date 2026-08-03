@@ -1,0 +1,187 @@
+import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {createRouter} from '@http/router.js'
+import {expectNoErrors, expectWorldUnchanged} from '../asserts.js'
+import {USER_A} from '../fixtures/ids.js'
+import {seedUser} from '../fixtures/seed.js'
+import {privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
+import {createE2E, type E2E} from '../harness.js'
+import {expectDelta, snapshot} from '../state.js'
+import {scenarioCoverage} from './coverage.js'
+
+export const COVERS = scenarioCoverage.http
+
+/**
+ * HTTP edge of the process: health check, Telegram webhook secret, request id stamping, and
+ * rejection of garbage bodies — all via `createRouter(...).handle(Request)` without opening a
+ * socket. Update delivery still goes through the real bot stack and the fake Telegram API.
+ */
+
+const SECRET_HEADER = 'x-telegram-bot-api-secret-token'
+const WEBHOOK_URL = 'http://local/bot'
+const HEALTH_URL = 'http://local/'
+
+let e2e: E2E
+let router: ReturnType<typeof createRouter>
+
+beforeEach(async () => {
+  e2e = await createE2E({env: {LOG_LEVEL: 'info'}})
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    languageCode: 'en',
+  })
+  router = createRouter({
+    // Same cast as createApp → startServer: HTTP is flavor-agnostic.
+    bot: e2e.container.bot as never,
+    config: e2e.container.config,
+    log: e2e.container.log,
+  })
+})
+
+afterEach(async () => {
+  await e2e.dispose()
+})
+
+// --- Health ---
+
+test('GET / returns 200 ok', async () => {
+  const response = await router.handle(new Request(HEALTH_URL))
+
+  expect(response.status).toBe(200)
+  expect(await response.text()).toBe('ok')
+  expectNoErrors(e2e.logs)
+})
+
+// --- Webhook delivery ---
+
+test('POST /bot with the correct secret delivers the update to the bot', async () => {
+  const update = privateCommand('/wallet', {from: {id: USER_A}})
+
+  await expectDelta(
+    e2e,
+    async () => {
+      const response = await postBot(update)
+      expect(response.status).toBe(200)
+    },
+    {
+      telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
+    },
+  )
+
+  expectNoErrors(e2e.logs)
+})
+
+test('POST /bot with a wrong or missing secret leaves the world unchanged', async () => {
+  const update = privateCommand('/wallet', {from: {id: USER_A}})
+  const before = await snapshot(e2e)
+  const telegramMark = e2e.tg.calls.length
+
+  const wrong = await postBot(update, {secret: 'not-the-secret'})
+  expect(wrong.status).toBe(401)
+
+  const missing = await postBot(update, {secret: null})
+  expect(missing.status).toBe(401)
+
+  const after = await snapshot(e2e)
+  expectWorldUnchanged(before, after)
+  expect(e2e.tg.calls).toHaveLength(telegramMark)
+})
+
+// --- Request id ---
+
+test('POST /bot stamps reqId on the update and the handler log carries it', async () => {
+  // Undecodable bolt11 trips the error boundary, which logs through ctx.log — the child logger
+  // that middleware builds from `update.reqId`. Matching that id with the HTTP request log is
+  // proof the router wrote the same reqId onto the body before grammY ran the update.
+  e2e.logs.length = 0
+  const update = privateText('lnbc1invalid', {from: {id: USER_A}})
+
+  const response = await postBot(update)
+  expect(response.status).toBe(200)
+
+  const botError = e2e.logs.find(
+    log => (log.level === 'error' || log.level === 50) && log.msg === 'Bot error',
+  )
+  const requestLog = e2e.logs.find(
+    log => typeof log.msg === 'string' && String(log.msg).startsWith('POST /bot'),
+  )
+
+  expect(botError, 'expected Bot error log with reqId').toBeDefined()
+  expect(requestLog, 'expected HTTP request log with reqId').toBeDefined()
+  expect(typeof botError?.reqId).toBe('string')
+  expect(botError?.reqId).toMatch(/^[a-z0-9]{8}$/)
+  expect(requestLog?.reqId).toBe(botError?.reqId)
+  // Fixture reqIds look like `e2e-N`; the router must overwrite them with its own.
+  expect(String(botError?.reqId)).not.toMatch(/^e2e-/)
+})
+
+// --- Malformed bodies ---
+
+test('invalid JSON and empty body return 4xx and leave the process usable', async () => {
+  const before = await snapshot(e2e)
+  const telegramMark = e2e.tg.calls.length
+
+  const invalidJson = await postRaw('{not-json')
+  expect(invalidJson.status).toBeGreaterThanOrEqual(400)
+  expect(invalidJson.status).toBeLessThan(500)
+
+  const emptyBody = await postRaw('')
+  expect(emptyBody.status).toBeGreaterThanOrEqual(400)
+  expect(emptyBody.status).toBeLessThan(500)
+
+  const afterErrors = await snapshot(e2e)
+  expectWorldUnchanged(before, afterErrors)
+  expect(e2e.tg.calls).toHaveLength(telegramMark)
+
+  // Process still serves health and real updates after the bad traffic.
+  const health = await router.handle(new Request(HEALTH_URL))
+  expect(health.status).toBe(200)
+  expect(await health.text()).toBe('ok')
+
+  await expectDelta(
+    e2e,
+    async () => {
+      const response = await postBot(privateCommand('/wallet', {from: {id: USER_A}}))
+      expect(response.status).toBe(200)
+    },
+    {
+      telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
+    },
+  )
+})
+
+// --- helpers ---
+
+function telegramBody(update: TestUpdate): string {
+  // Real Telegram payloads have no reqId; the router is responsible for stamping one.
+  const {reqId: _reqId, ...body} = update
+  return JSON.stringify(body)
+}
+
+async function postBot(update: TestUpdate, opts?: {secret?: string | null}): Promise<Response> {
+  const headers = new Headers({'content-type': 'application/json'})
+  if (opts?.secret !== null) {
+    headers.set(SECRET_HEADER, opts?.secret ?? e2e.container.config.BOT_WEBHOOK_SECRET)
+  }
+  return router.handle(
+    new Request(WEBHOOK_URL, {
+      method: 'POST',
+      headers,
+      body: telegramBody(update),
+    }),
+  )
+}
+
+async function postRaw(body: string): Promise<Response> {
+  return router.handle(
+    new Request(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [SECRET_HEADER]: e2e.container.config.BOT_WEBHOOK_SECRET,
+      },
+      body,
+    }),
+  )
+}

@@ -1,6 +1,10 @@
 /dist
 /node_modules
 /.cursor
+/.claude
 main.db*
+/data
+/temp
 .DS_Store
 .env*
+!.env*.example

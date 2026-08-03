@@ -1,6 +1,12 @@
 /.git
 /dist
 /node_modules
+/test
+/.github
+/docs
+/.claude
+/temp
+/data
 .dockerignore
 .gitignore
 .env*
@@ -8,5 +14,6 @@ main.db*
 .DS_Store
 Dockerfile
 biome.json
-tsconfig.json
 *.md
+docker-compose.yaml
+bunfig.toml

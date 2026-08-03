@@ -1,0 +1,1 @@
+ALTER TABLE `subscription_payments` ADD `settle_attempts` integer DEFAULT 0 NOT NULL;

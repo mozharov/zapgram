@@ -1,51 +1,47 @@
-import {startServer} from './app.js'
-import {bot} from './bot/bot.js'
-import {deleteWebhook, setWebhook} from './bot/webhook.js'
-import {config} from './config.js'
-import {startCronJobs, stopCronJobs} from './cron/cron.js'
-import {migrateDatabase} from './lib/database/database.js'
-import {lnbitsMasterWallet} from './lib/lnbits/master-wallet.js'
-import {logger} from './lib/logger.js'
-import {startTunnel, stopTunnel} from './lib/tunnel.js'
-import {configureBot} from './services/bot.js'
+import {createApp} from '@bootstrap/app.js'
+import {createContainer} from '@bootstrap/container.js'
 
-if (config.DB_MIGRATE) migrateDatabase()
-await lnbitsMasterWallet.checkStatus()
+const container = await (async () => {
+  try {
+    return await createContainer()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error)
+    process.exit(1)
+  }
+})()
 
-const app = startServer(() => {
-  bot
-    .init()
-    .then(async () => {
-      if (config.NGROK_TOKEN) await startTunnel().then(url => setWebhook(url))
-      if (config.CONFIGURE_BOT) await configureBot()
-      startCronJobs()
-    })
-    .catch((error: unknown) => {
-      logger.error({error}, 'Failed to configure bot')
-      process.exit(1)
-    })
-})
+const {log} = container
+const app = createApp(container)
+
+let shuttingDown = false
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return
+  shuttingDown = true
+
+  log.info(`Received ${signal}, shutting down...`)
+
+  const forceTimer = setTimeout(() => {
+    log.error('Could not close connections in time, forcefully shutting down')
+    process.exit(1)
+  }, 15_000)
+  forceTimer.unref?.()
+
+  try {
+    await app.stop()
+    process.exit(0)
+  } catch (error) {
+    log.error({error}, 'Failed to shut down cleanly')
+    process.exit(1)
+  }
+}
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 process.on('SIGINT', () => void shutdown('SIGINT'))
 
-async function shutdown(signal: string) {
-  logger.info(`Received ${signal}, shutting down...`)
-  setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down')
-    process.exit(1)
-  }, 10000)
-
-  stopCronJobs()
-  await deleteWebhook()
-  if (config.NGROK_TOKEN) await stopTunnel()
-
-  try {
-    await app.stop()
-    logger.info('Server closed')
-    process.exit(0)
-  } catch (error) {
-    logger.error({error}, 'Failed to close server')
-    process.exit(1)
-  }
+try {
+  await app.start()
+} catch (error) {
+  log.error({error}, 'Failed to start application')
+  process.exit(1)
 }

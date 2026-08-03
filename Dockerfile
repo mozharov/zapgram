@@ -4,6 +4,10 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
+# Required at runtime: Bun resolves the "@core/*", "@infra/*", ... path aliases
+# from tsconfig.json. Without it every import in src/ fails to resolve.
+COPY tsconfig.json ./
+
 COPY src src
 COPY drizzle drizzle
 
