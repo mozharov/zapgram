@@ -699,18 +699,46 @@ test('a pending refund reaches the retry budget without notification and raises 
   expectAllSettlementPayouts(0)
 })
 
-test('an approval failure currently still pays out and deletes the retry row', async () => {
+test('an approval failure keeps the payment without paying out or notifying', async () => {
   const payment = await seedPaidSettlement({chatStatus: 'no_access'})
   e2e.tg.fail('approveChatJoinRequest', {
     error_code: 400,
     description: 'Bad Request: not enough rights',
   })
+  const before = await snapshot(e2e)
 
-  await expectSuccessfulSettlement(payment)
+  await expectDelta(e2e, () => e2e.jobs.subscriptionPayments(), {
+    db: {
+      subscriptions: {
+        added: 1,
+        match: rows => {
+          expect(rows[0]?.after).toMatchObject({
+            userId: payment.userId,
+            chatId: payment.chatId,
+            price: payment.price,
+            endsAt: null,
+          })
+        },
+      },
+      subscriptionIntents: {changed: 1},
+      subscriptionPayments: {
+        changed: 1,
+        match: rows => expectKeptPayment(rows, payment),
+      },
+    },
+    telegram: [{method: 'approveChatJoinRequest', to: CHAT_GROUP}],
+  })
 
+  const after = await snapshot(e2e)
+  expectLedgerBalanced(before, after)
+  expect(await requiredPayment(payment.id)).toMatchObject({
+    settleAttempts: payment.settleAttempts + 1,
+    settledAt: expect.any(Date),
+  })
+  expect(e2e.tg.of('approveChatJoinRequest')).toHaveLength(1)
+  expect(e2e.tg.of('sendMessage')).toEqual([])
+  expectPayouts(OWNER, 0, 0)
   expect(errorMessages()).toEqual(['Error while approving chat join request.'])
-  expect(String(e2e.tg.of('sendMessage')[0]?.text)).toMatch(/Access to the community .* received/)
-  expectPayouts(OWNER, 1, 1)
 })
 
 test('settlement uses the invoiced price after the chat price changes', async () => {

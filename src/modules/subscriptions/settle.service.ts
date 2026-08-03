@@ -211,6 +211,10 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
    * row is deleted immediately *after* — so a failure anywhere leaves the row in place for a retry
    * instead of dropping the owner's payout on the floor. Re-running is safe: `settledAt` stops the
    * subscription from being extended twice.
+   *
+   * Join approval is not optional: if Telegram rejects the membership, keep the payment row so the
+   * job can retry (or exhaust into manual review). Do not pay the owner or tell the subscriber they
+   * have access. Renewals already have membership, so a missing join request only logs.
    */
   async function settleWinner(
     payment: SubscriptionPayment,
@@ -219,9 +223,12 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
       deps.log.info({paymentHash: payment.paymentHash}, 'Subscription payment successful.')
       deps.grantAccess(payment, now())
 
-      await deps.approveChatJoinRequest(payment.chatId, payment.userId).catch((error: unknown) => {
+      try {
+        await deps.approveChatJoinRequest(payment.chatId, payment.userId)
+      } catch (error) {
         deps.log.error({error}, 'Error while approving chat join request.')
-      })
+        if (payment.kind === 'join') return 'kept'
+      }
 
       let chat: ChatWithOwner
       try {

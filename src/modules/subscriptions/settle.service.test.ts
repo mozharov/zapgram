@@ -177,6 +177,51 @@ describe('settle service (characterization)', () => {
     expect(paidBolt11s).toHaveLength(0)
   })
 
+  test('join approve failure keeps the payment without payout or notifications', async () => {
+    const settle = buildService({
+      approveChatJoinRequest: async () => {
+        throw new Error('not enough rights')
+      },
+      log: {
+        ...silentLog(),
+        error: (_obj, msg) => {
+          if (msg) logErrors.push(msg)
+        },
+      },
+    })
+    const payment = await createPayment({kind: 'join'})
+
+    expect(await settle.complete(payment)).toBe('kept')
+
+    expect(await payments.findById(payment.id)).toBeDefined()
+    expect(await subscriptions.findByUserAndChat(2, -100, new Date())).toBeDefined()
+    expect(notifier.calls.filter(c => c.kind === 'send')).toHaveLength(0)
+    expect(paidBolt11s).toHaveLength(0)
+    expect(logErrors).toContain('Error while approving chat join request.')
+  })
+
+  test('renewal approve failure still settles and pays out', async () => {
+    const settle = buildService({
+      approveChatJoinRequest: async () => {
+        throw new Error('no pending join request')
+      },
+      log: {
+        ...silentLog(),
+        error: (_obj, msg) => {
+          if (msg) logErrors.push(msg)
+        },
+      },
+    })
+    const payment = await createPayment({kind: 'renewal'})
+
+    expect(await settle.complete(payment)).toBe('settled')
+
+    expect(await payments.findById(payment.id)).toBeUndefined()
+    expect(notifier.calls.filter(c => c.kind === 'send')).toHaveLength(2)
+    expect(paidBolt11s.length).toBeGreaterThanOrEqual(1)
+    expect(logErrors).toContain('Error while approving chat join request.')
+  })
+
   test('4. stored payoutHash already paid → no second owner payout', async () => {
     ledger.set('existing-owner-hash', {paid: true})
     const settle = buildService()

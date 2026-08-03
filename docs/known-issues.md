@@ -145,7 +145,9 @@ user ID. Update the shared invoice assertion and characterization test to requir
 
 ## A failed join approval does not stop subscription settlement
 
-**Status:** open. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+**Status:** fixed. **Found:** 2026-08-02, while writing the subscription-settlement e2e suite.
+**Fixed:** 2026-08-03 — join `approveChatJoinRequest` failure returns `kept` (no payout, no delete,
+no paid notification); renewals still treat approve as best-effort.
 
 `settle` (`src/modules/subscriptions/settle.service.ts`) grants the subscription and then calls
 `approveChatJoinRequest`. Its local `.catch` only logs an error; settlement continues through both
