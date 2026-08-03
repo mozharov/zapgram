@@ -87,6 +87,8 @@ export const subscriptionIntentsTable = sqliteTable(
       .notNull()
       .default('open'),
     winnerAttemptId: text('winner_attempt_id'),
+    attemptReservationId: text('attempt_reservation_id'),
+    attemptReservationExpiresAt: integer('attempt_reservation_expires_at', {mode: 'timestamp'}),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
     updatedAt: integer('updated_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
@@ -99,6 +101,12 @@ export const subscriptionIntentsTable = sqliteTable(
       'subscription_intents_winner_check',
       sql`(${table.status} in ('legacy', 'open') and ${table.winnerAttemptId} is null)
           or (${table.status} in ('won', 'completed') and ${table.winnerAttemptId} is not null)`,
+    ),
+    check(
+      'subscription_intents_reservation_check',
+      sql`(${table.attemptReservationId} is null and ${table.attemptReservationExpiresAt} is null)
+          or (${table.status} = 'open' and ${table.attemptReservationId} is not null
+              and ${table.attemptReservationExpiresAt} is not null)`,
     ),
     uniqueIndex('subscription_intents_active_user_chat_kind_unique')
       .on(table.userId, table.chatId, table.kind)

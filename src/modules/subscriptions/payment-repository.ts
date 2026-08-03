@@ -1,8 +1,9 @@
 import {randomUUID} from 'node:crypto'
+import {classifyPaidAttempt, type PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {NewSubscriptionPayment, SubscriptionPayment} from '@infra/db/types.js'
-import {and, count, desc, eq, gte, lt, sql} from 'drizzle-orm'
+import {and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 /**
@@ -14,7 +15,8 @@ import {getRuntime} from '../../runtime.js'
 export const MAX_SETTLE_ATTEMPTS = 3360
 
 export function createSubscriptionPaymentRepository(database: AppDatabase) {
-  const settleable = lt(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS)
+  const pending = eq(subscriptionPaymentsTable.attemptStatus, 'pending')
+  const settleable = and(pending, lt(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS))
 
   return {
     async create(data: NewSubscriptionPayment) {
@@ -72,7 +74,7 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
       return database
         .select({count: count()})
         .from(subscriptionPaymentsTable)
-        .where(gte(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS))
+        .where(and(pending, gte(subscriptionPaymentsTable.settleAttempts, MAX_SETTLE_ATTEMPTS)))
         .then(rows => rows[0]?.count ?? 0)
     },
 
@@ -105,6 +107,137 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
         .update(subscriptionPaymentsTable)
         .set({feePayoutHash})
         .where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    /** Must be persisted before the refund invoice is paid — see settle.service refundDuplicate. */
+    async recordRefundInvoice(
+      id: SubscriptionPayment['id'],
+      refundPayoutHash: NonNullable<SubscriptionPayment['refundPayoutHash']>,
+    ) {
+      await database
+        .update(subscriptionPaymentsTable)
+        .set({refundPayoutHash})
+        .where(eq(subscriptionPaymentsTable.id, id))
+    },
+
+    async claimPaidAttempt(
+      id: SubscriptionPayment['id'],
+      claimedAt = new Date(),
+    ): Promise<PaidAttemptOutcome> {
+      return database.transaction(tx => {
+        const attempt = tx
+          .select({
+            id: subscriptionPaymentsTable.id,
+            intentId: subscriptionPaymentsTable.intentId,
+            attemptStatus: subscriptionPaymentsTable.attemptStatus,
+          })
+          .from(subscriptionPaymentsTable)
+          .where(eq(subscriptionPaymentsTable.id, id))
+          .get()
+        if (!attempt) throw new Error(`Subscription payment ${id} not found`)
+
+        let intent = tx
+          .select()
+          .from(subscriptionIntentsTable)
+          .where(eq(subscriptionIntentsTable.id, attempt.intentId))
+          .get()
+        if (!intent) throw new Error(`Subscription intent ${attempt.intentId} not found`)
+
+        let outcome = classifyPaidAttempt({
+          attemptId: attempt.id,
+          winnerAttemptId: intent.winnerAttemptId,
+          attemptProcessed: attempt.attemptStatus === 'processed',
+        })
+        if (outcome !== 'winner' || intent.winnerAttemptId !== null) return outcome
+
+        const claimed = tx
+          .update(subscriptionIntentsTable)
+          .set({
+            status: 'won',
+            winnerAttemptId: attempt.id,
+            attemptReservationId: null,
+            attemptReservationExpiresAt: null,
+            updatedAt: claimedAt,
+          })
+          .where(
+            and(
+              eq(subscriptionIntentsTable.id, intent.id),
+              inArray(subscriptionIntentsTable.status, ['legacy', 'open']),
+              isNull(subscriptionIntentsTable.winnerAttemptId),
+            ),
+          )
+          .returning({id: subscriptionIntentsTable.id})
+          .get()
+        if (claimed) return 'winner'
+
+        intent = tx
+          .select()
+          .from(subscriptionIntentsTable)
+          .where(eq(subscriptionIntentsTable.id, attempt.intentId))
+          .get()
+        if (!intent) throw new Error(`Subscription intent ${attempt.intentId} not found`)
+        outcome = classifyPaidAttempt({
+          attemptId: attempt.id,
+          winnerAttemptId: intent.winnerAttemptId,
+          attemptProcessed: attempt.attemptStatus === 'processed',
+        })
+        return outcome
+      })
+    },
+
+    async markWinnerCompleted(id: SubscriptionPayment['id'], processedAt = new Date()) {
+      database.transaction(tx => {
+        const attempt = tx
+          .select({intentId: subscriptionPaymentsTable.intentId})
+          .from(subscriptionPaymentsTable)
+          .where(eq(subscriptionPaymentsTable.id, id))
+          .get()
+        if (!attempt) throw new Error(`Subscription payment ${id} not found`)
+
+        const completedAttempt = tx
+          .update(subscriptionPaymentsTable)
+          .set({attemptStatus: 'processed', processedAt, isCurrent: false})
+          .where(eq(subscriptionPaymentsTable.id, id))
+          .returning({id: subscriptionPaymentsTable.id})
+          .get()
+        const completedIntent = tx
+          .update(subscriptionIntentsTable)
+          .set({status: 'completed', updatedAt: processedAt})
+          .where(
+            and(
+              eq(subscriptionIntentsTable.id, attempt.intentId),
+              eq(subscriptionIntentsTable.winnerAttemptId, id),
+              inArray(subscriptionIntentsTable.status, ['won', 'completed']),
+            ),
+          )
+          .returning({id: subscriptionIntentsTable.id})
+          .get()
+        if (!completedAttempt || !completedIntent) {
+          throw new Error(`Subscription payment ${id} is not the claimed winner`)
+        }
+      })
+    },
+
+    async markRefundCredited(id: SubscriptionPayment['id'], refundedAt = new Date()) {
+      const result = await database
+        .update(subscriptionPaymentsTable)
+        .set({
+          attemptStatus: 'processed',
+          processedAt: refundedAt,
+          refundedAt,
+          isCurrent: false,
+        })
+        .where(
+          and(
+            eq(subscriptionPaymentsTable.id, id),
+            isNotNull(subscriptionPaymentsTable.refundPayoutHash),
+          ),
+        )
+        .returning({id: subscriptionPaymentsTable.id})
+        .get()
+      if (!result) {
+        throw new Error(`Subscription payment ${id} has no persisted refund payout`)
+      }
     },
 
     /**

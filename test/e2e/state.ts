@@ -343,7 +343,13 @@ function normalizeDbRows(rows: unknown[]): unknown[] {
 }
 
 function normalizeDbValue(value: unknown, key?: string): unknown {
-  if (key === 'createdAt' || key === 'updatedAt' || key === 'expiresAt') return '<ts>'
+  if (
+    key === 'createdAt' ||
+    key === 'updatedAt' ||
+    key === 'expiresAt' ||
+    key === 'attemptReservationExpiresAt'
+  )
+    return '<ts>'
   if (Array.isArray(value)) return value.map(item => normalizeDbValue(item))
   if (value instanceof Date) return new Date(value)
   if (!value || typeof value !== 'object') return value

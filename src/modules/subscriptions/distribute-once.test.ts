@@ -39,6 +39,8 @@ function makeDistribute() {
       persistedFeeHash = hash
       order.push('persist-fee')
     },
+    recordRefundInvoice: async () => {},
+    markRefundCredited: async () => {},
     masterWallet: {
       lookupPayment: async hash => {
         const entry = ledger.get(hash)

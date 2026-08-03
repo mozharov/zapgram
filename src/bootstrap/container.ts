@@ -13,6 +13,10 @@ import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
 import {createGrantSubscriptionAccess} from '@modules/subscriptions/access.js'
 import {
+  createSubscriptionIntentRepository,
+  type SubscriptionIntentRepository,
+} from '@modules/subscriptions/intent-repository.js'
+import {
   createSubscriptionPaymentRepository,
   type SubscriptionPaymentRepository,
 } from '@modules/subscriptions/payment-repository.js'
@@ -42,6 +46,7 @@ export type AppContainer = {
   users: UserRepository
   chats: ChatRepository
   subscriptions: SubscriptionRepository
+  subscriptionIntents: SubscriptionIntentRepository
   payments: SubscriptionPaymentRepository
   invoices: InvoiceRepository
   conversations: ConversationRepository
@@ -75,6 +80,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const users = createUserRepository(db)
   const chats = createChatRepository(db)
   const subscriptions = createSubscriptionRepository(db)
+  const subscriptionIntents = createSubscriptionIntentRepository(db)
   const payments = createSubscriptionPaymentRepository(db)
   const invoices = createInvoiceRepository(db)
   const conversations = createConversationRepository(db)
@@ -98,6 +104,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       subscriptions.findByUserAndChat(userId, chatId),
     recordPayoutInvoice: (id, hash) => payments.recordPayoutInvoice(id, hash),
     recordFeePayoutInvoice: (id, hash) => payments.recordFeePayoutInvoice(id, hash),
+    recordRefundInvoice: (id, hash) => payments.recordRefundInvoice(id, hash),
+    markRefundCredited: (id, refundedAt) => payments.markRefundCredited(id, refundedAt),
     masterWallet,
     getUserWallet,
     notifier,
@@ -129,6 +137,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     users,
     chats,
     subscriptions,
+    subscriptionIntents,
     payments,
     invoices,
     conversations,

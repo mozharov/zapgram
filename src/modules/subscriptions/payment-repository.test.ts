@@ -200,4 +200,102 @@ describe('subscription payment repository', () => {
     expect(await db.select().from(subscriptionPaymentsTable)).toHaveLength(1)
     expect(await db.select().from(subscriptionIntentsTable)).toHaveLength(1)
   })
+
+  test('atomically selects one winner and sends every other paid attempt to refund', async () => {
+    const db = createTestDb()
+    await seedOwnerAndChat(db)
+    const intents = createSubscriptionIntentRepository(db)
+    const payments = createSubscriptionPaymentRepository(db)
+    const intent = await intents.create({userId: 2, chatId: -100, kind: 'join'})
+    const first = await payments.create({
+      intentId: intent.id,
+      userId: 2,
+      chatId: -100,
+      paymentRequest: 'lnbc-winner-a',
+      paymentHash: 'hash-winner-a',
+      price: 1000,
+      subscriptionType: 'monthly',
+      kind: 'join',
+    })
+    const second = await payments.create({
+      intentId: intent.id,
+      userId: 2,
+      chatId: -100,
+      paymentRequest: 'lnbc-winner-b',
+      paymentHash: 'hash-winner-b',
+      price: 1000,
+      subscriptionType: 'monthly',
+      kind: 'join',
+      isCurrent: false,
+    })
+
+    const outcomes = await Promise.all([
+      payments.claimPaidAttempt(first.id),
+      payments.claimPaidAttempt(second.id),
+    ])
+
+    expect(outcomes.sort()).toEqual(['already_won_refund', 'winner'])
+    const claimed = await intents.findById(intent.id)
+    expect(claimed).toMatchObject({status: 'won'})
+    if (!claimed?.winnerAttemptId) throw new Error('Expected a claimed winner')
+    expect([first.id, second.id]).toContain(claimed.winnerAttemptId)
+    const winner = claimed.winnerAttemptId === first.id ? first : second
+    const duplicate = winner.id === first.id ? second : first
+    expect(await payments.claimPaidAttempt(winner.id)).toBe('winner')
+    expect(await payments.claimPaidAttempt(duplicate.id)).toBe('already_won_refund')
+  })
+
+  test('winner completion and refund completion are idempotent state transitions', async () => {
+    const db = createTestDb()
+    await seedOwnerAndChat(db)
+    const intents = createSubscriptionIntentRepository(db)
+    const payments = createSubscriptionPaymentRepository(db)
+    const intent = await intents.create({userId: 2, chatId: -100, kind: 'join'})
+    const winner = await payments.create({
+      intentId: intent.id,
+      userId: 2,
+      chatId: -100,
+      paymentRequest: 'lnbc-complete-winner',
+      paymentHash: 'hash-complete-winner',
+      price: 1000,
+      subscriptionType: 'monthly',
+      kind: 'join',
+    })
+    const duplicate = await payments.create({
+      intentId: intent.id,
+      userId: 2,
+      chatId: -100,
+      paymentRequest: 'lnbc-complete-refund',
+      paymentHash: 'hash-complete-refund',
+      price: 1000,
+      subscriptionType: 'monthly',
+      kind: 'join',
+      isCurrent: false,
+    })
+    const completedAt = new Date('2026-06-01T12:00:00.000Z')
+
+    expect(await payments.claimPaidAttempt(winner.id, completedAt)).toBe('winner')
+    await payments.markWinnerCompleted(winner.id, completedAt)
+    await payments.markWinnerCompleted(winner.id, completedAt)
+    await payments.recordRefundInvoice(duplicate.id, 'refund-hash')
+    await payments.markRefundCredited(duplicate.id, completedAt)
+    await payments.markRefundCredited(duplicate.id, completedAt)
+
+    expect(await payments.claimPaidAttempt(winner.id)).toBe('already_processed')
+    expect(await payments.claimPaidAttempt(duplicate.id)).toBe('already_processed')
+    expect(await intents.findById(intent.id)).toMatchObject({
+      status: 'completed',
+      winnerAttemptId: winner.id,
+    })
+    expect(await payments.findById(winner.id)).toMatchObject({
+      attemptStatus: 'processed',
+      processedAt: completedAt,
+    })
+    expect(await payments.findById(duplicate.id)).toMatchObject({
+      attemptStatus: 'processed',
+      refundPayoutHash: 'refund-hash',
+      refundedAt: completedAt,
+    })
+    expect(await payments.countSettleable()).toBe(0)
+  })
 })

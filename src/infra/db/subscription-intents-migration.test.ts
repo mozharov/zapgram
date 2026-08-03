@@ -85,7 +85,8 @@ describe('subscription intents migration', () => {
     expect(
       sqlite
         .query(`
-          SELECT id, user_id, chat_id, kind, status, winner_attempt_id, created_at, updated_at
+          SELECT id, user_id, chat_id, kind, status, winner_attempt_id,
+                 attempt_reservation_id, attempt_reservation_expires_at, created_at, updated_at
           FROM subscription_intents
         `)
         .get(),
@@ -96,6 +97,8 @@ describe('subscription intents migration', () => {
       kind: 'renewal',
       status: 'legacy',
       winner_attempt_id: null,
+      attempt_reservation_id: null,
+      attempt_reservation_expires_at: null,
       created_at: 1700000000,
       updated_at: 1700000000,
     })

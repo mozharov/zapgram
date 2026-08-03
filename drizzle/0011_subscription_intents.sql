@@ -38,6 +38,8 @@ CREATE TABLE `subscription_intents` (
 	`kind` text NOT NULL,
 	`status` text DEFAULT 'open' NOT NULL,
 	`winner_attempt_id` text,
+	`attempt_reservation_id` text,
+	`attempt_reservation_expires_at` integer,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
@@ -46,6 +48,11 @@ CREATE TABLE `subscription_intents` (
 	CONSTRAINT `subscription_intents_winner_check` CHECK (
 		(`status` in ('legacy', 'open') and `winner_attempt_id` is null)
 		or (`status` in ('won', 'completed') and `winner_attempt_id` is not null)
+	),
+	CONSTRAINT `subscription_intents_reservation_check` CHECK (
+		(`attempt_reservation_id` is null and `attempt_reservation_expires_at` is null)
+		or (`status` = 'open' and `attempt_reservation_id` is not null
+			and `attempt_reservation_expires_at` is not null)
 	)
 );
 --> statement-breakpoint

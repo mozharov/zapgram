@@ -11,6 +11,7 @@ import {MAX_SETTLE_ATTEMPTS} from './payment-repository.js'
 export type CompleteSubscriptionPaymentResult = 'settled' | 'kept'
 
 export type DistributeOnceResult = {status: 'paid'; fee: number} | {status: 'pending'}
+export type RefundDuplicateResult = {status: 'credited'} | {status: 'pending'}
 
 export type SettleServiceDeps = {
   recordSettleAttempt: (id: string) => Promise<void>
@@ -25,6 +26,8 @@ export type SettleServiceDeps = {
   ) => Promise<{endsAt: Date | null} | null | undefined>
   recordPayoutInvoice: (id: string, hash: string) => Promise<void>
   recordFeePayoutInvoice: (id: string, hash: string) => Promise<void>
+  recordRefundInvoice: (id: string, hash: string) => Promise<void>
+  markRefundCredited: (id: string, refundedAt?: Date) => Promise<void>
   masterWallet: {
     lookupPayment: (hash: string) => Promise<{paid: boolean; status?: string}>
     payInvoice: (bolt11: string) => Promise<unknown>
@@ -46,6 +49,7 @@ export type SettleService = {
     payment: SubscriptionPayment,
     chatOwnerId: User['id'],
   ) => Promise<DistributeOnceResult>
+  refundDuplicate: (payment: SubscriptionPayment) => Promise<RefundDuplicateResult>
 }
 
 export function createSettleService(deps: SettleServiceDeps): SettleService {
@@ -86,6 +90,34 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
     }
 
     return {status: 'paid', fee}
+  }
+
+  /**
+   * Credit a duplicate paid attempt back to the subscriber's internal wallet exactly once.
+   *
+   * The full attempt price is returned without a service fee. The stored refund hash uses the same
+   * crash boundary as owner/fee payouts: persist first, pay second, then look it up on every retry.
+   */
+  async function refundDuplicate(payment: SubscriptionPayment): Promise<RefundDuplicateResult> {
+    if (payment.refundedAt) return {status: 'credited'}
+    if (payment.attemptStatus === 'processed') {
+      throw new Error(`Subscription payment ${payment.id} was processed without a refund`)
+    }
+
+    const refundLeg = await settleLeg({
+      storedHash: payment.refundPayoutHash,
+      label: 'duplicate payment refund',
+      paymentId: payment.id,
+      createInvoice: async () => {
+        const wallet = await deps.getUserWallet(payment.userId)
+        return wallet.createInvoice({sats: payment.price})
+      },
+      persistHash: hash => deps.recordRefundInvoice(payment.id, hash),
+    })
+    if (refundLeg === 'pending') return {status: 'pending'}
+
+    await deps.markRefundCredited(payment.id, now())
+    return {status: 'credited'}
   }
 
   /**
@@ -282,5 +314,5 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
     })
   }
 
-  return {complete, distributeOnce}
+  return {complete, distributeOnce, refundDuplicate}
 }

@@ -23,6 +23,7 @@ describe('settle service (characterization)', () => {
   let notifier: ReturnType<typeof createFakeNotifier>
   let ledger: Map<string, {paid: boolean; status?: string}>
   let paidBolt11s: string[]
+  let invoiceSats: number[]
   let invoiceCounter: number
   let logErrors: string[]
 
@@ -35,6 +36,7 @@ describe('settle service (characterization)', () => {
     notifier = createFakeNotifier()
     ledger = new Map()
     paidBolt11s = []
+    invoiceSats = []
     invoiceCounter = 0
     logErrors = []
 
@@ -64,6 +66,8 @@ describe('settle service (characterization)', () => {
         subscriptions.findByUserAndChat(userId, chatId),
       recordPayoutInvoice: (id, hash) => payments.recordPayoutInvoice(id, hash),
       recordFeePayoutInvoice: (id, hash) => payments.recordFeePayoutInvoice(id, hash),
+      recordRefundInvoice: (id, hash) => payments.recordRefundInvoice(id, hash),
+      markRefundCredited: (id, refundedAt) => payments.markRefundCredited(id, refundedAt),
       masterWallet: {
         lookupPayment: async hash => {
           const entry = ledger.get(hash)
@@ -90,7 +94,8 @@ describe('settle service (characterization)', () => {
         },
       },
       getUserWallet: async () => ({
-        createInvoice: async () => {
+        createInvoice: async ({sats}) => {
+          invoiceSats.push(sats)
           invoiceCounter++
           return {
             payment_hash: `hash-${invoiceCounter}`,
@@ -242,5 +247,87 @@ describe('settle service (characterization)', () => {
     ).toBe('kept')
     expect(logErrors.some(m => m.includes('exhausted its settle attempts'))).toBe(true)
     expect(await payments.findById(payment.id)).toBeDefined()
+  })
+
+  test('9. duplicate refund credits the full price and marks the attempt only after payment', async () => {
+    const settle = buildService()
+    const payment = await createPayment()
+
+    expect(await settle.refundDuplicate(payment)).toEqual({status: 'credited'})
+
+    const refunded = await payments.findById(payment.id)
+    expect(invoiceSats).toEqual([payment.price])
+    expect(paidBolt11s).toHaveLength(1)
+    expect(refunded).toMatchObject({
+      attemptStatus: 'processed',
+      refundPayoutHash: expect.any(String),
+      processedAt: expect.any(Date),
+      refundedAt: expect.any(Date),
+    })
+    const completed = await payments.findById(payment.id)
+    if (!completed) throw new Error('Missing completed refund attempt')
+    expect(await settle.refundDuplicate(completed)).toEqual({status: 'credited'})
+    expect(paidBolt11s).toHaveLength(1)
+    expect(invoiceSats).toHaveLength(1)
+  })
+
+  test('10. crash after refund payment resumes from the stored hash without paying twice', async () => {
+    const deps = baseDeps()
+    const payInvoice = deps.masterWallet.payInvoice
+    let crashOnce = true
+    deps.masterWallet.payInvoice = async bolt11 => {
+      await payInvoice(bolt11)
+      if (crashOnce) {
+        crashOnce = false
+        throw new Error('crash after refund payment')
+      }
+    }
+    const settle = createSettleService(deps)
+    const payment = await createPayment()
+
+    await expect(settle.refundDuplicate(payment)).rejects.toThrow('crash after refund payment')
+    const afterCrash = await payments.findById(payment.id)
+    if (!afterCrash) throw new Error('Missing refund attempt after crash')
+    expect(afterCrash.attemptStatus).toBe('pending')
+    expect(afterCrash.refundPayoutHash).toBe('hash-1')
+    expect(afterCrash.refundedAt).toBeNull()
+    expect(paidBolt11s).toEqual(['bolt11-1'])
+    expect(ledger.get(afterCrash.refundPayoutHash ?? '')).toEqual({paid: true})
+
+    expect(await settle.refundDuplicate(afterCrash)).toEqual({status: 'credited'})
+    expect(paidBolt11s).toEqual(['bolt11-1'])
+    expect(invoiceSats).toHaveLength(1)
+    expect(await payments.findById(payment.id)).toMatchObject({
+      attemptStatus: 'processed',
+      refundedAt: expect.any(Date),
+    })
+  })
+
+  test('11. an in-flight stored refund stays pending and is never re-sent', async () => {
+    ledger.set('refund-in-flight', {paid: false})
+    const settle = buildService()
+    const payment = await createPayment({refundPayoutHash: 'refund-in-flight'})
+
+    expect(await settle.refundDuplicate(payment)).toEqual({status: 'pending'})
+
+    expect(paidBolt11s).toEqual([])
+    expect(invoiceSats).toEqual([])
+    expect(await payments.findById(payment.id)).toMatchObject({
+      attemptStatus: 'pending',
+      refundPayoutHash: 'refund-in-flight',
+      refundedAt: null,
+    })
+  })
+
+  test('12. a processed winner cannot be mislabeled as an already credited refund', async () => {
+    const settle = buildService()
+    const payment = await createPayment({
+      attemptStatus: 'processed',
+      processedAt: new Date('2026-06-01T12:00:00.000Z'),
+    })
+
+    await expect(settle.refundDuplicate(payment)).rejects.toThrow('processed without a refund')
+    expect(paidBolt11s).toEqual([])
+    expect(invoiceSats).toEqual([])
   })
 })

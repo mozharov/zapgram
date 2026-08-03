@@ -240,6 +240,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "attempt_reservation_id": {
+          "name": "attempt_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempt_reservation_expires_at": {
+          "name": "attempt_reservation_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -307,6 +321,10 @@
         "subscription_intents_winner_check": {
           "name": "subscription_intents_winner_check",
           "value": "(\"subscription_intents\".\"status\" in ('legacy', 'open') and \"subscription_intents\".\"winner_attempt_id\" is null)\n          or (\"subscription_intents\".\"status\" in ('won', 'completed') and \"subscription_intents\".\"winner_attempt_id\" is not null)"
+        },
+        "subscription_intents_reservation_check": {
+          "name": "subscription_intents_reservation_check",
+          "value": "(\"subscription_intents\".\"attempt_reservation_id\" is null and \"subscription_intents\".\"attempt_reservation_expires_at\" is null)\n          or (\"subscription_intents\".\"status\" = 'open' and \"subscription_intents\".\"attempt_reservation_id\" is not null\n              and \"subscription_intents\".\"attempt_reservation_expires_at\" is not null)"
         }
       }
     },
