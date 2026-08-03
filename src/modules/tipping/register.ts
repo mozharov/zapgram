@@ -1,16 +1,14 @@
-import {createConversation} from '@grammyjs/conversations'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
 import type {Composer} from 'grammy'
 import {sendToUserCallback} from './telegram/send-to-user-callback.js'
-import {sendingToUser} from './telegram/sending-to-user.js'
 import {tipCommand, tipInvalidCommand} from './telegram/tip.js'
 
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
-  privateChat.use(createConversation(sendingToUser))
+  // createConversation(sendingToUser) lives in telegram/composition.ts.
   privateChat.callbackQuery(staticCallback.sendToUser, sendToUserCallback)
 
   const groupChat = composer.chatType(['group', 'supergroup'])

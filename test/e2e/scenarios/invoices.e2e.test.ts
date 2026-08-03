@@ -456,35 +456,26 @@ for (const {label, reach, input, replies} of invalidCases) {
 
 // --- Living alongside the rest of the bot ---
 
-test('a command registered before the conversation answers without ending it', async () => {
+// docs/known-issues.md — every conversation is installed above every command, so /wallet
+// always cancels the active conversation (uniform rule; no registration-order asymmetry).
+test('/wallet cancels creatingInvoice waiting for an amount', async () => {
   await enterCreateInvoiceAtAmount()
 
-  // `/wallet` is registered in the wallet module, above `createConversation(creatingInvoice)` in
-  // the invoices module, so the conversation never sees this update and stays where it was.
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:/}],
-  })
-  expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
-
-  // Which is how the next unrelated command gets read as the answer to a question the user has
-  // already moved on from. See docs/known-issues.md.
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/},
       {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /don't have any chats/},
+      {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
   expectNoErrors(e2e.logs)
 })
 
-test('the same command cancels a conversation that was registered before it', async () => {
+test('/wallet cancels connectingNWC waiting for a URL', async () => {
   await enterConnectNwcAtUrl()
 
-  // `createConversation(connectingNWC)` is the first thing the wallet module registers, ahead of
-  // its own `/wallet` command, so here the conversation does consume the update.
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     db: {conversations: {removed: 1}},
     telegram: [

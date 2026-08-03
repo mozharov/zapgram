@@ -1,8 +1,6 @@
-import {createConversation} from '@grammyjs/conversations'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Composer} from 'grammy'
-import {connectingNWC} from './telegram/conversations/connecting-nwc.js'
 import {connectNwcCallback} from './telegram/handlers/connect-nwc.js'
 import {disconnectNwcCallback} from './telegram/handlers/disconnect-nwc.js'
 import {groupSettingsCallback} from './telegram/handlers/group-settings-callback.js'
@@ -17,7 +15,7 @@ export const walletCommands = ['wallet', 'settings'] as const
 
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
-  privateChat.use(createConversation(connectingNWC))
+  // createConversation(connectingNWC) is installed in telegram/composition.ts above all commands.
   privateChat.command(walletCommands[0], walletCommand)
   privateChat.command(walletCommands[1], settingsCommand)
   privateChat.callbackQuery(staticCallback.wallet, walletCallback)
@@ -26,8 +24,7 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.callbackQuery(staticCallback.disconnectNwc, disconnectNwcCallback)
   privateChat.callbackQuery(staticCallback.connectNwc, connectNwcCallback)
   privateChat.callbackQuery(staticCallback.toggleNwcTips, nwcTipsCallback)
-  // `cancel` is deliberately NOT registered here: it must run after every module's
-  // createConversation() so a conversation waiting for input can consume it first.
-  // See the terminal section of telegram/composition.ts.
+  // `cancel` is deliberately NOT registered here: it must run after every createConversation()
+  // so a conversation waiting for input can consume it first. See telegram/composition.ts.
   privateChat.callbackQuery(staticCallback.sendMenu, sendMenuCallback)
 }

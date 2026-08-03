@@ -1,4 +1,3 @@
-import {createConversation} from '@grammyjs/conversations'
 import {
   chatChangePriceRoute,
   chatCustomMessageRoute,
@@ -11,8 +10,6 @@ import {
 } from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Composer} from 'grammy'
-import {changingPrice} from './telegram/conversations/changing-price.js'
-import {editCustomMessage} from './telegram/conversations/edit-custom-message.js'
 import {changePriceCallback} from './telegram/handlers/change-price.js'
 import {chatCallback} from './telegram/handlers/chat-callback.js'
 import {chatsCallback} from './telegram/handlers/chats-callback.js'
@@ -33,8 +30,7 @@ export function register(composer: Composer<BotContext>): void {
   paidChat.on(':new_chat_title', newChatTitleHandler)
 
   const privateChat = composer.chatType('private')
-  privateChat.use(createConversation(changingPrice))
-  privateChat.use(createConversation(editCustomMessage))
+  // createConversation(changingPrice / editCustomMessage) live in telegram/composition.ts.
   privateChat.command(chatsCommands[0], chatsCommand)
   privateChat.callbackQuery(chatsPageRoute.pattern, chatsCallback)
   privateChat.callbackQuery(chatRoute.pattern, chatCallback)
