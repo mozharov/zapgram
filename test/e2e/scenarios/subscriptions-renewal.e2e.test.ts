@@ -30,6 +30,7 @@ const PRICE = 1000
 const CHANGED_CHAT_PRICE = 2000
 const FEE = 50
 const OWNER_PAYOUT = PRICE - FEE
+const EXPIRING_FETCH_CAP = 50
 const FAILURE = {status: 503, body: {detail: 'Injected renewal failure'}}
 const CHANGED_PRICE_TEST = [
   'a manual renewal invoice currently uses the changed chat price',
@@ -194,6 +195,7 @@ test('an existing renewal payment is handed off without another charge or remind
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   const logMark = e2e.logs.length
+  const expiringFetches = capExpiringSubscriptionFetch()
 
   await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {})
 
@@ -203,6 +205,7 @@ test('an existing renewal payment is handed off without another charge or remind
   expect(await requiredPayment(payment.id)).toEqual(payment)
   expect(await requiredSubscription()).toEqual(subscription)
   expect(e2e.ln.requests).toHaveLength(requestMark)
+  expect(expiringFetches()).toBeLessThanOrEqual(EXPIRING_FETCH_CAP)
   expect(e2e.tg.calls).toEqual([])
   expectRenewalPayouts(0)
   expectNoErrors(e2e.logs)
@@ -216,6 +219,18 @@ test('an existing renewal payment is handed off without another charge or remind
     'Finished processing 1 subscriptions expiring within 24 hours.',
   )
 })
+
+function capExpiringSubscriptionFetch(): () => number {
+  const repository = e2e.container.subscriptions
+  const original = repository.getExpiringWithin.bind(repository)
+  let calls = 0
+  repository.getExpiringWithin = async (...args) => {
+    calls++
+    if (calls > EXPIRING_FETCH_CAP) throw new Error('Expiring subscription fetch cap exceeded')
+    return original(...args)
+  }
+  return () => calls
+}
 
 test('disabled auto-renewal creates one exact manual invoice and one wallet button', async () => {
   const subscription = await seedExpiringSubscription(e2e, {

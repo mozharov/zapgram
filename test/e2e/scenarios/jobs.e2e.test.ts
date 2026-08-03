@@ -32,6 +32,7 @@ const BATCH_SIZE = 10
 const OVER_BATCH = BATCH_SIZE + 2
 /** Ceiling on LNbits HTTP traffic for one over-batch walk (wallet setup + one lookup per row). */
 const REQUEST_CAP = 200
+const EXPIRING_FETCH_CAP = 50
 const PENDING_SATS = 21
 const PRICE = 1000
 const HOUR_MS = 60 * 60 * 1000
@@ -361,11 +362,13 @@ test('expiring subscriptions finishes when every row is handed off to settle', a
   }
   const requestMark = e2e.ln.requests.length
   const before = await snapshot(e2e)
+  const expiringFetches = capExpiringSubscriptionFetch()
 
   await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {})
 
   const after = await snapshot(e2e)
   expectWorldUnchanged(before, after)
+  expect(expiringFetches()).toBeLessThanOrEqual(EXPIRING_FETCH_CAP)
   expect(e2e.ln.requests.length - requestMark).toBeLessThan(REQUEST_CAP)
   expect(await e2e.db.select().from(subscriptionsTable)).toHaveLength(OVER_BATCH)
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toHaveLength(OVER_BATCH)
@@ -377,6 +380,18 @@ test('expiring subscriptions finishes when every row is handed off to settle', a
   ).toHaveLength(OVER_BATCH)
   expectNoErrors(e2e.logs)
 })
+
+function capExpiringSubscriptionFetch(): () => number {
+  const repository = e2e.container.subscriptions
+  const original = repository.getExpiringWithin.bind(repository)
+  let calls = 0
+  repository.getExpiringWithin = async (...args) => {
+    calls++
+    if (calls > EXPIRING_FETCH_CAP) throw new Error('Expiring subscription fetch cap exceeded')
+    return original(...args)
+  }
+  return () => calls
+}
 
 // --- isolation between consecutive jobs ---
 
