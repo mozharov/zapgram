@@ -170,20 +170,14 @@ test('disconnecting NWC clears nwc_url and nwc_tips', async () => {
     telegram: [
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Wallet disconnected/},
-      // Same-request wallet still shows NWC — docs/known-issues.md
-      // ("Disconnect NWC still shows the NWC balance on the same reply").
-      {method: 'sendMessage', to: USER_A, text: /<b>NWC:<\/b>/},
+      // Same-request wallet must already be the single-balance copy (ctx.nwc cleared).
+      {method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/},
     ],
   })
 
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null, nwcTips: false})
-
-  // Next update rebuilds ctx without nwc and shows the single-balance copy.
-  await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
-  })
-  const nextWallet = String(e2e.tg.last('sendMessage')?.text)
-  expect(nextWallet).not.toMatch(/NWC:/)
+  const walletText = String(e2e.tg.last('sendMessage')?.text)
+  expect(walletText).not.toMatch(/NWC:/)
   expectNoErrors(e2e.logs)
 })
 
