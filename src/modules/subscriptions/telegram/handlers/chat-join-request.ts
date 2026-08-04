@@ -53,7 +53,8 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
 }
 
 async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
-  const invoice = await getRuntime().joinInvoiceService.getOrCreate({
+  const {joinInvoiceService, posthog} = getRuntime()
+  const invoice = await joinInvoiceService.getOrCreate({
     chatId: chat.id,
     userId: ctx.user.id,
     kind: 'join',
@@ -79,8 +80,8 @@ async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
     minutes: remainingMinutes,
   })
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
-  await ctx.api
-    .sendMessage(
+  try {
+    await ctx.api.sendMessage(
       ctx.chatJoinRequest.user_chat_id,
       ctx.t('subscription-invoice.created', {
         message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
@@ -91,7 +92,25 @@ async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
       }),
       {reply_markup: keyboard, link_preview_options: {is_disabled: true}},
     )
-    .catch((error: unknown) => {
-      ctx.log.error({error}, 'Error while sending message to user about chat join request')
-    })
+  } catch (error: unknown) {
+    ctx.log.error({error}, 'Error while sending message to user about chat join request')
+    return
+  }
+
+  // Only after Telegram accepted the DM — mirrors subscription_renewal_reminder_sent.
+  captureBotEvent(
+    posthog,
+    'subscription_join_invoice_sent',
+    {
+      chat_title: chat.title,
+      chat_type: chat.type,
+      payment_type: chat.paymentType,
+      price_sats: chat.price,
+      payment_id: invoice.attempt.id,
+      kind: 'join',
+      reused: invoice.reused,
+      remaining_minutes: invoice.remainingMinutes,
+    },
+    {chatId: chat.id},
+  )
 }
