@@ -48,8 +48,8 @@ export async function handleLnbitsPaymentWebhook(
 }
 
 export function extractPaymentHashFromLnbitsWebhook(body: unknown): string | undefined {
-  if (!body || typeof body !== 'object') return undefined
-  const record = body as Record<string, unknown>
+  const record = coerceLnbitsWebhookBody(body)
+  if (!record) return undefined
 
   if (typeof record.payment_hash === 'string' && record.payment_hash.length > 0) {
     return record.payment_hash
@@ -68,4 +68,26 @@ export function extractPaymentHashFromLnbitsWebhook(body: unknown): string | und
     return record.checking_id
   }
   return undefined
+}
+
+/**
+ * LNbits `dispatch_webhook` does `client.post(url, json=payment.json())`.
+ * Pydantic `.json()` returns a string, so httpx double-encodes: after one JSON parse
+ * the body is still a string of the payment object. Accept both shapes.
+ */
+function coerceLnbitsWebhookBody(body: unknown): Record<string, unknown> | undefined {
+  let value: unknown = body
+  // At most two unwraps: framework may leave a JSON string, and LNbits may have
+  // double-encoded it (string inside string).
+  for (let i = 0; i < 2 && typeof value === 'string'; i++) {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    try {
+      value = JSON.parse(trimmed) as unknown
+    } catch {
+      return undefined
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return value as Record<string, unknown>
 }

@@ -212,6 +212,48 @@ test('POST /lnbits/webhook with a wrong secret leaves the world unchanged', asyn
   expect(e2e.tg.calls).toHaveLength(telegramMark)
 })
 
+test('POST /lnbits/webhook accepts LNbits double-encoded payment.json() body', async () => {
+  // LNbits dispatch_webhook: client.post(url, json=payment.json()) — pydantic .json() is a
+  // string, so the wire body is a JSON string of the payment object.
+  const pending = await seedPendingInvoice(e2e, {sats: 21})
+  const payment = e2e.ln.state.payments.find(p => p.paymentHash === pending.paymentHash)
+  expect(payment).toBeDefined()
+  if (!payment) throw new Error('seeded LNbits payment missing')
+  payment.paid = true
+
+  const lnbitsPaymentJson = JSON.stringify({
+    checking_id: pending.paymentHash,
+    payment_hash: pending.paymentHash,
+    amount: 21_000,
+    status: 'success',
+  })
+
+  await expectDelta(
+    e2e,
+    async () => {
+      const secret = e2e.container.config.BOT_WEBHOOK_SECRET
+      const url = buildLnbitsPaymentWebhookUrl('http://local', secret)
+      // Pass a string as the JSON body value — same as LNbits httpx json=payment.json().
+      const response = await router.handle(
+        new Request(url, {
+          method: 'POST',
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify(lnbitsPaymentJson),
+        }),
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ok: true, result: 'invoice_notified'})
+    },
+    {
+      db: {pendingInvoices: {removed: 1}},
+      telegram: [
+        {method: 'sendMessage', to: USER_A, text: /You received payment for a Lightning invoice/},
+      ],
+    },
+  )
+  expectNoErrors(e2e.logs)
+})
+
 test('a second webhook after claim is a no-op (no double notify)', async () => {
   await seedUser(e2e, {
     id: USER_B,
