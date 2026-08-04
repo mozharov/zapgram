@@ -4,6 +4,8 @@ import {PostHog} from 'posthog-node'
 /** PostHog group type for Telegram chats (groups, supergroups, channels). */
 export const TELEGRAM_CHAT_GROUP_TYPE = 'telegram_chat' as const
 
+export type CaptureClient = Pick<PostHog, 'capture'>
+
 /**
  * Long-running bot process: default batching is correct.
  * flushAt=20 / flushInterval=10s (SDK defaults) — no per-event flush needed.
@@ -44,4 +46,24 @@ export function telegramChatGroupKey(chatId: number | string): string {
 
 export function telegramChatGroups(chatId: number | string): Record<string, string> {
   return {[TELEGRAM_CHAT_GROUP_TYPE]: telegramChatGroupKey(chatId)}
+}
+
+/**
+ * Product event for a Telegram user outside request context (jobs, settle, renewal).
+ * Always pass an explicit distinctId — there is no posthog.withContext on cron paths.
+ */
+export function captureUserEvent(
+  posthog: CaptureClient | undefined,
+  event: string,
+  distinctId: number | string,
+  properties?: Record<string, unknown>,
+  options?: {chatId?: number},
+): void {
+  if (!posthog) return
+  posthog.capture({
+    event,
+    distinctId: telegramUserDistinctId(distinctId),
+    properties,
+    groups: options?.chatId !== undefined ? telegramChatGroups(options.chatId) : undefined,
+  })
 }

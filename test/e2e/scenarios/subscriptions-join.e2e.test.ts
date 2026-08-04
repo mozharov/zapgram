@@ -227,6 +227,46 @@ test('a Telegram delivery failure is logged without losing the payment record', 
   expect(errorMessages()).toEqual(['Error while sending message to user about chat join request'])
 })
 
+test('an LNbits mint failure DMs the applicant and leaves no payment', async () => {
+  await seedActiveChat()
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => asRecord(body)?.out === false,
+    },
+    {status: 520, body: {status: 'failed', detail: 'backend unavailable'}},
+  )
+
+  const before = await snapshot(e2e)
+  await expectDelta(e2e, () => e2e.send(joinUpdate({userChatId: JOIN_USER_CHAT})), {
+    db: {subscriptionIntents: {added: 1}},
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: JOIN_USER_CHAT,
+        text: /Failed to create the Lightning invoice/,
+      },
+    ],
+  })
+
+  const after = await snapshot(e2e)
+  expectLedgerBalanced(before, after)
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
+  const intents = await e2e.db.select().from(subscriptionIntentsTable)
+  expect(intents).toHaveLength(1)
+  expect(intents[0]).toMatchObject({
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    kind: 'join',
+    status: 'open',
+    attemptReservationId: null,
+    winnerAttemptId: null,
+  })
+  expectNoPaidMasterPayouts()
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
 test('a sequential repeated join request reuses one invoice and reports remaining time', async () => {
   const {payment, telegram: firstMessage} = await issueJoinInvoice({
     text: /valid for another.*hour/,
@@ -585,6 +625,12 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined
 }
 
 async function setAttemptExpiry(paymentId: string, expiresAt: Date): Promise<void> {

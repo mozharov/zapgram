@@ -42,12 +42,13 @@ export const scenarioCoverage = {
   errors: {
     routes: ['pay-subscription', 'subscription'],
     commands: ['/wallet'],
-    updates: ['message', 'callback_query', 'hears', 'my_chat_member'],
+    updates: ['message', 'callback_query', 'hears', 'my_chat_member', 'chat_join_request'],
     writes: ['users.insert', 'users.update'],
     jobs: ['check-subscription-payments'],
     errors: [
       'insufficient_funds',
       'invoice_already_paid',
+      'invoice_generation_failed',
       'invoice_parsing',
       'nwc_timeout',
       'nwc_connection',
@@ -112,7 +113,12 @@ export const scenarioCoverage = {
       'pending_invoices.delete',
     ],
     jobs: [],
-    errors: ['insufficient_funds', 'invoice_already_paid', 'invoice_parsing'],
+    errors: [
+      'insufficient_funds',
+      'invoice_already_paid',
+      'invoice_generation_failed',
+      'invoice_parsing',
+    ],
   },
   jobs: {
     routes: [],

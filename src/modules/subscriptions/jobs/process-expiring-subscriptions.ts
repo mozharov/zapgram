@@ -1,4 +1,5 @@
 import type {Subscription} from '@infra/db/types.js'
+import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {getChatOrThrow} from '@modules/chats/repository.js'
 import {renewalService} from '@modules/subscriptions/renewal.js'
@@ -53,10 +54,25 @@ async function processOne(subscription: Subscription): Promise<'done' | 'keep'> 
     return 'keep'
   }
   if (renewalResult.status === 'renewed') {
-    // Notifications already sent by settle service (kind: renewal → subscription-renewal.renewed).
+    // Notifications + subscription_settled already emitted by settle service.
     // endsAt was extended inside the settle transaction, so the row left the window.
     getRuntime().log.info(`Auto-renewed subscription ID: ${subscription.id}`)
     return 'done'
+  }
+
+  // status === 'failed': auto-charge skipped or could not collect; send a manual invoice.
+  if (subscription.autoRenew) {
+    captureUserEvent(
+      getRuntime().posthog,
+      'subscription_auto_renew_failed',
+      subscription.userId,
+      {
+        subscription_id: subscription.id,
+        chat_id: subscription.chatId,
+        price_sats: subscription.price,
+      },
+      {chatId: subscription.chatId},
+    )
   }
 
   const reminderDelivered = await renewalService.createAndSendRenewalInvoice(
@@ -74,6 +90,18 @@ async function processOne(subscription: Subscription): Promise<'done' | 'keep'> 
     return 'keep'
   }
   await updateSubscription(subscription.id, {notificationSent: true})
+  captureUserEvent(
+    getRuntime().posthog,
+    'subscription_renewal_reminder_sent',
+    subscription.userId,
+    {
+      subscription_id: subscription.id,
+      chat_id: subscription.chatId,
+      price_sats: subscription.price,
+      auto_renew: subscription.autoRenew,
+    },
+    {chatId: subscription.chatId},
+  )
   getRuntime().log.info(`Notification sent for subscription ID: ${subscription.id}`)
   return 'done'
 }

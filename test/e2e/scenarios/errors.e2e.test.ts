@@ -20,6 +20,7 @@ import {
   seedUser,
 } from '../fixtures/seed.js'
 import {
+  chatJoinRequest,
   groupReply,
   groupText,
   myChatMember,
@@ -51,6 +52,7 @@ type Locale = 'en' | 'ru'
 const ALL_CODES: AppErrorCode[] = [
   'insufficient_funds',
   'invoice_already_paid',
+  'invoice_generation_failed',
   'invoice_parsing',
   'nwc_timeout',
   'nwc_connection',
@@ -149,6 +151,30 @@ test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', 
     e2e.tg.of('sendMessage').some(call => String(call.text).includes('Paying Lightning invoice')),
   ).toBe(true)
   await expectMoneyUnchanged(before)
+})
+
+test('invoice_generation_failed is DMed when a join invoice cannot be minted', async () => {
+  await seedOwnerAndChat()
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => body !== null && typeof body === 'object' && Reflect.get(body, 'out') === false,
+    },
+    {status: 520, body: {status: 'failed', detail: 'backend unavailable'}},
+  )
+
+  await e2e.send(
+    chatJoinRequest('supergroup', {
+      from: {id: USER_A, username: 'user_a', first_name: 'User A', language_code: 'en'},
+    }),
+  )
+
+  const expected = expectedErrorText('invoice_generation_failed', 'en')
+  const texts = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(texts).toContain(expected)
+  expectCleanUserText(expected)
+  expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
 })
 
 test('nwc_connection is raised when paying a subscription invoice via NWC without a wallet', async () => {
@@ -437,6 +463,7 @@ test('every AppErrorCode has a real e2e path in this file', () => {
   const covered = new Set([
     'insufficient_funds',
     'invoice_already_paid',
+    'invoice_generation_failed',
     'invoice_parsing',
     'nwc_timeout',
     'nwc_connection',

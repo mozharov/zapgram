@@ -4,6 +4,7 @@ import type {PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
 import type {SubscriptionPayment, User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
+import {type CaptureClient, captureUserEvent} from '@infra/posthog.js'
 import type {ChatWithOwner} from '@modules/chats/types.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import {HTTPError} from 'got'
@@ -47,6 +48,7 @@ export type SettleServiceDeps = {
   log: AppLogger
   feePercent: number
   translate: (key: string, language?: string, context?: TranslationVariables) => string
+  posthog?: CaptureClient
   now?: () => Date
 }
 
@@ -209,6 +211,19 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         {paymentId: payment.id, paymentHash: payment.paymentHash, attempt},
         'Subscription payment exhausted its settle attempts. It will no longer be retried; the row is kept for manual review.',
       )
+      captureUserEvent(
+        deps.posthog,
+        'subscription_settle_exhausted',
+        payment.userId,
+        {
+          payment_id: payment.id,
+          chat_id: payment.chatId,
+          kind: payment.kind,
+          amount_sats: payment.price,
+          settle_attempts: attempt,
+        },
+        {chatId: payment.chatId},
+      )
     }
     return result
   }
@@ -289,6 +304,29 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         }),
       )
 
+      const settleProps = {
+        payment_id: payment.id,
+        chat_id: payment.chatId,
+        kind: payment.kind,
+        subscription_type: payment.subscriptionType,
+        amount_sats: payment.price,
+        fee_sats: fee,
+        owner_sats: payment.price - fee,
+      }
+      captureUserEvent(deps.posthog, 'subscription_settled', payment.userId, settleProps, {
+        chatId: payment.chatId,
+      })
+      captureUserEvent(
+        deps.posthog,
+        'subscription_payment_received',
+        chat.ownerId,
+        {
+          ...settleProps,
+          subscriber_id: payment.userId,
+        },
+        {chatId: payment.chatId},
+      )
+
       return 'settled'
     } catch (error) {
       deps.log.error(
@@ -319,6 +357,18 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         deps.translate('subscription-invoice.duplicate-refunded', user.languageCode, {
           price: payment.price,
         }),
+      )
+      captureUserEvent(
+        deps.posthog,
+        'subscription_duplicate_refunded',
+        payment.userId,
+        {
+          payment_id: payment.id,
+          chat_id: payment.chatId,
+          kind: payment.kind,
+          amount_sats: payment.price,
+        },
+        {chatId: payment.chatId},
       )
       return 'settled'
     } catch (error) {

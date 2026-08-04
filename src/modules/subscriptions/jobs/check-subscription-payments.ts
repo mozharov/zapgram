@@ -1,3 +1,4 @@
+import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {
   countExhaustedSubscriptionPayments,
@@ -27,6 +28,7 @@ export async function checkSubscriptionPayments(): Promise<void> {
         try {
           const data = await getRuntime().masterWallet.lookupPayment(payment.paymentHash)
           if (data.paid) {
+            // subscription_settled / subscription_duplicate_refunded fire inside settle.
             return (await completeSubscriptionPayment(payment)) === 'kept' ? 'keep' : 'done'
           }
           if (data.details.expiry && data.details.expiry < new Date()) {
@@ -35,6 +37,19 @@ export async function checkSubscriptionPayments(): Promise<void> {
               'Subscription payment expired.',
             )
             await deleteSubscriptionPayment(payment.id)
+            captureUserEvent(
+              getRuntime().posthog,
+              'subscription_payment_expired',
+              payment.userId,
+              {
+                payment_id: payment.id,
+                chat_id: payment.chatId,
+                kind: payment.kind,
+                amount_sats: payment.price,
+                subscription_type: payment.subscriptionType,
+              },
+              {chatId: payment.chatId},
+            )
             return 'done'
           }
           return 'keep'

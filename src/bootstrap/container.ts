@@ -131,6 +131,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     log,
     feePercent: config.SUBSCRIPTION_FEE_PERCENT,
     translate,
+    posthog,
   })
 
   const renewalService = createRenewalService({

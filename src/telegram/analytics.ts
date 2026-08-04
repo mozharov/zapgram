@@ -1,5 +1,7 @@
 import type {Chat as DbChat, User as DbUser} from '@infra/db/types.js'
 import {
+  captureUserEvent,
+  type CaptureClient as PostHogCaptureClient,
   TELEGRAM_CHAT_GROUP_TYPE,
   telegramChatGroupKey,
   telegramChatGroups,
@@ -14,7 +16,7 @@ export {TELEGRAM_CHAT_GROUP_TYPE, telegramChatGroups, telegramUserDistinctId}
 /** Telegram /start payload prefix for landing → bot attribution (`lp_<web_distinct_id>`). */
 export const LANDING_START_PREFIX = 'lp_' as const
 
-type CaptureClient = Pick<PostHog, 'capture' | 'groupIdentify' | 'alias'>
+type CaptureClient = Pick<PostHog, 'capture' | 'groupIdentify' | 'alias'> & PostHogCaptureClient
 
 type PersonPropertyPatch = {
   $set?: Record<string, unknown>
@@ -222,9 +224,14 @@ export function captureBotEvent(
   options?: {chatId?: number; distinctId?: string},
 ): void {
   if (!posthog) return
+  // Explicit distinctId (jobs / cross-user) uses the shared helper; otherwise inherit
+  // posthog.withContext from the Telegram middleware.
+  if (options?.distinctId !== undefined) {
+    captureUserEvent(posthog, event, options.distinctId, properties, {chatId: options.chatId})
+    return
+  }
   posthog.capture({
     event,
-    distinctId: options?.distinctId,
     properties,
     groups: options?.chatId !== undefined ? telegramChatGroups(options.chatId) : undefined,
   })

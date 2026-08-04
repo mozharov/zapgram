@@ -7,6 +7,7 @@ import type {AppErrorCode} from '@core/errors/app-error.js'
 export const errorTranslationKey: Record<AppErrorCode, string> = {
   insufficient_funds: 'error.insufficient-funds',
   invoice_already_paid: 'error.invoice-already-paid',
+  invoice_generation_failed: 'error.invoice-generation-failed',
   invoice_parsing: 'error.invoice-parsing',
   nwc_timeout: 'error.nwc-timeout',
   nwc_connection: 'error.nwc-connection',

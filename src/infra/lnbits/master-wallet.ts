@@ -1,4 +1,5 @@
 import type {AppConfig} from '@config'
+import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
   healthResponseSchema,
@@ -79,6 +80,8 @@ class MasterWallet extends LNBitsAPI {
         unit: 'sat',
         expiry,
       }),
+    }).catch((error: unknown) => {
+      throw new InvoiceGenerationError({cause: error})
     })
   }
 

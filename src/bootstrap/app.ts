@@ -16,11 +16,11 @@ export type RunningApp = {
  * Wire handlers, HTTP server and scheduler on top of a filled container.
  */
 export function createApp(container: AppContainer): RunningApp {
-  const {config, log, bot} = container
+  const {config, log, bot, posthog} = container
 
   registerHandlers(bot)
 
-  const scheduler = createScheduler(defaultJobDefinitions(), log)
+  const scheduler = createScheduler(defaultJobDefinitions(), log, posthog)
 
   let server: ReturnType<typeof startServer> | undefined
 

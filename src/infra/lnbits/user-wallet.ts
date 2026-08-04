@@ -1,5 +1,6 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
@@ -44,6 +45,9 @@ export class UserWallet extends LNBitsAPI {
         expiry,
         memo: buildInvoiceMemo(memo, this.memoFooter),
       }),
+    }).catch((error: unknown) => {
+      this.log?.error({error}, 'Error creating invoice')
+      throw new InvoiceGenerationError({cause: error})
     })
   }
 

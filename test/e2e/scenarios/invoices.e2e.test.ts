@@ -156,13 +156,17 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Unknown error occurred/},
+      {method: 'sendMessage', to: USER_A, text: /Failed to create the Lightning invoice/},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
-  // Two lines, not four: `got` retries GET but not POST, so the mint is attempted once.
-  expect(errorMessages()).toEqual(['POST /api/v1/payments: HTTP error', 'Bot error'])
+  // Mint is attempted once (`got` does not retry POST); domain mapping adds a third log line.
+  expect(errorMessages()).toEqual([
+    'POST /api/v1/payments: HTTP error',
+    'Error creating invoice',
+    'Bot error',
+  ])
 })
 
 // --- Paying an invoice ---

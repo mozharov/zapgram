@@ -1,3 +1,5 @@
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
+import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
 import {
@@ -28,6 +30,17 @@ export async function checkPendingInvoices(): Promise<void> {
               },
             )
             await deletePendingInvoice(invoice.paymentRequest)
+            let amountSats: number | undefined
+            try {
+              amountSats = decodeInvoice(invoice.paymentRequest).satoshi
+            } catch {
+              // Analytics only — a bad bolt11 must not leave a paid row stuck.
+            }
+            captureUserEvent(getRuntime().posthog, 'invoice_received', invoice.userId, {
+              payment_hash: invoice.paymentHash,
+              amount_sats: amountSats ?? null,
+              source: 'pending_invoice_job',
+            })
             return 'done'
           }
           return 'keep'
@@ -39,7 +52,13 @@ export async function checkPendingInvoices(): Promise<void> {
             // Only report 'done' if the row actually went away — otherwise offset would not
             // advance past a row that is still there and the batch would never finish.
             return deletePendingInvoice(invoice.paymentRequest)
-              .then((): 'done' | 'keep' => 'done')
+              .then((): 'done' | 'keep' => {
+                captureUserEvent(getRuntime().posthog, 'invoice_dropped', invoice.userId, {
+                  payment_hash: invoice.paymentHash,
+                  reason: 'not_found_on_lnbits',
+                })
+                return 'done'
+              })
               .catch((deleteError: unknown): 'done' | 'keep' => {
                 getRuntime().log.error(
                   {error: deleteError},

@@ -52,7 +52,6 @@ export function createInvoiceRepository(database: AppDatabase) {
         .delete(pendingInvoicesTable)
         .where(lt(pendingInvoicesTable.expiresAt, new Date()))
         .returning()
-        .then(res => res.length)
     },
   }
 }

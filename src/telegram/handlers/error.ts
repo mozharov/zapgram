@@ -15,6 +15,16 @@ export const errorHandler: ErrorHandler = async err => {
       ? ctx.t(errorTranslationKey[error.code], error.params)
       : ctx.t('error.unknown')
 
+  // Join requests have no group reply target for the applicant — DM the private peer.
+  if (ctx.chatJoinRequest) {
+    await ctx.api
+      .sendMessage(ctx.chatJoinRequest.user_chat_id, errorResponse)
+      .catch((sendError: unknown) => {
+        ctx.log.error({error: sendError}, 'Failed to reply about error on chat join request')
+      })
+    return
+  }
+
   if (ctx.chat?.type === 'channel') return
   if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
     return replyWithTempMessage(ctx, errorResponse).catch((error: unknown) => {

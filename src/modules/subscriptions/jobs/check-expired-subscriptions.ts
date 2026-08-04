@@ -1,3 +1,4 @@
+import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {
   countExpiredSubscriptions,
@@ -31,6 +32,19 @@ export async function checkExpiredSubscriptions(): Promise<void> {
           return 'keep'
         }
         await deleteSubscription(subscription.id, now)
+        captureUserEvent(
+          getRuntime().posthog,
+          'subscription_expired',
+          subscription.userId,
+          {
+            subscription_id: subscription.id,
+            chat_id: subscription.chatId,
+            price_sats: subscription.price,
+            auto_renew: subscription.autoRenew,
+            ends_at: subscription.endsAt?.toISOString() ?? null,
+          },
+          {chatId: subscription.chatId},
+        )
         return 'done'
       },
     })

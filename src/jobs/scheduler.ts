@@ -6,6 +6,10 @@ import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expir
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
 import {CronJob} from 'cron'
+import type {PostHog} from 'posthog-node'
+
+/** Distinct id for cron analytics — not a Telegram person. */
+export const JOB_ANALYTICS_DISTINCT_ID = 'system:cron' as const
 
 export type JobDefinition = {
   name: string
@@ -23,6 +27,8 @@ export type Scheduler = {
   stop: (opts?: {drainTimeoutMs?: number}) => Promise<{drained: boolean}>
   getRunningTicks: () => Promise<unknown>[]
 }
+
+type JobAnalytics = Pick<PostHog, 'captureException'>
 
 export function defaultJobDefinitions(): JobDefinition[] {
   return [
@@ -62,6 +68,7 @@ export function defaultJobDefinitions(): JobDefinition[] {
 export function createScheduler(
   jobDefinitions: JobDefinition[] = defaultJobDefinitions(),
   log: AppLogger,
+  posthog?: JobAnalytics,
 ): Scheduler {
   /** In-flight tick promises per job — drained on stop for graceful shutdown. */
   const runningTicks = new Map<string, Promise<unknown>>()
@@ -72,10 +79,17 @@ export function createScheduler(
       runOnInit: def.runOnInit,
       waitForCompletion: true,
       onTick: async () => {
+        const startedAt = Date.now()
         const tickPromise = Promise.resolve()
           .then(() => def.tick())
           .catch((error: unknown) => {
             log.error({error, job: def.name}, 'Job tick failed')
+            // Errors only — successful ticks are noise; product events stay on user paths.
+            posthog?.captureException(error, JOB_ANALYTICS_DISTINCT_ID, {
+              job: def.name,
+              duration_ms: Date.now() - startedAt,
+              $process_person_profile: false,
+            })
           })
           .finally(() => {
             if (runningTicks.get(def.name) === tickPromise) {

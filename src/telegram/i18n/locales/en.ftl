@@ -59,6 +59,8 @@ error =
     .nwc-payment-failed = <b>⚠️ Payment failed.</b>
         Check your balance.
     .invoice-already-paid = <b>⚠️ This invoice has already been paid.</b>
+    .invoice-generation-failed = <b>⚠️ Failed to create the Lightning invoice.</b>
+        Please try again in a moment. If you requested chat access, send a new one.
     .no-recipient = <b>⚠️ The recipient is not specified.</b>
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
     .from-bot = <b>⚠️ You can't use {bot-name} from anonymous profile.</b>

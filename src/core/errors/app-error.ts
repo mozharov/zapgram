@@ -1,6 +1,7 @@
 export type AppErrorCode =
   | 'insufficient_funds'
   | 'invoice_already_paid'
+  | 'invoice_generation_failed'
   | 'invoice_parsing'
   | 'nwc_timeout'
   | 'nwc_connection'
