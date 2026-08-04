@@ -12,7 +12,7 @@ COPY . .
 RUN mkdir -p /out \
     && cp -a assets ru /out/ \
     && cp index.html 404.html robots.txt sitemap.xml llms.txt pricing.md /out/ \
-    && cleancss --level 1 --output /out/styles.css styles.css
+    && cleancss -O1 --output /out/styles.css styles.css
 
 FROM nginx:1.27-alpine
 
