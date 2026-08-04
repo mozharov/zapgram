@@ -6,10 +6,10 @@ ZapGram is a free Telegram bot that gives every user a Lightning wallet on first
 
 ## Product
 
-- Bot: https://t.me/zap_gram_bot
-- Site (EN): https://zapgram.mozharov.me/
-- Site (RU): https://zapgram.mozharov.me/ru/
-- Source (MIT): https://github.com/mozharov/zapgram
+- [Telegram bot](https://t.me/zap_gram_bot): open the bot and get a Lightning wallet on first start
+- [Marketing site (EN)](https://zapgram.mozharov.me/): canonical English landing page
+- [Marketing site (RU)](https://zapgram.mozharov.me/ru/): Russian landing page
+- [Source code (MIT)](https://github.com/mozharov/zapgram): open-source bot; self-host available
 
 ## Who it is for
 
@@ -26,6 +26,7 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 - ZapGram → ZapGram transfers: free
 - External Lightning: network fees as usual
 - Paid-chat owner payouts on the hosted bot: small platform fee (default 5%)
+- [Machine-readable pricing](https://zapgram.mozharov.me/pricing.md): structured fee summary for agents
 
 ## Key facts
 
@@ -34,8 +35,9 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 - Languages: bot UI Russian + English; marketing site EN (canonical) + RU
 - License: MIT open source; self-host available, hosted bot is the primary product
 
-## Optional reading
+## Optional
 
-- Features and FAQ: https://zapgram.mozharov.me/#features · https://zapgram.mozharov.me/#faq
-- Pricing summary: https://zapgram.mozharov.me/pricing.md
-- NWC protocol: https://nwc.dev/
+- [Features](https://zapgram.mozharov.me/#features): product feature list on the landing page
+- [FAQ](https://zapgram.mozharov.me/#faq): common questions and answers
+- [How it works](https://zapgram.mozharov.me/#how): step-by-step product walkthrough
+- [NWC protocol](https://nwc.dev/): Nostr Wallet Connect specification
