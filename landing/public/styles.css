@@ -1293,18 +1293,18 @@ code.inline {
  *
  * Outline (header + mid-page): official TG logo + short visible
  *   "Start Bot" / "Открыть в TG"; HTML long name for a11y; no offset shadow.
- *   Asset: landing/assets/telegram-logo.svg
+ *   Asset: assets/telegram-logo.svg
  */
 
 /* Hero / final: real HTML label + mono plane */
-.hero a.btn[href="https://t.me/zap_gram_bot"] .btn__icon,
-.final a.btn[href="https://t.me/zap_gram_bot"] .btn__icon {
+.hero a.btn .btn__icon,
+.final a.btn .btn__icon {
   color: inherit;
 }
 
 /* Compact outline only: header + mid-page */
-a.header-cta[href="https://t.me/zap_gram_bot"],
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"] {
+a.header-cta,
+.mid-cta a.btn {
   gap: 0.35rem;
   font-size: 0 !important;
   background: transparent;
@@ -1314,13 +1314,13 @@ a.header-cta[href="https://t.me/zap_gram_bot"],
   transform: none;
 }
 
-a.header-cta[href="https://t.me/zap_gram_bot"] .btn__icon,
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"] .btn__icon {
+a.header-cta .btn__icon,
+.mid-cta a.btn .btn__icon {
   display: none;
 }
 
-a.header-cta[href="https://t.me/zap_gram_bot"]::before,
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"]::before {
+a.header-cta::before,
+.mid-cta a.btn::before {
   content: "";
   width: 1.15rem;
   height: 1.15rem;
@@ -1328,21 +1328,21 @@ a.header-cta[href="https://t.me/zap_gram_bot"]::before,
   background: url("assets/telegram-logo.svg") center / contain no-repeat;
 }
 
-a.header-cta[href="https://t.me/zap_gram_bot"]::after,
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"]::after {
+a.header-cta::after,
+.mid-cta a.btn::after {
   content: "Start Bot";
   color: var(--signal);
   font: 600 0.9375rem/1 var(--font-display);
   letter-spacing: -0.01em;
 }
 
-html[lang="ru"] a.header-cta[href="https://t.me/zap_gram_bot"]::after,
-html[lang="ru"] .mid-cta a.btn[href="https://t.me/zap_gram_bot"]::after {
+html[lang="ru"] a.header-cta::after,
+html[lang="ru"] .mid-cta a.btn::after {
   content: "Открыть в TG";
 }
 
-a.header-cta[href="https://t.me/zap_gram_bot"]:hover,
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"]:hover {
+a.header-cta:hover,
+.mid-cta a.btn:hover {
   background: color-mix(in srgb, var(--signal) 10%, transparent);
   color: var(--signal);
   border-color: var(--signal);
@@ -1350,8 +1350,8 @@ a.header-cta[href="https://t.me/zap_gram_bot"]:hover,
   transform: none;
 }
 
-a.header-cta[href="https://t.me/zap_gram_bot"]:active,
-.mid-cta a.btn[href="https://t.me/zap_gram_bot"]:active {
+a.header-cta:active,
+.mid-cta a.btn:active {
   background: color-mix(in srgb, var(--signal) 14%, transparent);
   box-shadow: none;
   transform: none;
