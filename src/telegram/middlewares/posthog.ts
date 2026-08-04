@@ -16,12 +16,14 @@ import {
 /**
  * PostHog context + one interaction event per bot-relevant update.
  * Event name is derived from the action (command_*, callback_*, …), not a flat telegram_update.
- * Person profile fields go on the event as `$set` / `$set_once` (no separate identify).
- * Chat group entities are updated only in chat mutation handlers via setTelegramChatGroup.
  *
- * Display consistency: Telegram `name` / `$name` are applied before handlers run and also
- * put on the request context so every capture in this update (join request, exception, …)
- * carries the same person label. Name wins over bare distinct_id in the PostHog UI.
+ * Person profile fields piggyback as `$set` / `$set_once` on real captures — never via
+ * `setPersonProperties()` / `$set` events, which clutter Activity with "Set person properties"
+ * on every update (same pattern as to-notion-bot Tracker).
+ *
+ * Telegram person fields also sit on withContext so mid-update handler captures inherit a
+ * display name without a dedicated identify. Chat group entities are updated only in chat
+ * mutation handlers via setTelegramChatGroup.
  */
 export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
   const {posthog} = getRuntime()
@@ -38,15 +40,6 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
       ...(personFromTg ? {properties: personFromTg} : {}),
     },
     async () => {
-      // Profile first so handler events in the same batch already have a display name.
-      if (distinctId && personFromTg?.$set) {
-        posthog.setPersonProperties({
-          distinctId,
-          properties: personFromTg.$set,
-          propertiesOnce: personFromTg.$set_once ?? {},
-        })
-      }
-
       try {
         return await next()
       } catch (error) {
