@@ -13,6 +13,12 @@ landing/
     ru/404.html            # RU noindex error page
     styles.css
     assets/logo.svg          # ZapGram mark (edit in place only)
+    assets/favicon.svg       # tab icon (fixed-size logo)
+    assets/favicon.ico       # multi-size ICO (16 + 32)
+    assets/favicon-16.png    # 16×16 PNG
+    assets/favicon-32.png    # 32×32 PNG
+    assets/apple-touch-icon.png  # 180×180 iOS home screen
+    favicon.ico              # root copy for /favicon.ico probes
     assets/telegram-logo.svg # official Telegram logo (telegram.org)
     assets/og-card.html      # OG EN source
     assets/og-card-ru.html   # OG RU source
@@ -71,6 +77,23 @@ Both locales ship an `@graph` with:
 ## Brand
 
 Logo: `public/assets/logo.svg` only — owner-edited; no separate brand folder; CSS must not invert/outline the mark.
+
+## Favicons
+
+Derived from `logo.svg` (do not redesign the mark):
+
+| File | Use |
+|---|---|
+| `assets/favicon.svg` | modern browsers |
+| `assets/favicon.ico` + root `favicon.ico` | legacy / auto `/favicon.ico` |
+| `assets/favicon-16.png` / `favicon-32.png` | PNG fallbacks |
+| `assets/apple-touch-icon.png` | iOS home screen (180×180) |
+
+After editing the logo:
+
+```bash
+bun landing/scripts/render-favicon.mjs
+```
 
 ## Open Graph images
 
