@@ -114,6 +114,13 @@ test('a finished invoice is one pending row, one LNbits invoice and one QR photo
   // The default expiry is a day, and it is LNbits that decides it: the row stores what came back.
   expect(hoursFromNow(row.expiresAt)).toBeGreaterThan(23)
   expect(hoursFromNow(row.expiresAt)).toBeLessThan(25)
+  // Instant notify path: createInvoice must register an LNbits webhook for this host.
+  const createBody = e2e.ln.requests.find(
+    r => r.method === 'POST' && r.path === '/api/v1/payments' && bodyOutFalse(r.body),
+  )?.body as Record<string, unknown> | undefined
+  expect(createBody?.webhook).toBe(
+    `https://test.local/lnbits/webhook/${e2e.container.config.BOT_WEBHOOK_SECRET}`,
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -630,6 +637,10 @@ async function onlyPendingInvoice() {
 function hoursFromNow(date: Date | null): number {
   if (!date) throw new Error('Expected an expiry date')
   return (date.getTime() - Date.now()) / (60 * 60 * 1000)
+}
+
+function bodyOutFalse(body: unknown): boolean {
+  return Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === false)
 }
 
 function errorMessages(): string[] {

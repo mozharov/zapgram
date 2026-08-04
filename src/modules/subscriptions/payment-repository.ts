@@ -315,6 +315,12 @@ export function createSubscriptionPaymentRepository(database: AppDatabase) {
         where: eq(subscriptionPaymentsTable.id, id),
       })
     },
+
+    async findByPaymentHash(paymentHash: SubscriptionPayment['paymentHash']) {
+      return database.query.subscriptionPaymentsTable.findFirst({
+        where: eq(subscriptionPaymentsTable.paymentHash, paymentHash),
+      })
+    },
   }
 }
 
@@ -344,3 +350,5 @@ export const deleteSubscriptionPayment = (id: SubscriptionPayment['id']) =>
   getRuntime().payments.delete(id)
 export const getSubscriptionPayment = (id: SubscriptionPayment['id']) =>
   getRuntime().payments.findById(id)
+export const getSubscriptionPaymentByHash = (paymentHash: SubscriptionPayment['paymentHash']) =>
+  getRuntime().payments.findByPaymentHash(paymentHash)

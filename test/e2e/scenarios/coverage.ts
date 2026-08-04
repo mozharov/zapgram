@@ -67,7 +67,7 @@ export const scenarioCoverage = {
     routes: [],
     commands: ['/wallet'],
     updates: ['message', 'hears'],
-    writes: ['users.insert'],
+    writes: ['users.insert', 'pending_invoices.insert', 'pending_invoices.delete'],
     jobs: [],
     errors: ['invoice_parsing'],
   },

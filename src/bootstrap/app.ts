@@ -3,6 +3,10 @@ import type {AppContainer} from '@bootstrap/container.js'
 import {startServer} from '@http/app.js'
 import {deleteWebhook} from '@infra/telegram/webhook.js'
 import {createScheduler, defaultJobDefinitions, type Scheduler} from '@jobs/scheduler.js'
+import {
+  extractPaymentHashFromLnbitsWebhook,
+  handleLnbitsPaymentWebhook,
+} from '@modules/lnbits-webhook/handle-payment-webhook.js'
 import {registerHandlers} from '@telegram/composition.js'
 
 export type RunningApp = {
@@ -31,21 +35,32 @@ export function createApp(container: AppContainer): RunningApp {
     async start() {
       await new Promise<void>((resolve, reject) => {
         // BotContext is a Context flavor; cast for the HTTP layer which is flavor-agnostic.
-        server = startServer({bot: bot as never, config, log}, () => {
-          bot
-            .init()
-            .then(async () => {
-              if (config.CONFIGURE_BOT) {
-                await configureBot({bot: bot as never, config, log})
-              }
-              scheduler.start()
-              resolve()
-            })
-            .catch((error: unknown) => {
-              log.error({error}, 'Failed to configure bot')
-              reject(error)
-            })
-        })
+        server = startServer(
+          {
+            bot: bot as never,
+            config,
+            log,
+            lnbitsPaymentWebhook: {
+              extractPaymentHash: extractPaymentHashFromLnbitsWebhook,
+              handle: handleLnbitsPaymentWebhook,
+            },
+          },
+          () => {
+            bot
+              .init()
+              .then(async () => {
+                if (config.CONFIGURE_BOT) {
+                  await configureBot({bot: bot as never, config, log})
+                }
+                scheduler.start()
+                resolve()
+              })
+              .catch((error: unknown) => {
+                log.error({error}, 'Failed to configure bot')
+                reject(error)
+              })
+          },
+        )
       })
     },
 

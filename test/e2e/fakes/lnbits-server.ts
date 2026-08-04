@@ -142,11 +142,13 @@ function route({
       if (typeof amount !== 'number') return json({detail: 'amount is required'}, 400)
       const memo = bodyValue(body, 'memo')
       const expiry = bodyValue(body, 'expiry')
+      const webhook = bodyValue(body, 'webhook')
       const payment = state.createInvoice({
         wallet,
         sats: amount,
         memo: typeof memo === 'string' ? memo : '',
         expirySec: typeof expiry === 'number' ? expiry : 60 * 60,
+        webhook: typeof webhook === 'string' ? webhook : undefined,
       })
       return json(paymentResponse(payment))
     }
@@ -202,6 +204,7 @@ function paymentResponse(
     status: payment.paid ? 'success' : 'pending',
     memo: payment.memo,
     expiry: payment.expiresAt.toISOString(),
+    webhook: payment.webhook ?? null,
     preimage: payment.paid ? '00'.repeat(32) : null,
     time: timestamp,
     created_at: timestamp,

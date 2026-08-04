@@ -24,6 +24,7 @@ export type FakePayment = {
   feeMsat: number
   expiresAt: Date
   memo: string
+  webhook?: string
 }
 
 export type FakeUser = {
@@ -121,11 +122,13 @@ export class LnbitsState {
     sats,
     memo,
     expirySec,
+    webhook,
   }: {
     wallet: FakeWallet
     sats: number
     memo: string
     expirySec: number
+    webhook?: string
   }): FakePayment {
     const minted = mintInvoice({sats, description: memo, expirySec})
     const payment: FakePayment = {
@@ -138,6 +141,7 @@ export class LnbitsState {
       feeMsat: 0,
       expiresAt: new Date(Date.now() + expirySec * 1000),
       memo,
+      webhook,
     }
     this.payments.push(payment)
     return payment

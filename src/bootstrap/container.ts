@@ -1,4 +1,5 @@
 import {type AppConfig, createConfig} from '@config'
+import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
@@ -103,11 +104,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const invoices = createInvoiceRepository(db)
   const conversations = createConversationRepository(db)
   const grantAccess = createGrantSubscriptionAccess(db, log)
+  const paymentWebhookUrl = buildLnbitsPaymentWebhookUrl(config.HOST, config.BOT_WEBHOOK_SECRET)
   const getUserWallet = createUserWalletFactory({
     masterWallet,
     baseUrl: config.LNBITS_URL,
     memoFooter: config.memoFooter,
     log,
+    paymentWebhookUrl,
   })
 
   const settleService = createSettleService({

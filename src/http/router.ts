@@ -1,3 +1,4 @@
+import {timingSafeEqual} from 'node:crypto'
 import type {AppConfig} from '@config'
 import type {AppLogger} from '@infra/logger.js'
 import {Elysia} from 'elysia'
@@ -9,7 +10,17 @@ type LoggerWithChild = AppLogger & {
   child: (bindings: Record<string, unknown>) => AppLogger
 }
 
-export function createRouter(deps: {bot: Bot<Context>; config: AppConfig; log: LoggerWithChild}) {
+export type LnbitsPaymentWebhook = {
+  extractPaymentHash: (body: unknown) => string | undefined
+  handle: (paymentHash: string) => Promise<unknown>
+}
+
+export function createRouter(deps: {
+  bot: Bot<Context>
+  config: AppConfig
+  log: LoggerWithChild
+  lnbitsPaymentWebhook?: LnbitsPaymentWebhook
+}) {
   const telegramWebhook = webhookCallback(deps.bot as Bot, 'elysia', {
     secretToken: deps.config.BOT_WEBHOOK_SECRET,
     timeoutMilliseconds: 30_000,
@@ -28,4 +39,36 @@ export function createRouter(deps: {bot: Bot<Context>; config: AppConfig; log: L
       }
       return telegramWebhook(ctx)
     })
+    .post('/lnbits/webhook/:secret', async ctx => {
+      if (!deps.lnbitsPaymentWebhook) {
+        ctx.set.status = 503
+        return {ok: false, error: 'webhook_unconfigured'}
+      }
+      if (!secretsMatch(ctx.params.secret, deps.config.BOT_WEBHOOK_SECRET)) {
+        ctx.set.status = 401
+        return {ok: false, error: 'unauthorized'}
+      }
+
+      const paymentHash = deps.lnbitsPaymentWebhook.extractPaymentHash(ctx.body)
+      if (!paymentHash) {
+        ctx.set.status = 400
+        return {ok: false, error: 'missing_payment_hash'}
+      }
+
+      try {
+        const result = await deps.lnbitsPaymentWebhook.handle(paymentHash)
+        return {ok: true, result}
+      } catch (error) {
+        // 200 so LNbits does not hammer retries on our business failures — cron is the safety net.
+        deps.log.error({error, paymentHash}, 'LNbits payment webhook handler failed')
+        return {ok: false, error: 'handler_failed'}
+      }
+    })
+}
+
+function secretsMatch(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }

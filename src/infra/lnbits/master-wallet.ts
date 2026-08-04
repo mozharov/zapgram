@@ -1,5 +1,6 @@
 import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
+import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {
   healthResponseSchema,
@@ -13,21 +14,25 @@ import {
 class MasterWallet extends LNBitsAPI {
   private readonly bearerToken?: string
   private readonly feeCollectionInvoiceKey: string
+  private readonly paymentWebhookUrl?: string
 
   constructor({
     baseUrl,
     adminKey,
     bearerToken,
     feeCollectionInvoiceKey,
+    paymentWebhookUrl,
   }: {
     baseUrl: string
     adminKey?: string
     bearerToken?: string
     feeCollectionInvoiceKey: string
+    paymentWebhookUrl?: string
   }) {
     super({baseUrl, adminKey})
     this.bearerToken = bearerToken
     this.feeCollectionInvoiceKey = feeCollectionInvoiceKey
+    this.paymentWebhookUrl = paymentWebhookUrl
   }
 
   private getAuthHeaders() {
@@ -79,6 +84,7 @@ class MasterWallet extends LNBitsAPI {
         amount: sats,
         unit: 'sat',
         expiry,
+        ...(this.paymentWebhookUrl ? {webhook: this.paymentWebhookUrl} : {}),
       }),
     }).catch((error: unknown) => {
       throw new InvoiceGenerationError({cause: error})
@@ -118,5 +124,6 @@ export function createMasterWallet(cfg: AppConfig): MasterWallet {
     adminKey: cfg.LNBITS_ADMIN_KEY,
     bearerToken: cfg.LNBITS_BEARER_TOKEN,
     feeCollectionInvoiceKey: cfg.LNBITS_FEE_COLLECTION_INVOICE_KEY,
+    paymentWebhookUrl: buildLnbitsPaymentWebhookUrl(cfg.HOST, cfg.BOT_WEBHOOK_SECRET),
   })
 }

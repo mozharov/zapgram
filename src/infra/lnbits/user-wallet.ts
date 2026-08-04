@@ -19,6 +19,7 @@ export class UserWallet extends LNBitsAPI {
   /** Balance in millisatoshis */
   public readonly balance: number
   private readonly memoFooter: string
+  private readonly paymentWebhookUrl?: string
 
   constructor(
     adminKey: string,
@@ -26,10 +27,12 @@ export class UserWallet extends LNBitsAPI {
     baseUrl: string,
     memoFooter = '',
     log?: AppLogger,
+    paymentWebhookUrl?: string,
   ) {
     super({baseUrl, adminKey, log})
     this.balance = balance
     this.memoFooter = memoFooter
+    this.paymentWebhookUrl = paymentWebhookUrl
   }
 
   /**
@@ -44,6 +47,7 @@ export class UserWallet extends LNBitsAPI {
         unit: 'sat',
         expiry,
         memo: buildInvoiceMemo(memo, this.memoFooter),
+        ...(this.paymentWebhookUrl ? {webhook: this.paymentWebhookUrl} : {}),
       }),
     }).catch((error: unknown) => {
       this.log?.error({error}, 'Error creating invoice')

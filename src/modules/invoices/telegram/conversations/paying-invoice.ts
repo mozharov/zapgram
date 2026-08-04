@@ -1,8 +1,11 @@
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {msatsToSats} from '@core/money/sats.js'
-import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
-import {deletePendingInvoice, getPendingInvoiceBy} from '@modules/invoices/repository.js'
+import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
+import {
+  claimPendingInvoiceByPaymentRequest,
+  getPendingInvoiceBy,
+} from '@modules/invoices/repository.js'
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
@@ -25,6 +28,11 @@ export async function payingInvoice(
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 
+  // Snapshot before pay: a concurrent LNbits webhook may claim the row the instant pay settles.
+  const isInternalRecipient = Boolean(
+    await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest}),
+  )
+
   let feesPaid = 0
   if (isInternalWallet) {
     const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
@@ -36,15 +44,11 @@ export async function payingInvoice(
     feesPaid = lookupResponse.fees_paid
   }
 
-  const internalInvoice = await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest})
-  if (internalInvoice) {
-    await deletePendingInvoice(internalInvoice.paymentRequest)
-    await notifyInvoicePaid(internalInvoice.paymentRequest, internalInvoice.userId).catch(
-      (error: unknown) => {
-        ctx.log.error({error}, 'Failed to notify user about paid invoice')
-      },
-    )
-  }
+  // Claim-or-skip: webhook / cron may already have notified the recipient.
+  await claimAndNotifyPaidInvoice(
+    () => claimPendingInvoiceByPaymentRequest(invoice.paymentRequest),
+    'internal_pay',
+  )
 
   getRuntime().posthog?.capture({
     event: 'invoice_paid',
@@ -52,7 +56,7 @@ export async function payingInvoice(
       amount_sats: invoice.satoshi,
       fee_sats: msatsToSats(feesPaid),
       wallet_type: wallet,
-      is_internal_recipient: Boolean(internalInvoice),
+      is_internal_recipient: isInternalRecipient,
     },
   })
 

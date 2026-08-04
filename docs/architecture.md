@@ -21,7 +21,7 @@ runtime   → bootstrap types (handle set by bootstrap)
 | `src/infra/` | Adapters: SQLite, LNbits HTTP, NWC, Telegram Bot shell, logger, tunnel. |
 | `src/modules/` | Vertical slices (wallet, invoices, chats, subscriptions, tipping). |
 | `src/telegram/` | grammY presentation: context, composition, middlewares, i18n, callback-data. |
-| `src/http/` | Elysia webhook + health route. |
+| `src/http/` | Elysia routes: Telegram webhook, LNbits payment webhook, health. |
 | `src/jobs/` | Batch runner + cron scheduler. |
 | `src/bootstrap/` | Composition root: container, createApp, configureBot. |
 | `src/runtime.ts` | Process-wide handle published by bootstrap for leaf handlers/jobs. |
@@ -63,9 +63,16 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 ## Money path (subscriptions)
 
 1. Invoice paid → `subscription_payments` row exists.
-2. `settleService.complete` → grant access (idempotent via `settledAt`) → pay owner → fee → notify → delete row.
-3. Failures leave the row; cron retries with `MAX_SETTLE_ATTEMPTS` budget.
-4. Auto-renew: create row → charge balance → `complete` (same settle path).
+2. Detection is push-first: LNbits POSTs `${HOST}/lnbits/webhook/${BOT_WEBHOOK_SECRET}` (secret in path). Cron (`check-subscription-payments`) is the fallback.
+3. `settleService.complete` → grant access (idempotent via `settledAt`) → pay owner → fee → notify → complete row.
+4. Failures leave the row; cron retries with `MAX_SETTLE_ATTEMPTS` budget.
+5. Auto-renew: create row → charge balance → `complete` (same settle path).
+
+## Money path (receive invoices)
+
+1. User mint → `pending_invoices` row + LNbits invoice created with the same payment webhook URL.
+2. Paid → claim row (delete returning) then notify. Claim is shared by LNbits webhook, internal bot pay (`paying-invoice`), and `check-pending-invoices` cron so internal→internal cannot double-notify.
+3. Tips/transfers mint invoices without a pending row; they notify via their own path (`notifySatsReceived`). A webhook for those hashes is a no-op.
 
 ## Callback data
 

@@ -507,7 +507,13 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
     {
       method: 'POST',
       path: '/api/v1/payments',
-      body: {out: false, amount: price, unit: 'sat', expiry: DAY_SECONDS},
+      body: {
+        out: false,
+        amount: price,
+        unit: 'sat',
+        expiry: DAY_SECONDS,
+        webhook: `https://test.local/lnbits/webhook/${e2e.container.config.BOT_WEBHOOK_SECRET}`,
+      },
     },
   ])
 

@@ -33,6 +33,26 @@ export function createInvoiceRepository(database: AppDatabase) {
         .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
     },
 
+    /**
+     * Atomically claim a pending invoice for notification. Only one of webhook / internal pay /
+     * cron wins the row; the rest get `undefined` and must not notify again.
+     */
+    async claimByPaymentRequest(paymentRequest: PendingInvoice['paymentRequest']) {
+      return database
+        .delete(pendingInvoicesTable)
+        .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
+        .returning()
+        .then(rows => rows[0])
+    },
+
+    async claimByPaymentHash(paymentHash: PendingInvoice['paymentHash']) {
+      return database
+        .delete(pendingInvoicesTable)
+        .where(eq(pendingInvoicesTable.paymentHash, paymentHash))
+        .returning()
+        .then(rows => rows[0])
+    },
+
     async list(limit?: number, offset?: number) {
       return database.query.pendingInvoicesTable.findMany({
         limit,
@@ -70,6 +90,11 @@ export const getPendingInvoiceBy = (criteria: {
 }
 export const deletePendingInvoice = (paymentRequest: PendingInvoice['paymentRequest']) =>
   getRuntime().invoices.deleteByPaymentRequest(paymentRequest)
+export const claimPendingInvoiceByPaymentRequest = (
+  paymentRequest: PendingInvoice['paymentRequest'],
+) => getRuntime().invoices.claimByPaymentRequest(paymentRequest)
+export const claimPendingInvoiceByPaymentHash = (paymentHash: PendingInvoice['paymentHash']) =>
+  getRuntime().invoices.claimByPaymentHash(paymentHash)
 export const getPendingInvoices = (limit?: number, offset?: number) =>
   getRuntime().invoices.list(limit, offset)
 export const countPendingInvoices = () => getRuntime().invoices.count()

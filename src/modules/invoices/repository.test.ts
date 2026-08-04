@@ -38,4 +38,24 @@ describe('invoice repository', () => {
     expect(await invoices.findByPaymentRequest('lnbc-live')).toBeDefined()
     expect(await invoices.findByPaymentRequest('lnbc-expired')).toBeUndefined()
   })
+
+  test('claimByPaymentHash returns the row once and null on a second claim', async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    const invoices = createInvoiceRepository(db)
+    await users.createOrUpdate({id: 1, languageCode: 'en'})
+
+    await invoices.create({
+      paymentRequest: 'lnbc-claim',
+      paymentHash: 'h-claim',
+      userId: 1,
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+
+    const first = await invoices.claimByPaymentHash('h-claim')
+    expect(first).toMatchObject({paymentRequest: 'lnbc-claim', paymentHash: 'h-claim', userId: 1})
+    expect(await invoices.claimByPaymentHash('h-claim')).toBeUndefined()
+    expect(await invoices.claimByPaymentRequest('lnbc-claim')).toBeUndefined()
+    expect(await invoices.count()).toBe(0)
+  })
 })

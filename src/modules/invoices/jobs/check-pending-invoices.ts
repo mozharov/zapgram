@@ -1,8 +1,8 @@
-import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
-import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
+import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
 import {
+  claimPendingInvoiceByPaymentHash,
   countPendingInvoices,
   deletePendingInvoice,
   getPendingInvoices,
@@ -24,23 +24,11 @@ export async function checkPendingInvoices(): Promise<void> {
           const payment = await wallet.lookupPayment(invoice.paymentHash)
 
           if (payment.paid) {
-            await notifyInvoicePaid(invoice.paymentRequest, invoice.userId).catch(
-              (error: unknown) => {
-                getRuntime().log.error({error}, 'Failed to notify user about paid invoice')
-              },
+            // Claim first so a concurrent webhook / internal-pay path cannot double-notify.
+            await claimAndNotifyPaidInvoice(
+              () => claimPendingInvoiceByPaymentHash(invoice.paymentHash),
+              'pending_invoice_job',
             )
-            await deletePendingInvoice(invoice.paymentRequest)
-            let amountSats: number | undefined
-            try {
-              amountSats = decodeInvoice(invoice.paymentRequest).satoshi
-            } catch {
-              // Analytics only — a bad bolt11 must not leave a paid row stuck.
-            }
-            captureUserEvent(getRuntime().posthog, 'invoice_received', invoice.userId, {
-              payment_hash: invoice.paymentHash,
-              amount_sats: amountSats ?? null,
-              source: 'pending_invoice_job',
-            })
             return 'done'
           }
           return 'keep'

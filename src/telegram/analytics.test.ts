@@ -137,9 +137,9 @@ describe('resolveCallbackEventName', () => {
     expect(resolveCallbackEventName('pay-sub:abc-def:wallet')).toBe('callback_pay_subscription')
     expect(resolveCallbackEventName('chat:-100:on-paid')).toBe('callback_chat_paid_access')
     expect(resolveCallbackEventName('chat:-100:turn-monthly')).toBe('callback_chat_payment_type')
-    expect(resolveCallbackEventName('subscription:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:renew')).toBe(
-      'callback_subscription_renew',
-    )
+    expect(
+      resolveCallbackEventName('subscription:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:renew'),
+    ).toBe('callback_subscription_renew')
     expect(resolveCallbackEventName('chats:2')).toBe('callback_chats_page')
   })
 

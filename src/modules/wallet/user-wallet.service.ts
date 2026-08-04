@@ -9,6 +9,8 @@ export function createUserWalletFactory(deps: {
   baseUrl: string
   memoFooter: string
   log?: AppLogger
+  /** When set, every user invoice is created with an LNbits payment webhook. */
+  paymentWebhookUrl?: string
 }) {
   return async function getUserWallet(userId: User['id']) {
     const user =
@@ -26,6 +28,7 @@ export function createUserWalletFactory(deps: {
       deps.baseUrl,
       deps.memoFooter,
       deps.log,
+      deps.paymentWebhookUrl,
     )
   }
 }
