@@ -27,6 +27,9 @@ services:
       LNBITS_BEARER_TOKEN: ${LNBITS_BEARER_TOKEN:-}
       SUBSCRIPTION_FEE_PERCENT: ${SUBSCRIPTION_FEE_PERCENT:-0.05}
       CONFIGURE_BOT: ${CONFIGURE_BOT:-true}
+      # Optional analytics: omit POSTHOG_PROJECT_TOKEN to disable
+      POSTHOG_PROJECT_TOKEN: ${POSTHOG_PROJECT_TOKEN:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
     volumes:
       - bot-data:/app/data
     expose:
@@ -100,6 +103,10 @@ services:
     build:
       context: ./landing
       dockerfile: Dockerfile
+      args:
+        # Same public PostHog project token as the bot (frontend key by design)
+        POSTHOG_PROJECT_TOKEN: ${POSTHOG_PROJECT_TOKEN:-}
+        POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]

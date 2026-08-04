@@ -10,7 +10,7 @@ const container = await (async () => {
   }
 })()
 
-const {log} = container
+const {log, posthog} = container
 const app = createApp(container)
 
 let shuttingDown = false
@@ -29,9 +29,11 @@ async function shutdown(signal: string) {
 
   try {
     await app.stop()
+    await posthog?.shutdown()
     process.exit(0)
   } catch (error) {
     log.error({error}, 'Failed to shut down cleanly')
+    await posthog?.shutdown()
     process.exit(1)
   }
 }

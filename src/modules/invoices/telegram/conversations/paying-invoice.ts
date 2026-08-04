@@ -8,6 +8,7 @@ import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {getRuntime} from '../../../../runtime.js'
 
 export async function payingInvoice(
   conversation: BotConversation,
@@ -44,6 +45,16 @@ export async function payingInvoice(
       },
     )
   }
+
+  getRuntime().posthog?.capture({
+    event: 'invoice_paid',
+    properties: {
+      amount_sats: invoice.satoshi,
+      fee_sats: msatsToSats(feesPaid),
+      wallet_type: wallet,
+      is_internal_recipient: Boolean(internalInvoice),
+    },
+  })
 
   await ctx.reply(
     ctx.t('paying-invoice.paid', {

@@ -21,6 +21,15 @@ export const envSchema = z.object({
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
   HOST: z.string().min(1),
   CONFIGURE_BOT: z.stringbool().default(true), // should call configureBot() on startup
+  // Empty string from compose `${VAR:-}` means disabled / use compose default host only.
+  POSTHOG_PROJECT_TOKEN: z.preprocess(
+    v => (v === '' || v === undefined ? undefined : v),
+    z.string().min(1).optional(),
+  ),
+  POSTHOG_HOST: z.preprocess(
+    v => (v === '' || v === undefined ? undefined : v),
+    z.url().optional(),
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -24,20 +24,22 @@ import {conversations} from '@telegram/middlewares/conversations.js'
 import {i18n} from '@telegram/middlewares/i18n.js'
 import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
 import {logger} from '@telegram/middlewares/logger.js'
+import {posthogMiddleware} from '@telegram/middlewares/posthog.js'
 import type {Bot} from 'grammy'
 
 export const shellCommands = ['start', 'help'] as const
 
 /**
  * Registers all grammY middleware and feature modules.
- * Order is load-bearing: errorBoundary → conversations storage → logger → i18n,
+ * Order is load-bearing: errorBoundary → logger → posthog → conversations → i18n,
  * then shared private middleware, all createConversation plugins (before any command),
  * feature registers, then terminal handlers (unknownCallback before on('message')).
  */
 export function registerHandlers(bot: Bot<BotContext>): void {
   const composer = bot.errorBoundary(errorHandler)
-  composer.use(conversations)
   composer.use(logger)
+  composer.use(posthogMiddleware)
+  composer.use(conversations)
   composer.use(i18n)
 
   const privateChat = composer.chatType('private')

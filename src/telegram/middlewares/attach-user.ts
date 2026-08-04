@@ -16,10 +16,11 @@ export const attachUser: Middleware<Context> = async (ctx, next) => {
     languageCode: normalizeTelegramLanguageCode(ctx.from.language_code),
     firstName: ctx.from.first_name,
   })
+  const {config, log} = getRuntime()
   if (ctx.user.nwcUrl) {
-    const {config, log} = getRuntime()
     ctx.user.nwc = new NostrWallet(ctx.user.nwcUrl, config.memoFooter, log)
   }
+
   return next()
 }
 

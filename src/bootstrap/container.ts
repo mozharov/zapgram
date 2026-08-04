@@ -3,6 +3,7 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
+import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
 import {type ChatRepository, createChatRepository} from '@modules/chats/repository.js'
 import {
@@ -43,6 +44,7 @@ const INVOICE_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 export type AppContainer = {
   config: AppConfig
   log: AppLogger & pino.Logger
+  posthog: ReturnType<typeof createPostHog>
   db: AppDatabase
   bot: Bot<BotContext>
   masterWallet: MasterWalletInstance
@@ -68,6 +70,7 @@ export type AppContainer = {
 export async function createContainer(env: NodeJS.ProcessEnv = process.env): Promise<AppContainer> {
   const config = createConfig(env)
   const log = createLogger(config) as AppLogger & pino.Logger
+  const posthog = createPostHog(config)
 
   const db = createDb(config.DB_URL)
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
@@ -146,6 +149,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const container: AppContainer = {
     config,
     log,
+    posthog,
     db,
     bot,
     masterWallet,

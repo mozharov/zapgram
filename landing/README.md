@@ -86,3 +86,21 @@ Requires Playwright Chromium in `~/Library/Caches/ms-playwright` (or `CHROME_PAT
 
 Primary: https://t.me/zap_gram_bot  
 Secondary: https://github.com/mozharov/zapgram
+
+## Analytics (PostHog)
+
+Optional. Same `POSTHOG_PROJECT_TOKEN` / `POSTHOG_HOST` as the bot (compose build args). Empty / unreplaced token disables PostHog only.
+
+Speed model (critical path stays free of PostHog):
+
+1. Deferred `/assets/analytics.js` rewrites bot CTAs locally (`?start=lp_<visitor_id>` from `localStorage`) — no network.
+2. After `window.load` + `requestIdleCallback`, loads the official PostHog snippet + `array.js` (pageviews / `landing_cta_click`).
+3. Bot `/start` aliases that id onto the Telegram user and captures `bot_started` with `from_landing`.
+
+Session replay and feature flags stay off on the landing; autocapture is on.
+
+Rebuild the landing image after changing the token:
+
+```bash
+docker compose build landing
+```

@@ -6,6 +6,7 @@ import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
+import {getRuntime} from '../../../../runtime.js'
 
 export async function connectingNWC(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('nwc.connecting'))
@@ -27,6 +28,13 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
     throw new NWCConnectionError()
   })
   await updateUser(ctx.user.id, {nwcUrl})
+  const {posthog} = getRuntime()
+  posthog?.capture({
+    event: 'wallet_connected',
+    properties: {
+      $set: {nwc_connected: true},
+    },
+  })
   await ctx.reply(ctx.t('nwc.connected'))
 
   ctx.user.nwcUrl = nwcUrl

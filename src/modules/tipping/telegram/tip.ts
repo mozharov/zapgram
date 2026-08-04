@@ -8,10 +8,12 @@ import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {getOrCreateUser, getUserByUsername} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getUserFromChatCreator} from '@telegram/helpers/chat-creator.js'
 import {replyWithTempMessage} from '@telegram/helpers/temp-message.js'
 import type {ChatTypeContext} from 'grammy'
+import {getRuntime} from '../../../runtime.js'
 
 type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
 
@@ -39,6 +41,20 @@ export const tipCommand = async (ctx: Context) => {
   const replyTo = ctx.message.reply_to_message
   const toChatCreator = (!username && !replyTo) || !!replyTo?.sender_chat
   const toMessageId = replyTo?.message_id
+
+  captureBotEvent(
+    getRuntime().posthog,
+    'tip_sent',
+    {
+      amount_sats: sats,
+      payment_method: ctx.user.nwcTips && ctx.user.nwc ? 'nwc' : 'internal',
+      recipient_id: toUser.id,
+      recipient_username: toUser.username ?? null,
+      to_chat_creator: toChatCreator,
+      has_reply: Boolean(toMessageId),
+    },
+    {chatId: ctx.chat.id},
+  )
 
   await notifyGroupTip(ctx, toUser, sats, toMessageId, toChatCreator)
   await notifySatsReceived(toUser.id, sats, ctx.from.username)

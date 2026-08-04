@@ -3,6 +3,7 @@ import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import type {ChatTypeContext} from 'grammy'
 import type {ChatJoinRequest} from 'grammy/types'
@@ -19,8 +20,35 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
   const chat = await getChat({id: tgChat.id})
   if (chat?.status !== 'active') return
 
+  const {posthog} = getRuntime()
+
   const subscription = await getSubscriptionByUserAndChat(ctx.user.id, chat.id)
-  if (subscription) return ctx.approveChatJoinRequest(ctx.user.id)
+  if (subscription) {
+    captureBotEvent(
+      posthog,
+      'chat_join_request_auto_approved',
+      {
+        chat_title: chat.title,
+        chat_type: chat.type,
+        payment_type: chat.paymentType,
+        has_active_subscription: true,
+      },
+      {chatId: chat.id},
+    )
+    return ctx.approveChatJoinRequest(ctx.user.id)
+  }
+  captureBotEvent(
+    posthog,
+    'chat_join_request_received',
+    {
+      chat_title: chat.title,
+      chat_type: chat.type,
+      payment_type: chat.paymentType,
+      price_sats: chat.price,
+      has_active_subscription: false,
+    },
+    {chatId: chat.id},
+  )
   return replyWithSubscriptionInvoice(ctx, chat)
 }
 

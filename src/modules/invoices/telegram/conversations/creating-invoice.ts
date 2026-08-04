@@ -19,6 +19,14 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   const memo = await waitForMemo(conversation, ctx)
   await ctx.replyWithChatAction('typing')
   const paymentRequest = await createInvoice(ctx, wallet, sats, memo)
+  getRuntime().posthog?.capture({
+    event: 'invoice_created',
+    properties: {
+      amount_sats: sats,
+      wallet_type: wallet,
+      memo,
+    },
+  })
   await replyWithQRCode(ctx, paymentRequest)
   await replyWithWallet(ctx)
 }

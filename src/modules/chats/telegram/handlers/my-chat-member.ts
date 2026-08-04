@@ -2,6 +2,7 @@ import {sleep} from '@core/utils/sleep.js'
 import type {User} from '@infra/db/types.js'
 import {createOrUpdateChat, getChat, updateChat} from '@modules/chats/repository.js'
 import {getOrCreateUser} from '@modules/users/repository.js'
+import {captureBotEvent, setTelegramChatGroup} from '@telegram/analytics.js'
 import {chatRoute} from '@telegram/callback-data.js'
 import type {BaseContext} from '@telegram/context.js'
 import {getChatCreator} from '@telegram/helpers/chat-creator.js'
@@ -29,8 +30,21 @@ export const myChatMemberHandler = async (ctx: Context) => {
 async function handleRightsRemoval(ctx: Context) {
   const chat = await getChat({id: ctx.chatId})
   if (!chat) return
-  if (chat.status !== 'no_access') await updateChat(chat.id, {status: 'no_access'})
+  const updated =
+    chat.status !== 'no_access' ? await updateChat(chat.id, {status: 'no_access'}) : chat
+  const {posthog} = getRuntime()
+  if (posthog) setTelegramChatGroup(posthog, updated, String(chat.ownerId))
   if (hasRequiredRights(ctx.myChatMember.old_chat_member)) {
+    captureBotEvent(
+      posthog,
+      'bot_removed_from_chat',
+      {
+        chat_title: updated.title,
+        chat_type: updated.type,
+        member_status_new: ctx.myChatMember.new_chat_member.status,
+      },
+      {chatId: updated.id, distinctId: String(chat.ownerId)},
+    )
     await notifyOwner(ctx, chat.owner, 'removed')
   }
 }
@@ -50,14 +64,27 @@ async function handleRightsGrant(ctx: Context) {
     firstName: chatOwner.user.first_name,
   })
   const chat = await getChat({id: ctx.chatId})
-  await createOrUpdateChat({
+  const saved = await createOrUpdateChat({
     id: ctx.chat.id,
     title: ctx.chat.title,
     ownerId: owner.id,
     type: ctx.chat.type,
     status: chat?.status === 'active' ? 'active' : 'inactive',
   })
+  const {posthog} = getRuntime()
+  if (posthog) setTelegramChatGroup(posthog, saved, String(owner.id))
   if (!hasRequiredRights(ctx.myChatMember.old_chat_member)) {
+    captureBotEvent(
+      posthog,
+      'bot_added_to_chat',
+      {
+        chat_title: saved.title,
+        chat_type: saved.type,
+        paid_access_status: saved.status,
+        member_status_new: ctx.myChatMember.new_chat_member.status,
+      },
+      {chatId: saved.id, distinctId: String(owner.id)},
+    )
     await notifyOwner(ctx, owner, 'added')
   }
 }
