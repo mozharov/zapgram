@@ -468,7 +468,8 @@ a.btn.header-cta {
 .btn-micro {
   margin: 0;
   font-size: 0.8125rem;
-  color: var(--muted);
+  /* Darker than --muted so in-text links (ink, no underline) hit ≥3:1 vs surrounding */
+  color: #858585;
   font-family: var(--font-mono);
   line-height: 1.45;
 }
@@ -1128,7 +1129,8 @@ table.cmd .amt {
 }
 
 .final__actions .btn-micro a {
-  color: var(--muted);
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .final__actions .btn-micro a:hover {
