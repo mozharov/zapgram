@@ -101,8 +101,6 @@ services:
       context: ./landing
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "${LANDING_PORT:-8080}:80"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 60s
