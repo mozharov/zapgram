@@ -1,6 +1,45 @@
 /* ZapGram landing — cypherpunk signal terminal · logo-aligned (black + white bolt) */
 
-/* Self-hosted fonts (no third-party request) */
+/*
+ * Self-hosted fonts (no third-party request).
+ *
+ * CLS: font-display:swap + metric-matched local fallbacks so the swap does not
+ * reflow the page (Lighthouse Agentic Browsing + Core Web Vitals). Metrics from
+ * OS/2 of the self-hosted files; size-adjust scales Arial/Courier New to match
+ * average glyph width. Preload critical faces in HTML.
+ * https://developer.chrome.com/blog/font-fallbacks
+ * https://developer.chrome.com/docs/lighthouse/agentic-browsing/scoring
+ */
+
+/* —— Metric-matched local fallbacks (shown until webfonts load) —— */
+@font-face {
+  font-family: 'Sora Fallback';
+  src: local('Arial'), local('Helvetica Neue'), local('Helvetica');
+  size-adjust: 133.66%;
+  ascent-override: 72.57%;
+  descent-override: 21.7%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'IBM Plex Sans Fallback';
+  src: local('Arial'), local('Helvetica Neue'), local('Helvetica');
+  size-adjust: 120.75%;
+  ascent-override: 84.89%;
+  descent-override: 22.77%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono Fallback';
+  src: local('Courier New'), local('Courier');
+  size-adjust: 99.98%;
+  ascent-override: 102.52%;
+  descent-override: 27.5%;
+  line-gap-override: 0%;
+}
+
+/* —— Sora (display) —— */
 @font-face {
   font-family: 'Sora';
   font-style: normal;
@@ -59,6 +98,7 @@
     U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* —— IBM Plex Sans (body) —— */
 @font-face {
   font-family: 'IBM Plex Sans';
   font-style: normal;
@@ -111,6 +151,7 @@
   unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
 }
 
+/* —— IBM Plex Mono (chips, code, locale) —— */
 @font-face {
   font-family: 'IBM Plex Mono';
   font-style: normal;
@@ -166,9 +207,10 @@
   --max: 1120px;
   --prose: 68ch;
   --header-h: 64px;
-  --font-display: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Sora", "Sora Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "IBM Plex Sans", "IBM Plex Sans Fallback", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: "IBM Plex Mono", "IBM Plex Mono Fallback", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 *,
