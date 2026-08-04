@@ -16,6 +16,10 @@ import {
  * PostHog context + one `telegram_update` per bot-relevant update.
  * Person profile fields go on the event as `$set` / `$set_once` (no separate identify).
  * Chat group entities are updated only in chat mutation handlers via setTelegramChatGroup.
+ *
+ * Display consistency: Telegram `name` / `$name` are applied before handlers run and also
+ * put on the request context so every capture in this update (join request, exception, …)
+ * carries the same person label. Name wins over bare distinct_id in the PostHog UI.
  */
 export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
   const {posthog} = getRuntime()
@@ -23,32 +27,49 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
 
   const from = ctx.from && !ctx.from.is_bot ? ctx.from : undefined
   const distinctId = from ? telegramUserDistinctId(from.id) : undefined
+  const personFromTg = from ? personPropertiesFromTelegram(from) : undefined
 
-  return posthog.withContext(distinctId ? {distinctId} : {}, async () => {
-    try {
-      return await next()
-    } catch (error) {
-      posthog.captureException(error)
-      throw error
-    } finally {
-      // After next(): attachUser may have filled ctx.user for private / tip paths.
-      const dbUser = dbUserFromContext(ctx)
-      posthog.capture({
-        event: 'telegram_update',
-        distinctId: distinctId ?? `chat:${ctx.chat?.id ?? 'unknown'}`,
-        properties: {
-          ...buildUpdateProperties(ctx),
-          // Later patches win. Telegram `from` overwrites DB: attachUser refreshes the row
-          // from Telegram, so stale DB snapshot must not clobber live profile fields.
-          ...mergePersonProperties(
-            dbUser ? personPropertiesFromDb(dbUser) : undefined,
-            from ? personPropertiesFromTelegram(from) : undefined,
-          ),
-          ...(!from ? {$process_person_profile: false} : {}),
-        },
-        groups:
-          ctx.chat && ctx.chat.type !== 'private' ? telegramChatGroups(ctx.chat.id) : undefined,
-      })
-    }
-  })
+  return posthog.withContext(
+    {
+      ...(distinctId ? {distinctId} : {}),
+      // Inherited by captures that do not pass their own $set (shallow merge).
+      ...(personFromTg ? {properties: personFromTg} : {}),
+    },
+    async () => {
+      // Profile first so handler events in the same batch already have a display name.
+      if (distinctId && personFromTg?.$set) {
+        posthog.setPersonProperties({
+          distinctId,
+          properties: personFromTg.$set,
+          propertiesOnce: personFromTg.$set_once ?? {},
+        })
+      }
+
+      try {
+        return await next()
+      } catch (error) {
+        posthog.captureException(error)
+        throw error
+      } finally {
+        // After next(): attachUser may have filled ctx.user for private / tip paths.
+        const dbUser = dbUserFromContext(ctx)
+        posthog.capture({
+          event: 'telegram_update',
+          distinctId: distinctId ?? `chat:${ctx.chat?.id ?? 'unknown'}`,
+          properties: {
+            ...buildUpdateProperties(ctx),
+            // Later patches win. Telegram `from` overwrites DB: attachUser refreshes the row
+            // from Telegram, so stale DB snapshot must not clobber live profile fields.
+            ...mergePersonProperties(
+              dbUser ? personPropertiesFromDb(dbUser) : undefined,
+              personFromTg,
+            ),
+            ...(!from ? {$process_person_profile: false} : {}),
+          },
+          groups:
+            ctx.chat && ctx.chat.type !== 'private' ? telegramChatGroups(ctx.chat.id) : undefined,
+        })
+      }
+    },
+  )
 }

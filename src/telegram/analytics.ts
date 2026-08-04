@@ -48,14 +48,20 @@ export function isBotRelevantUpdate(ctx: Context): boolean {
   return false
 }
 
-/** Person fields from Telegram `from` — apply via event `$set` / `$set_once`, not identify(). */
+/**
+ * Person fields from Telegram `from` — apply via event `$set` / `$set_once`, not identify().
+ * `name` and `$name` are both set: PostHog person display name checks either, and we want
+ * a stable human label ahead of distinct_id (Telegram user id) for every event on that person.
+ */
 export function personPropertiesFromTelegram(from: TgUser): PersonPropertyPatch {
   const name =
     [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username || String(from.id)
 
   return {
     $set: {
+      // Display name (project default person display props include both).
       name,
+      $name: name,
       telegram_id: from.id,
       username: from.username ?? null,
       first_name: from.first_name,

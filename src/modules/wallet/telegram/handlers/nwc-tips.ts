@@ -1,16 +1,20 @@
 import {updateUser} from '@modules/users/repository.js'
 import {buildSettingsKeyboard} from '@modules/wallet/telegram/keyboards/settings.js'
+import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export const nwcTipsCallback = async (ctx: BotContext) => {
   const user = await updateUser(ctx.user.id, {nwcTips: !ctx.user.nwcTips})
   ctx.user.nwcTips = user.nwcTips
+  // Merge with Telegram person fields so a local $set does not drop name / $name.
   getRuntime().posthog?.capture({
     event: 'nwc_tips_toggled',
     properties: {
       nwc_tips_enabled: user.nwcTips,
-      $set: {nwc_tips_enabled: user.nwcTips},
+      ...mergePersonProperties(ctx.from ? personPropertiesFromTelegram(ctx.from) : undefined, {
+        $set: {nwc_tips_enabled: user.nwcTips},
+      }),
     },
   })
   await ctx.answerCallbackQuery({

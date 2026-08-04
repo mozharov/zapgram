@@ -123,6 +123,44 @@ describe('buildUpdateProperties', () => {
   })
 })
 
+describe('personPropertiesFromTelegram', () => {
+  test('sets name and $name for stable PostHog person display', () => {
+    const patch = personPropertiesFromTelegram({
+      id: 4242424242,
+      is_bot: false,
+      first_name: 'Avery',
+      last_name: 'Quillworth',
+      username: 'avery_quillworth',
+    })
+
+    expect(patch.$set).toMatchObject({
+      name: 'Avery Quillworth',
+      $name: 'Avery Quillworth',
+      telegram_id: 4242424242,
+      username: 'avery_quillworth',
+    })
+  })
+
+  test('falls back to username then id when names are empty', () => {
+    expect(
+      personPropertiesFromTelegram({
+        id: 1,
+        is_bot: false,
+        first_name: '',
+        username: 'only_user',
+      }).$set?.name,
+    ).toBe('only_user')
+
+    expect(
+      personPropertiesFromTelegram({
+        id: 99,
+        is_bot: false,
+        first_name: '',
+      }).$set?.name,
+    ).toBe('99')
+  })
+})
+
 describe('mergePersonProperties', () => {
   test('Telegram profile fields override DB when merged db-then-telegram', () => {
     const merged = mergePersonProperties(
@@ -145,11 +183,32 @@ describe('mergePersonProperties', () => {
     )
 
     expect(merged.$set).toMatchObject({
+      name: 'New',
+      $name: 'New',
       username: 'fresh',
       first_name: 'New',
       language_code: 'ru',
       nwc_connected: true,
       nwc_tips_enabled: true,
+    })
+  })
+
+  test('local $set patches keep Telegram display name when merged after', () => {
+    const merged = mergePersonProperties(
+      personPropertiesFromTelegram({
+        id: 42,
+        is_bot: false,
+        first_name: 'Avery',
+        last_name: 'Quillworth',
+      }),
+      {$set: {nwc_connected: false, nwc_tips_enabled: false}},
+    )
+
+    expect(merged.$set).toMatchObject({
+      name: 'Avery Quillworth',
+      $name: 'Avery Quillworth',
+      nwc_connected: false,
+      nwc_tips_enabled: false,
     })
   })
 })

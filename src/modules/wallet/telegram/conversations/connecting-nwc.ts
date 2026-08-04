@@ -2,6 +2,7 @@ import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {updateUser} from '@modules/users/repository.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
@@ -29,10 +30,13 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   })
   await updateUser(ctx.user.id, {nwcUrl})
   const {posthog} = getRuntime()
+  // Merge with Telegram person fields so a local $set does not drop name / $name.
   posthog?.capture({
     event: 'wallet_connected',
     properties: {
-      $set: {nwc_connected: true},
+      ...mergePersonProperties(ctx.from ? personPropertiesFromTelegram(ctx.from) : undefined, {
+        $set: {nwc_connected: true},
+      }),
     },
   })
   await ctx.reply(ctx.t('nwc.connected'))
