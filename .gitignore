@@ -4,8 +4,8 @@
 /.claude
 /.agents
 /data
-/temp
 /.grok
+/.impeccable
 main.db*
 .DS_Store
 .env*

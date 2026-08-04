@@ -1,0 +1,32 @@
+# ZapGram marketing site — https://zapgram.mozharov.me
+# AI citation bots allowed; block training-only crawlers if policy changes later.
+
+User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# Optional context for AI agents
+# https://zapgram.mozharov.me/llms.txt
+# https://zapgram.mozharov.me/pricing.md
+
+Sitemap: https://zapgram.mozharov.me/sitemap.xml

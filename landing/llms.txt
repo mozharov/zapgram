@@ -1,0 +1,41 @@
+# ZapGram
+
+> Bitcoin Lightning wallet inside Telegram — send, receive, tip, and monetize chats with sats.
+
+ZapGram is a free Telegram bot that gives every user a Lightning wallet on first open. It supports group and channel tips, BOLT11 invoices with QR, zero-fee transfers between ZapGram wallets, paid private groups and channels (one-time or monthly), and optional Nostr Wallet Connect (NWC) for self-custody.
+
+## Product
+
+- Bot: https://t.me/zap_gram_bot
+- Site (EN): https://zapgram.mozharov.me/
+- Site (RU): https://zapgram.mozharov.me/ru/
+- Source (MIT): https://github.com/mozharov/zapgram
+
+## Who it is for
+
+- Bitcoiners and Lightning users who want sats in Telegram
+- Nostriches who prefer NWC / self-custody optional path
+- Community owners who sell chat access in sats
+- Creators who want tips under posts and in groups
+
+Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or fiat rails.
+
+## Fees
+
+- Bot and wallet: free to open and use
+- ZapGram → ZapGram transfers: free
+- External Lightning: network fees as usual
+- Paid-chat owner payouts on the hosted bot: small platform fee (default 5%)
+
+## Key facts
+
+- Category: Telegram Lightning wallet / tip bot / sat-gated community access
+- Custody: built-in wallet is custodial convenience; optional NWC for self-custody
+- Languages: bot UI Russian + English; marketing site EN (canonical) + RU
+- License: MIT open source; self-host available, hosted bot is the primary product
+
+## Optional reading
+
+- Features and FAQ: https://zapgram.mozharov.me/#features · https://zapgram.mozharov.me/#faq
+- Pricing summary: https://zapgram.mozharov.me/pricing.md
+- NWC protocol: https://nwc.dev/

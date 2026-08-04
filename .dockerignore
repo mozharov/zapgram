@@ -6,8 +6,8 @@
 /docs
 /.claude
 /.grok
+/.impeccable
 /.agents
-/temp
 /data
 .dockerignore
 .gitignore
@@ -19,3 +19,4 @@ biome.json
 *.md
 docker-compose.yaml
 bunfig.toml
+LICENSE

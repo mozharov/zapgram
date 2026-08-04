@@ -2,6 +2,10 @@
 
 Canonical agent instructions.
 
+## Agent working files
+
+Local agent artifacts (marketing context, copy drafts, plans, design briefs, audit notes) live under **`.agents/`** (gitignored). Prefer `.agents/` for anything the agent reads or writes as working material.
+
 ## Stack
 
 Bun 1.3, TypeScript 7, grammY, Elysia, Drizzle + bun:sqlite, LNbits, pino, Biome.

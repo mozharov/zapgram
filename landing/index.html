@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZapGram — Lightning Wallet & Tips in Telegram</title>
+    <meta
+      name="description"
+      content="Bitcoin Lightning wallet inside Telegram. Tip sats, pay BOLT11 invoices, and sell chat access — free internal transfers. Optional NWC. Open @zap_gram_bot."
+    />
+    <link rel="canonical" href="https://zapgram.mozharov.me/" />
+    <link rel="alternate" hreflang="en" href="https://zapgram.mozharov.me/" />
+    <link rel="alternate" hreflang="ru" href="https://zapgram.mozharov.me/ru/" />
+    <link rel="alternate" hreflang="x-default" href="https://zapgram.mozharov.me/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ZapGram" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ru_RU" />
+    <meta property="og:title" content="ZapGram — Lightning Wallet & Tips in Telegram" />
+    <meta
+      property="og:description"
+      content="Send, receive, tip, and monetize chats with sats. No bank. No borders. Just sats."
+    />
+    <meta property="og:url" content="https://zapgram.mozharov.me/" />
+    <meta property="og:image" content="https://zapgram.mozharov.me/assets/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="ZapGram — Bitcoin Lightning wallet inside Telegram"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ZapGram — Lightning Wallet & Tips in Telegram" />
+    <meta
+      name="twitter:description"
+      content="Send, receive, tip, and monetize chats with sats. No bank. No borders. Just sats."
+    />
+    <meta name="twitter:image" content="https://zapgram.mozharov.me/assets/og.png" />
+    <meta
+      name="twitter:image:alt"
+      content="ZapGram — Bitcoin Lightning wallet inside Telegram"
+    />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="./assets/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://zapgram.mozharov.me/#organization",
+            "name": "ZapGram",
+            "url": "https://zapgram.mozharov.me/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://zapgram.mozharov.me/assets/logo.svg"
+            },
+            "sameAs": [
+              "https://t.me/zap_gram_bot",
+              "https://github.com/mozharov/zapgram"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://zapgram.mozharov.me/#website",
+            "name": "ZapGram",
+            "url": "https://zapgram.mozharov.me/",
+            "inLanguage": "en",
+            "publisher": {
+              "@id": "https://zapgram.mozharov.me/#organization"
+            }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://zapgram.mozharov.me/#webpage",
+            "url": "https://zapgram.mozharov.me/",
+            "name": "ZapGram — Lightning Wallet & Tips in Telegram",
+            "description": "Bitcoin Lightning wallet inside Telegram. Tip sats, pay BOLT11 invoices, and sell chat access — free internal transfers. Optional NWC. Open @zap_gram_bot.",
+            "isPartOf": {
+              "@id": "https://zapgram.mozharov.me/#website"
+            },
+            "about": {
+              "@id": "https://zapgram.mozharov.me/#app"
+            },
+            "inLanguage": "en",
+            "primaryImageOfPage": {
+              "@type": "ImageObject",
+              "url": "https://zapgram.mozharov.me/assets/logo.svg"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://zapgram.mozharov.me/#app",
+            "name": "ZapGram",
+            "applicationCategory": "FinanceApplication",
+            "applicationSubCategory": "Cryptocurrency Wallet",
+            "operatingSystem": "Telegram",
+            "description": "Bitcoin Lightning wallet inside Telegram for tipping sats, paying BOLT11 invoices, and selling paid access to private chats — with optional Nostr Wallet Connect for self-custody.",
+            "url": "https://t.me/zap_gram_bot",
+            "downloadUrl": "https://t.me/zap_gram_bot",
+            "installUrl": "https://t.me/zap_gram_bot",
+            "image": "https://zapgram.mozharov.me/assets/logo.svg",
+            "author": {
+              "@id": "https://zapgram.mozharov.me/#organization"
+            },
+            "publisher": {
+              "@id": "https://zapgram.mozharov.me/#organization"
+            },
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD",
+              "availability": "https://schema.org/InStock",
+              "url": "https://t.me/zap_gram_bot"
+            },
+            "featureList": [
+              "Lightning wallet inside Telegram",
+              "Zero-fee internal transfers",
+              "Group and channel tips",
+              "BOLT11 invoices with QR",
+              "Paid chats with one-time or monthly access",
+              "Optional Nostr Wallet Connect (NWC)",
+              "Open source MIT"
+            ],
+            "softwareHelp": {
+              "@type": "CreativeWork",
+              "url": "https://zapgram.mozharov.me/#faq"
+            },
+            "isAccessibleForFree": true,
+            "license": "https://github.com/mozharov/zapgram/blob/main/LICENSE",
+            "codeRepository": "https://github.com/mozharov/zapgram",
+            "sameAs": [
+              "https://t.me/zap_gram_bot",
+              "https://github.com/mozharov/zapgram"
+            ]
+          },
+          {
+            "@type": "HowTo",
+            "@id": "https://zapgram.mozharov.me/#howto",
+            "name": "How to start using ZapGram",
+            "description": "Open the bot, fund your Lightning wallet, tip or send sats, and optionally monetize private chats.",
+            "totalTime": "PT5M",
+            "tool": {
+              "@type": "HowToTool",
+              "name": "Telegram and @zap_gram_bot"
+            },
+            "step": [
+              {
+                "@type": "HowToStep",
+                "position": 1,
+                "name": "Open",
+                "text": "Open @zap_gram_bot in Telegram and send /start — a Lightning wallet is created.",
+                "url": "https://zapgram.mozharov.me/#how"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 2,
+                "name": "Fund",
+                "text": "Receive → create an invoice → pay from any Lightning wallet, or connect NWC.",
+                "url": "https://zapgram.mozharov.me/#how"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 3,
+                "name": "Tip or send",
+                "text": "Use /tip in a group, or Send to a user or invoice in DM.",
+                "url": "https://zapgram.mozharov.me/#how"
+              },
+              {
+                "@type": "HowToStep",
+                "position": 4,
+                "name": "Monetize",
+                "text": "Owners: /chats → set a price in sats → members pay on join.",
+                "url": "https://zapgram.mozharov.me/#how"
+              }
+            ]
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://zapgram.mozharov.me/#faqpage",
+            "isPartOf": {
+              "@id": "https://zapgram.mozharov.me/#webpage"
+            },
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is ZapGram?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "ZapGram is a Bitcoin Lightning wallet inside Telegram. It lets you send and receive sats, tip in groups and channels, pay BOLT11 invoices, and sell paid access to private chats — without leaving the messenger."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is it a wallet or just a tip bot?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Both. You get a full Lightning wallet on first open, plus /tip in groups, invoices with QR, username transfers, and Lightning-gated chats with subscriptions."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is ZapGram free? What are the fees?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Free to start. Internal transfers between ZapGram wallets are free. External Lightning payments pay network fees. On the hosted bot, paid-chat owner payouts take a small platform fee (default 5%)."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Are my sats custodial?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "The built-in wallet is custodial convenience. Prefer self-custody? Connect an NWC wallet (e.g. Alby, Coinos), tip and pay from that balance, disconnect anytime. Source is MIT open source."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is ZapGram safe to use? How do I know it is legitimate?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "ZapGram is open source under the MIT license on GitHub — you can read the code or self-host. Opening the bot needs no card and no bank account. The built-in wallet is custodial convenience; connect NWC for self-custody. It is not a bank and not financial advice."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens when I open the bot?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "You open @zap_gram_bot in Telegram, tap Start, and a Lightning wallet is created. No separate app install. Fund later with a receive invoice from any Lightning wallet, or connect NWC when you want self-custody."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What is NWC and why support it?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Nostr Wallet Connect lets apps request payments from a wallet you control. ZapGram can show both balances and use your NWC wallet for tips and some payments — familiar if you already zap on Nostr."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do tips work in groups?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Add the bot. /tip sends 21 sats to the owner; /tip 100 sets an amount; reply + /tip tips the author; /tip @user or /tip 50 @user targets a person."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I sell access to a private group or channel with Bitcoin?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. In /chats, enable paid access, set a sat price (one-time or monthly), grant invite + ban rights. Members request to join, pay a Lightning invoice, and get access immediately."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How is ZapGram different from LightningTipBot or other tip bots?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions, and optional NWC in one bot. Many peers focus mainly on tipping or simple send/receive. Compare features — the Telegram Lightning category is still small."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Do I need a separate app or Lightning node?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Open @zap_gram_bot, fund with a receive invoice from any Lightning wallet, or attach NWC. No node required for normal use."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is ZapGram open source? Can I self-host?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes — MIT on GitHub. Self-host if you want your own instance; most people just open the hosted bot. Open source is for trust and auditability."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What languages does the bot support?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Russian and English UI. Other Telegram languages fall back to English. This site: English (canonical) and Russian (/ru)."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is this the same as Telegram Wallet (@wallet)?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. @wallet is a multi-asset product. ZapGram is Lightning-native: sats, BOLT11, tips, and sat-gated chats."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="wrap site-header__inner">
+        <a class="brand" href="./">
+          <span class="brand__mark" aria-hidden="true">
+            <img src="./assets/logo.svg" alt="" width="32" height="32" />
+          </span>
+          <span>ZapGram</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+          <a href="#features">Features</a>
+          <a href="#faq">FAQ</a>
+          <span class="nav__locale">
+            <span aria-current="true">EN</span>
+            <span class="nav__locale-sep" aria-hidden="true">·</span>
+            <a href="./ru/" lang="ru" hreflang="ru">RU</a>
+          </span>
+        </nav>
+        <a class="btn btn--primary header-cta" href="https://t.me/zap_gram_bot"
+          ><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a
+        >
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="wrap">
+          <div class="hero__mark" aria-hidden="true">
+            <img src="./assets/logo.svg" alt="" width="80" height="80" />
+          </div>
+          <div class="hero__content">
+            <h1>Bitcoin Lightning wallet inside Telegram</h1>
+            <p class="hero__sub">
+              Send, receive, tip, and monetize chats with sats — without leaving Telegram.
+            </p>
+            <div class="hero__cta">
+              <div class="btn-row">
+                <a class="btn btn--primary" href="https://t.me/zap_gram_bot"
+                  ><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a
+                >
+              </div>
+              <p class="btn-micro">
+                Opens
+                <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+                · free · wallet on first open · no card
+              </p>
+            </div>
+            <p class="hero__def">
+              ZapGram is a Bitcoin Lightning wallet inside Telegram for tipping sats, paying BOLT11
+              invoices, and selling paid access to private chats — with optional Nostr Wallet Connect
+              for self-custody.
+            </p>
+            <ul class="chips">
+              <li>Zero-fee internal transfers</li>
+              <li>Group &amp; channel tips</li>
+              <li>Paid chats</li>
+              <li>Optional NWC</li>
+              <li>Open source MIT</li>
+            </ul>
+            <p class="hero__secondary">
+              Prefer to audit first?
+              <a href="https://github.com/mozharov/zapgram">View source on GitHub</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="why" aria-labelledby="why-title">
+        <div class="wrap">
+          <h2 id="why-title">Why ZapGram</h2>
+          <p class="section__lead">
+            Most tip bots stop at send and receive. ZapGram is the
+            <strong>full Lightning loop</strong> inside Telegram.
+          </p>
+          <div class="grid-benefits">
+            <article>
+              <h3>Lightning-native</h3>
+              <p>Built for sats and BOLT11 invoices — not a fiat wrapper.</p>
+            </article>
+            <article>
+              <h3>Zero fee inside Telegram</h3>
+              <p>Transfers between ZapGram wallets are free and as fast as a message.</p>
+            </article>
+            <article>
+              <h3>Tips that fit the chat</h3>
+              <p>
+                <code class="inline">/tip</code> in groups and under channel posts — amount, reply,
+                or @user.
+              </p>
+            </article>
+            <article>
+              <h3>Chats that earn</h3>
+              <p>One-time or monthly access in sats. Members pay; access unlocks.</p>
+            </article>
+            <article>
+              <h3>Your keys, optional</h3>
+              <p>Built-in wallet, or connect any NWC wallet (Alby, Coinos, …).</p>
+            </article>
+            <article>
+              <h3>Open source</h3>
+              <p>MIT. Inspect the code. Self-host if you want your own instance.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="wallet-title">
+        <div class="wrap">
+          <h2 id="wallet-title">Lightning wallet in Telegram</h2>
+          <p class="section__lead">
+            Every user gets a Lightning wallet the moment they open the bot. Balance in sats.
+            Notifications when you get paid.
+          </p>
+          <div class="split">
+            <div class="panel">
+              <h3>Send and receive sats</h3>
+              <p>
+                Create an invoice (amount + optional memo), share the QR or BOLT11 string, and get
+                paid from any Lightning wallet.
+              </p>
+              <p>
+                Pay any <code class="inline">lnbc…</code> invoice — review amount, memo, fee reserve,
+                and expiry before you confirm. Or send sats straight to a Telegram
+                <code class="inline">@username</code>.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>Free transfers between users</h3>
+              <p>
+                When both sides use ZapGram, value moves like a DM:
+                <strong>instant, no network fee</strong>.
+              </p>
+              <p>External Lightning payments still pay normal network fees.</p>
+            </div>
+          </div>
+          <div class="mid-cta">
+            <a class="btn btn--primary" href="https://t.me/zap_gram_bot"><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="tips" aria-labelledby="tips-title">
+        <div class="wrap">
+          <h2 id="tips-title">Tip sats in groups and channels</h2>
+          <p class="section__lead">Add the bot to a chat. Tip without breaking the conversation.</p>
+          <div class="table-wrap" role="region" aria-label="Tip commands" tabindex="0">
+            <table class="cmd">
+              <thead>
+                <tr>
+                  <th scope="col">Command</th>
+                  <th scope="col">What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>/tip</code></td>
+                  <td><span class="amt">21 sats</span> to the group owner (or channel creator on a post)</td>
+                </tr>
+                <tr>
+                  <td><code>/tip 100</code></td>
+                  <td>Custom amount to the owner</td>
+                </tr>
+                <tr>
+                  <td><code>Reply + /tip</code></td>
+                  <td>Tip the message author</td>
+                </tr>
+                <tr>
+                  <td><code>Reply + /tip 1000</code></td>
+                  <td>Tip the author with a custom amount</td>
+                </tr>
+                <tr>
+                  <td><code>/tip @user</code></td>
+                  <td>Tip a user (default <span class="amt">21 sats</span>)</td>
+                </tr>
+                <tr>
+                  <td><code>/tip 50 @user</code></td>
+                  <td>Tip a user with a custom amount</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">
+            Make the bot an admin (delete messages is enough) so owner tips work cleanly and
+            technical messages stay out of the way.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="paid-chats" aria-labelledby="paid-title">
+        <div class="wrap">
+          <h2 id="paid-title">Monetize private chats with Lightning</h2>
+          <p class="section__lead">
+            Turn a private group or channel into a sat-gated community — no Stripe, no bank account.
+          </p>
+          <div class="split">
+            <div class="panel">
+              <h3>For owners</h3>
+              <ol>
+                <li>
+                  Add <code class="inline">@zap_gram_bot</code> with <strong>invite</strong> and
+                  <strong>ban</strong> rights.
+                </li>
+                <li>Open <code class="inline">/chats</code> → enable paid access.</li>
+                <li>
+                  Set price in sats: <strong>one-time</strong> permanent access or
+                  <strong>monthly</strong> subscription. Optional join message in RU + EN.
+                </li>
+              </ol>
+              <p class="note">
+                Owners are paid automatically (minus a small platform fee on the hosted bot).
+                Duplicate payments are refunded safely.
+              </p>
+            </div>
+            <div class="panel">
+              <h3>For members</h3>
+              <ol>
+                <li>Request to join.</li>
+                <li>
+                  Get a Lightning invoice (and one-tap pay if your ZapGram or NWC balance covers it).
+                </li>
+                <li>Pay → access is granted immediately.</li>
+              </ol>
+              <p class="note">
+                Monthly renewals can auto-debit from the ZapGram wallet. Manage status in
+                <code class="inline">/subscriptions</code>.
+              </p>
+            </div>
+          </div>
+          <div class="mid-cta">
+            <a class="btn btn--primary" href="https://t.me/zap_gram_bot"><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a>
+            <p class="btn-micro">Price a chat in sats · members pay Lightning on join</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="nwc" aria-labelledby="nwc-title">
+        <div class="wrap">
+          <h2 id="nwc-title">Optional self-custody with NWC</h2>
+          <p class="section__lead">
+            Prefer keys you control? Connect any Lightning wallet that supports
+            <a href="https://nwc.dev/">Nostr Wallet Connect</a> — the same protocol Nostriches already
+            use for zaps.
+          </p>
+          <div class="panel">
+            <ul>
+              <li>Link a <code class="inline">nostr+walletconnect://…</code> URL</li>
+              <li>See <strong>both</strong> balances (ZapGram + NWC) on the wallet screen</li>
+              <li>Choose which wallet pays tips in groups</li>
+              <li>Pay some invoices and subscriptions from NWC when balance allows</li>
+              <li>Disconnect anytime</li>
+            </ul>
+            <p class="note">
+              Your external wallet stays under your control. ZapGram only acts within the permissions
+              you grant.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="who" aria-labelledby="who-title">
+        <div class="wrap">
+          <h2 id="who-title">Who ZapGram is for</h2>
+          <div class="who-grid">
+            <article>
+              <h3>Bitcoiners &amp; Lightning users</h3>
+              <p>Sats in the app you already live in — tips, invoices, transfers.</p>
+            </article>
+            <article>
+              <h3>Nostriches</h3>
+              <p>Tip culture + optional NWC, without leaving Telegram communities.</p>
+            </article>
+            <article>
+              <h3>Community owners</h3>
+              <p>Sat-priced groups and channels without fiat billing.</p>
+            </article>
+            <article>
+              <h3>Creators &amp; channels</h3>
+              <p>Tips under posts and in groups that actually settle.</p>
+            </article>
+          </div>
+          <p class="anti">
+            Not for: card-only checkout, enterprise KYC invoicing, or multi-asset trading. If you need
+            fiat rails, this isn’t it.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="how" aria-labelledby="how-title">
+        <div class="wrap">
+          <h2 id="how-title">How it works</h2>
+          <ol class="steps">
+            <li>
+              <strong>Open</strong>
+              <p>
+                <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a> →
+                <code class="inline">/start</code> — wallet created.
+              </p>
+            </li>
+            <li>
+              <strong>Fund</strong>
+              <p>
+                Receive → create an invoice → pay from any Lightning wallet (or connect NWC).
+              </p>
+            </li>
+            <li>
+              <strong>Tip or send</strong>
+              <p>
+                <code class="inline">/tip</code> in a group, or Send to a user / invoice in DM.
+              </p>
+            </li>
+            <li>
+              <strong>Monetize</strong>
+              <p>
+                Owners: <code class="inline">/chats</code> → price in sats → members pay on join.
+              </p>
+            </li>
+          </ol>
+          <div class="mid-cta">
+            <a class="btn btn--primary" href="https://t.me/zap_gram_bot"><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a>
+            <p class="btn-micro">Tap Start · wallet created · fund when ready</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="fees" aria-labelledby="fees-title">
+        <div class="wrap">
+          <h2 id="fees-title">What it costs</h2>
+          <div class="fees">
+            <ul>
+              <li><strong>Bot &amp; wallet:</strong> free to open and use.</li>
+              <li><strong>ZapGram → ZapGram transfers:</strong> free.</li>
+              <li><strong>External Lightning:</strong> network fees as usual.</li>
+              <li>
+                <strong>Paid-chat owner payouts (hosted):</strong> small platform fee (default
+                <strong>5%</strong>).
+              </li>
+            </ul>
+            <p class="fees__note">No surprise bank fees. No fiat conversion layer.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="faq" aria-labelledby="faq-title">
+        <div class="wrap">
+          <h2 id="faq-title">Frequently asked questions</h2>
+          <div class="faq">
+            <details>
+              <summary>What is ZapGram?</summary>
+              <p class="answer">
+                ZapGram is a Bitcoin Lightning wallet inside Telegram. It lets you send and receive
+                sats, tip in groups and channels, pay BOLT11 invoices, and sell paid access to private
+                chats — without leaving the messenger.
+              </p>
+            </details>
+            <details>
+              <summary>Is it a wallet or just a tip bot?</summary>
+              <p class="answer">
+                Both. You get a full Lightning wallet on first open, plus
+                <code class="inline">/tip</code> in groups, invoices with QR, username transfers, and
+                Lightning-gated chats with subscriptions.
+              </p>
+            </details>
+            <details>
+              <summary>Is ZapGram free? What are the fees?</summary>
+              <p class="answer">
+                Free to start. Internal transfers between ZapGram wallets are free. External Lightning
+                payments pay network fees. On the hosted bot, paid-chat owner payouts take a small
+                platform fee (default 5%).
+              </p>
+            </details>
+            <details>
+              <summary>Are my sats custodial?</summary>
+              <p class="answer">
+                The built-in wallet is custodial convenience. Prefer self-custody? Connect an NWC
+                wallet (e.g. Alby, Coinos), tip and pay from that balance, disconnect anytime. Source
+                is MIT open source.
+              </p>
+            </details>
+            <details>
+              <summary>Is ZapGram safe to use? How do I know it is legitimate?</summary>
+              <p class="answer">
+                ZapGram is open source under the MIT license on GitHub — you can read the code or
+                self-host. Opening the bot needs no card and no bank account. The built-in wallet is
+                custodial convenience; connect NWC for self-custody. It is not a bank and not
+                financial advice.
+              </p>
+            </details>
+            <details>
+              <summary>What happens when I open the bot?</summary>
+              <p class="answer">
+                You open @zap_gram_bot in Telegram, tap Start, and a Lightning wallet is created. No
+                separate app install. Fund later with a receive invoice from any Lightning wallet, or
+                connect NWC when you want self-custody.
+              </p>
+            </details>
+            <details>
+              <summary>What is NWC and why support it?</summary>
+              <p class="answer">
+                Nostr Wallet Connect lets apps request payments from a wallet you control. ZapGram can
+                show both balances and use your NWC wallet for tips and some payments — familiar if
+                you already zap on Nostr.
+              </p>
+            </details>
+            <details>
+              <summary>How do tips work in groups?</summary>
+              <p class="answer">
+                Add the bot. <code class="inline">/tip</code> sends 21 sats to the owner;
+                <code class="inline">/tip 100</code> sets an amount; reply +
+                <code class="inline">/tip</code> tips the author;
+                <code class="inline">/tip @user</code> or
+                <code class="inline">/tip 50 @user</code> targets a person.
+              </p>
+            </details>
+            <details>
+              <summary>Can I sell access to a private group or channel with Bitcoin?</summary>
+              <p class="answer">
+                Yes. In <code class="inline">/chats</code>, enable paid access, set a sat price
+                (one-time or monthly), grant invite + ban rights. Members request to join, pay a
+                Lightning invoice, and get access immediately.
+              </p>
+            </details>
+            <details>
+              <summary>How is ZapGram different from LightningTipBot or other tip bots?</summary>
+              <p class="answer">
+                ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions, and
+                optional NWC in one bot. Many peers focus mainly on tipping or simple send/receive.
+                Compare features — the Telegram Lightning category is still small.
+              </p>
+            </details>
+            <details>
+              <summary>Do I need a separate app or Lightning node?</summary>
+              <p class="answer">
+                No. Open @zap_gram_bot, fund with a receive invoice from any Lightning wallet, or
+                attach NWC. No node required for normal use.
+              </p>
+            </details>
+            <details>
+              <summary>Is ZapGram open source? Can I self-host?</summary>
+              <p class="answer">
+                Yes — MIT on GitHub. Self-host if you want your own instance; most people just open the
+                hosted bot. Open source is for trust and auditability.
+              </p>
+            </details>
+            <details>
+              <summary>What languages does the bot support?</summary>
+              <p class="answer">
+                Russian and English UI. Other Telegram languages fall back to English. This site:
+                English (canonical) and Russian (<code class="inline">/ru</code>).
+              </p>
+            </details>
+            <details>
+              <summary>Is this the same as Telegram Wallet (@wallet)?</summary>
+              <p class="answer">
+                No. @wallet is a multi-asset product. ZapGram is Lightning-native: sats, BOLT11, tips,
+                and sat-gated chats.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final" aria-labelledby="final-title">
+        <div class="wrap">
+          <h2 id="final-title">Open ZapGram in Telegram</h2>
+          <p class="final__lead">
+            Wallet on first open. Tip in groups. Invoice anyone. Gate chats with sats. Optional NWC if
+            you want keys on your side.
+          </p>
+          <div class="final__actions">
+            <div class="btn-row">
+              <a class="btn btn--primary" href="https://t.me/zap_gram_bot"
+                ><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a
+              >
+            </div>
+            <p class="btn-micro">
+              Free · no card ·
+              <a href="https://github.com/mozharov/zapgram">source on GitHub</a>
+            </p>
+          </div>
+          <p class="final__tag">Welcome to the world of free payments.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="site-footer__grid">
+          <div>
+            <p class="site-footer__label">Product</p>
+            <p>ZapGram — Bitcoin Lightning in Telegram</p>
+          </div>
+          <div>
+            <p class="site-footer__label">Links</p>
+            <ul>
+              <li><a href="https://t.me/zap_gram_bot">@zap_gram_bot</a></li>
+              <li><a href="https://github.com/mozharov/zapgram">GitHub</a></li>
+              <li><a href="https://t.me/vmozharov">Bot author</a></li>
+              <li>
+                <a href="https://github.com/mozharov/zapgram/blob/main/LICENSE">MIT License</a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p class="site-footer__label">Language</p>
+            <ul>
+              <li><a href="./" aria-current="page">English</a></li>
+              <li><a href="./ru/" lang="ru">Русский</a></li>
+            </ul>
+          </div>
+        </div>
+        <p class="site-footer__legal">
+          Not a bank. Not financial advice. Lightning network fees apply to external payments.
+          <span class="site-footer__updated">Page updated 2026-08-04.</span>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

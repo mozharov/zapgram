@@ -1,0 +1,7 @@
+# Not part of the nginx public tree
+README.md
+Dockerfile
+.dockerignore
+scripts
+.DS_Store
+.git
