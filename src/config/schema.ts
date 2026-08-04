@@ -19,7 +19,7 @@ export const envSchema = z.object({
   LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
   LNBITS_BEARER_TOKEN: z.string().optional(),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
-  HOST: z.string().min(1),
+  HOST: z.preprocess(normalizePublicOrigin, z.url()),
   CONFIGURE_BOT: z.stringbool().default(true), // should call configureBot() on startup
   // Empty string from compose `${VAR:-}` means disabled / use compose default host only.
   POSTHOG_PROJECT_TOKEN: z.preprocess(
@@ -33,3 +33,12 @@ export const envSchema = z.object({
 })
 
 export type Env = z.infer<typeof envSchema>
+
+/** Trim, strip trailing slash, default missing scheme to https. */
+function normalizePublicOrigin(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim().replace(/\/$/, '')
+  if (!trimmed) return trimmed
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}

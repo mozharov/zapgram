@@ -11,7 +11,7 @@ services:
       NODE_ENV: production
       PORT: "8443"
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Public HTTPS origin for Telegram webhook (no trailing slash)
+      # Public origin for Telegram + LNbits webhooks (https preferred; bare host is upgraded)
       HOST: ${HOST:?}
       BOT_TOKEN: ${BOT_TOKEN:?}
       BOT_WEBHOOK_SECRET: ${BOT_WEBHOOK_SECRET:?}

@@ -10,4 +10,10 @@ describe('buildLnbitsPaymentWebhookUrl', () => {
       'https://bot.example/lnbits/webhook/abc',
     )
   })
+
+  test('upgrades a bare hostname to https so LNbits accepts the callback', () => {
+    expect(buildLnbitsPaymentWebhookUrl('api.zapgram.example', 'secret')).toBe(
+      'https://api.zapgram.example/lnbits/webhook/secret',
+    )
+  })
 })
