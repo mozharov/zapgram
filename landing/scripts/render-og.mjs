@@ -5,8 +5,8 @@
  *   bun landing/scripts/render-og.mjs
  *
  * Sources:
- *   assets/og-card.html    → assets/og.png
- *   assets/og-card-ru.html → assets/og-ru.png
+ *   public/assets/og-card.html    → public/assets/og.png
+ *   public/assets/og-card-ru.html → public/assets/og-ru.png
  *
  * Requires Playwright Chromium (ms-playwright cache) or CHROME_PATH.
  */
@@ -17,7 +17,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url'
 import {spawnSync} from 'node:child_process'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const assets = join(root, 'assets')
+const assets = join(root, 'public', 'assets')
 
 const jobs = [
   {html: 'og-card.html', out: 'og.png'},

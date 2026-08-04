@@ -1,7 +1,5 @@
-# Not part of the nginx public tree
-README.md
-Dockerfile
-.dockerignore
-scripts
-.DS_Store
-.git
+# Build only needs public/ + nginx.conf (see Dockerfile COPY lines)
+*
+!public/
+!public/**
+!nginx.conf
