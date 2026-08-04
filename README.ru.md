@@ -7,6 +7,7 @@
 <div align="center">
 
 [![Открыть в Telegram](https://img.shields.io/badge/Open-@zap__gram__bot-26A5E4?logo=telegram&style=for-the-badge)](https://t.me/zap_gram_bot)
+[![Сайт](https://img.shields.io/badge/Сайт-zapgram.mozharov.me-111111?style=for-the-badge)](https://zapgram.mozharov.me/ru/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 </div>
