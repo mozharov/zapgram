@@ -10,6 +10,7 @@ import {
 import type {Context} from 'grammy'
 import type {User as TgUser} from 'grammy/types'
 import type {PostHog} from 'posthog-node'
+import {parameterizedRoutes, staticCallback} from './callback-data.js'
 
 export {TELEGRAM_CHAT_GROUP_TYPE, telegramChatGroups, telegramUserDistinctId}
 
@@ -169,6 +170,60 @@ export function setTelegramChatGroup(
         chat.createdAt instanceof Date ? chat.createdAt.toISOString() : String(chat.createdAt),
     },
   })
+}
+
+/** PostHog event names use snake_case (same style as product events). */
+function toEventSlug(value: string): string {
+  return value.replace(/-/g, '_')
+}
+
+/**
+ * Map callback_data to a readable event name for the activity feed.
+ * Prefers typed routes / static callbacks; falls back to the first segment.
+ */
+export function resolveCallbackEventName(callbackData: string): string {
+  for (const route of parameterizedRoutes) {
+    if (route.pattern.test(callbackData)) {
+      return `callback_${toEventSlug(route.name)}`
+    }
+  }
+
+  for (const value of Object.values(staticCallback)) {
+    if (callbackData === value) {
+      return `callback_${toEventSlug(value)}`
+    }
+  }
+
+  const prefix = callbackData.split(':')[0]
+  if (prefix) return `callback_${toEventSlug(prefix)}`
+  return 'callback_unknown'
+}
+
+/**
+ * Human-readable name for the automatic per-update PostHog event.
+ * Prefer action over transport: command_pay, callback_pay_invoice, not telegram_update.
+ */
+export function resolveUpdateEventName(ctx: Context): string {
+  if (ctx.callbackQuery?.data !== undefined) {
+    return resolveCallbackEventName(ctx.callbackQuery.data)
+  }
+
+  if (ctx.myChatMember) return 'my_chat_member'
+  if (ctx.chatJoinRequest) return 'chat_join_request'
+
+  if (ctx.message?.new_chat_title !== undefined) return 'chat_title_message'
+
+  const text = ctx.message?.text ?? ctx.message?.caption
+  if (text) {
+    const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]?.split('@')[0]
+    if (command) return `command_${command}`
+    if (/(?:^|\s)lnbc[a-z0-9]+/i.test(text)) return 'ln_invoice_pasted'
+  }
+
+  const updateType = Object.keys(ctx.update).find(key => key !== 'update_id')
+  if (updateType === 'message' || updateType === 'edited_message') return 'telegram_message'
+  if (updateType) return `telegram_${toEventSlug(updateType)}`
+  return 'telegram_update'
 }
 
 export function buildUpdateProperties(ctx: Context): Record<string, unknown> {

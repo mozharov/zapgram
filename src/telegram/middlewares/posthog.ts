@@ -8,12 +8,14 @@ import {
   mergePersonProperties,
   personPropertiesFromDb,
   personPropertiesFromTelegram,
+  resolveUpdateEventName,
   telegramChatGroups,
   telegramUserDistinctId,
 } from '../analytics.js'
 
 /**
- * PostHog context + one `telegram_update` per bot-relevant update.
+ * PostHog context + one interaction event per bot-relevant update.
+ * Event name is derived from the action (command_*, callback_*, …), not a flat telegram_update.
  * Person profile fields go on the event as `$set` / `$set_once` (no separate identify).
  * Chat group entities are updated only in chat mutation handlers via setTelegramChatGroup.
  *
@@ -54,7 +56,7 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
         // After next(): attachUser may have filled ctx.user for private / tip paths.
         const dbUser = dbUserFromContext(ctx)
         posthog.capture({
-          event: 'telegram_update',
+          event: resolveUpdateEventName(ctx),
           distinctId: distinctId ?? `chat:${ctx.chat?.id ?? 'unknown'}`,
           properties: {
             ...buildUpdateProperties(ctx),

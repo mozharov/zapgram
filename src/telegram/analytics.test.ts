@@ -8,6 +8,8 @@ import {
   parseLandingStartPayload,
   personPropertiesFromDb,
   personPropertiesFromTelegram,
+  resolveCallbackEventName,
+  resolveUpdateEventName,
 } from './analytics.js'
 
 function ctx(partial: Record<string, unknown>): Context {
@@ -120,6 +122,105 @@ describe('buildUpdateProperties', () => {
       from_username: 'alice',
       from_language_code: 'ru',
     })
+  })
+})
+
+describe('resolveCallbackEventName', () => {
+  test('maps static callbacks', () => {
+    expect(resolveCallbackEventName('pay-invoice')).toBe('callback_pay_invoice')
+    expect(resolveCallbackEventName('create-invoice')).toBe('callback_create_invoice')
+    expect(resolveCallbackEventName('wallet')).toBe('callback_wallet')
+    expect(resolveCallbackEventName('connect-nwc')).toBe('callback_connect_nwc')
+  })
+
+  test('maps parameterized routes by route name', () => {
+    expect(resolveCallbackEventName('pay-sub:abc-def:wallet')).toBe('callback_pay_subscription')
+    expect(resolveCallbackEventName('chat:-100:on-paid')).toBe('callback_chat_paid_access')
+    expect(resolveCallbackEventName('chat:-100:turn-monthly')).toBe('callback_chat_payment_type')
+    expect(resolveCallbackEventName('subscription:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:renew')).toBe(
+      'callback_subscription_renew',
+    )
+    expect(resolveCallbackEventName('chats:2')).toBe('callback_chats_page')
+  })
+
+  test('falls back to first segment for unknown data', () => {
+    expect(resolveCallbackEventName('future-feature:1')).toBe('callback_future_feature')
+  })
+})
+
+describe('resolveUpdateEventName', () => {
+  test('names slash commands', () => {
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, message: {}},
+          message: {text: '/start lp_abc'},
+        }),
+      ),
+    ).toBe('command_start')
+
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, message: {}},
+          message: {text: '/tip@zap_gram_bot 21'},
+        }),
+      ),
+    ).toBe('command_tip')
+  })
+
+  test('names callback queries', () => {
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, callback_query: {}},
+          callbackQuery: {data: 'pay-invoice'},
+        }),
+      ),
+    ).toBe('callback_pay_invoice')
+  })
+
+  test('names ln invoice paste and system updates', () => {
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, message: {}},
+          message: {text: 'lnbc1p0xxxxxxxx'},
+        }),
+      ),
+    ).toBe('ln_invoice_pasted')
+
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, chat_join_request: {}},
+          chatJoinRequest: {},
+        }),
+      ),
+    ).toBe('chat_join_request')
+
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, my_chat_member: {}},
+          myChatMember: {
+            old_chat_member: {status: 'left'},
+            new_chat_member: {status: 'administrator'},
+          },
+        }),
+      ),
+    ).toBe('my_chat_member')
+  })
+
+  test('falls back for plain messages', () => {
+    expect(
+      resolveUpdateEventName(
+        ctx({
+          update: {update_id: 1, message: {}},
+          message: {text: 'hello'},
+        }),
+      ),
+    ).toBe('telegram_message')
   })
 })
 
