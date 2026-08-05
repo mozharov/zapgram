@@ -11,6 +11,7 @@ import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getUserFromChatCreator} from '@telegram/helpers/chat-creator.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {replyWithTempMessage} from '@telegram/helpers/temp-message.js'
 import type {ChatTypeContext} from 'grammy'
 import {getRuntime} from '../../../runtime.js'
@@ -18,13 +19,13 @@ import {getRuntime} from '../../../runtime.js'
 type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
 
 export const tipInvalidCommand = async (ctx: Context) => {
-  await ctx.deleteMessage().catch(() => null)
+  await deleteMessageSafely(ctx)
   return replyWithTempMessage(ctx, ctx.t('tip.invalid-command'))
 }
 
 export const tipCommand = async (ctx: Context) => {
   const {sats, username} = parseMatch(ctx.match)
-  await ctx.deleteMessage().catch(() => null)
+  await deleteMessageSafely(ctx)
   if (sats === 0) return
   await ctx.replyWithChatAction('typing').catch(() => null)
 

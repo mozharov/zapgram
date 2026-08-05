@@ -1,6 +1,7 @@
 import {getAccessibleChatForOwner} from '@modules/chats/repository.js'
 import {chatEditCustomMessageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import type {CallbackQueryContext} from 'grammy'
 import {editCustomMessage} from '../conversations/edit-custom-message.js'
 
@@ -10,6 +11,6 @@ export const editCustomMessageCallback = async (ctx: CallbackQueryContext<BotCon
 
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
 
-  await ctx.deleteMessage()
+  await deleteMessageSafely(ctx)
   return ctx.conversation.enter(editCustomMessage.name, {chatId: id})
 }

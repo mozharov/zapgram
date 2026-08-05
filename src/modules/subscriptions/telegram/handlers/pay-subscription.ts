@@ -3,6 +3,7 @@ import {getSubscriptionPayment} from '@modules/subscriptions/payment-repository.
 import {captureBotEvent} from '@telegram/analytics.js'
 import {paySubscriptionRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import type {CallbackQueryContext} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -27,6 +28,6 @@ export const paySubscriptionCallback = async (ctx: CallbackQueryContext<BotConte
     {chatId: subscriptionPayment.chatId},
   )
 
-  await ctx.deleteMessage()
+  await deleteMessageSafely(ctx)
   return ctx.reply(ctx.t('subscription-invoice.paid-from-balance'))
 }

@@ -324,6 +324,22 @@ test('unroutable callback data reaches unknownCallback and changes nothing else'
   expectNoErrors(e2e.logs)
 })
 
+test('a refused deleteMessage does not abort callback cleanup or raise a bot error', async () => {
+  await seedRoutingWorld()
+  e2e.tg.fail('deleteMessage', {
+    error_code: 400,
+    description: "Bad Request: message can't be deleted for everyone",
+  })
+
+  await expectDelta(e2e, () => e2e.send(privateCallback('no-such-route')), {
+    telegram: ['deleteMessage', 'answerCallbackQuery'],
+  })
+  expect(e2e.tg.last('answerCallbackQuery')?.text).toMatch(/Unknown button/)
+  // Cleanup is best-effort: Telegram 400 must not surface as "Bot error" / PostHog $exception.
+  expectNoErrors(e2e.logs)
+  expect(e2e.tg.of('sendMessage')).toHaveLength(0)
+})
+
 test('plain private text falls back to the wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('hello there')), {
     ...FIRST_TOUCH,

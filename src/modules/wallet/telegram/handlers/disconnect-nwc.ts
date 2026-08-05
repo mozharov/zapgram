@@ -2,10 +2,11 @@ import {updateUser} from '@modules/users/repository.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export const disconnectNwcCallback = async (ctx: BotContext) => {
-  await ctx.deleteMessage()
+  await deleteMessageSafely(ctx)
   await updateUser(ctx.user.id, {nwcUrl: null, nwcTips: false})
   // attachUser built nwc from the still-connected row; clear it so this request's wallet
   // reply matches the DB instead of still listing an NWC balance.

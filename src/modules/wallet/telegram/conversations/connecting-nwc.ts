@@ -5,6 +5,7 @@ import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -20,7 +21,7 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
       return conversation.halt({next: true})
     },
   })
-  await urlContext.deleteMessage()
+  await deleteMessageSafely(urlContext)
   await removeInlineKeyboard(message)
   await ctx.replyWithChatAction('typing')
   const nwcUrl = urlContext.match[0]
