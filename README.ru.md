@@ -9,6 +9,8 @@
 [![Открыть в Telegram](https://img.shields.io/badge/Open-@zap__gram__bot-26A5E4?logo=telegram&style=for-the-badge)](https://t.me/zap_gram_bot)
 [![Сайт](https://img.shields.io/badge/Сайт-zapgram.mozharov.me-111111?style=for-the-badge)](https://zapgram.mozharov.me/ru/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Alby](https://img.shields.io/badge/Alby-FFDF6F?style=for-the-badge&logo=alby&logoColor=000000)](https://getalby.com/invited-by/mozharov)
+[![NWC](https://img.shields.io/badge/NWC-211F24?style=for-the-badge&logo=https%3A%2F%2Fraw.githubusercontent.com%2FgetAlby%2Fmedia%2Fmain%2FLogos%2FNostr%2520Wallet%2520Connect%2Fnwc-logo-white.svg)](https://nwc.dev/)
 
 </div>
 
