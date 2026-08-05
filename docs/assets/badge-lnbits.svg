@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="28" role="img" aria-label="LNbits">
+  <title>LNbits</title>
+  <rect width="108" height="28" fill="#1D1D1D" rx="3"/>
+  <g transform="translate(8,6.0) scale(0.108108)">
+    <polygon fill="#FF1EE6" points="31.763 0 7.108 78.859 26.979 78.859 0 148 74.84 57.352 43.935 57.352 84.304 0"/>
+  </g>
+  <text x="23" y="19" fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" font-weight="700" textLength="75" lengthAdjust="spacingAndGlyphs">LNBITS</text>
+</svg>
