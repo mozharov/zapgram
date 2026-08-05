@@ -48,7 +48,7 @@ ZapGram превращает Telegram в приложение для Lightning-�
 
 ### Внешний кошелёк через NWC
 
-Предпочитаете self-custody? Подключите **любой** Lightning-кошелёк с поддержкой [Nostr Wallet Connect](https://nwc.dev/) — например [Alby](https://getalby.com) или [Coinos](https://coinos.io).
+Предпочитаете self-custody? Подключите **любой** Lightning-кошелёк с поддержкой [Nostr Wallet Connect](https://nwc.dev/) — например [Alby](https://getalby.com/invited-by/mozharov) или [Coinos](https://coinos.io).
 
 - Привязка по URL вида `nostr+walletconnect://…`
 - На экране кошелька видны **оба** баланса (ZapGram + NWC)
@@ -152,6 +152,8 @@ core → infra → modules → telegram / http / jobs
 ### Стек
 
 Bun, TypeScript, grammY, Elysia, Drizzle (SQLite), LNbits, Nostr Wallet Connect, pino, Biome.
+
+**Lightning backend:** [Alby](https://getalby.com/invited-by/mozharov)
 
 ### Локальная разработка
 

@@ -48,7 +48,7 @@ Internal transfers between ZapGram users settle instantly and without network fe
 
 ### External wallet via NWC
 
-Prefer self-custody? Connect **any** Lightning wallet that supports [Nostr Wallet Connect](https://nwc.dev/) — for example [Alby](https://getalby.com) or [Coinos](https://coinos.io).
+Prefer self-custody? Connect **any** Lightning wallet that supports [Nostr Wallet Connect](https://nwc.dev/) — for example [Alby](https://getalby.com/invited-by/mozharov) or [Coinos](https://coinos.io).
 
 - Link with a `nostr+walletconnect://…` URL
 - See **both** balances (ZapGram + NWC) on the wallet screen
@@ -152,6 +152,8 @@ Entry: `src/main.ts` → `createContainer()` → `createApp()` → start / grace
 ### Stack
 
 Bun, TypeScript, grammY, Elysia, Drizzle (SQLite), LNbits, Nostr Wallet Connect, pino, Biome.
+
+**Lightning backend:** [Alby](https://getalby.com/invited-by/mozharov)
 
 ### Local development
 

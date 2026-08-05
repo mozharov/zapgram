@@ -106,7 +106,7 @@ help = <b>ℹ️ Bitcoin</b>
     • <a href="https://21ideas.org/en/what-is-lightning-network/">What is Lightning Network?</a>
 
     <b>ℹ️ {bot-name} compatible wallets (NWC)</b>
-    • <a href="https://getalby.com">Alby</a> (recommended)
+    • <a href="https://getalby.com/invited-by/mozharov">Alby</a> (recommended)
     • <a href="https://coinos.io">Coinos</a>
 
     <b>ℹ️ {bot-name}</b>
