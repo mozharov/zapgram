@@ -112,17 +112,21 @@ Secondary: https://github.com/mozharov/zapgram
 
 ## Analytics (PostHog)
 
-Optional. Same `POSTHOG_PROJECT_TOKEN` / `POSTHOG_HOST` as the bot (compose build args). Empty / unreplaced token disables PostHog only.
+Optional. Empty / unreplaced token disables PostHog only.
+
+| Build arg / env | Used by | Default | Role |
+|---|---|---|---|
+| `POSTHOG_PROJECT_TOKEN` | bot + landing | — | Public project API key |
+| `POSTHOG_HOST` | bot (`host`) | `https://eu.i.posthog.com` | Cloud ingest / UI region |
+| `POSTHOG_PROXY_HOST` | landing only (`api_host`) | `https://proxy-url.com` | Managed reverse proxy (ad-block bypass) |
 
 Speed model (critical path stays free of PostHog):
 
 1. Deferred `/assets/analytics.js` rewrites bot CTAs locally (`?start=lp_<visitor_id>` from `localStorage`) — no network.
-2. After `window.load` + `requestIdleCallback`, loads the official PostHog snippet + `array.js` (pageviews / `landing_cta_click`).
+2. After `window.load` + `requestIdleCallback`, loads the official PostHog snippet + `array.js` via the reverse proxy (pageviews / `landing_cta_click`).
 3. Bot `/start` aliases that id onto the Telegram user and captures `bot_started` with `from_landing`.
 
 Session replay and feature flags stay off on the landing; autocapture is on.
-
-Rebuild the landing image after changing the token:
 
 ```bash
 docker compose build landing

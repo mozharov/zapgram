@@ -107,6 +107,8 @@ services:
         # Same public PostHog project token as the bot (frontend key by design)
         POSTHOG_PROJECT_TOKEN: ${POSTHOG_PROJECT_TOKEN:-}
         POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
+        # Managed reverse proxy → api_host (browser only)
+        POSTHOG_PROXY_HOST: ${POSTHOG_PROXY_HOST:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
