@@ -41,6 +41,7 @@ const ALL_JOBS = [
   'pendingInvoices',
   'expiredInvoices',
   'subscriptionPayments',
+  'onchainCharges',
   'expiredSubscriptions',
   'expiringSubscriptions',
 ] as const
@@ -71,7 +72,7 @@ afterEach(async () => {
 
 // --- Empty ticks ---
 
-test('each of the five jobs is a no-op on an empty database', async () => {
+test('each of the six jobs is a no-op on an empty database', async () => {
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   const telegramMark = e2e.tg.calls.length

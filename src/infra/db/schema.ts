@@ -50,6 +50,14 @@ export const chatsTable = sqliteTable('chats', {
     .references(() => usersTable.id, {onDelete: 'cascade'}),
   customMessageEn: text('custom_message_en'),
   customMessageRu: text('custom_message_ru'),
+  /** When true and watchonlyWalletId is set, members may pay on-chain. */
+  onchainEnabled: integer('onchain_enabled', {mode: 'boolean'}).notNull().default(false),
+  /** Admin zpub/xpub as pasted (display / recreate). */
+  onchainMasterpub: text('onchain_masterpub'),
+  /** LNbits Watch-Only wallet id that receives on-chain payments for this chat. */
+  watchonlyWalletId: text('watchonly_wallet_id'),
+  /** Fingerprint returned by Watch-Only on wallet create. */
+  onchainFingerprint: text('onchain_fingerprint'),
   createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
 })
 
@@ -183,5 +191,53 @@ export const subscriptionPaymentsTable = sqliteTable(
     uniqueIndex('subscription_payments_current_intent_unique')
       .on(table.intentId)
       .where(sql`${table.isCurrent} = 1`),
+  ],
+)
+
+/**
+ * On-chain join attempts via SatsPay + Watch-Only.
+ * Grant wiring may link `subscriptionPaymentId` once access is completed.
+ */
+export const onchainChatPaymentsTable = sqliteTable(
+  'onchain_chat_payments',
+  {
+    id: text('id').primaryKey(),
+    chatId: integer('chat_id', {mode: 'number'})
+      .notNull()
+      .references(() => chatsTable.id, {onDelete: 'cascade'}),
+    userId: integer('user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    satspayChargeId: text('satspay_charge_id').notNull(),
+    address: text('address').notNull(),
+    amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
+    status: text('status', {
+      enum: ['pending', 'grace', 'paid', 'expired', 'cancelled'],
+    })
+      .notNull()
+      .default('pending'),
+    /** UI TTL (edit message “expired”). */
+    expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
+    /** Keep polling / accepting late payment until this time. */
+    watchUntil: integer('watch_until', {mode: 'timestamp'}).notNull(),
+    paidAt: integer('paid_at', {mode: 'timestamp'}),
+    txid: text('txid'),
+    telegramChatId: integer('telegram_chat_id', {mode: 'number'}),
+    telegramMessageId: integer('telegram_message_id', {mode: 'number'}),
+    /** Linked LN-shaped subscription_payments row used for grant/intent. */
+    subscriptionPaymentId: text('subscription_payment_id').references(
+      () => subscriptionPaymentsTable.id,
+      {onDelete: 'set null'},
+    ),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    check(
+      'onchain_chat_payments_status_check',
+      sql`${table.status} in ('pending', 'grace', 'paid', 'expired', 'cancelled')`,
+    ),
+    uniqueIndex('onchain_chat_payments_satspay_charge_id_unique').on(table.satspayChargeId),
+    index('onchain_chat_payments_open_idx').on(table.status, table.watchUntil),
+    index('onchain_chat_payments_user_chat_idx').on(table.userId, table.chatId),
   ],
 )

@@ -253,6 +253,25 @@ const parameterizedCases: {
     db: {chats: {changed: 1}},
   },
   {
+    route: 'chat-onchain-enable',
+    data: ({chat}) => `chat:${chat.id}:onchain-enable`,
+    methods: ['deleteMessage', 'sendMessage'],
+    text: /Enable on-chain payments/,
+    db: {conversations: {added: 1}},
+  },
+  {
+    route: 'chat-onchain-disable',
+    data: ({chat}) => `chat:${chat.id}:onchain-disable`,
+    methods: ['answerCallbackQuery', 'editMessageText'],
+    text: /On-chain pay: <b>disabled/,
+  },
+  {
+    route: 'pay-onchain',
+    data: ({chat}) => `pay-onchain:${chat.id}`,
+    methods: ['answerCallbackQuery'],
+    text: /.*/,
+  },
+  {
     route: 'subscriptions-page',
     data: () => 'subscriptions:1',
     methods: ['editMessageText'],
@@ -309,7 +328,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(24)
+  expect(registry).toHaveLength(27)
   expect(covered).toEqual(registry)
 })
 

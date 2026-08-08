@@ -16,5 +16,7 @@ function buildText(t: BotContext['t'], chat: Chat) {
     status: chat.status,
     price: chat.price,
     paymentType: chat.paymentType,
+    onchain: chat.onchainEnabled && chat.watchonlyWalletId ? 'on' : 'off',
+    fingerprint: chat.onchainFingerprint ?? '—',
   })
 }

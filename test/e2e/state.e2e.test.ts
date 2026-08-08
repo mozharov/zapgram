@@ -14,11 +14,11 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
-test('an empty world has seven empty DB tables and stable normalized snapshots', async () => {
+test('an empty world has eight empty DB tables and stable normalized snapshots', async () => {
   const first = await snapshot(e2e)
   const second = await snapshot(e2e)
 
-  expect(Object.keys(first.db)).toHaveLength(7)
+  expect(Object.keys(first.db)).toHaveLength(8)
   expect(Object.values(first.db).every(rows => rows.length === 0)).toBe(true)
   expect(second).toEqual(first)
 })

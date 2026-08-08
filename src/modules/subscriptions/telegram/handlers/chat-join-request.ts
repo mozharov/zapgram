@@ -1,6 +1,7 @@
 import {satsToMsats} from '@core/money/sats.js'
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
+import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -69,6 +70,7 @@ async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
     payNWC: ((await ctx.user.nwc?.getBalance()) ?? 0) >= priceMsats,
     payWallet: ctx.user.wallet.balance >= priceMsats,
     paymentId: invoice.attempt.id,
+    onchainChatId: chatAllowsOnchain(chat) ? chat.id : undefined,
   })
 
   const locale = await ctx.i18n.getLocale()

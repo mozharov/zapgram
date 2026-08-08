@@ -1,6 +1,7 @@
 import type {
   chatsTable,
   conversationsTable,
+  onchainChatPaymentsTable,
   pendingInvoicesTable,
   subscriptionIntentsTable,
   subscriptionPaymentsTable,
@@ -36,3 +37,7 @@ export type SubscriptionPaymentInsert = typeof subscriptionPaymentsTable.$inferI
 export type NewSubscriptionPayment = Omit<SubscriptionPaymentInsert, 'id' | 'intentId'> & {
   intentId?: string
 }
+
+export type OnchainChatPayment = typeof onchainChatPaymentsTable.$inferSelect
+export type OnchainChatPaymentInsert = typeof onchainChatPaymentsTable.$inferInsert
+export type NewOnchainChatPayment = Omit<OnchainChatPaymentInsert, 'id'>

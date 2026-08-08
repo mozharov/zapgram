@@ -15,11 +15,16 @@ export type LnbitsPaymentWebhook = {
   handle: (paymentHash: string) => Promise<unknown>
 }
 
+export type SatsPayWebhook = {
+  handle: (body: unknown) => Promise<unknown>
+}
+
 export function createRouter(deps: {
   bot: Bot<Context>
   config: AppConfig
   log: LoggerWithChild
   lnbitsPaymentWebhook?: LnbitsPaymentWebhook
+  satsPayWebhook?: SatsPayWebhook
 }) {
   const telegramWebhook = webhookCallback(deps.bot as Bot, 'elysia', {
     secretToken: deps.config.BOT_WEBHOOK_SECRET,
@@ -61,6 +66,25 @@ export function createRouter(deps: {
       } catch (error) {
         // 200 so LNbits does not hammer retries on our business failures — cron is the safety net.
         deps.log.error({error, paymentHash}, 'LNbits payment webhook handler failed')
+        return {ok: false, error: 'handler_failed'}
+      }
+    })
+    .post('/satspay/webhook/:secret', async ctx => {
+      if (!deps.satsPayWebhook) {
+        ctx.set.status = 503
+        return {ok: false, error: 'webhook_unconfigured'}
+      }
+      if (!secretsMatch(ctx.params.secret, deps.config.BOT_WEBHOOK_SECRET)) {
+        ctx.set.status = 401
+        return {ok: false, error: 'unauthorized'}
+      }
+
+      try {
+        const result = await deps.satsPayWebhook.handle(ctx.body)
+        return {ok: true, result}
+      } catch (error) {
+        // 200 so SatsPay does not hammer retries — check-onchain-charges cron is the safety net.
+        deps.log.error({error}, 'SatsPay webhook handler failed')
         return {ok: false, error: 'handler_failed'}
       }
     })

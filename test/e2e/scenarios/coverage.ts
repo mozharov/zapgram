@@ -18,6 +18,8 @@ export const scenarioCoverage = {
       'chat-custom-message',
       'chat-edit-custom-message',
       'chat-remove-custom-message',
+      'chat-onchain-enable',
+      'chat-onchain-disable',
     ],
     commands: ['/chats'],
     updates: [
@@ -134,6 +136,7 @@ export const scenarioCoverage = {
       'check-pending-invoices',
       'delete-expired-invoices',
       'check-subscription-payments',
+      'check-onchain-charges',
       'check-expired-subscriptions',
       'process-expiring-subscriptions',
     ],
@@ -252,7 +255,7 @@ export const scenarioCoverage = {
     errors: ['from_bot', 'not_found'],
   },
   'subscriptions-join': {
-    routes: [],
+    routes: ['pay-onchain'],
     commands: [],
     updates: ['chat_join_request'],
     writes: [
@@ -261,6 +264,9 @@ export const scenarioCoverage = {
       'subscription_intents.update',
       'subscription_payments.insert',
       'subscription_payments.update',
+      'onchain_chat_payments.insert',
+      'onchain_chat_payments.update',
+      'onchain_chat_payments.delete',
     ],
     jobs: [],
     errors: [],

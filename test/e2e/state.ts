@@ -2,6 +2,7 @@ import * as schema from '@infra/db/schema.js'
 import type {
   Chat,
   Conversation,
+  OnchainChatPayment,
   PendingInvoice,
   Subscription,
   SubscriptionIntent,
@@ -24,6 +25,7 @@ export type WorldState = {
     subscriptionPayments: SubscriptionPayment[]
     pendingInvoices: PendingInvoice[]
     conversations: Conversation[]
+    onchainChatPayments: OnchainChatPayment[]
   }
   lnbits: {
     wallets: {id: string; name: string; balanceMsat: number}[]
@@ -318,6 +320,7 @@ function emptyDbState(): WorldState['db'] {
     subscriptionPayments: [],
     pendingInvoices: [],
     conversations: [],
+    onchainChatPayments: [],
   }
 }
 
@@ -330,6 +333,7 @@ function dbKey(tableName: string): DbKey {
     subscription_payments: 'subscriptionPayments',
     pending_invoices: 'pendingInvoices',
     conversations: 'conversations',
+    onchain_chat_payments: 'onchainChatPayments',
   }
   const key = keyByTable[tableName]
   if (!key) throw new Error(`World snapshot has no key for table ${tableName}`)

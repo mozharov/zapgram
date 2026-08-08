@@ -109,3 +109,60 @@ export const balanceResponseSchema = z.object({
   balance: z.number(), // in millisatoshis
   id: z.string(),
 })
+
+// --- Watch-Only extension ---
+
+export const watchOnlyWalletSchema = z.object({
+  id: z.string(),
+  user: z.string(),
+  masterpub: z.string(),
+  fingerprint: z.string(),
+  title: z.string(),
+  address_no: z.number(),
+  balance: z.number(),
+  type: z.string().nullable().optional(),
+  network: z.string().default('Mainnet'),
+  meta: z.string().default('{}'),
+})
+export type WatchOnlyWallet = z.infer<typeof watchOnlyWalletSchema>
+
+export const watchOnlyWalletListSchema = z.array(watchOnlyWalletSchema)
+
+export const watchOnlyAddressSchema = z.object({
+  id: z.string(),
+  address: z.string(),
+  wallet: z.string(),
+  amount: z.number().default(0),
+  branch_index: z.number().default(0),
+  address_index: z.number(),
+  note: z.string().nullable().optional(),
+  has_activity: z.boolean().default(false),
+})
+export type WatchOnlyAddress = z.infer<typeof watchOnlyAddressSchema>
+
+// --- SatsPay extension ---
+
+export const satsPayChargeSchema = z.object({
+  id: z.string(),
+  user: z.string(),
+  amount: z.number(),
+  time: z.number(),
+  timestamp: z.coerce.date(),
+  balance: z.number().default(0),
+  pending: z.number().default(0),
+  zeroconf: z.boolean().default(false),
+  fasttrack: z.boolean().default(false),
+  paid: z.boolean().default(false),
+  name: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  onchainwallet: z.string().nullable().optional(),
+  onchainaddress: z.string().nullable().optional(),
+  lnbitswallet: z.string().nullable().optional(),
+  payment_request: z.string().nullable().optional(),
+  payment_hash: z.string().nullable().optional(),
+  webhook: z.string().nullable().optional(),
+  completelink: z.string().nullable().optional(),
+  completelinktext: z.string().nullable().optional(),
+  extra: z.string().nullable().optional(),
+})
+export type SatsPayCharge = z.infer<typeof satsPayChargeSchema>
