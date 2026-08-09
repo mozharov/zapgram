@@ -1,5 +1,4 @@
 const SATS_PER_BTC = 100_000_000
-const MAX_FRACTION_DIGITS = 8
 
 export function satsToUsd(sats: number, btcUsd: number): number {
   return (sats * btcUsd) / SATS_PER_BTC
@@ -12,25 +11,14 @@ export function formatUsdAmount(usd: number): string {
     return abs.toFixed(2)
   }
 
-  // Leading zeros after the decimal before the first non-zero digit.
-  // e.g. 0.00032205 → 3 zeros; when > 2, show one significant digit (0.0003).
+  // Sub-cent: one significant digit
+  // e.g. 0.00181391 → 0.002, 0.00032205 → 0.0003, 0.00095 → 0.001
   const order = Math.floor(Math.log10(abs))
-  const leadingZeros = -order - 1
-  if (leadingZeros > 2) {
-    const factor = 10 ** -order
-    const rounded = Math.round(abs * factor) / factor
-    // Recompute digits after possible carry (e.g. 0.00095 → 0.001)
-    const roundedOrder = Math.floor(Math.log10(rounded))
-    return rounded.toFixed(Math.max(1, -roundedOrder))
-  }
-
-  // Adaptive digits for values with ≤2 leading zeros (e.g. 0.0042)
-  const full = Number(abs.toFixed(MAX_FRACTION_DIGITS))
-  for (let digits = 3; digits <= MAX_FRACTION_DIGITS; digits++) {
-    const rounded = abs.toFixed(digits)
-    if (Number(rounded) !== 0 && Number(rounded) === full) return rounded
-  }
-  return abs.toFixed(MAX_FRACTION_DIGITS)
+  const factor = 10 ** -order
+  const rounded = Math.round(abs * factor) / factor
+  // Recompute digits after possible carry (e.g. 0.00095 → 0.001, 0.0099 → 0.01)
+  const roundedOrder = Math.floor(Math.log10(rounded))
+  return rounded.toFixed(Math.max(1, -roundedOrder))
 }
 
 export function formatUsdSuffix(usd: number | null): string {
