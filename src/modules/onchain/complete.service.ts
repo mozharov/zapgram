@@ -1,6 +1,12 @@
 import type {PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
-import type {Chat, OnchainChatPayment, SubscriptionPayment, User} from '@infra/db/types.js'
+import type {
+  Chat,
+  OnchainChatPayment,
+  SubscriptionIntent,
+  SubscriptionPayment,
+  User,
+} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {ChatWithOwner} from '@modules/chats/types.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
@@ -11,7 +17,19 @@ export type CompleteOnchainResult = 'settled' | 'already_settled' | 'kept' | 'no
 
 export type CompleteOnchainJoinDeps = {
   onchainPayments: OnchainPaymentRepository
+  /**
+   * Shared join intent for (user, chat). On-chain must attach here — a separate legacy intent
+   * conflicts with the open LN join intent (partial UNIQUE on open|won).
+   */
+  getOrCreateJoinIntent: (
+    userId: number,
+    chatId: number,
+  ) => Promise<{
+    intent: Pick<SubscriptionIntent, 'id'>
+    currentAttempt: Pick<SubscriptionPayment, 'id'> | null | undefined
+  }>
   createSubscriptionPayment: (data: {
+    intentId: string
     userId: number
     chatId: number
     paymentRequest: string
@@ -20,6 +38,7 @@ export type CompleteOnchainJoinDeps = {
     subscriptionType: 'one_time' | 'monthly'
     kind: 'join'
     expiresAt: Date
+    isCurrent?: boolean
   }) => Promise<SubscriptionPayment>
   findSubscriptionPayment: (id: string) => Promise<SubscriptionPayment | null | undefined>
   claimPaidAttempt: (id: string, claimedAt?: Date) => Promise<PaidAttemptOutcome>
@@ -94,7 +113,15 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
       }
       if (!subscriptionPayment) {
         const chat = await deps.getChatOrThrow(onchain.chatId)
+        // Reuse the same open join intent as the Lightning invoice (if any). Creating a
+        // second legacy intent then flipping it to `won` violates
+        // subscription_intents_active_user_chat_kind_unique (open|won per user/chat/kind).
+        const {intent, currentAttempt} = await deps.getOrCreateJoinIntent(
+          onchain.userId,
+          onchain.chatId,
+        )
         subscriptionPayment = await deps.createSubscriptionPayment({
+          intentId: intent.id,
           userId: onchain.userId,
           chatId: onchain.chatId,
           paymentRequest: onchainPaymentRequest(onchain.satspayChargeId),
@@ -103,6 +130,8 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           subscriptionType: chat.paymentType,
           kind: 'join',
           expiresAt: onchain.expiresAt,
+          // Only one is_current=1 per intent; LN join attempt usually already holds it.
+          isCurrent: !currentAttempt,
         })
         await deps.onchainPayments.linkSubscriptionPayment(onchain.id, subscriptionPayment.id)
       }

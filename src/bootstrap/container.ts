@@ -200,6 +200,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   })
   const completeOnchainJoin = createCompleteOnchainJoinService({
     onchainPayments,
+    getOrCreateJoinIntent: (userId, chatId) =>
+      subscriptionIntents.getOrCreateActive({userId, chatId, kind: 'join'}),
     createSubscriptionPayment: data => payments.create(data),
     findSubscriptionPayment: id => payments.findById(id),
     claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
