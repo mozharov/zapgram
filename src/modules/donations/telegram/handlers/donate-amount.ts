@@ -3,6 +3,7 @@ import {clearDonateCallbackMessage, replyDonateHub} from '@modules/donations/tel
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donateAmountRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function donateAmountCallback(ctx: BotContext) {
@@ -45,6 +46,7 @@ export async function donateAmountCallback(ctx: BotContext) {
     analytics: {source: 'donate_preset'},
   })
 
+  const usdSuffix = await usdSuffixForSats(amountSats)
   if (result.status !== 'paid') {
     captureBotEvent(posthog, 'donate_one_shot_ui_failed', {
       feature: 'donations',
@@ -53,11 +55,11 @@ export async function donateAmountCallback(ctx: BotContext) {
       amount_sats: amountSats,
       reason: result.reason,
     })
-    await ctx.reply(ctx.t('donate.failed', {sats: amountSats}))
+    await ctx.reply(ctx.t('donate.failed', {sats: amountSats, usdSuffix}))
     await replyDonateHub(ctx)
     return
   }
 
-  await ctx.reply(ctx.t('donate.success', {sats: amountSats}))
+  await ctx.reply(ctx.t('donate.success', {sats: amountSats, usdSuffix}))
   await replyDonateHub(ctx)
 }

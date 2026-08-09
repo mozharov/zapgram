@@ -7,6 +7,7 @@ import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
@@ -37,7 +38,13 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   })
 
   await notifySatsReceived(toUser.id, sats, ctx.user.username)
-  await ctx.reply(ctx.t('sending-to-user.completed', {amount: sats, recipient: toUser.username}))
+  await ctx.reply(
+    ctx.t('sending-to-user.completed', {
+      amount: sats,
+      usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
+      recipient: toUser.username,
+    }),
+  )
 
   await replyWithWallet(ctx)
 }

@@ -2,6 +2,7 @@ import {advanceMonthlyNextAt} from '@core/money/donation.js'
 import type {User} from '@infra/db/types.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
 const FAIL_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000
@@ -91,7 +92,10 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
         !lastFail || now.getTime() - lastFail.getTime() >= FAIL_NOTIFY_COOLDOWN_MS
       if (shouldNotify) {
         try {
-          const text = translate('donate.monthly-failed', user.languageCode, {sats: amount})
+          const text = translate('donate.monthly-failed', user.languageCode, {
+            sats: amount,
+            usdSuffix: await usdSuffixForSats(amount),
+          })
           await notifier.send(user.id, text)
           await users.update(user.id, {monthlyDonationLastFailNotifyAt: now})
         } catch (error) {

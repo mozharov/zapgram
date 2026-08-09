@@ -13,6 +13,7 @@ import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard, InputFile} from 'grammy'
 import type {Message} from 'grammy/types'
 import QRCode from 'qrcode'
@@ -22,6 +23,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   await ctx.reply(ctx.t('creating-invoice'))
   const wallet = await waitForWallet(conversation, ctx, {flow: 'create_invoice'})
   const sats = await waitForSats(conversation, ctx)
+  const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
 
   await ctx.replyWithChatAction('typing')
   // LNbits + DB must not re-run when the conversation replays after later waits.
@@ -29,7 +31,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
   captureInvoiceCreated({sats, wallet, hasMemo: false, isReplacement: false})
 
-  const qrMessage = await replyWithQRCode(ctx, paymentRequest, {offerAddMemo: true})
+  const qrMessage = await replyWithQRCode(ctx, paymentRequest, {offerAddMemo: true, usdSuffix})
 
   const addMemoCtx = await conversation.waitForCallbackQuery(staticCallback.addInvoiceMemo, {
     otherwise: async otherwiseCtx => {
@@ -64,7 +66,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
   captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
-  await editQRCode(ctx, qrMessage, paymentRequest)
+  await editQRCode(ctx, qrMessage, paymentRequest, usdSuffix)
   await replyWithWallet(ctx)
 }
 
@@ -139,9 +141,9 @@ async function createInvoice(
 async function replyWithQRCode(
   ctx: BotContext,
   paymentRequest: string,
-  opts: {offerAddMemo: boolean},
+  opts: {offerAddMemo: boolean; usdSuffix: string},
 ): Promise<Message.PhotoMessage> {
-  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest)
+  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest, opts.usdSuffix)
   const keyboard = opts.offerAddMemo
     ? new InlineKeyboard()
         .row({
@@ -161,8 +163,9 @@ async function editQRCode(
   ctx: BotContext,
   message: Message,
   paymentRequest: string,
+  usdSuffix: string,
 ): Promise<void> {
-  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest)
+  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest, usdSuffix)
   await ctx.api.editMessageMedia(message.chat.id, message.message_id, {
     type: 'photo',
     media: new InputFile(buffer),
@@ -170,13 +173,14 @@ async function editQRCode(
   })
 }
 
-async function buildQRPayload(ctx: BotContext, paymentRequest: string) {
+async function buildQRPayload(ctx: BotContext, paymentRequest: string, usdSuffix: string) {
   const invoice = decodeInvoice(paymentRequest)
   const expiresAt = invoice.expiryDate ?? 0
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
   const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
   const caption = ctx.t('creating-invoice.created', {
     amount: invoice.satoshi,
+    usdSuffix,
     hasDescription: (!!memo).toString(),
     description: memo,
     expiresAt,

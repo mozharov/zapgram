@@ -1,16 +1,20 @@
 import type {User} from '@infra/db/types.js'
 import type {PlatformDonationStats, UserDonationStats} from '@modules/donations/repository.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 
-export function formatDonateHubText(
+export async function formatDonateHubText(
   t: BotContext['t'],
   user: User,
   stats: UserDonationStats,
   platform: PlatformDonationStats,
-): string {
+): Promise<string> {
   const monthlyStatus =
     user.monthlyDonationSats > 0
-      ? t('donate.monthly-status-on', {sats: user.monthlyDonationSats})
+      ? t('donate.monthly-status-on', {
+          sats: user.monthlyDonationSats,
+          usdSuffix: await usdSuffixForSats(user.monthlyDonationSats),
+        })
       : t('donate.monthly-status-off')
 
   const last =

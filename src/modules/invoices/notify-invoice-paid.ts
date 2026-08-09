@@ -6,6 +6,7 @@ import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../runtime.js'
 
 export async function notifyInvoicePaid(
@@ -17,13 +18,20 @@ export async function notifyInvoicePaid(
 
   const invoice = decodeInvoice(paymentRequest)
   const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
+  const balance = msatsToSats(wallet.balance)
+  const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([
+    invoice.satoshi,
+    balance,
+  ])
   await notifier.send(
     user.id,
     translate('received-incoming-invoice', user.languageCode, {
       amount: invoice.satoshi,
+      usdSuffix,
       hasDescription: (!!memo).toString(),
       description: memo,
-      balance: msatsToSats(wallet.balance),
+      balance,
+      balanceUsdSuffix,
     }),
   )
 }

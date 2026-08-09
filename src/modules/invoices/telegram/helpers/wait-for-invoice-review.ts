@@ -4,6 +4,7 @@ import {getPendingInvoiceBy} from '@modules/invoices/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 
 export async function waitForInvoiceReview(
@@ -30,10 +31,15 @@ export async function waitForInvoiceReview(
     if (internalInvoice) satsFee = 0
     else satsFee = msatsToSats(await ctx.user.wallet.getFeeReserve(invoice.paymentRequest))
   }
+  const [usdSuffix = '', feeUsdSuffix = ''] = await conversation.external(() =>
+    usdSuffixesForSats([invoice.satoshi, satsFee === 'no' ? 0 : satsFee]),
+  )
   const message = await ctx.reply(
     ctx.t('wait-for-invoice-review', {
       amount: invoice.satoshi,
+      usdSuffix,
       fee: satsFee,
+      feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
       description: invoice.description ?? '',
       hasDescription: (!!invoice.description).toString(),
       createdDate: invoice.createdDate,

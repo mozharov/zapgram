@@ -4,6 +4,7 @@ import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 
 export async function notifySatsReceived(
   toUserId: User['id'],
@@ -12,12 +13,16 @@ export async function notifySatsReceived(
 ): Promise<void> {
   const toUser = await getUserOrThrow(toUserId)
   const wallet = await getUserWallet(toUser.id)
+  const balance = msatsToSats(wallet.balance)
+  const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([sats, balance])
   await notifier.send(
     toUser.id,
     translate('sats-received', toUser.languageCode, {
       amount: sats,
+      usdSuffix,
       username: fromUsername ?? 'no',
-      balance: msatsToSats(wallet.balance),
+      balance,
+      balanceUsdSuffix,
     }),
   )
 }

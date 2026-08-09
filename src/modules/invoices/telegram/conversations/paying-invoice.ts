@@ -11,6 +11,7 @@ import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function payingInvoice(
@@ -74,11 +75,19 @@ export async function payingInvoice(
     user: ctx.user,
   })
 
+  const fee = msatsToSats(feesPaid)
+  const total = msatsToSats(invoice.millisatoshi + feesPaid)
+  const [usdSuffix = '', feeUsdSuffix = '', totalUsdSuffix = ''] = await conversation.external(() =>
+    usdSuffixesForSats([invoice.satoshi, fee, total]),
+  )
   await ctx.reply(
     ctx.t('paying-invoice.paid', {
       amount: invoice.satoshi,
-      fee: msatsToSats(feesPaid),
-      total: msatsToSats(invoice.millisatoshi + feesPaid),
+      usdSuffix,
+      fee,
+      feeUsdSuffix,
+      total,
+      totalUsdSuffix,
     }),
   )
   await replyWithWallet(ctx)

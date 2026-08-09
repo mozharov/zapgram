@@ -9,7 +9,7 @@ export async function replyDonateHub(ctx: BotContext) {
   const user = await getRuntime().users.getOrThrow(ctx.user.id)
   ctx.user = user as typeof ctx.user
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  return ctx.reply(formatDonateHubText(ctx.t, user, stats, platform), {
+  return ctx.reply(await formatDonateHubText(ctx.t, user, stats, platform), {
     reply_markup: buildDonateHubKeyboard(ctx.t, user),
   })
 }
@@ -19,7 +19,7 @@ export async function editDonateHub(ctx: BotContext) {
   const user = await getRuntime().users.getOrThrow(ctx.user.id)
   ctx.user = user as typeof ctx.user
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  return ctx.editMessageText(formatDonateHubText(ctx.t, user, stats, platform), {
+  return ctx.editMessageText(await formatDonateHubText(ctx.t, user, stats, platform), {
     reply_markup: buildDonateHubKeyboard(ctx.t, user),
   })
 }
