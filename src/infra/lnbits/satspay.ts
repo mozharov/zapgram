@@ -43,11 +43,23 @@ export class SatsPayClient extends LNBitsAPI {
     return this.fetchWithSchema(`/satspay/api/v1/charge/${chargeId}`, satsPayChargeSchema)
   }
 
-  /** Re-check on-chain balance / LN status; may mark paid and fire webhook. */
+  /**
+   * Re-check on-chain balance / LN status; may mark paid and fire webhook.
+   * SatsPay returns 400 "Charge is already paid." on a second check — treat as GET.
+   */
   async checkChargeBalance(chargeId: string): Promise<SatsPayCharge> {
-    return this.fetchWithSchema(`/satspay/api/v1/charge/balance/${chargeId}`, satsPayChargeSchema, {
-      method: 'PUT',
-    })
+    try {
+      return await this.fetchWithSchema(
+        `/satspay/api/v1/charge/balance/${chargeId}`,
+        satsPayChargeSchema,
+        {method: 'PUT'},
+      )
+    } catch (error) {
+      if (isSatsPayAlreadyPaidError(error)) {
+        return this.getCharge(chargeId)
+      }
+      throw error
+    }
   }
 
   async deleteCharge(chargeId: string): Promise<void> {
@@ -61,4 +73,14 @@ export function createSatsPayClient(cfg: {
   log?: AppLogger
 }): SatsPayClient {
   return new SatsPayClient(cfg)
+}
+
+function isSatsPayAlreadyPaidError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('response' in error)) return false
+  const response = (error as {response?: {statusCode?: number; body?: unknown}}).response
+  if (response?.statusCode !== 400) return false
+  const body = response.body
+  if (!body || typeof body !== 'object' || !('detail' in body)) return false
+  const detail = (body as {detail: unknown}).detail
+  return typeof detail === 'string' && detail.toLowerCase().includes('already paid')
 }

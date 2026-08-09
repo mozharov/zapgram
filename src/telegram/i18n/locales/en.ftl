@@ -353,7 +353,8 @@ onchain-invoice =
 
         {$type ->
         [one_time] <i></i>
-        *[other] <i>Monthly renewals use Lightning from your {bot-name} balance when auto-renew is on.</i>
+        *[other] <i>Monthly access renews via Lightning from your {bot-name} balance when auto-renew is on.</i>
+            <i>To get expiry reminders, open the bot and press /start.</i>
         }
     .disabled = On-chain pay is not available for this chat.
     .create-failed = Could not create an on-chain payment. Please try again later.
@@ -412,7 +413,7 @@ subscription-invoice =
     {$type ->
     [one_time] <i></i>
     *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
-        <i>For control of automatic debits, use the /subscriptions command.</i>
+        <i>To get expiry reminders and manage auto-renew, open the bot (/start) and use /subscriptions.</i>
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.

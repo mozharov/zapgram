@@ -18,8 +18,8 @@ export type CompleteOnchainResult = 'settled' | 'already_settled' | 'kept' | 'no
 export type CompleteOnchainJoinDeps = {
   onchainPayments: OnchainPaymentRepository
   /**
-   * Shared join intent for (user, chat). On-chain must attach here — a separate legacy intent
-   * conflicts with the open LN join intent (partial UNIQUE on open|won).
+   * Shared join intent for (user, chat). On-chain and LN attempts share this intent
+   * so either rail can win without a second intent row.
    */
   getOrCreateJoinIntent: (
     userId: number,
@@ -41,6 +41,10 @@ export type CompleteOnchainJoinDeps = {
     isCurrent?: boolean
   }) => Promise<SubscriptionPayment>
   findSubscriptionPayment: (id: string) => Promise<SubscriptionPayment | null | undefined>
+  /** Idempotent lookup when create already ran (webhook/cron race). */
+  findSubscriptionPaymentByHash: (
+    paymentHash: string,
+  ) => Promise<SubscriptionPayment | null | undefined>
   claimPaidAttempt: (id: string, claimedAt?: Date) => Promise<PaidAttemptOutcome>
   markWinnerCompleted: (id: string, processedAt?: Date) => Promise<void>
   grantAccess: (payment: SubscriptionPayment, now?: Date) => 'granted' | 'already_settled'
@@ -48,7 +52,7 @@ export type CompleteOnchainJoinDeps = {
   getChatOrThrow: (id: number) => Promise<ChatWithOwner>
   getUserOrThrow: (id: number) => Promise<User>
   notifier: Notifier
-  /** Best-effort edit of the address payment message (never throws into settle). */
+  /** Edit the join/on-chain invoice message in-place (users who never /start cannot get new DMs). */
   editTelegramMessage?: (
     telegramChatId: number,
     telegramMessageId: number,
@@ -107,15 +111,18 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
     txid: string | null | undefined,
   ): Promise<CompleteOnchainResult> {
     try {
+      const paymentHash = onchainPaymentHash(onchain.satspayChargeId)
       let subscriptionPayment: SubscriptionPayment | null | undefined
+
       if (onchain.subscriptionPaymentId) {
         subscriptionPayment = await deps.findSubscriptionPayment(onchain.subscriptionPaymentId)
       }
       if (!subscriptionPayment) {
+        subscriptionPayment = await deps.findSubscriptionPaymentByHash(paymentHash)
+      }
+
+      if (!subscriptionPayment) {
         const chat = await deps.getChatOrThrow(onchain.chatId)
-        // Reuse the same open join intent as the Lightning invoice (if any). Creating a
-        // second legacy intent then flipping it to `won` violates
-        // subscription_intents_active_user_chat_kind_unique (open|won per user/chat/kind).
         const {intent, currentAttempt} = await deps.getOrCreateJoinIntent(
           onchain.userId,
           onchain.chatId,
@@ -125,7 +132,7 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           userId: onchain.userId,
           chatId: onchain.chatId,
           paymentRequest: onchainPaymentRequest(onchain.satspayChargeId),
-          paymentHash: onchainPaymentHash(onchain.satspayChargeId),
+          paymentHash,
           price: onchain.amountSats,
           subscriptionType: chat.paymentType,
           kind: 'join',
@@ -133,8 +140,9 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           // Only one is_current=1 per intent; LN join attempt usually already holds it.
           isCurrent: !currentAttempt,
         })
-        await deps.onchainPayments.linkSubscriptionPayment(onchain.id, subscriptionPayment.id)
       }
+
+      await deps.onchainPayments.linkSubscriptionPayment(onchain.id, subscriptionPayment.id)
 
       const claim = await deps.claimPaidAttempt(subscriptionPayment.id, now())
       if (claim === 'already_processed') {
@@ -146,7 +154,6 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
         return 'already_settled'
       }
       if (claim === 'already_won_refund') {
-        // Another attempt already won (e.g. LN paid first). Mark on-chain paid for bookkeeping only.
         deps.log.info(
           {onchainId: onchain.id, paymentId: subscriptionPayment.id},
           'On-chain payment arrived after another attempt already won; not granting again',
@@ -178,8 +185,6 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
         return 'kept'
       }
 
-      // Stamp on-chain paid *before* markWinnerCompleted: legacy intents cascade-delete the
-      // subscription_payments row when the intent is removed, which would break the FK.
       await deps.onchainPayments.markPaid(onchain.id, {
         paidAt: now(),
         txid,
@@ -192,6 +197,8 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
         type: subscriptionPayment.subscriptionType,
       })
 
+      // Prefer edit: join-request users often never /start, so sendMessage 403s.
+      let edited = false
       if (
         deps.editTelegramMessage &&
         onchain.telegramChatId != null &&
@@ -203,6 +210,7 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
             onchain.telegramMessageId,
             paidText,
           )
+          edited = true
         } catch (error) {
           deps.log.debug(
             {error, onchainId: onchain.id},
@@ -210,9 +218,11 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           )
         }
       }
+      if (!edited) {
+        await deps.notifier.send(onchain.userId, paidText)
+      }
 
-      await deps.notifier.send(onchain.userId, paidText)
-
+      // Owner almost always has an open chat with the bot (admin).
       await deps.notifier.send(
         chat.ownerId,
         deps.translate('new-onchain-subscription-payment', chat.owner.languageCode, {
@@ -243,6 +253,11 @@ export function onchainPaymentHash(chargeId: string): string {
 
 export function onchainPaymentRequest(chargeId: string): string {
   return `onchain:${chargeId}`
+}
+
+/** Synthetic payment_hash for SatsPay charges — never a LNbits LN payment id. */
+export function isOnchainPaymentHash(paymentHash: string): boolean {
+  return paymentHash.startsWith('onchain:')
 }
 
 /** Chat is ready for on-chain member payments. */

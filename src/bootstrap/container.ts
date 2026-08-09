@@ -204,6 +204,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       subscriptionIntents.getOrCreateActive({userId, chatId, kind: 'join'}),
     createSubscriptionPayment: data => payments.create(data),
     findSubscriptionPayment: id => payments.findById(id),
+    findSubscriptionPaymentByHash: hash => payments.findByPaymentHash(hash),
     claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
     markWinnerCompleted: (id, processedAt) => payments.markWinnerCompleted(id, processedAt),
     grantAccess,

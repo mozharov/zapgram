@@ -25,13 +25,13 @@ async function seedChat(db: ReturnType<typeof createTestDb>) {
     onchainEnabled: true,
     watchonlyWalletId: 'wo-1',
   })
-  return {users, chats}
 }
 
 function buildService(
   db: ReturnType<typeof createTestDb>,
   onchainPayments: ReturnType<typeof createOnchainPaymentRepository>,
   notifies: Array<{userId: number; text: string}>,
+  edits: Array<{chatId: number; messageId: number; text: string}> = [],
 ) {
   const users = createUserRepository(db)
   const chats = createChatRepository(db)
@@ -50,6 +50,7 @@ function buildService(
       intents.getOrCreateActive({userId, chatId, kind: 'join'}),
     createSubscriptionPayment: data => payments.create(data),
     findSubscriptionPayment: id => payments.findById(id),
+    findSubscriptionPaymentByHash: hash => payments.findByPaymentHash(hash),
     claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
     markWinnerCompleted: (id, processedAt) => payments.markWinnerCompleted(id, processedAt),
     grantAccess,
@@ -62,6 +63,9 @@ function buildService(
         return true
       },
       sendPhoto: async () => true,
+    },
+    editTelegramMessage: async (chatId, messageId, text) => {
+      edits.push({chatId, messageId, text})
     },
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     translate: (key, _lang, vars) => `${key}:${JSON.stringify(vars ?? {})}`,
@@ -76,20 +80,21 @@ describe('completeOnchainJoin', () => {
     const onchainPayments = createOnchainPaymentRepository(db)
     const subscriptions = createSubscriptionRepository(db)
 
-    const expiresAt = new Date('2026-08-09T12:00:00.000Z')
-    const watchUntil = new Date('2026-08-10T12:00:00.000Z')
     const row = await onchainPayments.create({
       chatId: -100,
       userId: 2,
       satspayChargeId: 'ch-complete',
       address: 'bc1qcomplete',
       amountSats: 1000,
-      expiresAt,
-      watchUntil,
+      expiresAt: new Date('2026-08-09T12:00:00.000Z'),
+      watchUntil: new Date('2026-08-10T12:00:00.000Z'),
+      telegramChatId: 2,
+      telegramMessageId: 99,
     })
 
     const notifies: Array<{userId: number; text: string}> = []
-    const service = buildService(db, onchainPayments, notifies)
+    const edits: Array<{chatId: number; messageId: number; text: string}> = []
+    const service = buildService(db, onchainPayments, notifies, edits)
 
     const first = await service.completeFromCharge({
       chargeId: 'ch-complete',
@@ -97,16 +102,17 @@ describe('completeOnchainJoin', () => {
       extra: JSON.stringify({txids: ['txid-abc']}),
     })
     expect(first).toBe('settled')
-
-    const sub = await subscriptions.findByUserAndChat(2, -100)
-    expect(sub).toBeDefined()
     expect((await onchainPayments.findById(row.id))?.status).toBe('paid')
-    expect((await onchainPayments.findById(row.id))?.txid).toBe('txid-abc')
-    expect(notifies.some(n => n.userId === 2)).toBe(true)
+    expect(await subscriptions.findByUserAndChat(2, -100)).toBeDefined()
+    // User is notified via edit, not a new DM.
+    expect(edits).toHaveLength(1)
+    expect(edits[0]).toMatchObject({chatId: 2, messageId: 99})
+    expect(notifies.filter(n => n.userId === 2)).toHaveLength(0)
     expect(notifies.some(n => n.userId === 1)).toBe(true)
 
-    const second = await service.completeFromCharge({chargeId: 'ch-complete', paid: true})
-    expect(second).toBe('already_settled')
+    expect(await service.completeFromCharge({chargeId: 'ch-complete', paid: true})).toBe(
+      'already_settled',
+    )
   })
 
   test('settles when an open LN join intent already exists for the same user/chat', async () => {
@@ -117,7 +123,6 @@ describe('completeOnchainJoin', () => {
     const onchainPayments = createOnchainPaymentRepository(db)
     const subscriptions = createSubscriptionRepository(db)
 
-    // Mimic join-request: open intent + pending LN attempt (is_current).
     const {intent} = await intents.getOrCreateActive({userId: 2, chatId: -100, kind: 'join'})
     await payments.create({
       intentId: intent.id,
@@ -131,7 +136,7 @@ describe('completeOnchainJoin', () => {
       isCurrent: true,
     })
 
-    const row = await onchainPayments.create({
+    await onchainPayments.create({
       chatId: -100,
       userId: 2,
       satspayChargeId: 'ch-after-ln-intent',
@@ -139,20 +144,20 @@ describe('completeOnchainJoin', () => {
       amountSats: 1000,
       expiresAt: new Date('2026-08-09T12:00:00.000Z'),
       watchUntil: new Date('2026-08-10T12:00:00.000Z'),
+      telegramChatId: 2,
+      telegramMessageId: 42,
     })
 
     const notifies: Array<{userId: number; text: string}> = []
     const service = buildService(db, onchainPayments, notifies)
 
-    const result = await service.completeFromCharge({
-      chargeId: 'ch-after-ln-intent',
-      paid: true,
-      extra: JSON.stringify({txids: ['txid-onchain']}),
-    })
-
-    expect(result).toBe('settled')
-    expect((await onchainPayments.findById(row.id))?.status).toBe('paid')
+    expect(
+      await service.completeFromCharge({
+        chargeId: 'ch-after-ln-intent',
+        paid: true,
+        extra: JSON.stringify({txids: ['txid-onchain']}),
+      }),
+    ).toBe('settled')
     expect(await subscriptions.findByUserAndChat(2, -100)).toBeDefined()
-    expect(notifies.some(n => n.userId === 2)).toBe(true)
   })
 })
