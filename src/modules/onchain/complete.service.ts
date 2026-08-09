@@ -197,8 +197,8 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
         type: subscriptionPayment.subscriptionType,
       })
 
-      // Prefer edit: join-request users often never /start, so sendMessage 403s.
-      let edited = false
+      // Always edit the payment message (join-request users often never /start;
+      // a new DM would 403, and the address invoice is obsolete after settle).
       if (
         deps.editTelegramMessage &&
         onchain.telegramChatId != null &&
@@ -210,16 +210,12 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
             onchain.telegramMessageId,
             paidText,
           )
-          edited = true
         } catch (error) {
           deps.log.debug(
             {error, onchainId: onchain.id},
             'Could not edit on-chain payment message after settle',
           )
         }
-      }
-      if (!edited) {
-        await deps.notifier.send(onchain.userId, paidText)
       }
 
       // Owner almost always has an open chat with the bot (admin).

@@ -104,11 +104,10 @@ describe('completeOnchainJoin', () => {
     expect(first).toBe('settled')
     expect((await onchainPayments.findById(row.id))?.status).toBe('paid')
     expect(await subscriptions.findByUserAndChat(2, -100)).toBeDefined()
-    // User is notified via edit, not a new DM.
+    // User is told only via edit of the payment message (no new DM).
     expect(edits).toHaveLength(1)
     expect(edits[0]).toMatchObject({chatId: 2, messageId: 99})
-    expect(notifies.filter(n => n.userId === 2)).toHaveLength(0)
-    expect(notifies.some(n => n.userId === 1)).toBe(true)
+    expect(notifies.map(n => n.userId)).toEqual([1])
 
     expect(await service.completeFromCharge({chargeId: 'ch-complete', paid: true})).toBe(
       'already_settled',
