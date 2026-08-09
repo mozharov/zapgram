@@ -60,6 +60,17 @@ export async function payingInvoice(
     },
   })
 
+  // Best-effort voluntary platform donation — never blocks the invoice pay.
+  await getRuntime().donationCollect.tryCollect({
+    userId: ctx.user.id,
+    baseAmountSats: invoice.satoshi,
+    kind: 'invoice',
+    preferredRail: isInternalWallet ? 'internal' : 'nwc',
+    nwc: isInternalWallet ? undefined : ctx.user.nwc,
+    nwcUrl: ctx.user.nwcUrl,
+    user: ctx.user,
+  })
+
   await ctx.reply(
     ctx.t('paying-invoice.paid', {
       amount: invoice.satoshi,

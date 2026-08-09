@@ -3,10 +3,17 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {eq} from 'drizzle-orm'
+import {and, eq, isNotNull, lte, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
-export function createUserRepository(database: AppDatabase) {
+export type UserRepositoryOptions = {
+  /** Applied only on first insert via getOrCreate — not on profile refresh. */
+  defaultDonationPercent?: number
+}
+
+export function createUserRepository(database: AppDatabase, options: UserRepositoryOptions = {}) {
+  const defaultDonationPercent = options.defaultDonationPercent ?? 0
+
   async function findById(id: User['id']) {
     return database.query.usersTable.findFirst({where: eq(usersTable.id, id)})
   }
@@ -49,10 +56,19 @@ export function createUserRepository(database: AppDatabase) {
      * The refresh is load-bearing: `findByUsername` (used by `/tip @name`) reads the stored
      * username, so a stale row makes tips fail — or, once someone else takes the old handle,
      * routes sats to the wrong person.
+     *
+     * New inserts get `DONATION_DEFAULT_PERCENT` (and scope `all`); existing users keep their
+     * donation settings on profile refresh.
      */
     async getOrCreate(data: NewUser) {
       const existing = await findById(data.id)
-      if (!existing) return createOrUpdate(data)
+      if (!existing) {
+        return createOrUpdate({
+          ...data,
+          donationPercent: data.donationPercent ?? defaultDonationPercent,
+          donationScope: data.donationScope ?? 'all',
+        })
+      }
 
       const username = data.username?.toLowerCase()
       const isCurrent =
@@ -76,6 +92,33 @@ export function createUserRepository(database: AppDatabase) {
         .where(eq(usersTable.id, id))
         .returning()
         .then(rows => firstOrThrow(rows, `User ${id}`))
+    },
+
+    async countDueMonthlyDonations(now: Date = new Date()) {
+      const [row] = await database
+        .select({count: sql<number>`count(*)`})
+        .from(usersTable)
+        .where(
+          and(
+            sql`${usersTable.monthlyDonationSats} > 0`,
+            isNotNull(usersTable.monthlyDonationNextAt),
+            lte(usersTable.monthlyDonationNextAt, now),
+          ),
+        )
+      return Number(row?.count ?? 0)
+    },
+
+    async findDueMonthlyDonations(limit: number, offset: number, now: Date = new Date()) {
+      return database.query.usersTable.findMany({
+        where: and(
+          sql`${usersTable.monthlyDonationSats} > 0`,
+          isNotNull(usersTable.monthlyDonationNextAt),
+          lte(usersTable.monthlyDonationNextAt, now),
+        ),
+        limit,
+        offset,
+        orderBy: (t, {asc}) => [asc(t.monthlyDonationNextAt)],
+      })
     },
   }
 }

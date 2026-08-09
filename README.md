@@ -33,6 +33,7 @@ No bank. No borders. Just sats.
 | **Your keys, optional** | Keep sats in the built-in wallet, or connect any wallet that supports NWC. |
 | **Chats that earn** | Monetize private groups and channels with one-time or monthly Lightning access. |
 | **Native to Telegram** | Tips with `/tip`, invoices in DM, join requests that pay themselves. |
+| **Optional support** | Voluntary % on payments, one-shot and monthly donations via `/donate`. |
 | **Open source** | Inspect the code, self-host, or contribute. |
 
 ---
@@ -76,6 +77,17 @@ Add the bot to a chat and tip with `/tip`:
 | `/tip 50 @user` | Tip a user with a custom amount |
 
 Make the bot an admin (delete messages is enough) so owner-bound tips work cleanly and technical messages stay out of the way. In channels, tip replies to posts go to the channel creator.
+
+### Support the project (optional donations)
+
+ZapGram is free to use. You can optionally support the bot author:
+
+- **Voluntary % on top of payments** — new accounts default to **5%** on tips and invoice pays (scope **all**). Change percent, scope (**tips only** / **all payments**), or turn off in `/settings` → Support the project.
+- **Auto-% never blocks your payment** — the main tip or invoice pay settles first; the support tip is best-effort. Success is silent (totals update on `/donate`); failure only notifies you in private chat.
+- **`/donate` hub** — your personal stats, **community totals** (all-time + last 30 days), one-shot amounts (**21 · 100 · 1 000 · 10 000 · 100 000** or custom), and in-bot **monthly** auto-donate (charges every 30 days; first charge when you enable).
+- **Outside the bot** — Lightning address `zapgram@getalby.com`.
+
+This is separate from the small **platform fee** on paid-chat Lightning subscriptions (`SUBSCRIPTION_FEE_PERCENT`).
 
 ### Invoices: pay and get paid
 
@@ -127,7 +139,8 @@ Useful commands:
 | Command | |
 |---|---|
 | `/wallet` | Balance, receive, send |
-| `/settings` | NWC, tips source, group help |
+| `/settings` | NWC, tips source, group help, optional support % |
+| `/donate` | One-shot / monthly support, your stats, community totals |
 | `/chats` | Paid groups & channels you own |
 | `/subscriptions` | Your paid-chat subscriptions |
 | `/help` | Bitcoin, Lightning, supported wallets |
@@ -140,6 +153,7 @@ Useful commands:
 - **Community owners** who want sat-gated groups and channels without fiat billing
 - **Creators & channels** who collect tips under posts
 - **Self-custody fans** who still want Telegram UX via NWC
+- **Supporters** who want to keep open Lightning tools alive with optional sats
 
 ---
 

@@ -28,6 +28,8 @@ services:
       # Watch-Only / SatsPay network label (must match LNbits extensions + key type)
       LNBITS_ONCHAIN_NETWORK: ${LNBITS_ONCHAIN_NETWORK:-Mainnet}
       SUBSCRIPTION_FEE_PERCENT: ${SUBSCRIPTION_FEE_PERCENT:-0.05}
+      # Voluntary support % for newly created users (0–100 integer). Existing users keep their stored value.
+      DONATION_DEFAULT_PERCENT: ${DONATION_DEFAULT_PERCENT:-5}
       CONFIGURE_BOT: ${CONFIGURE_BOT:-true}
       # Optional analytics: omit POSTHOG_PROJECT_TOKEN to disable
       POSTHOG_PROJECT_TOKEN: ${POSTHOG_PROJECT_TOKEN:-}

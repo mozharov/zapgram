@@ -180,6 +180,40 @@ export const payLightningRoute = defineCallback(
   ({chatId}) => `pay-lightning:${chatId}`,
 )
 
+// --- Donations ---
+
+export const donationPercentRoute = defineCallback(
+  'donation-percent',
+  /^donation:percent:(\d+)$/,
+  match => ({percent: parseInt(requireGroup(match, 1, 'donation-percent'), 10)}),
+  ({percent}) => `donation:percent:${percent}`,
+)
+
+export const donationScopeRoute = defineCallback(
+  'donation-scope',
+  /^donation:scope:(tips|all)$/,
+  match => {
+    const scope = requireGroup(match, 1, 'donation-scope')
+    if (scope !== 'tips' && scope !== 'all') throw new Error('Invalid donation scope')
+    return {scope: scope as 'tips' | 'all'}
+  },
+  ({scope}) => `donation:scope:${scope}`,
+)
+
+export const donateAmountRoute = defineCallback(
+  'donate-amount',
+  /^donate:amount:(\d+)$/,
+  match => ({amountSats: parseInt(requireGroup(match, 1, 'donate-amount'), 10)}),
+  ({amountSats}) => `donate:amount:${amountSats}`,
+)
+
+export const donateMonthlyAmountRoute = defineCallback(
+  'donate-monthly-amount',
+  /^donate:monthly:(\d+)$/,
+  match => ({amountSats: parseInt(requireGroup(match, 1, 'donate-monthly-amount'), 10)}),
+  ({amountSats}) => `donate:monthly:${amountSats}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -198,6 +232,10 @@ export const parameterizedRoutes = [
   paySubscriptionRoute,
   payOnchainRoute,
   payLightningRoute,
+  donationPercentRoute,
+  donationScopeRoute,
+  donateAmountRoute,
+  donateMonthlyAmountRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */
@@ -214,4 +252,11 @@ export const staticCallback = {
   disconnectNwc: 'disconnect-nwc',
   toggleNwcTips: 'toggle-nwc-tips',
   groupSettings: 'group-settings',
+  donationSettings: 'donation-settings',
+  donationCustomPercent: 'donation-custom-percent',
+  donate: 'donate',
+  donateCustom: 'donate-custom',
+  donateMonthlyMenu: 'donate-monthly-menu',
+  donateMonthlyDisable: 'donate-monthly-disable',
+  donateMonthlyCustom: 'donate-monthly-custom',
 } as const

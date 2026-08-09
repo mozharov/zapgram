@@ -33,7 +33,8 @@ export const tipCommand = async (ctx: Context) => {
   if (!toUser) throw new NoRecipientError()
   if (toUser.id === ctx.user.id) throw new ToYourselfError()
 
-  if (ctx.user.nwcTips && ctx.user.nwc) {
+  const usedNwc = Boolean(ctx.user.nwcTips && ctx.user.nwc)
+  if (usedNwc && ctx.user.nwc) {
     const toUserWallet = await getUserWallet(toUser.id)
     const invoice = await toUserWallet.createInvoice({sats})
     await ctx.user.nwc.payInvoice(invoice.bolt11)
@@ -48,7 +49,7 @@ export const tipCommand = async (ctx: Context) => {
     'tip_sent',
     {
       amount_sats: sats,
-      payment_method: ctx.user.nwcTips && ctx.user.nwc ? 'nwc' : 'internal',
+      payment_method: usedNwc ? 'nwc' : 'internal',
       recipient_id: toUser.id,
       recipient_username: toUser.username ?? null,
       to_chat_creator: toChatCreator,
@@ -56,6 +57,17 @@ export const tipCommand = async (ctx: Context) => {
     },
     {chatId: ctx.chat.id},
   )
+
+  // Best-effort voluntary platform donation — after main pay; failures only notify in PM.
+  await getRuntime().donationCollect.tryCollect({
+    userId: ctx.user.id,
+    baseAmountSats: sats,
+    kind: 'tip',
+    preferredRail: usedNwc ? 'nwc' : 'internal',
+    nwc: usedNwc ? ctx.user.nwc : undefined,
+    nwcUrl: ctx.user.nwcUrl,
+    user: ctx.user,
+  })
 
   await notifyGroupTip(ctx, toUser, sats, toMessageId, toChatCreator)
   await notifySatsReceived(toUser.id, sats, ctx.from.username)

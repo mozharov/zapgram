@@ -30,6 +30,10 @@ export async function configureBot(deps: {
         description: 'Your chats with paid subscriptions',
       },
       {
+        command: 'donate',
+        description: 'Support the project — one-shot, monthly, stats',
+      },
+      {
         command: 'help',
         description: 'FAQ, links and instructions',
       },
@@ -53,6 +57,10 @@ export async function configureBot(deps: {
       {
         command: 'chats',
         description: 'Твои чаты с платным доступом',
+      },
+      {
+        command: 'donate',
+        description: 'Поддержать проект — разово, ежемесячно, статистика',
       },
       {
         command: 'help',

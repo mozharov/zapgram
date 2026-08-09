@@ -2,9 +2,32 @@ import {expect, test} from 'bun:test'
 import {createUserRepository} from '@modules/users/repository.js'
 import {createTestDb} from '@test/helpers/db.js'
 
-function repo() {
-  return createUserRepository(createTestDb())
+function repo(defaultDonationPercent = 0) {
+  return createUserRepository(createTestDb(), {defaultDonationPercent})
 }
+
+test('getOrCreate applies default donation percent only on insert', async () => {
+  const users = createUserRepository(createTestDb(), {defaultDonationPercent: 5})
+  const created = await users.getOrCreate({id: 10, username: 'new'})
+  expect(created.donationPercent).toBe(5)
+  expect(created.donationScope).toBe('all')
+
+  await users.update(10, {donationPercent: 0, donationScope: 'tips'})
+  const refreshed = await users.getOrCreate({
+    id: 10,
+    username: 'new2',
+    firstName: 'X',
+  })
+  expect(refreshed.donationPercent).toBe(0)
+  expect(refreshed.donationScope).toBe('tips')
+})
+
+test('createOrUpdate without percent leaves schema default 0', async () => {
+  const users = repo()
+  const user = await users.createOrUpdate({id: 11, username: 'seeded'})
+  expect(user.donationPercent).toBe(0)
+  expect(user.monthlyDonationSats).toBe(0)
+})
 
 test('getOrCreate inserts a new user', async () => {
   const users = repo()

@@ -1,10 +1,11 @@
 import type {AppConfig} from '@config'
 import {PostHog} from 'posthog-node'
+import {serializeError} from 'serialize-error'
 
 /** PostHog group type for Telegram chats (groups, supergroups, channels). */
 export const TELEGRAM_CHAT_GROUP_TYPE = 'telegram_chat' as const
 
-export type CaptureClient = Pick<PostHog, 'capture'>
+export type CaptureClient = Pick<PostHog, 'capture' | 'captureException'>
 
 /**
  * Long-running bot process: default batching is correct.
@@ -66,4 +67,38 @@ export function captureUserEvent(
     properties,
     groups: options?.chatId !== undefined ? telegramChatGroups(options.chatId) : undefined,
   })
+}
+
+/** Flatten Error (and unknown) into event properties for product + exception captures. */
+export function errorProperties(error: unknown): Record<string, unknown> {
+  if (error === undefined || error === null) return {}
+  const serialized = serializeError(error) as Record<string, unknown>
+  return {
+    error_name: typeof serialized.name === 'string' ? serialized.name : undefined,
+    error_message:
+      typeof serialized.message === 'string' ? serialized.message : String(error).slice(0, 500),
+    error_stack: typeof serialized.stack === 'string' ? serialized.stack.slice(0, 4000) : undefined,
+    error: serialized,
+  }
+}
+
+/**
+ * Exception for a Telegram user (jobs / services outside request middleware).
+ * Prefer this over bare captureException so distinct_id is always set.
+ */
+export function captureUserException(
+  posthog: CaptureClient | undefined,
+  error: unknown,
+  distinctId: number | string,
+  properties?: Record<string, unknown>,
+): void {
+  if (!posthog?.captureException) return
+  try {
+    posthog.captureException(error, telegramUserDistinctId(distinctId), {
+      ...errorProperties(error),
+      ...properties,
+    })
+  } catch {
+    // Analytics must never throw into money / job paths.
+  }
 }

@@ -10,9 +10,66 @@ export const usersTable = sqliteTable(
     languageCode: text('language_code').notNull().default('en'),
     nwcTips: integer('nwc_tips', {mode: 'boolean'}).notNull().default(false),
     nwcUrl: text('nwc_url'),
+    /** Voluntary % tip to platform owner on eligible payments. 0 = off. Existing users migrate at 0. */
+    donationPercent: integer('donation_percent', {mode: 'number'}).notNull().default(0),
+    /** tips = only group/private tips; all = tips + pay LN invoice. */
+    donationScope: text('donation_scope', {enum: ['tips', 'all']})
+      .notNull()
+      .default('all'),
+    /** In-bot monthly auto-donate amount; 0 = disabled. */
+    monthlyDonationSats: integer('monthly_donation_sats', {mode: 'number'}).notNull().default(0),
+    /** Next due time for monthly donation; null when off. */
+    monthlyDonationNextAt: integer('monthly_donation_next_at', {mode: 'timestamp'}),
+    /** Last successful monthly donation payment hash (idempotency for cron). */
+    monthlyDonationLastHash: text('monthly_donation_last_hash'),
+    /** Last time we sent a monthly-fail PM (throttle). */
+    monthlyDonationLastFailNotifyAt: integer('monthly_donation_last_fail_notify_at', {
+      mode: 'timestamp',
+    }),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
-  table => [index('username_idx').on(table.username)],
+  table => [
+    index('username_idx').on(table.username),
+    index('users_monthly_donation_due_idx')
+      .on(table.monthlyDonationNextAt)
+      .where(sql`${table.monthlyDonationSats} > 0 AND ${table.monthlyDonationNextAt} is not null`),
+  ],
+)
+
+/** Successful platform donations only (percent / one-shot / monthly) for stats + audit. */
+export const donationsTable = sqliteTable(
+  'donations',
+  {
+    id: text('id').primaryKey(),
+    userId: integer('user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
+    kind: text('kind', {enum: ['percent', 'one_shot', 'monthly']}).notNull(),
+    paymentHash: text('payment_hash'),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    index('donations_user_id_idx').on(table.userId),
+    /** Rolling window aggregates (e.g. last 30 days on /donate). */
+    index('donations_created_at_idx').on(table.createdAt),
+  ],
+)
+
+/**
+ * Singleton running total of successful platform donations (all-time).
+ * Updated atomically with each ledger insert so /donate does not SUM the full history.
+ * Row id is always 1.
+ */
+export const donationPlatformStatsTable = sqliteTable(
+  'donation_platform_stats',
+  {
+    id: integer('id', {mode: 'number'}).primaryKey(),
+    totalSats: integer('total_sats', {mode: 'number'}).notNull().default(0),
+    totalCount: integer('total_count', {mode: 'number'}).notNull().default(0),
+    updatedAt: integer('updated_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [check('donation_platform_stats_singleton', sql`${table.id} = 1`)],
 )
 
 export const conversationsTable = sqliteTable('conversations', {

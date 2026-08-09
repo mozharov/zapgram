@@ -111,6 +111,8 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   const beforeTip = await snapshot(e2e)
+  // New users start with 5% voluntary donation (DONATION_DEFAULT_PERCENT) on tips.
+  const donationSats = 5
   await expectDelta(
     e2e,
     () =>
@@ -125,12 +127,23 @@ test('a new user receives, observes and tips sats without rebuilding the world',
         ),
       ),
     {
-      db: {users: {added: 1}},
+      db: {
+        users: {added: 1},
+        donations: {added: 1},
+        // Migration seeds the singleton; each successful donation bumps totals.
+        donationPlatformStats: {changed: 1},
+      },
       lnbits: {
-        balances: {[userWalletName(USER_A)]: -TIP, [userWalletName(USER_B)]: TIP},
+        balances: {
+          [userWalletName(USER_A)]: -(TIP + donationSats),
+          [userWalletName(USER_B)]: TIP,
+          'fees wallet': donationSats,
+        },
         payments: [
           {out: false, sats: TIP, times: 1},
           {out: true, sats: TIP, times: 1},
+          {out: false, sats: donationSats, times: 1},
+          {out: true, sats: donationSats, times: 1},
         ],
       },
       telegram: [
@@ -143,8 +156,8 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   )
 
   expectLedgerBalanced(beforeTip, await snapshot(e2e))
-  expect(walletFor(USER_A).balanceMsat).toBe(900_000)
-  expect(walletFor(USER_B).balanceMsat).toBe(100_000)
+  expect(walletFor(USER_A).balanceMsat).toBe((PRICE - TIP - donationSats) * 1000)
+  expect(walletFor(USER_B).balanceMsat).toBe(TIP * 1000)
   expectPayoutsExactly(e2e.ln, {toWallet: walletFor(USER_B), sats: TIP, times: 1})
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)

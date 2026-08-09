@@ -2,7 +2,7 @@
 
 > Bitcoin Lightning wallet inside Telegram — send, receive, tip, and monetize chats with sats.
 
-ZapGram is a free Telegram bot that gives every user a Lightning wallet on first open. It supports group and channel tips, BOLT11 invoices with QR, zero-fee transfers between ZapGram wallets, paid private groups and channels (one-time or monthly), and optional Nostr Wallet Connect (NWC) for self-custody.
+ZapGram is a free Telegram bot that gives every user a Lightning wallet on first open. It supports group and channel tips, BOLT11 invoices with QR, zero-fee transfers between ZapGram wallets, paid private groups and channels (one-time or monthly), optional Nostr Wallet Connect (NWC) for self-custody, and optional project support (`/donate`, voluntary % on tips and invoice pays).
 
 ## Product
 
@@ -17,6 +17,7 @@ ZapGram is a free Telegram bot that gives every user a Lightning wallet on first
 - Nostriches who prefer NWC / self-custody optional path
 - Community owners who sell chat access in sats
 - Creators who want tips under posts and in groups
+- Supporters who want to fund open Lightning tooling with optional sats
 
 Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or fiat rails.
 
@@ -26,6 +27,7 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 - ZapGram → ZapGram transfers: free
 - External Lightning: network fees as usual
 - Paid-chat owner payouts on the hosted bot: small platform fee (default 5%)
+- Optional support (not a mandatory fee): voluntary % on tips/invoice pays (new accounts default 5%, configurable in settings); one-shot and monthly via `/donate`; external LN address `zapgram@getalby.com`
 - [Machine-readable pricing](https://zapgram.mozharov.me/pricing.md): structured fee summary for agents
 
 ## Key facts
@@ -38,6 +40,7 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 ## Optional
 
 - [Features](https://zapgram.mozharov.me/#features): product feature list on the landing page
+- [Support / donate](https://zapgram.mozharov.me/#support): optional project support
 - [FAQ](https://zapgram.mozharov.me/#faq): common questions and answers
 - [How it works](https://zapgram.mozharov.me/#how): step-by-step product walkthrough
 - [NWC protocol](https://nwc.dev/): Nostr Wallet Connect specification

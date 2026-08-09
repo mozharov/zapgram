@@ -92,6 +92,20 @@
       "when": 1786500000000,
       "tag": "0012_onchain_paid_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1786600000000,
+      "tag": "0013_user_donations",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1786700000000,
+      "tag": "0014_donation_platform_stats",
+      "breakpoints": true
     }
   ]
 }

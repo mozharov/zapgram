@@ -1364,6 +1364,7 @@ a.header-cta:active,
 }
 
 /* Quiet surface shifts — no gradients */
+#support,
 #paid-chats,
 #fees {
   background: color-mix(in srgb, var(--surface) 22%, var(--ground));

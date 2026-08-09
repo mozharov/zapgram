@@ -42,6 +42,20 @@ button =
     .disable-onchain = 🚫 Disable on-chain pay
     .pay-onchain = ⛓ Pay on-chain
     .pay-lightning = ⚡ Pay with Lightning
+    .donation-settings = ⚡️ Auto % on tips
+    .donate = 💚 Support project
+    .donate-amount = {$sats} sats
+    .donate-custom = ✏️ Custom amount…
+    .donate-custom-short = ✏️
+    .donate-monthly = 📅 Monthly
+    .donate-monthly-on = 📅 {$sats}/30d
+    .donate-monthly-disable = 🚫 Disable monthly
+    .donation-auto-percent = ⚡️ Auto %
+    .donation-percent = {$percent}%
+    .donation-custom-percent = ✏️ Custom %…
+    .donation-scope-tips = Tips only
+    .donation-scope-all = Tips + invoices
+    .back-to-support = ⬅️ Support
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -93,8 +107,56 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     Add {bot-username} to a chat with invitation and user blocking permissions to create paid access with one-time payment or monthly subscription.
     Use /chats to manage paid chats.
 
+    💚 <b>Optional support:</b>
+    New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /donate.
+    Outside the bot: <code>zapgram@getalby.com</code>.
+
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
+
+donation = 
+    .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat support tip could not be sent. Check balance / NWC, or use /donate.
+
+donate = 
+    .hub = 💚 <b>Support {bot-name}</b>
+        Thanks for keeping the project alive.
+
+        🌍 <b>Community</b>
+        ⏱ All time: <b>{$platformTotalSats}</b> sats
+        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats
+
+        👤 <b>You</b>
+        💸 Sent: <b>{$totalSats}</b> sats · {$count} payments
+        🕐 {$last}
+        📅 Monthly: <b>{$monthlyStatus}</b>
+        ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
+
+        Tap an amount for a one-shot donation, or open Monthly / Auto %.
+
+        ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
+    .stats-last = Last: {$date}
+    .stats-last-none = No donations yet
+    .auto-off = Off
+    .auto-on = {$percent}%
+    .auto-scope-tips = tips only
+    .auto-scope-all = tips + invoices
+    .success = ✅ Thanks! You sent {$sats} sats to support {bot-name}.
+    .failed = ⚠️ Could not send {$sats} sats. Check your balance or NWC connection.
+    .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
+    .custom-amount = 🔤 Enter the amount in sats you want to donate.
+    .monthly-status-on = {$sats} sats / 30 days
+    .monthly-status-off = Off
+    .monthly-menu = 📅 <b>Monthly donation</b>
+
+        Current: <b>{$sats}</b> sats (0 = off).
+        Choose an amount. Enabling charges once now, then every 30 days.
+        Back returns to the full support hub (one-shot + auto %).
+    .monthly-enabled = ✅ Monthly donation set to {$sats} sats. First payment received; next charge in 30 days.
+    .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats, but the first charge failed. We will retry automatically. Check balance / NWC.
+    .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats. Next charge stays on schedule.
+    .monthly-disabled-toast = Monthly donation disabled
+    .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat donation. Check balance / NWC or /donate.
+    .monthly-custom-amount = 🔤 Enter monthly donation amount in sats.
 
 help = <b>ℹ️ Bitcoin</b>
     Bitcoin is the best form of money in our history that lives on the Internet. A decentralized and permissionless system with no rulers or controlling authorities. Bitcoin is sound money that is faster, more secure, and more accessible than fiat currencies we are coerced into using today.  
@@ -162,6 +224,22 @@ settings = <b>⚙️ Settings</b>
         If you make {bot-name} an admin of your group, all /tip commands without a specified recipient will be sent to your wallet. {bot-name} will automatically delete all technical messages to keep the chat clean. For the bot to work properly, it only needs the rights to delete messages.
         
         If you make {bot-name} an admin of your channel, all /tip commands in reply to that channel's posts will also be sent to your wallet.
+
+settings-donation = ⚡️ <b>Auto % on payments</b>
+
+    Current: <b>{$status}</b> · {$scope}
+
+    A voluntary % added on top of your tips and invoice pays (never blocks the main payment).
+    0% turns it off. One-shot and monthly: use the Support hub buttons.
+    .off = Off
+    .percent = {$percent}%
+    .scope-tips = tips only
+    .scope-all = tips + invoices
+    .percent-set = Auto % set to {$percent}%
+    .scope-tips-toast = Scope: tips only
+    .scope-all-toast = Scope: tips + invoices
+    .custom-percent-prompt = 🔤 Enter auto-donation percent (0–100).
+    .invalid-percent = ⚠️ Enter an integer between 0 and 100.
 
 send-menu = <b>✉️ Send payment</b>
 
