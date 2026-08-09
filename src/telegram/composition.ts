@@ -7,6 +7,8 @@ import {register as registerDonations} from '@modules/donations/register.js'
 import {customDonateAmount} from '@modules/donations/telegram/conversations/custom-donate-amount.js'
 import {customDonationPercent} from '@modules/donations/telegram/conversations/custom-donation-percent.js'
 import {customMonthlyAmount} from '@modules/donations/telegram/conversations/custom-monthly-amount.js'
+import {register as registerFeatureRequests} from '@modules/feature-requests/register.js'
+import {requestingFeature} from '@modules/feature-requests/telegram/conversations/requesting-feature.js'
 import {register as registerInvoices} from '@modules/invoices/register.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
@@ -64,6 +66,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.use(createConversation(customDonateAmount))
   privateChat.use(createConversation(customDonationPercent))
   privateChat.use(createConversation(customMonthlyAmount))
+  privateChat.use(createConversation(requestingFeature))
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)
@@ -76,6 +79,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   registerChats(composer)
   registerSubscriptions(composer)
   registerDonations(composer)
+  registerFeatureRequests(composer)
 
   // Terminal handlers must live on a composer created AFTER the feature registers.
   // grammY fixes a child composer's position in the parent chain at chatType() call time,

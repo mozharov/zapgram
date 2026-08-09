@@ -13,6 +13,7 @@ Machine-readable summary for crawlers and AI agents. Human-facing detail lives o
   - Group and channel tips (`/tip`)
   - Optional Nostr Wallet Connect (NWC)
   - Optional project support (`/donate`, voluntary % — see below)
+  - Feature requests via `/feature` (optional sats tip to signal priority)
   - Russian and English bot UI
 
 ## Transfer fees

@@ -214,6 +214,13 @@ export const donateMonthlyAmountRoute = defineCallback(
   ({amountSats}) => `donate:monthly:${amountSats}`,
 )
 
+export const featureFundAmountRoute = defineCallback(
+  'feature-fund-amount',
+  /^feature:fund:(\d+)$/,
+  match => ({amountSats: parseInt(requireGroup(match, 1, 'feature-fund-amount'), 10)}),
+  ({amountSats}) => `feature:fund:${amountSats}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -236,6 +243,7 @@ export const parameterizedRoutes = [
   donationScopeRoute,
   donateAmountRoute,
   donateMonthlyAmountRoute,
+  featureFundAmountRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */
@@ -260,4 +268,6 @@ export const staticCallback = {
   donateMonthlyMenu: 'donate-monthly-menu',
   donateMonthlyDisable: 'donate-monthly-disable',
   donateMonthlyCustom: 'donate-monthly-custom',
+  featureFundSkip: 'feature-fund-skip',
+  featureFundCustom: 'feature-fund-custom',
 } as const

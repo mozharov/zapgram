@@ -35,7 +35,9 @@ export function privateText(text: string, opts: CommonOptions = {}): TestUpdate 
 export function privateCommand(text: string, opts: CommonOptions = {}): TestUpdate {
   const update = privateText(text, opts)
   if (!update.message) throw new Error('privateCommand did not create a message')
-  update.message.entities = [{type: 'bot_command', offset: 0, length: text.length}]
+  // Entity covers only the command token so grammY can put the rest in ctx.match.
+  const commandLength = text.split(/\s/, 1)[0]?.length ?? text.length
+  update.message.entities = [{type: 'bot_command', offset: 0, length: commandLength}]
   return update
 }
 

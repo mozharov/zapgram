@@ -154,6 +154,7 @@ function defaultResult(
     case 'sendPhoto':
     case 'editMessageText':
     case 'editMessageMedia':
+    case 'copyMessage':
       return message(payload, botInfo, nextMessageId())
     case 'getChatAdministrators':
       return [{status: 'creator', user: ownerUser, is_anonymous: false}]

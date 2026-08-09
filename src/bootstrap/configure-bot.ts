@@ -34,6 +34,10 @@ export async function configureBot(deps: {
         description: 'Support the project — one-shot, monthly, stats',
       },
       {
+        command: 'feature',
+        description: 'Request a feature (optional sats tip)',
+      },
+      {
         command: 'help',
         description: 'FAQ, links and instructions',
       },
@@ -61,6 +65,10 @@ export async function configureBot(deps: {
       {
         command: 'donate',
         description: 'Поддержать проект — разово, ежемесячно, статистика',
+      },
+      {
+        command: 'feature',
+        description: 'Запросить фичу (можно с сатоши)',
       },
       {
         command: 'help',

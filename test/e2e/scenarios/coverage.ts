@@ -178,6 +178,21 @@ export const scenarioCoverage = {
     jobs: ['process-monthly-donations'],
     errors: ['insufficient_funds'],
   },
+  'feature-requests': {
+    routes: ['feature-fund-amount', 'feature-fund-skip', 'feature-fund-custom', 'cancel'],
+    commands: ['/feature'],
+    updates: ['message', 'callback_query'],
+    writes: [
+      'users.insert',
+      'donations.insert',
+      'donation_platform_stats.insert',
+      'donation_platform_stats.update',
+      'conversations.insert',
+      'conversations.delete',
+    ],
+    jobs: [],
+    errors: [],
+  },
   journeys: {
     routes: [
       'wallet',

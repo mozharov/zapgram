@@ -82,7 +82,11 @@ function makeDistribute() {
         return {payment_hash: invoice.hash, bolt11: invoice.bolt11}
       },
     }),
-    notifier: {send: async () => true, sendPhoto: async () => true},
+    notifier: {
+      send: async () => true,
+      sendPhoto: async () => true,
+      copyMessage: async () => true,
+    },
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     feePercent: FEE_PERCENT,
     translate: () => '',

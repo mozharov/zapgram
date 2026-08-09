@@ -63,6 +63,7 @@ function buildService(
         return true
       },
       sendPhoto: async () => true,
+      copyMessage: async () => true,
     },
     editTelegramMessage: async (chatId, messageId, text) => {
       edits.push({chatId, messageId, text})

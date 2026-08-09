@@ -141,6 +141,7 @@ Useful commands:
 | `/wallet` | Balance, receive, send |
 | `/settings` | NWC, tips source, group help, optional support % |
 | `/donate` | One-shot / monthly support, your stats, community totals |
+| `/feature` | Request a feature; optionally attach sats as a priority tip |
 | `/chats` | Paid groups & channels you own |
 | `/subscriptions` | Your paid-chat subscriptions |
 | `/help` | Bitcoin, Lightning, supported wallets |
@@ -187,6 +188,8 @@ bun run ci
 # local bot (needs .env; HOST must be a public HTTPS URL)
 bun run start:dev
 ```
+
+**Feature requests (`/feature`):** set `ADMIN_TELEGRAM_IDS` (comma-separated Telegram user ids) so new requests are DMed to you. Optional sats tips use the same rails as `/donate`. Events land in PostHog as `feature_requested` (filter Activity / build an insight). Without admin ids, requests still capture analytics only.
 
 ### On-chain pay (self-host / ops)
 

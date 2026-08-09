@@ -57,6 +57,8 @@ button =
     .donation-scope-tips = Tips only
     .donation-scope-all = Tips + invoices
     .back-to-support = ⬅️ Support
+    .feature-fund-skip = Skip
+    .feature-fund-custom-short = ✏️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -112,8 +114,24 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /donate.
     Outside the bot: <code>zapgram@getalby.com</code>.
 
+    💡 <b>Feature ideas:</b>
+    Send a request with /feature — optionally attach sats so we know what matters most.
+
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
+
+feature =
+    .prompt = 💡 <b>What should we build?</b>
+        Send one text message with your idea.
+        Or use <code>/feature your idea here</code>.
+    .invalid-text = ⚠️ Send a non-empty text message with your idea.
+    .fund-prompt = 💰 Optionally attach sats to this idea (tip, not a promise we ship it).
+        Or skip to send for free.
+    .custom-amount = 🔤 Enter how many sats to attach (1–100000000).
+    .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
+    .submitted = ✅ Thanks! Your feature request was sent.
+    .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.
+    .fund-failed-submitted = ⚠️ Could not charge sats, but your feature request was still sent without funding.
 
 donation = 
     .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
@@ -179,6 +197,7 @@ help = <b>ℹ️ Bitcoin</b>
     <b>ℹ️ {bot-name}</b>
     • Quick Payment: Simply send a Lightning invoice to the chat.
     • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
+    • Feature requests: /feature — describe an idea; optional sats tip to signal priority.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
     <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>

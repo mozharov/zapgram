@@ -3,6 +3,7 @@ import {readdirSync, readFileSync} from 'node:fs'
 import {defaultJobDefinitions} from '@jobs/scheduler.js'
 import {chatsCommands} from '@modules/chats/register.js'
 import {donationCommands} from '@modules/donations/register.js'
+import {featureRequestCommands} from '@modules/feature-requests/register.js'
 import {subscriptionsCommands} from '@modules/subscriptions/register.js'
 import {walletCommands} from '@modules/wallet/register.js'
 import {parameterizedRoutes, staticCallback} from '@telegram/callback-data.js'
@@ -65,6 +66,7 @@ const inventory: Record<Category, readonly string[]> = {
     ...chatsCommands,
     ...subscriptionsCommands,
     ...donationCommands,
+    ...featureRequestCommands,
   ].map(command => `/${command}`),
   updates: [...handledUpdateTypes, ...unhandledUpdateTypes],
   writes: writeOperations,

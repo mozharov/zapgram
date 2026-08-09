@@ -26,6 +26,11 @@ import {
 } from '@modules/donations/collect.service.js'
 import {createDonationPayService, type DonationPayService} from '@modules/donations/pay.service.js'
 import {createDonationRepository, type DonationRepository} from '@modules/donations/repository.js'
+import {
+  createFeatureRequestService,
+  type FeatureRequestService,
+  formatFeatureRequestAdminMeta,
+} from '@modules/feature-requests/submit.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
 import {
@@ -103,6 +108,7 @@ export type AppContainer = {
   donations: DonationRepository
   donationPay: DonationPayService
   donationCollect: DonationCollectService
+  featureRequests: FeatureRequestService
   /** Shared i18n for jobs / services that cannot import @telegram/* directly. */
   translate: typeof translate
 }
@@ -183,6 +189,17 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
+    log,
+    posthog,
+  })
+
+  const featureRequests = createFeatureRequestService({
+    payDonation: input => donationPay.payDonation(input),
+    notify: (userId, text) => notifier.send(userId, text),
+    copyMessage: (toUserId, fromChatId, messageId) =>
+      notifier.copyMessage(toUserId, fromChatId, messageId),
+    adminTelegramIds: config.ADMIN_TELEGRAM_IDS,
+    formatAdminMeta: formatFeatureRequestAdminMeta,
     log,
     posthog,
   })
@@ -304,6 +321,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     donations,
     donationPay,
     donationCollect,
+    featureRequests,
     translate,
   }
 

@@ -42,6 +42,12 @@ export function parseMode(mode: ParseMode): Transformer {
         }
         return prev(method, payload, signal)
       }
+      // copy/forward have no text to parse; injecting parse_mode can 400 on Bot API.
+      case 'copyMessage':
+      case 'forwardMessage':
+      case 'copyMessages':
+      case 'forwardMessages':
+        return prev(method, payload, signal)
       default:
         return prev(method, {...payload, parse_mode: mode}, signal)
     }
