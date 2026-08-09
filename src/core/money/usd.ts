@@ -17,7 +17,7 @@ export function formatUsdAmount(usd: number): string {
   const order = Math.floor(Math.log10(abs))
   const leadingZeros = -order - 1
   if (leadingZeros > 2) {
-    const factor = 10 ** (-order)
+    const factor = 10 ** -order
     const rounded = Math.round(abs * factor) / factor
     // Recompute digits after possible carry (e.g. 0.00095 → 0.001)
     const roundedOrder = Math.floor(Math.log10(rounded))
