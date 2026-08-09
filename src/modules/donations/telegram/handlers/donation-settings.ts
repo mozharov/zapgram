@@ -6,12 +6,14 @@ import {donationPercentRoute, donationScopeRoute} from '@telegram/callback-data.
 import type {BotContext} from '@telegram/context.js'
 import {getRuntime} from '../../../../runtime.js'
 
+/** Auto-% screen nested under the unified support hub. */
 export async function donationSettingsCallback(ctx: BotContext) {
   const user = await getRuntime().users.getOrThrow(ctx.user.id)
   captureBotEvent(getRuntime().posthog, 'donation_settings_opened', {
     feature: 'donations',
     donation_percent: user.donationPercent,
     donation_scope: user.donationScope,
+    source: 'hub_or_settings',
   })
   await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
     reply_markup: buildDonationSettingsKeyboard(ctx.t, user),

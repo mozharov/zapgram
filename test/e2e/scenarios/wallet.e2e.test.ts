@@ -78,7 +78,7 @@ test('without a connected NWC wallet the screen shows one balance line', async (
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null})
 })
 
-test('the wallet screen offers receive, send, settings and help', async () => {
+test('the wallet screen offers receive, send, settings, help and support', async () => {
   await e2e.send(privateCommand('/wallet'))
 
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
@@ -86,6 +86,7 @@ test('the wallet screen offers receive, send, settings and help', async () => {
     'send-menu',
     'settings',
     'help',
+    'donate',
   ])
 })
 
@@ -100,7 +101,7 @@ test('/settings offers connecting a wallet and nothing that needs one', async ()
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
     'connect-nwc',
     'group-settings',
-    'donation-settings',
+    'donate',
     'wallet',
   ])
   expectNoErrors(e2e.logs)
@@ -113,7 +114,7 @@ test('the settings button renders the same screen in place', async () => {
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     'connect-nwc',
     'group-settings',
-    'donation-settings',
+    'donate',
     'wallet',
   ])
   expectNoErrors(e2e.logs)

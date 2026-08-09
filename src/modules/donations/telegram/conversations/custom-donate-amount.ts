@@ -1,7 +1,5 @@
 import {isValidDonationAmountSats} from '@core/money/donation.js'
-import {buildDonateHubKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
-import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
-import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -10,6 +8,15 @@ import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function customDonateAmount(conversation: BotConversation, ctx: ConversationContext) {
+  // Clear the hub that launched this conversation so it does not stay stale.
+  await conversation.external(async () => {
+    try {
+      await ctx.editMessageReplyMarkup({reply_markup: {inline_keyboard: []}})
+    } catch {
+      // may already be a plain message
+    }
+  })
+
   const message = await ctx.reply(ctx.t('donate.custom-amount'), {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
@@ -72,13 +79,10 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
       }),
     )
     await ctx.reply(ctx.t('donate.failed', {sats}))
+    await replyDonateHub(ctx)
     return
   }
 
   await ctx.reply(ctx.t('donate.success', {sats}))
-  const user = await conversation.external(() => getRuntime().users.getOrThrow(ctx.user.id))
-  const hub = await conversation.external(() => loadDonateHubStats(ctx.user.id))
-  await ctx.reply(formatDonateHubText(ctx.t, user, hub.user, hub.platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
-  })
+  await replyDonateHub(ctx)
 }

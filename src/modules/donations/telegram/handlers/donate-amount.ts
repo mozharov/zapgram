@@ -1,7 +1,5 @@
 import {isValidDonationAmountSats} from '@core/money/donation.js'
-import {buildDonateHubKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
-import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
-import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {clearDonateCallbackMessage, replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donateAmountRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
@@ -32,8 +30,11 @@ export async function donateAmountCallback(ctx: BotContext) {
     has_nwc: Boolean(ctx.user.nwc || ctx.user.nwcUrl),
   })
 
+  // Drop the old hub so it does not sit under success with stale stats / buttons.
+  await clearDonateCallbackMessage(ctx)
   await ctx.replyWithChatAction('typing').catch(() => null)
-  const {donationPay, users, posthog} = getRuntime()
+
+  const {donationPay, posthog} = getRuntime()
   const result = await donationPay.payDonation({
     userId: ctx.user.id,
     amountSats,
@@ -53,13 +54,10 @@ export async function donateAmountCallback(ctx: BotContext) {
       reason: result.reason,
     })
     await ctx.reply(ctx.t('donate.failed', {sats: amountSats}))
+    await replyDonateHub(ctx)
     return
   }
 
   await ctx.reply(ctx.t('donate.success', {sats: amountSats}))
-  const user = await users.getOrThrow(ctx.user.id)
-  const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  await ctx.reply(formatDonateHubText(ctx.t, user, stats, platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
-  })
+  await replyDonateHub(ctx)
 }

@@ -1,10 +1,10 @@
 import {advanceMonthlyNextAt, isValidDonationAmountSats} from '@core/money/donation.js'
+import {buildDonateMonthlyKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {
-  buildDonateHubKeyboard,
-  buildDonateMonthlyKeyboard,
-} from '@modules/donations/telegram/keyboards/donate.js'
-import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
-import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+  clearDonateCallbackMessage,
+  editDonateHub,
+  replyDonateHub,
+} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donateMonthlyAmountRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
@@ -40,11 +40,7 @@ export async function donateMonthlyDisableCallback(ctx: BotContext) {
     $set: {monthly_donation_sats: 0},
   })
   await ctx.answerCallbackQuery({text: ctx.t('donate.monthly-disabled-toast')})
-  const user = await getRuntime().users.getOrThrow(ctx.user.id)
-  const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  await ctx.editMessageText(formatDonateHubText(ctx.t, user, stats, platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
-  })
+  await editDonateHub(ctx)
 }
 
 /**
@@ -73,8 +69,9 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
   const wasOff = current.monthlyDonationSats <= 0
   const now = new Date()
 
+  await clearDonateCallbackMessage(ctx)
+
   if (!wasOff && current.monthlyDonationNextAt && current.monthlyDonationNextAt > now) {
-    // Change amount only; keep schedule (no surprise charge).
     await users.update(ctx.user.id, {monthlyDonationSats: amountSats})
     captureBotEvent(posthog, 'monthly_donate_amount_updated', {
       feature: 'donations',
@@ -87,67 +84,63 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       $set: {monthly_donation_sats: amountSats},
     })
     await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats: amountSats}))
-  } else {
-    // First enable or already due → charge immediately.
-    await ctx.replyWithChatAction('typing').catch(() => null)
-    const result = await donationPay.payDonation({
-      userId: ctx.user.id,
-      amountSats,
-      kind: 'monthly',
-      rail: 'auto',
-      nwc: ctx.user.nwc,
-      nwcUrl: ctx.user.nwcUrl,
-      analytics: {source: wasOff ? 'monthly_enable' : 'monthly_due_enable', was_off: wasOff},
-    })
-
-    if (result.status === 'paid') {
-      const nextAt = advanceMonthlyNextAt(now, now)
-      await users.update(ctx.user.id, {
-        monthlyDonationSats: amountSats,
-        monthlyDonationNextAt: nextAt,
-        monthlyDonationLastHash: result.paymentHash ?? null,
-      })
-      captureBotEvent(posthog, 'monthly_donate_enabled', {
-        feature: 'donations',
-        flow: 'monthly',
-        amount_sats: amountSats,
-        previous_monthly_sats: current.monthlyDonationSats,
-        was_off: wasOff,
-        charged_now: true,
-        charge_status: 'paid',
-        rail: result.rail,
-        payment_hash: result.paymentHash ?? null,
-        next_at: nextAt.toISOString(),
-        source: 'preset',
-        $set: {monthly_donation_sats: amountSats},
-      })
-      await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats}))
-    } else {
-      // Leave enabled with nextAt=now so cron retries.
-      await users.update(ctx.user.id, {
-        monthlyDonationSats: amountSats,
-        monthlyDonationNextAt: now,
-      })
-      captureBotEvent(posthog, 'monthly_donate_enabled', {
-        feature: 'donations',
-        flow: 'monthly',
-        amount_sats: amountSats,
-        previous_monthly_sats: current.monthlyDonationSats,
-        was_off: wasOff,
-        charged_now: true,
-        charge_status: 'failed',
-        reason: result.reason,
-        next_at: now.toISOString(),
-        source: 'preset',
-        $set: {monthly_donation_sats: amountSats},
-      })
-      await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats: amountSats}))
-    }
+    await replyDonateHub(ctx)
+    return
   }
 
-  const user = await users.getOrThrow(ctx.user.id)
-  const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  await ctx.reply(formatDonateHubText(ctx.t, user, stats, platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
+  await ctx.replyWithChatAction('typing').catch(() => null)
+  const result = await donationPay.payDonation({
+    userId: ctx.user.id,
+    amountSats,
+    kind: 'monthly',
+    rail: 'auto',
+    nwc: ctx.user.nwc,
+    nwcUrl: ctx.user.nwcUrl,
+    analytics: {source: wasOff ? 'monthly_enable' : 'monthly_due_enable', was_off: wasOff},
   })
+
+  if (result.status === 'paid') {
+    const nextAt = advanceMonthlyNextAt(now, now)
+    await users.update(ctx.user.id, {
+      monthlyDonationSats: amountSats,
+      monthlyDonationNextAt: nextAt,
+      monthlyDonationLastHash: result.paymentHash ?? null,
+    })
+    captureBotEvent(posthog, 'monthly_donate_enabled', {
+      feature: 'donations',
+      flow: 'monthly',
+      amount_sats: amountSats,
+      previous_monthly_sats: current.monthlyDonationSats,
+      was_off: wasOff,
+      charged_now: true,
+      charge_status: 'paid',
+      rail: result.rail,
+      payment_hash: result.paymentHash ?? null,
+      next_at: nextAt.toISOString(),
+      source: 'preset',
+      $set: {monthly_donation_sats: amountSats},
+    })
+    await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats}))
+  } else {
+    await users.update(ctx.user.id, {
+      monthlyDonationSats: amountSats,
+      monthlyDonationNextAt: now,
+    })
+    captureBotEvent(posthog, 'monthly_donate_enabled', {
+      feature: 'donations',
+      flow: 'monthly',
+      amount_sats: amountSats,
+      previous_monthly_sats: current.monthlyDonationSats,
+      was_off: wasOff,
+      charged_now: true,
+      charge_status: 'failed',
+      reason: result.reason,
+      next_at: now.toISOString(),
+      source: 'preset',
+      $set: {monthly_donation_sats: amountSats},
+    })
+    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats: amountSats}))
+  }
+
+  await replyDonateHub(ctx)
 }

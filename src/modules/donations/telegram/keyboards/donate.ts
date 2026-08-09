@@ -10,42 +10,73 @@ import {
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
-export function buildDonateHubKeyboard(t: BotContext['t']) {
+/** Compact labels so several presets fit one Telegram row. */
+export function formatPresetSatsLabel(sats: number): string {
+  if (sats >= 1000 && sats % 1000 === 0) return `${sats / 1000}k`
+  return String(sats)
+}
+
+/**
+ * Unified support hub:
+ * [21] [100] [1k]
+ * [10k] [100k] [✏️]
+ * [📅 Monthly] [⚡️ Auto %]
+ * [⬅️ Wallet]
+ */
+export function buildDonateHubKeyboard(t: BotContext['t'], user?: User) {
   const keyboard = new InlineKeyboard()
-  for (const amount of DONATE_PRESETS_SATS) {
-    keyboard.row({
-      callback_data: donateAmountRoute.build({amountSats: amount}),
-      text: t('button.donate-amount', {sats: amount}),
-    })
+  const presets = DONATE_PRESETS_SATS
+
+  // 21 · 100 · 1k
+  for (const amount of presets.slice(0, 3)) {
+    keyboard.text(formatPresetSatsLabel(amount), donateAmountRoute.build({amountSats: amount}))
   }
+  keyboard.row()
+  // 10k · 100k · custom
+  for (const amount of presets.slice(3)) {
+    keyboard.text(formatPresetSatsLabel(amount), donateAmountRoute.build({amountSats: amount}))
+  }
+  keyboard.text(t('button.donate-custom-short'), staticCallback.donateCustom)
+  keyboard.row()
+
+  const monthlyLabel =
+    user && user.monthlyDonationSats > 0
+      ? t('button.donate-monthly-on', {sats: user.monthlyDonationSats})
+      : t('button.donate-monthly')
   keyboard
-    .row({
-      callback_data: staticCallback.donateCustom,
-      text: t('button.donate-custom'),
-    })
-    .row({
-      callback_data: staticCallback.donateMonthlyMenu,
-      text: t('button.donate-monthly'),
-    })
+    .text(monthlyLabel, staticCallback.donateMonthlyMenu)
+    .text(t('button.donation-auto-percent'), staticCallback.donationSettings)
     .row({
       callback_data: staticCallback.wallet,
       text: t('button.back'),
     })
+
   return keyboard
 }
 
+/**
+ * Monthly amounts — compact rows, back to hub.
+ */
 export function buildDonateMonthlyKeyboard(t: BotContext['t'], user: User) {
   const keyboard = new InlineKeyboard()
-  for (const amount of DONATE_PRESETS_SATS) {
-    keyboard.row({
-      callback_data: donateMonthlyAmountRoute.build({amountSats: amount}),
-      text: t('button.donate-amount', {sats: amount}),
-    })
+  const presets = DONATE_PRESETS_SATS
+
+  for (const amount of presets.slice(0, 3)) {
+    keyboard.text(
+      formatPresetSatsLabel(amount),
+      donateMonthlyAmountRoute.build({amountSats: amount}),
+    )
   }
-  keyboard.row({
-    callback_data: staticCallback.donateMonthlyCustom,
-    text: t('button.donate-custom'),
-  })
+  keyboard.row()
+  for (const amount of presets.slice(3)) {
+    keyboard.text(
+      formatPresetSatsLabel(amount),
+      donateMonthlyAmountRoute.build({amountSats: amount}),
+    )
+  }
+  keyboard.text(t('button.donate-custom-short'), staticCallback.donateMonthlyCustom)
+  keyboard.row()
+
   if (user.monthlyDonationSats > 0) {
     keyboard.row({
       callback_data: staticCallback.donateMonthlyDisable,
@@ -54,19 +85,23 @@ export function buildDonateMonthlyKeyboard(t: BotContext['t'], user: User) {
   }
   keyboard.row({
     callback_data: staticCallback.donate,
-    text: t('button.back'),
+    text: t('button.back-to-support'),
   })
   return keyboard
 }
 
+/**
+ * Auto-% on tips/invoices — nested under the support hub.
+ * [0%] [1%] [5%] [10%]
+ * [✏️ Custom %]
+ * [Tips only] [All payments]
+ * [⬅️ Support hub]
+ */
 export function buildDonationSettingsKeyboard(t: BotContext['t'], user: User) {
   const keyboard = new InlineKeyboard()
   for (const percent of [0, 1, 5, 10] as const) {
-    const mark = user.donationPercent === percent ? '✓ ' : ''
-    keyboard.row({
-      callback_data: donationPercentRoute.build({percent}),
-      text: `${mark}${t('button.donation-percent', {percent})}`,
-    })
+    const mark = user.donationPercent === percent ? '✓' : ''
+    keyboard.text(`${mark}${percent}%`, donationPercentRoute.build({percent}))
   }
   keyboard.row({
     callback_data: staticCallback.donationCustomPercent,
@@ -77,17 +112,14 @@ export function buildDonationSettingsKeyboard(t: BotContext['t'], user: User) {
   const tipsMark = scope === 'tips' ? '✓ ' : ''
   const allMark = scope === 'all' ? '✓ ' : ''
   keyboard
+    .text(
+      `${tipsMark}${t('button.donation-scope-tips')}`,
+      donationScopeRoute.build({scope: 'tips'}),
+    )
+    .text(`${allMark}${t('button.donation-scope-all')}`, donationScopeRoute.build({scope: 'all'}))
     .row({
-      callback_data: donationScopeRoute.build({scope: 'tips'}),
-      text: `${tipsMark}${t('button.donation-scope-tips')}`,
-    })
-    .row({
-      callback_data: donationScopeRoute.build({scope: 'all'}),
-      text: `${allMark}${t('button.donation-scope-all')}`,
-    })
-    .row({
-      callback_data: staticCallback.settings,
-      text: t('button.back'),
+      callback_data: staticCallback.donate,
+      text: t('button.back-to-support'),
     })
 
   return keyboard

@@ -42,15 +42,20 @@ button =
     .disable-onchain = 🚫 Выключить on-chain оплату
     .pay-onchain = ⛓ Оплатить on-chain
     .pay-lightning = ⚡ Оплатить Lightning
-    .donation-settings = 💚 Поддержать проект
+    .donation-settings = ⚡️ Авто % с tips
+    .donate = 💚 Поддержать проект
     .donate-amount = {$sats} сат
     .donate-custom = ✏️ Своя сумма…
-    .donate-monthly = 📅 Ежемесячный донат
-    .donate-monthly-disable = 🚫 Отключить ежемесячный донат
+    .donate-custom-short = ✏️
+    .donate-monthly = 📅 Ежемесячно
+    .donate-monthly-on = 📅 {$sats}/30д
+    .donate-monthly-disable = 🚫 Выкл. ежемесячный
+    .donation-auto-percent = ⚡️ Авто %
     .donation-percent = {$percent}%
     .donation-custom-percent = ✏️ Свой %…
-    .donation-scope-tips = Только донаты
-    .donation-scope-all = Все платежи (донаты + счета)
+    .donation-scope-tips = Только tips
+    .donation-scope-all = Tips + счета
+    .back-to-support = ⬅️ Поддержка
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
@@ -117,18 +122,26 @@ donate =
     .hub = 💚 <b>Поддержать {bot-name}</b>
         Спасибо, что помогаешь проекту жить.
 
-        <b>Всего собрано:</b> {$platformTotalSats} сат за всё время · {$platformLastMonthSats} сат за 30 дней
+        🌍 <b>Сообщество</b>
+        ⏱ За всё время: <b>{$platformTotalSats}</b> сат
+        📅 За 30 дней: <b>{$platformLastMonthSats}</b> сат
 
-        <b>Твои донаты:</b> {$totalSats} сат · {$count} платежей
-        {$last}
-        <b>Ежемесячно (в боте):</b> {$monthlyStatus}
+        👤 <b>Ты</b>
+        💸 Отправлено: <b>{$totalSats}</b> сат · {$count} платежей
+        🕐 {$last}
+        📅 Ежемесячно: <b>{$monthlyStatus}</b>
+        ⚡️ Авто с платежей: <b>{$autoPercent}</b> · {$autoScope}
 
-        Выбери разовую сумму ниже или настрой ежемесячный автоплатёж.
+        Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
 
-        <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
-        Ежемесячный платёж на этот адрес можно настроить и вне {bot-name} — в кошельках или сервисах вроде <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>.
+        ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
+        Ежемесячно вне бота — инструменты вроде <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>.
     .stats-last = Последний: {$date}
-    .stats-last-none = Донатов пока нет.
+    .stats-last-none = Донатов пока нет
+    .auto-off = Выкл
+    .auto-on = {$percent}%
+    .auto-scope-tips = только tips
+    .auto-scope-all = tips + счета
     .success = ✅ Спасибо! Ты отправил {$sats} сат в поддержку {bot-name}.
     .failed = ⚠️ Не удалось отправить {$sats} сат. Проверь баланс или NWC.
     .invalid-amount = ⚠️ Введи целое число сат от 1 до 100000000.
@@ -137,8 +150,9 @@ donate =
     .monthly-status-off = Выкл
     .monthly-menu = 📅 <b>Ежемесячный донат</b>
 
-        Сейчас: {$sats} сат (0 = выкл).
+        Сейчас: <b>{$sats}</b> сат (0 = выкл).
         Выбери сумму. При включении спишем сразу, затем каждые 30 дней.
+        «Назад» — в общий хаб поддержки (разово + авто %).
     .monthly-enabled = ✅ Ежемесячный донат: {$sats} сат. Первый платёж получен; следующий через 30 дней.
     .monthly-enable-failed = ⚠️ Ежемесячный донат: {$sats} сат, но первый платёж не прошёл. Повторим автоматически. Проверь баланс / NWC.
     .monthly-amount-updated = ✅ Сумма обновлена: {$sats} сат. Следующее списание по расписанию.
@@ -213,20 +227,20 @@ settings = <b>⚙️ Настройки</b>
         
         Если ты сделаешь {bot-name} администратором своего канала, то все /tip в ответ на публикации этого канала будут отправляться на твой кошелёк.
 
-settings-donation = 💚 <b>Поддержать проект</b>
+settings-donation = ⚡️ <b>Авто % с платежей</b>
 
     Сейчас: <b>{$status}</b> · {$scope}
 
-    Выбери добровольный % сверху твоих платежей в поддержку автора бота. Можно отключить (0%).
-    Разовые и ежемесячные донаты: /donate
+    Добровольный % сверху tips и оплаты счетов (основной платёж не блокируется).
+    0% — выкл. Разово и ежемесячно — кнопки в хабе «Поддержать».
     .off = Выкл
     .percent = {$percent}%
-    .scope-tips = только донаты
-    .scope-all = все платежи
-    .percent-set = Донат: {$percent}%
-    .scope-tips-toast = Область: только донаты
-    .scope-all-toast = Область: все платежи
-    .custom-percent-prompt = 🔤 Введи процент доната (0–100).
+    .scope-tips = только tips
+    .scope-all = tips + счета
+    .percent-set = Авто %: {$percent}%
+    .scope-tips-toast = Область: только tips
+    .scope-all-toast = Область: tips + счета
+    .custom-percent-prompt = 🔤 Введи процент авто-доната (0–100).
     .invalid-percent = ⚠️ Введи целое число от 0 до 100.
 
 send-menu = <b>✉️ Отправить платёж</b>

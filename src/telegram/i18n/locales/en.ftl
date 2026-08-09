@@ -42,15 +42,20 @@ button =
     .disable-onchain = 🚫 Disable on-chain pay
     .pay-onchain = ⛓ Pay on-chain
     .pay-lightning = ⚡ Pay with Lightning
-    .donation-settings = 💚 Support the project
+    .donation-settings = ⚡️ Auto % on tips
+    .donate = 💚 Support project
     .donate-amount = {$sats} sats
     .donate-custom = ✏️ Custom amount…
-    .donate-monthly = 📅 Monthly donation
-    .donate-monthly-disable = 🚫 Disable monthly donation
+    .donate-custom-short = ✏️
+    .donate-monthly = 📅 Monthly
+    .donate-monthly-on = 📅 {$sats}/30d
+    .donate-monthly-disable = 🚫 Disable monthly
+    .donation-auto-percent = ⚡️ Auto %
     .donation-percent = {$percent}%
     .donation-custom-percent = ✏️ Custom %…
     .donation-scope-tips = Tips only
-    .donation-scope-all = All payments (tips + invoices)
+    .donation-scope-all = Tips + invoices
+    .back-to-support = ⬅️ Support
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -117,18 +122,26 @@ donate =
     .hub = 💚 <b>Support {bot-name}</b>
         Thanks for keeping the project alive.
 
-        <b>Community total:</b> {$platformTotalSats} sats all time · {$platformLastMonthSats} sats last 30 days
+        🌍 <b>Community</b>
+        ⏱ All time: <b>{$platformTotalSats}</b> sats
+        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats
 
-        <b>Your donations:</b> {$totalSats} sats · {$count} payments
-        {$last}
-        <b>Monthly (in bot):</b> {$monthlyStatus}
+        👤 <b>You</b>
+        💸 Sent: <b>{$totalSats}</b> sats · {$count} payments
+        🕐 {$last}
+        📅 Monthly: <b>{$monthlyStatus}</b>
+        ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
 
-        Choose a one-shot amount below, or set a monthly auto-donate.
+        Tap an amount for a one-shot donation, or open Monthly / Auto %.
 
-        <b>Lightning address:</b> <code>zapgram@getalby.com</code>
-        You can also set up a monthly payment to that address in wallets or tools like <a href="https://zapplanner.albylabs.com/">ZapPlanner</a> — no {bot-name} account required.
+        ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
+        Monthly outside the bot: tools like <a href="https://zapplanner.albylabs.com/">ZapPlanner</a> — no {bot-name} account required.
     .stats-last = Last: {$date}
-    .stats-last-none = No donations yet.
+    .stats-last-none = No donations yet
+    .auto-off = Off
+    .auto-on = {$percent}%
+    .auto-scope-tips = tips only
+    .auto-scope-all = tips + invoices
     .success = ✅ Thanks! You sent {$sats} sats to support {bot-name}.
     .failed = ⚠️ Could not send {$sats} sats. Check your balance or NWC connection.
     .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
@@ -137,8 +150,9 @@ donate =
     .monthly-status-off = Off
     .monthly-menu = 📅 <b>Monthly donation</b>
 
-        Current: {$sats} sats (0 = off).
+        Current: <b>{$sats}</b> sats (0 = off).
         Choose an amount. Enabling charges once now, then every 30 days.
+        Back returns to the full support hub (one-shot + auto %).
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats. First payment received; next charge in 30 days.
     .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats, but the first charge failed. We will retry automatically. Check balance / NWC.
     .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats. Next charge stays on schedule.
@@ -213,20 +227,20 @@ settings = <b>⚙️ Settings</b>
         
         If you make {bot-name} an admin of your channel, all /tip commands in reply to that channel's posts will also be sent to your wallet.
 
-settings-donation = 💚 <b>Support the project</b>
+settings-donation = ⚡️ <b>Auto % on payments</b>
 
     Current: <b>{$status}</b> · {$scope}
 
-    Choose a voluntary % added on top of your payments to support the bot author. Turn off anytime (0%).
-    One-shot and monthly donations: /donate
+    A voluntary % added on top of your tips and invoice pays (never blocks the main payment).
+    0% turns it off. One-shot and monthly: use the Support hub buttons.
     .off = Off
     .percent = {$percent}%
     .scope-tips = tips only
-    .scope-all = all payments
-    .percent-set = Donation set to {$percent}%
+    .scope-all = tips + invoices
+    .percent-set = Auto % set to {$percent}%
     .scope-tips-toast = Scope: tips only
-    .scope-all-toast = Scope: all payments
-    .custom-percent-prompt = 🔤 Enter donation percent (0–100).
+    .scope-all-toast = Scope: tips + invoices
+    .custom-percent-prompt = 🔤 Enter auto-donation percent (0–100).
     .invalid-percent = ⚠️ Enter an integer between 0 and 100.
 
 send-menu = <b>✉️ Send payment</b>

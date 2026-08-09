@@ -18,6 +18,13 @@ export function formatDonateHubText(
       ? t('donate.stats-last', {date: stats.lastAt.toISOString().slice(0, 10)})
       : t('donate.stats-last-none')
 
+  const autoPercent =
+    user.donationPercent === 0
+      ? t('donate.auto-off')
+      : t('donate.auto-on', {percent: user.donationPercent})
+  const autoScope =
+    user.donationScope === 'tips' ? t('donate.auto-scope-tips') : t('donate.auto-scope-all')
+
   return t('donate.hub', {
     totalSats: stats.totalSats,
     count: stats.count,
@@ -25,6 +32,8 @@ export function formatDonateHubText(
     monthlyStatus,
     platformTotalSats: platform.totalSats,
     platformLastMonthSats: platform.lastMonthSats,
+    autoPercent,
+    autoScope,
   })
 }
 

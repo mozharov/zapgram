@@ -58,6 +58,7 @@ export async function customDonationPercent(
     }),
   )
   await ctx.reply(ctx.t('settings-donation.percent-set', {percent}))
+  // Return to auto-% screen (still under the support hub via Back).
   await ctx.reply(formatDonationSettingsText(ctx.t, user), {
     reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
   })

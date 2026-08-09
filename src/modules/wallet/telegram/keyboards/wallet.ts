@@ -8,4 +8,5 @@ export function buildWalletKeyboard(t: BotContext['t']) {
     .add({callback_data: staticCallback.sendMenu, text: t('button.send')})
     .row({callback_data: staticCallback.settings, text: t('button.settings')})
     .add({callback_data: staticCallback.help, text: t('button.help')})
+    .row({callback_data: staticCallback.donate, text: t('button.donate')})
 }

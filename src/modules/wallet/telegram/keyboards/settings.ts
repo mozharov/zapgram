@@ -24,9 +24,10 @@ export function buildSettingsKeyboard(t: BotContext['t'], user: User) {
       callback_data: staticCallback.groupSettings,
       text: t('button.groups'),
     })
+    // Unified support hub (one-shot, monthly, auto-% on tips) — not a separate dead-end.
     .row({
-      callback_data: staticCallback.donationSettings,
-      text: t('button.donation-settings'),
+      callback_data: staticCallback.donate,
+      text: t('button.donate'),
     })
     .row({
       callback_data: staticCallback.wallet,

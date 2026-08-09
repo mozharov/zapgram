@@ -36,10 +36,9 @@ test('/donate hub shows stats and external lightning address', async () => {
   const messages = e2e.tg.of('sendMessage').map(c => String(c.text))
   expect(messages.some(t => t.includes('zapgram@getalby.com'))).toBe(true)
   expect(messages.some(t => /ZapPlanner/i.test(t))).toBe(true)
-  expect(messages.some(t => /Your donations:/i.test(t))).toBe(true)
-  expect(
-    messages.some(t => /Community total:.*0 sats all time.*0 sats last 30 days/i.test(t)),
-  ).toBe(true)
+  expect(messages.some(t => /Community|🌍/i.test(t))).toBe(true)
+  expect(messages.some(t => /All time:.*0/i.test(t) && /Last 30 days:.*0/i.test(t))).toBe(true)
+  expect(messages.some(t => /Auto on payments/i.test(t))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 
@@ -68,9 +67,10 @@ test('one-shot donate 1000 credits fee wallet and updates stats', async () => {
       },
       telegram: [
         {method: 'answerCallbackQuery'},
+        {method: 'deleteMessage'},
         {method: 'sendChatAction', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Thanks! You sent 1,?000 sats/},
-        {method: 'sendMessage', to: USER_A, text: /1,?000 sats/},
+        {method: 'sendMessage', to: USER_A, text: /Support ZapGram|All time/},
       ],
     },
   )
@@ -186,9 +186,10 @@ test('monthly enable charges immediately and advances nextAt', async () => {
       },
       telegram: [
         {method: 'answerCallbackQuery'},
+        {method: 'deleteMessage'},
         {method: 'sendChatAction', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Monthly donation set to 100 sats/},
-        {method: 'sendMessage', to: USER_A, text: /zapgram@getalby.com/},
+        {method: 'sendMessage', to: USER_A, text: /zapgram@getalby.com|Support ZapGram/},
       ],
     },
   )

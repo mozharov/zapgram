@@ -1,6 +1,5 @@
-import {buildDonateHubKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
-import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {editDonateHub, replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getRuntime} from '../../../../runtime.js'
@@ -18,15 +17,12 @@ export async function donateCommand(ctx: BotContext) {
     donation_percent: ctx.user.donationPercent,
     donation_scope: ctx.user.donationScope,
   })
-  await ctx.reply(formatDonateHubText(ctx.t, ctx.user, stats, platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
-  })
+  await replyDonateHub(ctx)
 }
 
 export async function donateHubCallback(ctx: BotContext) {
-  const user = await getRuntime().users.getOrThrow(ctx.user.id)
-  ctx.user = user as typeof ctx.user
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
+  const user = await getRuntime().users.getOrThrow(ctx.user.id)
   captureBotEvent(getRuntime().posthog, 'donate_hub_opened', {
     feature: 'donations',
     source: 'callback',
@@ -38,8 +34,6 @@ export async function donateHubCallback(ctx: BotContext) {
     donation_percent: user.donationPercent,
     donation_scope: user.donationScope,
   })
-  await ctx.editMessageText(formatDonateHubText(ctx.t, user, stats, platform), {
-    reply_markup: buildDonateHubKeyboard(ctx.t),
-  })
+  await editDonateHub(ctx)
   await ctx.answerCallbackQuery()
 }

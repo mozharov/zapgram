@@ -143,7 +143,7 @@ const staticCases: {
   {
     data: staticCallback.donationSettings,
     methods: ['editMessageText', 'answerCallbackQuery'],
-    text: /Support the project/,
+    text: /Auto % on payments/,
   },
   {
     data: staticCallback.donate,
@@ -152,14 +152,14 @@ const staticCases: {
   },
   {
     data: staticCallback.donateCustom,
-    methods: ['answerCallbackQuery', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
     text: /amount in sats/,
     conversation: true,
   },
   {
     data: staticCallback.donationCustomPercent,
     methods: ['answerCallbackQuery', 'sendMessage'],
-    text: /donation percent/,
+    text: /auto-donation percent|percent \(0/,
     conversation: true,
   },
   {
@@ -170,11 +170,11 @@ const staticCases: {
   {
     data: staticCallback.donateMonthlyDisable,
     methods: ['answerCallbackQuery', 'editMessageText'],
-    text: /zapgram@getalby.com/,
+    text: /zapgram@getalby.com|Support ZapGram/,
   },
   {
     data: staticCallback.donateMonthlyCustom,
-    methods: ['answerCallbackQuery', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
     text: /monthly donation amount/,
     conversation: true,
   },
@@ -362,29 +362,41 @@ const parameterizedCases: {
     route: 'donation-percent',
     data: () => 'donation:percent:5',
     methods: ['editMessageText', 'answerCallbackQuery'],
-    text: /Support the project/,
+    text: /Auto % on payments/,
     db: {users: {changed: 1}},
   },
   {
     route: 'donation-scope',
     data: () => 'donation:scope:tips',
     methods: ['editMessageText', 'answerCallbackQuery'],
-    text: /Support the project/,
+    text: /Auto % on payments/,
     db: {users: {changed: 1}},
   },
   {
     route: 'donate-amount',
     data: () => 'donate:amount:21',
-    methods: ['answerCallbackQuery', 'sendChatAction', 'sendMessage'],
-    text: /Could not send 21 sats/,
+    methods: [
+      'answerCallbackQuery',
+      'deleteMessage',
+      'sendChatAction',
+      'sendMessage',
+      'sendMessage',
+    ],
+    text: /Could not send 21 sats|Support ZapGram/,
     // Fee-collection invoice is created even when the user cannot pay it.
     lnbits: {payments: [{out: false, sats: 21, times: 1}]},
   },
   {
     route: 'donate-monthly-amount',
     data: () => 'donate:monthly:21',
-    methods: ['answerCallbackQuery', 'sendChatAction', 'sendMessage', 'sendMessage'],
-    text: /first charge failed|zapgram@getalby.com/,
+    methods: [
+      'answerCallbackQuery',
+      'deleteMessage',
+      'sendChatAction',
+      'sendMessage',
+      'sendMessage',
+    ],
+    text: /first charge failed|zapgram@getalby.com|Support ZapGram/,
     db: {users: {changed: 1}},
     lnbits: {payments: [{out: false, sats: 21, times: 1}]},
   },
