@@ -110,6 +110,11 @@ export const balanceResponseSchema = z.object({
   id: z.string(),
 })
 
+export const rateResponseSchema = z.object({
+  rate: z.number().positive(),
+})
+export type RateResponse = z.infer<typeof rateResponseSchema>
+
 // --- Watch-Only extension ---
 
 export const watchOnlyWalletSchema = z.object({
