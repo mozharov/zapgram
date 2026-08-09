@@ -69,6 +69,7 @@ function buildService(
     },
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     translate: (key, _lang, vars) => `${key}:${JSON.stringify(vars ?? {})}`,
+    getBtcUsd: async () => null,
     now: () => new Date('2026-08-08T12:00:00.000Z'),
   })
 }

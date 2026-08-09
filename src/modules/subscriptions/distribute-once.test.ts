@@ -86,6 +86,7 @@ function makeDistribute() {
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     feePercent: FEE_PERCENT,
     translate: () => '',
+    getBtcUsd: async () => null,
   }).distributeOnce
 }
 

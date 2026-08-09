@@ -1,4 +1,5 @@
 import {computeSubscriptionFee} from '@core/money/fee.js'
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import {classifyPayoutLookup, type PayoutState} from '@core/payments/payout-state.js'
 import type {PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
@@ -48,6 +49,8 @@ export type SettleServiceDeps = {
   log: AppLogger
   feePercent: number
   translate: (key: string, language?: string, context?: TranslationVariables) => string
+  /** BTC/USD spot for owner/subscriber message suffixes; null omits the suffix. */
+  getBtcUsd: () => Promise<number | null>
   posthog?: CaptureClient
   now?: () => Date
 }
@@ -63,6 +66,18 @@ export type SettleService = {
 
 export function createSettleService(deps: SettleServiceDeps): SettleService {
   const now = deps.now ?? (() => new Date())
+
+  async function usdSuffixFor(sats: number): Promise<string> {
+    const rate = await deps.getBtcUsd()
+    return rate === null ? '' : formatUsdSuffix(satsToUsd(sats, rate))
+  }
+
+  /** One rate fetch for several amounts (price / fee / total). */
+  async function usdSuffixesFor(amounts: number[]): Promise<string[]> {
+    const rate = await deps.getBtcUsd()
+    if (rate === null) return amounts.map(() => '')
+    return amounts.map(sats => formatUsdSuffix(satsToUsd(sats, rate)))
+  }
 
   /**
    * Moves the money for a subscription payment at most once: `price - fee` to the chat owner, then
@@ -292,6 +307,12 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
 
       await deps.notifier.send(payment.userId, await buildSubscriberMessage(payment, chat, user))
 
+      const total = payment.price - fee
+      const [usdSuffix = '', feeUsdSuffix = '', totalUsdSuffix = ''] = await usdSuffixesFor([
+        payment.price,
+        fee,
+        total,
+      ])
       await deps.notifier.send(
         chat.ownerId,
         deps.translate('new-subscription-payment', chat.owner.languageCode, {
@@ -299,8 +320,11 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
           title: chat.title,
           type: payment.subscriptionType,
           price: payment.price,
+          usdSuffix,
           fee,
-          total: payment.price - fee,
+          feeUsdSuffix,
+          total,
+          totalUsdSuffix,
         }),
       )
 
@@ -356,6 +380,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         payment.userId,
         deps.translate('subscription-invoice.duplicate-refunded', user.languageCode, {
           price: payment.price,
+          usdSuffix: await usdSuffixFor(payment.price),
         }),
       )
       captureUserEvent(
@@ -404,6 +429,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
             title: chat.title,
             expiryDate: subscription.endsAt,
             price: payment.price,
+            usdSuffix: await usdSuffixFor(payment.price),
           })
         }
       } catch (error) {

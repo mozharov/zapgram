@@ -205,6 +205,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     log,
     feePercent: config.SUBSCRIPTION_FEE_PERCENT,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     posthog,
   })
 
@@ -218,6 +219,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     notifier,
     log,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     invoiceExpirySeconds: INVOICE_EXPIRY,
   })
 
@@ -265,6 +267,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     log,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     posthog,
   })
 

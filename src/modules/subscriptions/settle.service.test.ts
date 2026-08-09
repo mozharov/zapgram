@@ -111,6 +111,7 @@ describe('settle service (characterization)', () => {
       log,
       feePercent: 0.05,
       translate,
+      getBtcUsd: async () => null,
       ...overrides,
     }
   }

@@ -104,6 +104,7 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
       title: 'E2E paid chat',
       expiryDate: extendedEndsAt(subscription),
       price: PRICE,
+      usdSuffix: '',
     }),
   )
   expect(String(subscriberMessage?.text)).not.toContain('Доступ к сообществу')
@@ -640,6 +641,7 @@ async function issueManualRenewal(subscription: Subscription, invoiceSats: numbe
     translate('subscription-renewal.need-payment', 'ru', {
       title: 'E2E paid chat',
       price: subscription.price,
+      usdSuffix: '',
       invoice: payment.paymentRequest,
     }),
   )
