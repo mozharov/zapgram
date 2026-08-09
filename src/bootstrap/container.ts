@@ -3,6 +3,11 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import {
+  createLnbitsRateFetcher,
+  createRateService,
+  type RateService,
+} from '@infra/lnbits/rate-service.js'
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
@@ -74,6 +79,7 @@ export type AppContainer = {
   db: AppDatabase
   bot: Bot<BotContext>
   masterWallet: MasterWalletInstance
+  rates: RateService
   notifier: Notifier
   users: UserRepository
   chats: ChatRepository
@@ -114,6 +120,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const masterWallet = createMasterWallet(config)
   await masterWallet.checkStatus()
+
+  const rates = createRateService({
+    fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
+    log,
+  })
 
   const bot = createBot<BotContext>(
     config.BOT_TOKEN,
@@ -264,6 +275,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     db,
     bot,
     masterWallet,
+    rates,
     notifier,
     users,
     chats,
