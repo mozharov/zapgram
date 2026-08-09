@@ -141,22 +141,22 @@ donate =
     .auto-on = {$percent}%
     .auto-scope-tips = tips only
     .auto-scope-all = tips + invoices
-    .success = ✅ Thanks! You sent {$sats} sats to support {bot-name}.
-    .failed = ⚠️ Could not send {$sats} sats. Check your balance or NWC connection.
+    .success = ✅ Thanks! You sent {$sats} sats{$usdSuffix} to support {bot-name}.
+    .failed = ⚠️ Could not send {$sats} sats{$usdSuffix}. Check your balance or NWC connection.
     .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
     .custom-amount = 🔤 Enter the amount in sats you want to donate.
-    .monthly-status-on = {$sats} sats / 30 days
+    .monthly-status-on = {$sats} sats{$usdSuffix} / 30 days
     .monthly-status-off = Off
     .monthly-menu = 📅 <b>Monthly donation</b>
 
         Current: <b>{$sats}</b> sats (0 = off).
         Choose an amount. Enabling charges once now, then every 30 days.
         Back returns to the full support hub (one-shot + auto %).
-    .monthly-enabled = ✅ Monthly donation set to {$sats} sats. First payment received; next charge in 30 days.
-    .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats, but the first charge failed. We will retry automatically. Check balance / NWC.
-    .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats. Next charge stays on schedule.
+    .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
+    .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
+    .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats{$usdSuffix}. Next charge stays on schedule.
     .monthly-disabled-toast = Monthly donation disabled
-    .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat donation. Check balance / NWC or /donate.
+    .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat{$usdSuffix} donation. Check balance / NWC or /donate.
     .monthly-custom-amount = 🔤 Enter monthly donation amount in sats.
 
 help = <b>ℹ️ Bitcoin</b>
@@ -188,9 +188,9 @@ help = <b>ℹ️ Bitcoin</b>
 wallet = <b>👛 Wallet</b> ㅤ ㅤ ㅤ ㅤ ㅤ
 
     {$nwcBalance -> 
-    [no] <b>Balance:</b> {$balance} sats 
-    *[other]<b>{bot-name}:</b> {$balance} sats
-        <b>NWC:</b> {$nwcBalance} sats
+    [no] <b>Balance:</b> {$balance} sats{$usdSuffix}
+    *[other]<b>{bot-name}:</b> {$balance} sats{$usdSuffix}
+        <b>NWC:</b> {$nwcBalance} sats{$nwcUsdSuffix}
     }
 
 nwc = 
@@ -249,7 +249,7 @@ send-menu = <b>✉️ Send payment</b>
         Pay a Lightning invoice or send payment to a Telegram user.
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
-    .completed = <b>✅ You sent {$amount} sats to @{$recipient}.</b>
+    .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>
@@ -263,12 +263,12 @@ wait-for-wallet = <b>👛 Select Wallet</b>
     .auto-only-internal = <b>🤖 Only the {bot-name} wallet has enough balance, so it was selected automatically.</b>
     .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
 
-sats-received = <b>📩 You received {$amount} sats</b>. 
+sats-received = <b>📩 You received {$amount} sats{$usdSuffix}</b>.
     {$username -> 
-    [no] Balance: <b>{$balance} sats</b>
+    [no] Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
     *[other] Sender: @{$username}.
 
-        Balance: <b>{$balance} sats</b>
+        Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
     }
 
 wait-for-invoice = <b>🗳 Send or forward a message with a Lightning invoice to this chat.</b>
@@ -276,14 +276,14 @@ wait-for-invoice = <b>🗳 Send or forward a message with a Lightning invoice to
 
 wait-for-invoice-review = <b>ℹ️ Invoice review</b>
 
-        Amount: <b>{$amount} sats</b>
+        Amount: <b>{$amount} sats{$usdSuffix}</b>
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
         }{$fee -> 
         [no] <i></i>
-        *[other] Fee: <b>{$fee} sats</b>
+        *[other] Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         <i></i>
         }Created at: <b>{DATETIME($createdDate, timeZone: "UTC")} {DATETIME($createdDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
         {$expiryDate ->
@@ -298,23 +298,23 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         }
 
 received-incoming-invoice = 📥 <b>You received payment for a Lightning invoice.</b>
-        Amount: <b>{$amount} sats</b>.
+        Amount: <b>{$amount} sats{$usdSuffix}</b>.
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
 
-            Balance: <b>{$balance} sats</b>
-        *[other] Balance: <b>{$balance} sats</b>
+            Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
+        *[other] Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
         }
 
 paying-invoice = <b>🧾 Paying Lightning invoice...</b>
     .paid = <b>✅ Invoice paid.</b>
 
-        Payment amount: <b>{$amount} sats</b>
-        Fee: <b>{$fee} sats</b>
-        Total: <b>{$total} sats</b>
+        Payment amount: <b>{$amount} sats{$usdSuffix}</b>
+        Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
+        Total: <b>{$total} sats{$totalUsdSuffix}</b>
 
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
-    .created = Amount: <b>{$amount} sats</b>
+    .created = Amount: <b>{$amount} sats{$usdSuffix}</b>
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
@@ -360,7 +360,7 @@ chat = <b>👥 {$title}</b>
     [active] enabled
     *[other] disabled
     }</b>
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Payment type: <b>{$paymentType ->
     [one_time] one-time
     *[other] monthly
@@ -386,7 +386,7 @@ chat = <b>👥 {$title}</b>
         {$enMessage}
 
 changing-price = <b>₿ Changing the price of paid access...</b>
-    .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
+    .completed = <b>✅ The price of paid access has been set to {$price} sats{$usdSuffix}.</b>
 
 enabling-onchain = <b>⛓ Enable on-chain payments</b>
 
@@ -421,7 +421,7 @@ enabling-onchain = <b>⛓ Enable on-chain payments</b>
 onchain-invoice =
     .created = <b>⛓ On-chain payment for "{$title}"</b>
 
-        Send <b>at least {$price} sats</b> to:
+        Send <b>at least {$price} sats{$usdSuffix}</b> to:
 
         <code>{$address}</code>
 
@@ -430,7 +430,7 @@ onchain-invoice =
         *[other] one month access
         }</b>
 
-        <i>Any amount above {$price} sats is a donation to the community owner.</i>
+        <i>Any amount above {$price} sats{$usdSuffix} is a donation to the community owner.</i>
 
         {$remaining}
     .paid = <b>✅ Access to the community "{$title}" received.</b>
@@ -457,7 +457,7 @@ new-onchain-subscription-payment = <b>⛓ New on-chain subscription payment!</b>
     *[other] monthly
     }</b>
 
-    Amount: <b>{$price} sats</b>
+    Amount: <b>{$price} sats{$usdSuffix}</b>
     Address: <code>{$address}</code>
 
     <i>Funds are already on your on-chain wallet (no Lightning fee split).</i>
@@ -466,7 +466,7 @@ subscription-invoice =
     .default-message = <b>🔒 Access to private community "{$title}"</b>
     .created = {$message}
 
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Subscription type: <b>{$type ->
     [one_time] permanent access
     *[other] one month access
@@ -501,7 +501,7 @@ subscription-invoice =
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.
-    .duplicate-refunded = <b>↩️ A repeated subscription payment of {$price} sats was credited to your ZapGram balance.</b>
+    .duplicate-refunded = <b>↩️ A repeated subscription payment of {$price} sats{$usdSuffix} was credited to your ZapGram balance.</b>
 
         Access and the payment to the community owner were processed only once.
     .expired = <b>⚠️ This subscription invoice has expired.</b>
@@ -509,8 +509,8 @@ subscription-invoice =
 
 subscription-renewal = 
     .renewed = <b>✅ Your subscription to "{$title}" has been extended until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
-        Payment amount: <b>{$price} sats</b>
-    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
+        Payment amount: <b>{$price} sats{$usdSuffix}</b>
+    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats{$usdSuffix} to extend access for one month:</b>
         <code>{$invoice}</code>
 
 new-subscription-payment = <b>₿ New subscription payment!</b>
@@ -522,9 +522,9 @@ new-subscription-payment = <b>₿ New subscription payment!</b>
     *[other] monthly
     }</b>
     
-    Payment amount: <b>{$price} sats</b>
-    Fee: <b>{$fee} sats</b>
-    Credited: <b>{$total} sats</b>
+    Payment amount: <b>{$price} sats{$usdSuffix}</b>
+    Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
+    Credited: <b>{$total} sats{$totalUsdSuffix}</b>
 
 subscriptions = <b>👥 Your subscriptions to private chats.</b>
     .empty = <b>👥 You don't have any subscriptions.</b>
@@ -532,7 +532,7 @@ subscriptions = <b>👥 Your subscriptions to private chats.</b>
 
 subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
 
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Valid until: <b>{$endsAt ->
         [no] permanent
         *[other] {$endsAt}
