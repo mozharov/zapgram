@@ -313,7 +313,6 @@ enabling-onchain = <b>⛓ Включение on-chain оплаты</b>
     • Или полный <b>output descriptor</b> из Sparrow (для кастомных путей)
 
     <i>Не корневой ключ кошелька (depth 0) — нужен xpub/zpub именно <b>аккаунта</b> receive.</i>
-    <i>Сеть должна совпадать с ботом (Mainnet vs Testnet <code>tpub</code>/<code>vpub</code>).</i>
 
     Средства идут только на адреса из этого ключа. {bot-name} не получает твой seed.
     Можно вставить другой ключ или нажать «Отмена».

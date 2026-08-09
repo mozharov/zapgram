@@ -313,7 +313,6 @@ enabling-onchain = <b>⛓ Enable on-chain payments</b>
     • Or a full <b>output descriptor</b> from Sparrow (for custom paths)
 
     <i>Not the wallet root key (depth 0) — export the receive <b>account</b> xpub/zpub.</i>
-    <i>Network must match this bot (Mainnet keys vs Testnet <code>tpub</code>/<code>vpub</code>).</i>
 
     Funds go only to addresses from this key. {bot-name} never receives your seed.
     Paste another key or tap Cancel.

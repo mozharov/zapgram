@@ -18,6 +18,15 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
     return
   }
 
+  // Join-request DMs often reach users who never pressed /start. New sendMessage
+  // then 403s ("can't initiate conversation"); edit the message that already has
+  // the callback button instead (same pattern as other invoice callbacks).
+  const sourceMessage = ctx.callbackQuery.message
+  if (!sourceMessage || !('message_id' in sourceMessage)) {
+    await ctx.answerCallbackQuery({text: ctx.t('onchain-invoice.create-failed')})
+    return
+  }
+
   const {onchainJoinPaymentService, onchainPayments, posthog, log} = getRuntime()
   let result: Awaited<ReturnType<typeof onchainJoinPaymentService.createOrReuse>>
   try {
@@ -53,11 +62,23 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
     remaining,
   })
 
-  await ctx.answerCallbackQuery()
-  const sent = await ctx.reply(text, {link_preview_options: {is_disabled: true}})
-  if (sent.chat && sent.message_id) {
-    await onchainPayments.setTelegramMessage(payment.id, sent.chat.id, sent.message_id)
+  try {
+    await ctx.editMessageText(text, {
+      link_preview_options: {is_disabled: true},
+      reply_markup: {inline_keyboard: []},
+    })
+  } catch (error) {
+    log.error({error, chatId, paymentId: payment.id}, 'Failed to edit on-chain payment message')
+    await ctx.answerCallbackQuery({text: ctx.t('onchain-invoice.create-failed')})
+    return
   }
+
+  await onchainPayments.setTelegramMessage(
+    payment.id,
+    sourceMessage.chat.id,
+    sourceMessage.message_id,
+  )
+  await ctx.answerCallbackQuery()
 
   captureBotEvent(
     posthog,
