@@ -1,6 +1,6 @@
 import {advanceMonthlyNextAt} from '@core/money/donation.js'
 import type {User} from '@infra/db/types.js'
-import {captureUserEvent} from '@infra/posthog.js'
+import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
 import {getRuntime} from '../../../runtime.js'
 
@@ -20,6 +20,15 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
     fetch: (limit, offset) => users.findDueMonthlyDonations(limit, offset, now),
     process: async (user: User) => {
       const amount = user.monthlyDonationSats
+      const baseProps = {
+        feature: 'donations',
+        flow: 'monthly_cron' as const,
+        amount_sats: amount,
+        has_nwc: Boolean(user.nwcUrl),
+        previous_next_at: user.monthlyDonationNextAt?.toISOString() ?? null,
+        language_code: user.languageCode,
+      }
+
       if (amount <= 0) return 'done'
 
       // Light idempotency: if last hash already paid, advance schedule without re-pay.
@@ -33,10 +42,21 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
               monthlyDonationNextAt: nextAt,
               monthlyDonationLastHash: null,
             })
+            captureUserEvent(posthog, 'monthly_donate_recovered', user.id, {
+              ...baseProps,
+              payment_hash: user.monthlyDonationLastHash,
+              next_at: nextAt.toISOString(),
+              recovery: 'already_paid_hash',
+            })
             return 'done'
           }
-        } catch {
-          // lookup failed — fall through to pay
+        } catch (error) {
+          captureUserException(posthog, error, user.id, {
+            ...baseProps,
+            stage: 'lookup_last_hash',
+            payment_hash: user.monthlyDonationLastHash,
+          })
+          // fall through to pay
         }
       }
 
@@ -46,6 +66,7 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
         kind: 'monthly',
         rail: 'auto',
         nwcUrl: user.nwcUrl,
+        analytics: {source: 'monthly_cron'},
       })
 
       if (result.status === 'paid') {
@@ -56,8 +77,10 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
           monthlyDonationLastHash: result.paymentHash ?? null,
         })
         captureUserEvent(posthog, 'monthly_donate_charged', user.id, {
-          amount_sats: amount,
+          ...baseProps,
+          status: 'paid',
           rail: result.rail,
+          payment_hash: result.paymentHash ?? null,
           next_at: nextAt.toISOString(),
         })
         return 'done'
@@ -67,14 +90,26 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
       const shouldNotify =
         !lastFail || now.getTime() - lastFail.getTime() >= FAIL_NOTIFY_COOLDOWN_MS
       if (shouldNotify) {
-        const text = translate('donate.monthly-failed', user.languageCode, {sats: amount})
-        await notifier.send(user.id, text)
-        await users.update(user.id, {monthlyDonationLastFailNotifyAt: now})
+        try {
+          const text = translate('donate.monthly-failed', user.languageCode, {sats: amount})
+          await notifier.send(user.id, text)
+          await users.update(user.id, {monthlyDonationLastFailNotifyAt: now})
+        } catch (error) {
+          captureUserException(posthog, error, user.id, {
+            ...baseProps,
+            stage: 'fail_notify',
+            reason: result.reason,
+          })
+        }
       }
 
       captureUserEvent(posthog, 'monthly_donate_failed', user.id, {
-        amount_sats: amount,
+        ...baseProps,
+        status: 'failed',
         reason: result.reason,
+        notified: shouldNotify,
+        last_fail_notify_at: lastFail?.toISOString() ?? null,
+        ...errorProperties(result.error),
       })
       return 'keep'
     },

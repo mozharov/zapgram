@@ -2,6 +2,7 @@ import {isValidDonationAmountSats} from '@core/money/donation.js'
 import {buildDonateHubKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
 import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
@@ -24,10 +25,28 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
   })
   await conversation.external(() => removeInlineKeyboard(message))
   if (!isValidDonationAmountSats(sats)) {
+    await conversation.external(() =>
+      captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
+        feature: 'donations',
+        flow: 'one_shot',
+        source: 'custom',
+        amount_sats: sats,
+      }),
+    )
     await ctx.reply(ctx.t('donate.invalid-amount'))
     await ctx.reply(ctx.t('canceled'))
     return conversation.halt()
   }
+
+  await conversation.external(() =>
+    captureBotEvent(getRuntime().posthog, 'donate_one_shot_requested', {
+      feature: 'donations',
+      flow: 'one_shot',
+      source: 'custom',
+      amount_sats: sats,
+      has_nwc: Boolean(ctx.user.nwc || ctx.user.nwcUrl),
+    }),
+  )
 
   await ctx.replyWithChatAction('typing')
   const result = await conversation.external(() =>
@@ -38,10 +57,20 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
       rail: 'auto',
       nwc: ctx.user.nwc,
       nwcUrl: ctx.user.nwcUrl,
+      analytics: {source: 'donate_custom'},
     }),
   )
 
   if (result.status !== 'paid') {
+    await conversation.external(() =>
+      captureBotEvent(getRuntime().posthog, 'donate_one_shot_ui_failed', {
+        feature: 'donations',
+        flow: 'one_shot',
+        source: 'custom',
+        amount_sats: sats,
+        reason: result.reason,
+      }),
+    )
     await ctx.reply(ctx.t('donate.failed', {sats}))
     return
   }

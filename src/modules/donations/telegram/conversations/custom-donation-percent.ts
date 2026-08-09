@@ -1,6 +1,7 @@
 import {clampDonationPercent} from '@core/money/donation.js'
 import {buildDonationSettingsKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {formatDonationSettingsText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
@@ -26,14 +27,35 @@ export async function customDonationPercent(
   })
   await conversation.external(() => removeInlineKeyboard(message))
   if (raw < 0 || raw > 100) {
+    await conversation.external(() =>
+      captureBotEvent(getRuntime().posthog, 'donation_invalid_percent', {
+        feature: 'donations',
+        source: 'custom',
+        raw_percent: raw,
+      }),
+    )
     await ctx.reply(ctx.t('settings-donation.invalid-percent'))
     await ctx.reply(ctx.t('canceled'))
     return conversation.halt()
   }
 
   const percent = clampDonationPercent(raw)
+  const previous = ctx.user.donationPercent
   const user = await conversation.external(() =>
     getRuntime().users.update(ctx.user.id, {donationPercent: percent}),
+  )
+  await conversation.external(() =>
+    captureBotEvent(getRuntime().posthog, 'donation_percent_set', {
+      feature: 'donations',
+      donation_percent: percent,
+      previous_donation_percent: previous,
+      donation_scope: user.donationScope,
+      source: 'custom',
+      $set: {
+        donation_percent: percent,
+        donation_scope: user.donationScope,
+      },
+    }),
   )
   await ctx.reply(ctx.t('settings-donation.percent-set', {percent}))
   await ctx.reply(formatDonationSettingsText(ctx.t, user), {

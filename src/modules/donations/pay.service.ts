@@ -5,7 +5,7 @@ import type {User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
-import {captureUserEvent} from '@infra/posthog.js'
+import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 
 export type DonationPayRail = 'internal' | 'nwc'
 
@@ -58,6 +58,12 @@ export function createDonationPayService(deps: DonationPayDeps) {
       invoice = await deps.createFeeCollectionInvoice(amountSats)
     } catch (error) {
       deps.log.error({error, userId, amountSats}, 'Failed to create fee-collection invoice')
+      captureUserException(deps.posthog, error, userId, {
+        feature: 'donations',
+        stage: 'create_fee_collection_invoice',
+        amount_sats: amountSats,
+        requested_rail: input.rail,
+      })
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
@@ -73,6 +79,13 @@ export function createDonationPayService(deps: DonationPayDeps) {
         }
       } catch (error) {
         deps.log.error({error, userId, amountSats}, 'Internal donation pay failed')
+        captureUserException(deps.posthog, error, userId, {
+          feature: 'donations',
+          stage: 'pay_internal',
+          amount_sats: amountSats,
+          requested_rail: input.rail,
+          invoice_payment_hash: invoice.payment_hash,
+        })
         return {status: 'failed', error, reason: 'pay_failed'}
       }
     }
@@ -90,14 +103,32 @@ export function createDonationPayService(deps: DonationPayDeps) {
         }
       } catch (error) {
         deps.log.error({error, userId, amountSats}, 'NWC donation pay failed')
+        captureUserException(deps.posthog, error, userId, {
+          feature: 'donations',
+          stage: 'pay_nwc',
+          amount_sats: amountSats,
+          requested_rail: input.rail,
+          invoice_payment_hash: invoice.payment_hash,
+        })
         return {status: 'failed', error, reason: 'pay_failed'}
       }
     }
 
     if (input.rail === 'internal') {
-      const wallet = await deps.getUserWallet(userId)
-      if (wallet.balance < satsToMsats(amountSats)) {
-        return {status: 'failed', error: new Error('insufficient funds'), reason: 'no_funds'}
+      try {
+        const wallet = await deps.getUserWallet(userId)
+        if (wallet.balance < satsToMsats(amountSats)) {
+          return {status: 'failed', error: new Error('insufficient funds'), reason: 'no_funds'}
+        }
+      } catch (error) {
+        deps.log.error({error, userId}, 'Donation getUserWallet failed')
+        captureUserException(deps.posthog, error, userId, {
+          feature: 'donations',
+          stage: 'get_user_wallet',
+          amount_sats: amountSats,
+          requested_rail: input.rail,
+        })
+        return {status: 'failed', error, reason: 'pay_failed'}
       }
       const result = await tryInternal()
       return (
@@ -129,16 +160,30 @@ export function createDonationPayService(deps: DonationPayDeps) {
     rail?: DonationPayRail | 'auto'
     nwcUrl?: string | null
     nwc?: NostrWallet
+    /** Extra product context (source UI, job, etc.). */
+    analytics?: Record<string, unknown>
   }): Promise<PayDonationResult> {
+    const requestedRail = input.rail ?? 'auto'
+    const hasNwc = Boolean(input.nwc || input.nwcUrl)
+    const baseProps = {
+      feature: 'donations',
+      amount_sats: input.amountSats,
+      kind: input.kind,
+      requested_rail: requestedRail,
+      has_nwc: hasNwc,
+      ...input.analytics,
+    }
+
     const result = await payToFeeCollection({
       userId: input.userId,
       amountSats: input.amountSats,
-      rail: input.rail ?? 'auto',
+      rail: requestedRail,
       nwcUrl: input.nwcUrl,
       nwc: input.nwc,
     })
 
     if (result.status === 'paid') {
+      let ledgerOk = true
       try {
         await deps.insertDonation({
           userId: input.userId,
@@ -147,19 +192,42 @@ export function createDonationPayService(deps: DonationPayDeps) {
           paymentHash: result.paymentHash,
         })
       } catch (error) {
+        ledgerOk = false
         deps.log.error({error, userId: input.userId}, 'Failed to insert donation ledger row')
+        captureUserException(deps.posthog, error, input.userId, {
+          ...baseProps,
+          stage: 'ledger_insert',
+          rail: result.rail,
+          payment_hash: result.paymentHash ?? null,
+        })
+        captureUserEvent(deps.posthog, 'donation_ledger_failed', input.userId, {
+          ...baseProps,
+          rail: result.rail,
+          payment_hash: result.paymentHash ?? null,
+          ...errorProperties(error),
+        })
       }
       captureUserEvent(deps.posthog, 'donate_sent', input.userId, {
-        amount_sats: input.amountSats,
-        kind: input.kind,
+        ...baseProps,
+        status: 'paid',
         rail: result.rail,
+        payment_hash: result.paymentHash ?? null,
+        ledger_written: ledgerOk,
       })
     } else {
       captureUserEvent(deps.posthog, 'donation_failed', input.userId, {
-        amount_sats: input.amountSats,
-        kind: input.kind,
+        ...baseProps,
+        status: 'failed',
         reason: result.reason,
+        ...errorProperties(result.error),
       })
+      if (result.reason === 'pay_failed' && result.error) {
+        captureUserException(deps.posthog, result.error, input.userId, {
+          ...baseProps,
+          stage: 'pay_donation',
+          reason: result.reason,
+        })
+      }
     }
 
     return result

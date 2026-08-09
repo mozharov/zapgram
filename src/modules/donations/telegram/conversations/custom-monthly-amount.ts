@@ -2,6 +2,7 @@ import {advanceMonthlyNextAt, isValidDonationAmountSats} from '@core/money/donat
 import {buildDonateHubKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {loadDonateHubStats} from '@modules/donations/telegram/load-hub.js'
 import {formatDonateHubText} from '@modules/donations/telegram/messages/donate-hub.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
@@ -24,6 +25,14 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   })
   await conversation.external(() => removeInlineKeyboard(message))
   if (!isValidDonationAmountSats(sats)) {
+    await conversation.external(() =>
+      captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
+        feature: 'donations',
+        flow: 'monthly',
+        source: 'custom',
+        amount_sats: sats,
+      }),
+    )
     await ctx.reply(ctx.t('donate.invalid-amount'))
     await ctx.reply(ctx.t('canceled'))
     return conversation.halt()
@@ -37,6 +46,18 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     await conversation.external(() =>
       getRuntime().users.update(ctx.user.id, {monthlyDonationSats: sats}),
     )
+    await conversation.external(() =>
+      captureBotEvent(getRuntime().posthog, 'monthly_donate_amount_updated', {
+        feature: 'donations',
+        flow: 'monthly',
+        amount_sats: sats,
+        previous_monthly_sats: current.monthlyDonationSats,
+        next_at: current.monthlyDonationNextAt?.toISOString() ?? null,
+        charged_now: false,
+        source: 'custom',
+        $set: {monthly_donation_sats: sats},
+      }),
+    )
     await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats}))
   } else {
     await ctx.replyWithChatAction('typing')
@@ -48,6 +69,10 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         rail: 'auto',
         nwc: ctx.user.nwc,
         nwcUrl: ctx.user.nwcUrl,
+        analytics: {
+          source: wasOff ? 'monthly_enable_custom' : 'monthly_due_enable_custom',
+          was_off: wasOff,
+        },
       }),
     )
     if (result.status === 'paid') {
@@ -59,12 +84,43 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
           monthlyDonationLastHash: result.paymentHash ?? null,
         }),
       )
+      await conversation.external(() =>
+        captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
+          feature: 'donations',
+          flow: 'monthly',
+          amount_sats: sats,
+          previous_monthly_sats: current.monthlyDonationSats,
+          was_off: wasOff,
+          charged_now: true,
+          charge_status: 'paid',
+          rail: result.rail,
+          payment_hash: result.paymentHash ?? null,
+          next_at: nextAt.toISOString(),
+          source: 'custom',
+          $set: {monthly_donation_sats: sats},
+        }),
+      )
       await ctx.reply(ctx.t('donate.monthly-enabled', {sats}))
     } else {
       await conversation.external(() =>
         getRuntime().users.update(ctx.user.id, {
           monthlyDonationSats: sats,
           monthlyDonationNextAt: now,
+        }),
+      )
+      await conversation.external(() =>
+        captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
+          feature: 'donations',
+          flow: 'monthly',
+          amount_sats: sats,
+          previous_monthly_sats: current.monthlyDonationSats,
+          was_off: wasOff,
+          charged_now: true,
+          charge_status: 'failed',
+          reason: result.reason,
+          next_at: now.toISOString(),
+          source: 'custom',
+          $set: {monthly_donation_sats: sats},
         }),
       )
       await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats}))
