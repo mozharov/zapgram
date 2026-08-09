@@ -140,6 +140,7 @@
               "BOLT11 invoices with QR",
               "Paid chats with one-time or monthly access",
               "Optional Nostr Wallet Connect (NWC)",
+              "Optional support via /donate and voluntary % on payments",
               "Open source MIT"
             ],
             "softwareHelp": {
@@ -223,7 +224,15 @@
                 "name": "Is ZapGram free? What are the fees?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Free to start. Internal transfers between ZapGram wallets are free. External Lightning payments pay network fees. On the hosted bot, paid-chat owner payouts take a small platform fee (default 5%)."
+                  "text": "Free to start. Internal transfers between ZapGram wallets are free. External Lightning payments pay network fees. On the hosted bot, paid-chat owner payouts take a small platform fee (default 5%). Optional support for the bot author (voluntary % on tips/invoice pays, or /donate) is separate and can be turned off in settings."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I support the ZapGram project with sats?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. New accounts can include a voluntary 5% on top of tips and invoice pays (change or turn off in /settings). Use /donate for one-shot or monthly support, personal and community totals, or send to zapgram@getalby.com (including monthly via tools like ZapPlanner). This never blocks your main payment."
                 }
               },
               {
@@ -279,7 +288,7 @@
                 "name": "How is ZapGram different from LightningTipBot or other tip bots?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions, and optional NWC in one bot. Many peers focus mainly on tipping or simple send/receive. Compare features — the Telegram Lightning category is still small."
+                  "text": "ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions, optional NWC, and optional project support (/donate) in one bot. Many peers focus mainly on tipping or simple send/receive. Compare features — the Telegram Lightning category is still small."
                 }
               },
               {
@@ -379,6 +388,7 @@
               <li>Group &amp; channel tips</li>
               <li>Paid chats</li>
               <li>Optional NWC</li>
+              <li>Optional support</li>
               <li>Open source MIT</li>
             </ul>
             <p class="hero__secondary">
@@ -421,6 +431,13 @@
               <p>
                 Built-in wallet, or connect any NWC wallet
                 (<a href="https://getalby.com/invited-by/mozharov">Alby</a>, Coinos, …).
+              </p>
+            </article>
+            <article>
+              <h3>Optional support</h3>
+              <p>
+                Voluntary % on payments and
+                <code class="inline">/donate</code> — keep open Lightning tools alive with sats.
               </p>
             </article>
             <article>
@@ -510,6 +527,51 @@
             Make the bot an admin (delete messages is enough) so owner tips work cleanly and
             technical messages stay out of the way.
           </p>
+        </div>
+      </section>
+
+      <section class="section" id="support" aria-labelledby="support-title">
+        <div class="wrap">
+          <h2 id="support-title">Support the project (optional)</h2>
+          <p class="section__lead">
+            ZapGram is free to use. You can optionally support the bot author with sats — never
+            required, always under your control.
+          </p>
+          <div class="split">
+            <div class="panel">
+              <h3>Voluntary % on payments</h3>
+              <p>
+                New accounts default to <strong>5%</strong> on top of tips and invoice pays (scope:
+                all payments). Change the percent, limit to tips only, or turn off in
+                <code class="inline">/settings</code> → Support the project.
+              </p>
+              <p class="note">
+                Your main tip or invoice pay settles first. The support tip is best-effort and never
+                blocks the payment. Success is silent; failure only notifies you in private chat.
+              </p>
+            </div>
+            <div class="panel">
+              <h3><code class="inline">/donate</code> hub</h3>
+              <ul>
+                <li>
+                  One-shot: <span class="amt">21</span> · <span class="amt">100</span> ·
+                  <span class="amt">1 000</span> · <span class="amt">10 000</span> ·
+                  <span class="amt">100 000</span> sats or custom
+                </li>
+                <li>Monthly auto-donate in the bot (every 30 days)</li>
+                <li>Your totals + community totals (all-time and last 30 days)</li>
+                <li>
+                  Outside the bot:
+                  <code class="inline">zapgram@getalby.com</code>
+                  — or monthly via tools like
+                  <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>
+                </li>
+              </ul>
+              <p class="note">
+                Separate from the small platform fee on paid-chat Lightning subscriptions.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -612,6 +674,13 @@
               <h3>Creators &amp; channels</h3>
               <p>Tips under posts and in groups that actually settle.</p>
             </article>
+            <article>
+              <h3>Supporters</h3>
+              <p>
+                Optional sats via <code class="inline">/donate</code> or a small % — keep open
+                Lightning tools alive.
+              </p>
+            </article>
           </div>
           <p class="anti">
             Not for: card-only checkout, enterprise KYC invoicing, or multi-asset trading. If you need
@@ -669,6 +738,11 @@
                 <strong>Paid-chat owner payouts (hosted):</strong> small platform fee (default
                 <strong>5%</strong>).
               </li>
+              <li>
+                <strong>Optional support:</strong> voluntary % on tips / invoice pays and
+                <code class="inline">/donate</code> — not a mandatory fee; configure or disable in
+                settings.
+              </li>
             </ul>
             <p class="fees__note">No surprise bank fees. No fiat conversion layer.</p>
           </div>
@@ -700,7 +774,21 @@
               <p class="answer">
                 Free to start. Internal transfers between ZapGram wallets are free. External Lightning
                 payments pay network fees. On the hosted bot, paid-chat owner payouts take a small
-                platform fee (default 5%).
+                platform fee (default 5%). Optional support for the bot author (voluntary % on
+                tips/invoice pays, or <code class="inline">/donate</code>) is separate and can be
+                turned off in settings.
+              </p>
+            </details>
+            <details>
+              <summary>Can I support the ZapGram project with sats?</summary>
+              <p class="answer">
+                Yes. New accounts can include a voluntary <strong>5%</strong> on top of tips and
+                invoice pays — change or turn off in <code class="inline">/settings</code>. Use
+                <code class="inline">/donate</code> for one-shot or monthly support, personal and
+                community totals, or send to <code class="inline">zapgram@getalby.com</code>
+                (including monthly via tools like
+                <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>). This never blocks your
+                main payment.
               </p>
             </details>
             <details>
@@ -759,9 +847,10 @@
             <details>
               <summary>How is ZapGram different from LightningTipBot or other tip bots?</summary>
               <p class="answer">
-                ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions, and
-                optional NWC in one bot. Many peers focus mainly on tipping or simple send/receive.
-                Compare features — the Telegram Lightning category is still small.
+                ZapGram combines wallet, tips, BOLT11 invoices, paid chats with subscriptions,
+                optional NWC, and optional project support (<code class="inline">/donate</code>) in
+                one bot. Many peers focus mainly on tipping or simple send/receive. Compare features —
+                the Telegram Lightning category is still small.
               </p>
             </details>
             <details>

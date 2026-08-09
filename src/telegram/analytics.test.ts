@@ -273,6 +273,12 @@ describe('mergePersonProperties', () => {
         nwcTips: true,
         nwcUrl: 'nostr+walletconnect://x',
         createdAt: new Date('2020-01-01T00:00:00.000Z'),
+        donationPercent: 0,
+        donationScope: 'all',
+        monthlyDonationSats: 0,
+        monthlyDonationNextAt: null,
+        monthlyDonationLastHash: null,
+        monthlyDonationLastFailNotifyAt: null,
       }),
       personPropertiesFromTelegram({
         id: 42,

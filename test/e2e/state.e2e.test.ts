@@ -14,12 +14,20 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
-test('an empty world has eight empty DB tables and stable normalized snapshots', async () => {
+test('an empty world has ten DB tables and stable normalized snapshots', async () => {
   const first = await snapshot(e2e)
   const second = await snapshot(e2e)
 
-  expect(Object.keys(first.db)).toHaveLength(8)
-  expect(Object.values(first.db).every(rows => rows.length === 0)).toBe(true)
+  expect(Object.keys(first.db)).toHaveLength(10)
+  // Singleton platform-stats row is seeded by migration (zeros until first donation).
+  for (const [key, rows] of Object.entries(first.db)) {
+    if (key === 'donationPlatformStats') {
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({id: 1, totalSats: 0, totalCount: 0})
+    } else {
+      expect(rows).toHaveLength(0)
+    }
+  }
   expect(second).toEqual(first)
 })
 

@@ -25,6 +25,10 @@ export function buildSettingsKeyboard(t: BotContext['t'], user: User) {
       text: t('button.groups'),
     })
     .row({
+      callback_data: staticCallback.donationSettings,
+      text: t('button.donation-settings'),
+    })
+    .row({
       callback_data: staticCallback.wallet,
       text: t('button.back'),
     })

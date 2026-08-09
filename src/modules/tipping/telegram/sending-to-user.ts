@@ -7,6 +7,7 @@ import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {getRuntime} from '../../../runtime.js'
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('sending-to-user'))
@@ -15,13 +16,25 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   const wallet = await waitForWallet(conversation, ctx)
   await ctx.replyWithChatAction('typing')
 
-  if (wallet === 'internal') await internalTransfer(ctx.user.id, toUser.id, sats)
+  const usedNwc = wallet !== 'internal'
+  if (!usedNwc) await internalTransfer(ctx.user.id, toUser.id, sats)
   else {
     const toUserWallet = await getUserWallet(toUser.id)
     const invoice = await toUserWallet.createInvoice({sats})
     if (!ctx.user.nwc) throw new NWCConnectionError()
     await ctx.user.nwc.payInvoice(invoice.bolt11)
   }
+
+  // Best-effort voluntary platform donation — never blocks the transfer.
+  await getRuntime().donationCollect.tryCollect({
+    userId: ctx.user.id,
+    baseAmountSats: sats,
+    kind: 'tip',
+    preferredRail: usedNwc ? 'nwc' : 'internal',
+    nwc: usedNwc ? ctx.user.nwc : undefined,
+    nwcUrl: ctx.user.nwcUrl,
+    user: ctx.user,
+  })
 
   await notifySatsReceived(toUser.id, sats, ctx.user.username)
   await ctx.reply(ctx.t('sending-to-user.completed', {amount: sats, recipient: toUser.username}))

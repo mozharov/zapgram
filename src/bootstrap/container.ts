@@ -6,6 +6,7 @@ import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/maste
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
+import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
 import {type ChatRepository, createChatRepository} from '@modules/chats/repository.js'
@@ -13,6 +14,12 @@ import {
   type ConversationRepository,
   createConversationRepository,
 } from '@modules/conversations/repository.js'
+import {
+  createDonationCollectService,
+  type DonationCollectService,
+} from '@modules/donations/collect.service.js'
+import {createDonationPayService, type DonationPayService} from '@modules/donations/pay.service.js'
+import {createDonationRepository, type DonationRepository} from '@modules/donations/repository.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
 import {
@@ -86,6 +93,11 @@ export type AppContainer = {
   onchainEnableService: OnchainEnableService
   onchainJoinPaymentService: OnchainJoinPaymentService
   completeOnchainJoin: CompleteOnchainJoinService
+  donations: DonationRepository
+  donationPay: DonationPayService
+  donationCollect: DonationCollectService
+  /** Shared i18n for jobs / services that cannot import @telegram/* directly. */
+  translate: typeof translate
 }
 
 /**
@@ -110,7 +122,10 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   )
   const notifier = createTelegramNotifier(bot.api, log)
 
-  const users = createUserRepository(db)
+  const users = createUserRepository(db, {
+    defaultDonationPercent: config.DONATION_DEFAULT_PERCENT,
+  })
+  const donations = createDonationRepository(db)
   const chats = createChatRepository(db)
   const subscriptions = createSubscriptionRepository(db)
   const subscriptionIntents = createSubscriptionIntentRepository(db)
@@ -135,6 +150,27 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     memoFooter: config.memoFooter,
     log,
     paymentWebhookUrl,
+  })
+
+  const donationPay = createDonationPayService({
+    createFeeCollectionInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
+    getUserWallet,
+    insertDonation: input => donations.insertDonation(input),
+    log,
+    posthog,
+    createNwc: nwcUrl => new NostrWallet(nwcUrl, config.memoFooter, log),
+  })
+
+  const donationCollect = createDonationCollectService({
+    payService: donationPay,
+    insertDonation: input => donations.insertDonation(input),
+    getUser: id => users.getOrThrow(id),
+    notifyDonationFailed: async (userId, donationSats, languageCode) => {
+      const text = translate('donation.failed', languageCode, {donationSats})
+      await notifier.send(userId, text)
+    },
+    log,
+    posthog,
   })
 
   const settleService = createSettleService({
@@ -247,6 +283,10 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     onchainEnableService,
     onchainJoinPaymentService,
     completeOnchainJoin,
+    donations,
+    donationPay,
+    donationCollect,
+    translate,
   }
 
   setRuntime(container)

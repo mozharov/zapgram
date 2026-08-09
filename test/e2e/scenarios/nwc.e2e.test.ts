@@ -207,6 +207,7 @@ test('/settings with a connected NWC offers disconnect and tips toggle', async (
     staticCallback.toggleNwcTips,
     staticCallback.disconnectNwc,
     staticCallback.groupSettings,
+    staticCallback.donationSettings,
     staticCallback.wallet,
   ])
   expectNoErrors(e2e.logs)

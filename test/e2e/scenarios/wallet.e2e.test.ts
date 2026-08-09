@@ -100,6 +100,7 @@ test('/settings offers connecting a wallet and nothing that needs one', async ()
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
     'connect-nwc',
     'group-settings',
+    'donation-settings',
     'wallet',
   ])
   expectNoErrors(e2e.logs)
@@ -112,6 +113,7 @@ test('the settings button renders the same screen in place', async () => {
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     'connect-nwc',
     'group-settings',
+    'donation-settings',
     'wallet',
   ])
   expectNoErrors(e2e.logs)

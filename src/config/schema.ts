@@ -21,6 +21,8 @@ export const envSchema = z.object({
   /** Network string accepted by Watch-Only / SatsPay (Mainnet | Testnet). */
   LNBITS_ONCHAIN_NETWORK: z.enum(['Mainnet', 'Testnet']).default('Mainnet'),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
+  /** Default voluntary donation % for newly created users (0–100 integer). Existing users stay at DB default 0. */
+  DONATION_DEFAULT_PERCENT: z.coerce.number().int().min(0).max(100).default(5),
   HOST: z.preprocess(normalizePublicOrigin, z.url()),
   CONFIGURE_BOT: z.stringbool().default(true), // should call configureBot() on startup
   // Empty string from compose `${VAR:-}` means disabled / use compose default host only.

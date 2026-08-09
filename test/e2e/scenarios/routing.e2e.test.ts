@@ -67,6 +67,10 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
     command: '/subscriptions',
     telegram: [{method: 'sendMessage', to: USER_A, text: /don't have any subscriptions/}],
   },
+  {
+    command: '/donate',
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/}],
+  },
 ]
 
 for (const {command, telegram} of commandCases) {
@@ -76,9 +80,10 @@ for (const {command, telegram} of commandCases) {
   })
 }
 
-test('the six private commands are the ones the bot registers', () => {
+test('the private commands are the ones the bot registers', () => {
   expect(commandCases.map(item => item.command).sort()).toEqual([
     '/chats',
+    '/donate',
     '/help',
     '/settings',
     '/start',
@@ -135,6 +140,44 @@ const staticCases: {
     text: /Settings/,
   },
   {data: staticCallback.cancel, methods: ['sendMessage'], text: /Wallet/},
+  {
+    data: staticCallback.donationSettings,
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /Support the project/,
+  },
+  {
+    data: staticCallback.donate,
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /zapgram@getalby.com/,
+  },
+  {
+    data: staticCallback.donateCustom,
+    methods: ['answerCallbackQuery', 'sendMessage'],
+    text: /amount in sats/,
+    conversation: true,
+  },
+  {
+    data: staticCallback.donationCustomPercent,
+    methods: ['answerCallbackQuery', 'sendMessage'],
+    text: /donation percent/,
+    conversation: true,
+  },
+  {
+    data: staticCallback.donateMonthlyMenu,
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /Monthly donation/,
+  },
+  {
+    data: staticCallback.donateMonthlyDisable,
+    methods: ['answerCallbackQuery', 'editMessageText'],
+    text: /zapgram@getalby.com/,
+  },
+  {
+    data: staticCallback.donateMonthlyCustom,
+    methods: ['answerCallbackQuery', 'sendMessage'],
+    text: /monthly donation amount/,
+    conversation: true,
+  },
 ]
 
 for (const {data, methods, text, conversation} of staticCases) {
@@ -315,6 +358,36 @@ const parameterizedCases: {
     methods: ['editMessageText'],
     text: /subscription invoice has expired/,
   },
+  {
+    route: 'donation-percent',
+    data: () => 'donation:percent:5',
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /Support the project/,
+    db: {users: {changed: 1}},
+  },
+  {
+    route: 'donation-scope',
+    data: () => 'donation:scope:tips',
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /Support the project/,
+    db: {users: {changed: 1}},
+  },
+  {
+    route: 'donate-amount',
+    data: () => 'donate:amount:21',
+    methods: ['answerCallbackQuery', 'sendChatAction', 'sendMessage'],
+    text: /Could not send 21 sats/,
+    // Fee-collection invoice is created even when the user cannot pay it.
+    lnbits: {payments: [{out: false, sats: 21, times: 1}]},
+  },
+  {
+    route: 'donate-monthly-amount',
+    data: () => 'donate:monthly:21',
+    methods: ['answerCallbackQuery', 'sendChatAction', 'sendMessage', 'sendMessage'],
+    text: /first charge failed|zapgram@getalby.com/,
+    db: {users: {changed: 1}},
+    lnbits: {payments: [{out: false, sats: 21, times: 1}]},
+  },
 ]
 
 for (const {route, data, methods, text, db, lnbits} of parameterizedCases) {
@@ -342,7 +415,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(28)
+  expect(registry).toHaveLength(39)
   expect(covered).toEqual(registry)
 })
 

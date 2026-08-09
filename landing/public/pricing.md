@@ -12,6 +12,7 @@ Machine-readable summary for crawlers and AI agents. Human-facing detail lives o
   - Username transfers between ZapGram users
   - Group and channel tips (`/tip`)
   - Optional Nostr Wallet Connect (NWC)
+  - Optional project support (`/donate`, voluntary % — see below)
   - Russian and English bot UI
 
 ## Transfer fees
@@ -20,6 +21,15 @@ Machine-readable summary for crawlers and AI agents. Human-facing detail lives o
 |---------------|-----|
 | ZapGram → ZapGram (internal) | Free |
 | External Lightning pay/receive | Lightning network fees (not set by ZapGram) |
+
+## Optional project support (not mandatory)
+
+Users may support the bot author. This is **not** the paid-chat platform fee.
+
+- Voluntary % on top of tips and invoice pays (new accounts default **5%**; change or disable in `/settings`)
+- One-shot and monthly donations via `/donate`
+- External Lightning address: `zapgram@getalby.com` (recurring possible via third-party tools such as ZapPlanner)
+- Auto-% never blocks the main payment
 
 ## Paid chats (hosted bot)
 

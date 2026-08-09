@@ -10,6 +10,10 @@ import {
   chatRemoveCustomMessageRoute,
   chatRoute,
   chatsPageRoute,
+  donateAmountRoute,
+  donateMonthlyAmountRoute,
+  donationPercentRoute,
+  donationScopeRoute,
   parameterizedRoutes,
   payOnchainRoute,
   paySubscriptionRoute,
@@ -57,6 +61,11 @@ describe('callback-data routes', () => {
           from: 'nwc' as const,
         },
       },
+      {route: donationPercentRoute, params: {percent: 5}},
+      {route: donationScopeRoute, params: {scope: 'all' as const}},
+      {route: donationScopeRoute, params: {scope: 'tips' as const}},
+      {route: donateAmountRoute, params: {amountSats: 1000}},
+      {route: donateMonthlyAmountRoute, params: {amountSats: 100}},
     ] as const
 
     for (const {route, params} of samples) {
@@ -71,6 +80,6 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(16)
+    expect(parameterizedRoutes).toHaveLength(20)
   })
 })

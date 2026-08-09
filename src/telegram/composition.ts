@@ -3,6 +3,10 @@ import {register as registerChats} from '@modules/chats/register.js'
 import {changingPrice} from '@modules/chats/telegram/conversations/changing-price.js'
 import {editCustomMessage} from '@modules/chats/telegram/conversations/edit-custom-message.js'
 import {enablingOnchain} from '@modules/chats/telegram/conversations/enabling-onchain.js'
+import {register as registerDonations} from '@modules/donations/register.js'
+import {customDonateAmount} from '@modules/donations/telegram/conversations/custom-donate-amount.js'
+import {customDonationPercent} from '@modules/donations/telegram/conversations/custom-donation-percent.js'
+import {customMonthlyAmount} from '@modules/donations/telegram/conversations/custom-monthly-amount.js'
 import {register as registerInvoices} from '@modules/invoices/register.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
@@ -57,6 +61,9 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.use(createConversation(changingPrice))
   privateChat.use(createConversation(editCustomMessage))
   privateChat.use(createConversation(enablingOnchain))
+  privateChat.use(createConversation(customDonateAmount))
+  privateChat.use(createConversation(customDonationPercent))
+  privateChat.use(createConversation(customMonthlyAmount))
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)
@@ -68,6 +75,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   registerInvoices(composer)
   registerChats(composer)
   registerSubscriptions(composer)
+  registerDonations(composer)
 
   // Terminal handlers must live on a composer created AFTER the feature registers.
   // grammY fixes a child composer's position in the parent chain at chatType() call time,
