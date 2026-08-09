@@ -1,3 +1,4 @@
+import type {SatsPayCharge} from '@infra/lnbits/schemas.js'
 import {editOnchainStatusMessage} from '@modules/onchain/telegram/edit-status-message.js'
 import {getRuntime} from '../../../runtime.js'
 import {extractTxidFromChargeExtra} from '../txid.js'
@@ -31,7 +32,7 @@ export async function checkOnchainCharges() {
       // Always force SatsPay to re-query mempool (PUT balance). A plain GET only
       // returns stored state — if the extension's WS listener missed the tx, paid
       // never flips without this. Primary path is still SatsPay webhook.
-      let charge
+      let charge: SatsPayCharge
       try {
         charge = await satsPay.checkChargeBalance(current.satspayChargeId)
       } catch (error) {
