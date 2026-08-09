@@ -11,7 +11,20 @@ export function formatUsdAmount(usd: number): string {
   if (abs >= 0.01) {
     return abs.toFixed(2)
   }
-  // Adaptive digits: enough precision that rounding is not truncated to a coarser value
+
+  // Leading zeros after the decimal before the first non-zero digit.
+  // e.g. 0.00032205 → 3 zeros; when > 2, show one significant digit (0.0003).
+  const order = Math.floor(Math.log10(abs))
+  const leadingZeros = -order - 1
+  if (leadingZeros > 2) {
+    const factor = 10 ** (-order)
+    const rounded = Math.round(abs * factor) / factor
+    // Recompute digits after possible carry (e.g. 0.00095 → 0.001)
+    const roundedOrder = Math.floor(Math.log10(rounded))
+    return rounded.toFixed(Math.max(1, -roundedOrder))
+  }
+
+  // Adaptive digits for values with ≤2 leading zeros (e.g. 0.0042)
   const full = Number(abs.toFixed(MAX_FRACTION_DIGITS))
   for (let digits = 3; digits <= MAX_FRACTION_DIGITS; digits++) {
     const rounded = abs.toFixed(digits)

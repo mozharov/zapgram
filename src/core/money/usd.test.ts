@@ -25,10 +25,18 @@ describe('formatUsdAmount', () => {
     expect(formatUsdAmount(0.954)).toBe('0.95')
   })
 
-  test('formats sub-cent with enough digits (not 0.00)', () => {
+  test('formats sub-cent with ≤2 leading zeros using adaptive digits', () => {
     expect(formatUsdAmount(0.0042)).toBe('0.0042')
-    expect(formatUsdAmount(0.00009)).not.toBe('0.00')
-    expect(formatUsdAmount(0.00009).startsWith('0.0000')).toBe(true)
+    expect(formatUsdAmount(0.0099)).toBe('0.0099')
+  })
+
+  test('rounds tiny amounts (>2 leading zeros) to one significant digit', () => {
+    // 21 sats @ ~$153k/BTC ≈ $0.000322 → display $0.0003
+    expect(formatUsdAmount(0.00032205)).toBe('0.0003')
+    expect(formatUsdAmount(0.00009)).toBe('0.00009')
+    expect(formatUsdAmount(0.00055)).toBe('0.0006')
+    // Rounding carry into fewer leading zeros
+    expect(formatUsdAmount(0.00095)).toBe('0.001')
   })
 
   test('zero is 0.00', () => {
