@@ -19,9 +19,15 @@ export async function donateMonthlyMenuCallback(ctx: BotContext) {
     monthly_donation_sats: user.monthlyDonationSats,
     monthly_donation_next_at: user.monthlyDonationNextAt?.toISOString() ?? null,
   })
-  await ctx.editMessageText(ctx.t('donate.monthly-menu', {sats: user.monthlyDonationSats}), {
-    reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
-  })
+  await ctx.editMessageText(
+    ctx.t('donate.monthly-menu', {
+      sats: user.monthlyDonationSats,
+      usdSuffix: await usdSuffixForSats(user.monthlyDonationSats),
+    }),
+    {
+      reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
+    },
+  )
   await ctx.answerCallbackQuery()
 }
 

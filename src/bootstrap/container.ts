@@ -1,5 +1,6 @@
 import {type AppConfig, createConfig} from '@config'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
@@ -177,7 +178,9 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
     notifyDonationFailed: async (userId, donationSats, languageCode) => {
-      const text = translate('donation.failed', languageCode, {donationSats})
+      const btcUsd = await rates.getBtcUsd()
+      const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
+      const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
     log,

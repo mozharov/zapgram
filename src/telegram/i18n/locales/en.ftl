@@ -116,18 +116,18 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
 
 donation = 
-    .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat support tip could not be sent. Check balance / NWC, or use /donate.
+    .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
 
 donate = 
     .hub = 💚 <b>Support {bot-name}</b>
         Thanks for keeping the project alive.
 
         🌍 <b>Community</b>
-        ⏱ All time: <b>{$platformTotalSats}</b> sats
-        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats
+        ⏱ All time: <b>{$platformTotalSats}</b> sats{$platformTotalUsdSuffix}
+        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats{$platformLastMonthUsdSuffix}
 
         👤 <b>You</b>
-        💸 Sent: <b>{$totalSats}</b> sats · {$count} payments
+        💸 Sent: <b>{$totalSats}</b> sats{$totalUsdSuffix} · {$count} payments
         🕐 {$last}
         📅 Monthly: <b>{$monthlyStatus}</b>
         ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
@@ -149,7 +149,7 @@ donate =
     .monthly-status-off = Off
     .monthly-menu = 📅 <b>Monthly donation</b>
 
-        Current: <b>{$sats}</b> sats (0 = off).
+        Current: <b>{$sats}</b> sats{$usdSuffix} (0 = off).
         Choose an amount. Enabling charges once now, then every 30 days.
         Back returns to the full support hub (one-shot + auto %).
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.

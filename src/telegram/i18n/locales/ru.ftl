@@ -116,18 +116,18 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning кошелёк в Telegram.</b>
     <i>Подробнее о {bot-name}, Bitcoin, Lightning Network и совместимых кошельках в /help.</i>
 
 donation = 
-    .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат отправить не удалось. Проверь баланс / NWC или используй /donate.
+    .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат{$usdSuffix} отправить не удалось. Проверь баланс / NWC или используй /donate.
 
 donate = 
     .hub = 💚 <b>Поддержать {bot-name}</b>
         Спасибо, что помогаешь проекту жить.
 
         🌍 <b>Сообщество</b>
-        ⏱ За всё время: <b>{$platformTotalSats}</b> сат
-        📅 За 30 дней: <b>{$platformLastMonthSats}</b> сат
+        ⏱ За всё время: <b>{$platformTotalSats}</b> сат{$platformTotalUsdSuffix}
+        📅 За 30 дней: <b>{$platformLastMonthSats}</b> сат{$platformLastMonthUsdSuffix}
 
         👤 <b>Ты</b>
-        💸 Отправлено: <b>{$totalSats}</b> сат · {$count} платежей
+        💸 Отправлено: <b>{$totalSats}</b> сат{$totalUsdSuffix} · {$count} платежей
         🕐 {$last}
         📅 Ежемесячно: <b>{$monthlyStatus}</b>
         ⚡️ Авто с платежей: <b>{$autoPercent}</b> · {$autoScope}
@@ -149,7 +149,7 @@ donate =
     .monthly-status-off = Выкл
     .monthly-menu = 📅 <b>Ежемесячный донат</b>
 
-        Сейчас: <b>{$sats}</b> сат (0 = выкл).
+        Сейчас: <b>{$sats}</b> сат{$usdSuffix} (0 = выкл).
         Выбери сумму. При включении спишем сразу, затем каждые 30 дней.
         «Назад» — в общий хаб поддержки (разово + авто %).
     .monthly-enabled = ✅ Ежемесячный донат: {$sats} сат{$usdSuffix}. Первый платёж получен; следующий через 30 дней.
