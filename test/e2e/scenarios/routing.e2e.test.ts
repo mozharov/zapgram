@@ -117,6 +117,12 @@ const staticCases: {
     text: /Enter the amount/,
     conversation: true,
   },
+  // Only meaningful inside creatingInvoice after the QR; alone it is an unknown button.
+  {
+    data: staticCallback.addInvoiceMemo,
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
   {
     data: staticCallback.payInvoice,
     methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
@@ -427,7 +433,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(39)
+  expect(registry).toHaveLength(40)
   expect(covered).toEqual(registry)
 })
 

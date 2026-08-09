@@ -13,7 +13,7 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   await ctx.reply(ctx.t('sending-to-user'))
   const toUser = await waitForUser(conversation, ctx)
   const sats = await waitForSats(conversation, ctx)
-  const wallet = await waitForWallet(conversation, ctx)
+  const wallet = await waitForWallet(conversation, ctx, {requiredSats: sats, flow: 'tip'})
   await ctx.replyWithChatAction('typing')
 
   const usedNwc = wallet !== 'internal'

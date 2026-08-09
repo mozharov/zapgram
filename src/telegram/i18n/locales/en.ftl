@@ -15,8 +15,9 @@ button =
     .disconnect-nwc = 🚫 Disconnect the NWC wallet
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
-    .add-to-group = 👥 Add {bot-name} to a chat
-    .add-chat = 👥 Add a chat
+    .add-to-group = 👥 Add to a chat · paid: /chats
+    .add-chat = 👥 Add chat · paid setup: /chats
+    .add-invoice-memo = 🔡 Add memo
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
@@ -212,6 +213,8 @@ settings = <b>⚙️ Settings</b>
     .groups = <b>👥 Groups and channels</b>
         You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
+        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <code>/chats</code>. Adding the bot alone does not enable paid access.
+
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner
         • <code>/tip 100</code> — send 100 sats to the chat owner
@@ -257,6 +260,8 @@ wait-for-sats = <b>🔢 Enter the amount of sats.</b>
 wait-for-wallet = <b>👛 Select Wallet</b>
     .nwc = <b>⚡️ NWC wallet selected.</b>
     .internal = <b>🤖 {bot-name} wallet selected.</b>
+    .auto-only-internal = <b>🤖 Only the {bot-name} wallet has enough balance, so it was selected automatically.</b>
+    .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
 
 sats-received = <b>📩 You received {$amount} sats</b>. 
     {$username -> 
@@ -321,7 +326,6 @@ creating-invoice = <b>🧾 Creating Lightning invoice...</b>
 
 wait-for-memo = <b>🔡 Enter a memo for the invoice.</b>
     .invalid = <b>⚠️ Invalid memo. Expected string up to 150 characters.</b>
-    .skipped = <b>Skipped.</b>
 
 tip = 
     .invalid-command = <b>⚠️ Invalid command usage.</b>
@@ -345,9 +349,10 @@ paid-chat =
         You can set up paid access to this chat.
 
 chats = <b>👥 Your chats with the ability to enable paid access.</b>
-    Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+    This list is for configuring paid access on chats where the bot is already an admin.
+    Add {bot-username} to a chat with invite and ban permissions to make it appear here.
     .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
-        Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+        Add {bot-username} to a chat with invite and ban permissions (button below), then open /chats again to configure paid access.
 
 chat = <b>👥 {$title}</b>
     
@@ -367,6 +372,7 @@ chat = <b>👥 {$title}</b>
 
     <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
     <i>On-chain payments go directly to your wallet (zpub/xpub). Access is usually granted soon after the transaction appears on the network.</i>
+    <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request). Then the bot can message applicants with an invoice and approve them after payment.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
     .custom-message = You can change the part of the message that users see when they request to join the chat.

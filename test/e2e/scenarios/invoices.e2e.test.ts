@@ -77,34 +77,30 @@ test('the create-invoice button opens a conversation asking for an amount', asyn
   expectNoErrors(e2e.logs)
 })
 
-test('the amount step hands over to the memo step, which can be skipped', async () => {
+test('the amount step mints an invoice without a memo and offers Add memo', async () => {
   await e2e.send(privateCallback(staticCallback.createInvoice))
 
   await expectDelta(e2e, () => e2e.send(privateText(String(AMOUNT))), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a memo for the invoice/},
-    ],
-  })
-
-  expect(keyboardOf(e2e.tg.last('sendMessage'))).toEqual(['skip', 'cancel'])
-  expectNoErrors(e2e.logs)
-})
-
-test('a finished invoice is one pending row, one LNbits invoice and one QR photo', async () => {
-  await enterCreateInvoiceAtMemo()
-
-  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
-    db: {pendingInvoices: {added: 1}, conversations: {removed: 1}},
+    db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
+
+  expect(keyboardOf(e2e.tg.last('sendPhoto'))).toEqual([
+    staticCallback.addInvoiceMemo,
+    staticCallback.cancel,
+  ])
+  expect(lastInvoiceMemo()).toBe(MEMO_FOOTER)
+  expect(String(e2e.tg.last('sendPhoto')?.caption)).not.toContain('Description:')
+  expectNoErrors(e2e.logs)
+})
+
+test('a finished invoice is one pending row, one LNbits invoice and one QR photo', async () => {
+  await enterCreateInvoiceAtQr()
 
   const row = await onlyPendingInvoice()
   const decoded = decodeMintedInvoice(row.paymentRequest)
@@ -124,41 +120,47 @@ test('a finished invoice is one pending row, one LNbits invoice and one QR photo
   expectNoErrors(e2e.logs)
 })
 
-test('the memo reaches LNbits with the bot footer and reaches the user without it', async () => {
-  await enterCreateInvoiceAtMemo()
-  await e2e.send(privateText(MEMO))
+test('adding a memo remints the invoice and edits the QR without the Add memo button', async () => {
+  await enterCreateInvoiceAtQr()
+  const previous = await onlyPendingInvoice()
 
-  expect(lastInvoiceMemo()).toBe(`${MEMO}\n\n${MEMO_FOOTER}`)
-  const caption = String(e2e.tg.last('sendPhoto')?.caption)
-  expect(caption).toContain(`Description: <b>${MEMO}</b>`)
-  expect(caption).not.toContain(MEMO_FOOTER)
-})
+  await e2e.send(privateCallback(staticCallback.addInvoiceMemo))
 
-test('skipping the memo issues an invoice whose only description is the footer', async () => {
-  await enterCreateInvoiceAtMemo()
-
-  await expectDelta(e2e, () => e2e.send(privateCallback('skip')), {
-    db: {pendingInvoices: {added: 1}, conversations: {removed: 1}},
+  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
+    db: {
+      conversations: {removed: 1},
+      // Old no-memo invoice stays tracked: its BOLT11 can still be paid.
+      pendingInvoices: {added: 1},
+    },
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Skipped/},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+      {method: 'editMessageMedia', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
-  expect(lastInvoiceMemo()).toBe(MEMO_FOOTER)
-  expect(String(e2e.tg.last('sendPhoto')?.caption)).not.toContain('Description:')
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  expect(rows).toHaveLength(2)
+  expect(rows.some(row => row.paymentRequest === previous.paymentRequest)).toBe(true)
+  expect(rows.some(row => row.paymentRequest !== previous.paymentRequest)).toBe(true)
+
+  expect(lastInvoiceMemo()).toBe(`${MEMO}\n\n${MEMO_FOOTER}`)
+  const mediaPayload = e2e.tg.last('editMessageMedia')
+  const media = mediaPayload?.media as {caption?: string} | undefined
+  expect(media?.caption).toContain(`Description: <b>${MEMO}</b>`)
+  expect(media?.caption).not.toContain(MEMO_FOOTER)
+  expect(media?.caption).not.toContain(previous.paymentRequest)
+  expect(mediaPayload?.reply_markup).toBeUndefined()
   expectNoErrors(e2e.logs)
 })
 
 test('an LNbits that refuses to mint the invoice leaves no pending row behind', async () => {
-  await enterCreateInvoiceAtMemo()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
   e2e.ln.state.failAlways({method: 'POST', path: '/api/v1/payments'}, {status: 500, body: {}})
 
-  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
+  await expectDelta(e2e, () => e2e.send(privateText(String(AMOUNT))), {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
@@ -180,7 +182,8 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
 
 test('a message containing a bolt11 opens the review with a pay button', async () => {
   // Minted before the window: issuing it is an LNbits event, and the point here is what the
-  // *message* does.
+  // *message* does. Balance is checked before review so the payer must be able to cover amount.
+  credit(USER_A, 1000)
   const invoice = foreignInvoice()
 
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
@@ -200,6 +203,7 @@ test('a message containing a bolt11 opens the review with a pay button', async (
 
 test('an invoice the bot issued itself is reviewed with no fee and no fee-reserve lookup', async () => {
   const pending = await seedRecipientInvoice()
+  credit(USER_A, 1000)
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(pending.paymentRequest))
@@ -210,6 +214,7 @@ test('an invoice the bot issued itself is reviewed with no fee and no fee-reserv
 })
 
 test('a foreign invoice is reviewed with the fee reserve LNbits quotes for it', async () => {
+  credit(USER_A, 1000)
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(foreignInvoice().bolt11))
@@ -255,6 +260,7 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
 })
 
 test('an expired invoice is reviewed without a pay button and ends the conversation', async () => {
+  credit(USER_A, 1000)
   const expired = mintInvoice({
     sats: FOREIGN_SATS,
     description: 'stale',
@@ -274,24 +280,19 @@ test('an expired invoice is reviewed without a pay button and ends the conversat
   expectNoErrors(e2e.logs)
 })
 
-test('a 520 for insufficient balance is reported as such and moves nothing', async () => {
-  await e2e.send(privateText(foreignInvoice().bolt11))
+test('insufficient balance refuses payment before the review step', async () => {
+  const invoice = foreignInvoice()
 
-  await expectDelta(e2e, () => e2e.send(privateCallback(payButton())), {
-    db: {conversations: {removed: 1}},
+  await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Paying Lightning invoice/},
       {method: 'sendMessage', to: USER_A, text: /Insufficient funds/},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
-  expect(errorMessages()).toEqual([
-    'POST /api/v1/payments: HTTP error',
-    'Error paying invoice',
-    'Bot error',
-  ])
+  await expectNoConversations(e2e.db)
+  expect(errorMessages()).toEqual(['Bot error'])
 })
 
 test('a 520 for an already paid invoice leaves the pending row alone', async () => {
@@ -341,6 +342,7 @@ test('a pay button from an earlier review cancels instead of paying', async () =
 
 const cancelCases: {conversation: string; step: string; reach: () => Promise<void>}[] = [
   {conversation: creatingInvoice.name, step: 'amount', reach: enterCreateInvoiceAtAmount},
+  {conversation: creatingInvoice.name, step: 'qr', reach: enterCreateInvoiceAtQr},
   {conversation: creatingInvoice.name, step: 'memo', reach: enterCreateInvoiceAtMemo},
   {conversation: payingInvoice.name, step: 'invoice', reach: enterPayInvoiceAtInvoice},
   {conversation: payingInvoice.name, step: 'review', reach: enterPayInvoiceAtReview},
@@ -420,7 +422,8 @@ const invalidCases: {
     label: 'a memo longer than 150 characters',
     reach: enterCreateInvoiceAtMemo,
     input: () => privateText('m'.repeat(151)),
-    replies: [/Invalid memo/, /Action canceled/],
+    // Invalid memo keeps the no-memo invoice and ends with the wallet screen (no Action canceled).
+    replies: [/Invalid memo/, /Balance:/],
   },
   {
     label: 'a message with no invoice in it',
@@ -532,9 +535,14 @@ async function enterCreateInvoiceAtAmount(): Promise<void> {
   await e2e.send(privateCallback(staticCallback.createInvoice))
 }
 
-async function enterCreateInvoiceAtMemo(): Promise<void> {
+async function enterCreateInvoiceAtQr(): Promise<void> {
   await enterCreateInvoiceAtAmount()
   await e2e.send(privateText(String(AMOUNT)))
+}
+
+async function enterCreateInvoiceAtMemo(): Promise<void> {
+  await enterCreateInvoiceAtQr()
+  await e2e.send(privateCallback(staticCallback.addInvoiceMemo))
 }
 
 async function enterPayInvoiceAtInvoice(): Promise<void> {
@@ -542,6 +550,7 @@ async function enterPayInvoiceAtInvoice(): Promise<void> {
 }
 
 async function enterPayInvoiceAtReview(): Promise<void> {
+  credit(USER_A, 1000)
   await e2e.send(privateText(foreignInvoice().bolt11))
 }
 

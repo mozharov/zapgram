@@ -80,20 +80,21 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a memo for the invoice/},
-    ],
-  })
-
-  await expectDelta(e2e, () => e2e.send(privateText('Journey funding')), {
-    db: {pendingInvoices: {added: 1}, conversations: {removed: 1}},
+    db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+    ],
+  })
+
+  // Leave the optional Add memo step: cancel keeps the invoice and ends the conversation.
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
       {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
     ],
   })
@@ -521,10 +522,12 @@ test('an invoice conversation survives a container restart on the same database'
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
-    db: {conversations: {changed: 1}},
+    db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
+    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a memo for the invoice/},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
     ],
   })
 
@@ -532,13 +535,12 @@ test('an invoice conversation survives a container restart on the same database'
   await e2e.restart()
   expect(await snapshot(e2e)).toEqual(beforeRestart)
 
-  await expectDelta(e2e, () => e2e.send(privateText('Survived restart')), {
-    db: {pendingInvoices: {added: 1}, conversations: {removed: 1}},
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+  // Conversation is still open on the optional Add memo step after restart.
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
+    db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
       {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
     ],
   })

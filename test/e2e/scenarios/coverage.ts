@@ -104,7 +104,14 @@ export const scenarioCoverage = {
     errors: ['invoice_already_paid', 'not_found'],
   },
   invoices: {
-    routes: ['create-invoice', 'pay-invoice', 'cancel', 'connect-nwc', 'send-to-user'],
+    routes: [
+      'create-invoice',
+      'add-invoice-memo',
+      'pay-invoice',
+      'cancel',
+      'connect-nwc',
+      'send-to-user',
+    ],
     commands: ['/wallet'],
     updates: ['callback_query', 'message', 'hears'],
     writes: [

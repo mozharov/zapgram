@@ -115,10 +115,10 @@ test('insufficient_funds is shown in a group as a temporary message', async () =
 
 test('insufficient_funds in private chat is error text plus the wallet screen', async () => {
   const invoice = mintInvoice({sats: 100, description: 'too expensive'})
-  await e2e.send(privateText(invoice.bolt11))
   const before = await snapshot(e2e)
 
-  await e2e.send(privateCallback(payButton()))
+  // Balance is checked when choosing a wallet, before the review / pay button.
+  await e2e.send(privateText(invoice.bolt11))
 
   expectPrivateErrorAndWallet('insufficient_funds', 'en')
   await expectMoneyUnchanged(before)

@@ -22,7 +22,10 @@ export async function payingInvoice(
   const invoice = decodeInvoice(lnInvoice ?? (await waitForInvoice(conversation, ctx)))
   ctx.log.debug({invoice}, 'Decoded invoice')
 
-  const wallet = await waitForWallet(conversation, ctx)
+  const wallet = await waitForWallet(conversation, ctx, {
+    requiredSats: invoice.satoshi,
+    flow: 'pay_invoice',
+  })
   const isInternalWallet = wallet === 'internal'
   await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet)
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()

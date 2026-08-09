@@ -248,6 +248,7 @@ export const staticCallback = {
   sendToUser: 'send-to-user',
   payInvoice: 'pay-invoice',
   createInvoice: 'create-invoice',
+  addInvoiceMemo: 'add-invoice-memo',
   connectNwc: 'connect-nwc',
   disconnectNwc: 'disconnect-nwc',
   toggleNwcTips: 'toggle-nwc-tips',
