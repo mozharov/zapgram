@@ -25,8 +25,34 @@ type PersonPropertyPatch = {
 }
 
 /**
+ * Group slash commands that have handlers (see tipping/register + configure-bot).
+ * Private-only commands (`/wallet`, `/start`, …) must not pollute group analytics.
+ */
+const GROUP_HANDLED_COMMANDS = new Set(['tip'])
+
+/**
+ * Whether a group message is a slash command this bot would actually handle.
+ * `/tip` and `/tip@this_bot` count; `/tip@other_bot` and private-only commands do not.
+ */
+export function isHandledGroupSlashCommand(
+  text: string,
+  botUsername: string | undefined,
+): boolean {
+  const match = text.match(/^\/([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9_]+))?/)
+  if (!match) return false
+  const command = match[1]?.toLowerCase()
+  if (!command || !GROUP_HANDLED_COMMANDS.has(command)) return false
+
+  const targetBot = match[2]?.toLowerCase()
+  if (!targetBot) return true
+  if (!botUsername) return false
+  return targetBot === botUsername.toLowerCase()
+}
+
+/**
  * Group / channel updates that affect the bot.
- * Unrelated group chatter is dropped even if Telegram delivers it (privacy off).
+ * Unrelated group chatter and ignored commands are dropped even if Telegram delivers them
+ * (privacy off, or another bot's /command in the same chat).
  */
 export function isBotRelevantUpdate(ctx: Context): boolean {
   if (ctx.from?.is_bot) return false
@@ -41,9 +67,14 @@ export function isBotRelevantUpdate(ctx: Context): boolean {
 
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text) {
-    if (text.startsWith('/')) return true
     const botUsername = ctx.me?.username
-    if (botUsername && text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) return true
+    // Slash lines: only commands with group handlers. Do not treat `/wallet@bot`
+    // as a mention — private-only commands are ignored in groups.
+    if (text.startsWith('/')) {
+      if (isHandledGroupSlashCommand(text, botUsername)) return true
+    } else if (botUsername && text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) {
+      return true
+    }
   }
 
   if (ctx.message?.reply_to_message?.from?.id === ctx.me.id) return true
