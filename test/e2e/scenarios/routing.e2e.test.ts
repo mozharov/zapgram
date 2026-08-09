@@ -186,6 +186,7 @@ const parameterizedCases: {
   methods: string[]
   text: RegExp
   db?: Parameters<typeof expectDelta>[2]['db']
+  lnbits?: Parameters<typeof expectDelta>[2]['lnbits']
 }[] = [
   {
     route: 'chats-page',
@@ -268,14 +269,20 @@ const parameterizedCases: {
   {
     route: 'pay-onchain',
     data: ({chat}) => `pay-onchain:${chat.id}`,
+    // Chat has no xpub — handler answers disabled and does not create a charge.
     methods: ['answerCallbackQuery'],
     text: /.*/,
   },
   {
     route: 'pay-lightning',
     data: ({chat}) => `pay-lightning:${chat.id}`,
-    methods: ['answerCallbackQuery'],
-    text: /.*/,
+    methods: ['editMessageText', 'answerCallbackQuery'],
+    text: /lnbc/,
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
+    lnbits: {payments: [{out: false, sats: 1000, times: 1}]},
   },
   {
     route: 'subscriptions-page',
@@ -310,11 +317,12 @@ const parameterizedCases: {
   },
 ]
 
-for (const {route, data, methods, text, db} of parameterizedCases) {
+for (const {route, data, methods, text, db, lnbits} of parameterizedCases) {
   test(`callback route ${route} handles "${data({chat: {id: CHAT_GROUP} as Chat, subscription: {id: '<id>'} as Subscription})}"`, async () => {
     const world = await seedRoutingWorld()
     await expectDelta(e2e, () => e2e.send(privateCallback(data(world))), {
       db,
+      lnbits,
       telegram: methods,
     })
     expect(joinedOutput()).toMatch(text)
@@ -334,7 +342,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(27)
+  expect(registry).toHaveLength(28)
   expect(covered).toEqual(registry)
 })
 
