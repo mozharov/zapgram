@@ -28,21 +28,22 @@ export async function checkOnchainCharges() {
 
       const current = (await onchainPayments.findById(row.id)) ?? row
 
-      const charge = await satsPay.getCharge(current.satspayChargeId)
-      if (charge.paid) {
-        await completeOnchainJoin.complete(current, extractTxidFromChargeExtra(charge.extra))
-        continue
+      // Always force SatsPay to re-query mempool (PUT balance). A plain GET only
+      // returns stored state — if the extension's WS listener missed the tx, paid
+      // never flips without this. Primary path is still SatsPay webhook.
+      let charge
+      try {
+        charge = await satsPay.checkChargeBalance(current.satspayChargeId)
+      } catch (error) {
+        log.debug(
+          {error, chargeId: current.satspayChargeId},
+          'checkChargeBalance failed; falling back to getCharge',
+        )
+        charge = await satsPay.getCharge(current.satspayChargeId)
       }
 
-      if (current.status === 'grace' || current.expiresAt.getTime() < now.getTime()) {
-        try {
-          const refreshed = await satsPay.checkChargeBalance(current.satspayChargeId)
-          if (refreshed.paid) {
-            await completeOnchainJoin.complete(current, extractTxidFromChargeExtra(refreshed.extra))
-          }
-        } catch (error) {
-          log.debug({error, chargeId: current.satspayChargeId}, 'checkChargeBalance skipped')
-        }
+      if (charge.paid) {
+        await completeOnchainJoin.complete(current, extractTxidFromChargeExtra(charge.extra))
       }
     } catch (error) {
       log.error(
