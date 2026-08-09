@@ -25,6 +25,8 @@ services:
       LNBITS_ADMIN_KEY: ${LNBITS_ADMIN_KEY:?}
       LNBITS_FEE_COLLECTION_INVOICE_KEY: ${LNBITS_FEE_COLLECTION_INVOICE_KEY:?}
       LNBITS_BEARER_TOKEN: ${LNBITS_BEARER_TOKEN:-}
+      # Watch-Only / SatsPay network label (must match LNbits extensions + key type)
+      LNBITS_ONCHAIN_NETWORK: ${LNBITS_ONCHAIN_NETWORK:-Mainnet}
       SUBSCRIPTION_FEE_PERCENT: ${SUBSCRIPTION_FEE_PERCENT:-0.05}
       CONFIGURE_BOT: ${CONFIGURE_BOT:-true}
       # Optional analytics: omit POSTHOG_PROJECT_TOKEN to disable
