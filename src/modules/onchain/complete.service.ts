@@ -8,6 +8,7 @@ import type {
   User,
 } from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
+import {type CaptureClient, captureUserEvent} from '@infra/posthog.js'
 import type {ChatWithOwner} from '@modules/chats/types.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import type {OnchainPaymentRepository} from './repository.js'
@@ -60,6 +61,7 @@ export type CompleteOnchainJoinDeps = {
   ) => Promise<void>
   log: AppLogger
   translate: (key: string, language?: string, context?: TranslationVariables) => string
+  posthog?: CaptureClient
   now?: () => Date
 }
 
@@ -228,6 +230,33 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           price: onchain.amountSats,
           address: onchain.address,
         }),
+      )
+
+      const settleProps = {
+        payment_id: subscriptionPayment.id,
+        chat_id: onchain.chatId,
+        kind: 'join' as const,
+        subscription_type: subscriptionPayment.subscriptionType,
+        amount_sats: onchain.amountSats,
+        fee_sats: 0,
+        owner_sats: onchain.amountSats,
+        payment_method: 'onchain' as const,
+        charge_id: onchain.satspayChargeId,
+        address: onchain.address,
+        txid: txid ?? null,
+      }
+      captureUserEvent(deps.posthog, 'subscription_settled', onchain.userId, settleProps, {
+        chatId: onchain.chatId,
+      })
+      captureUserEvent(
+        deps.posthog,
+        'subscription_payment_received',
+        chat.ownerId,
+        {
+          ...settleProps,
+          subscriber_id: onchain.userId,
+        },
+        {chatId: onchain.chatId},
       )
 
       return 'settled'

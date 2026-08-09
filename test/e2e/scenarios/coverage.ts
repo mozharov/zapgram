@@ -255,7 +255,7 @@ export const scenarioCoverage = {
     errors: ['from_bot', 'not_found'],
   },
   'subscriptions-join': {
-    routes: ['pay-onchain', 'pay-lightning'],
+    routes: [],
     commands: [],
     updates: ['chat_join_request'],
     writes: [
@@ -264,11 +264,27 @@ export const scenarioCoverage = {
       'subscription_intents.update',
       'subscription_payments.insert',
       'subscription_payments.update',
+    ],
+    jobs: [],
+    errors: [],
+  },
+  'onchain-join': {
+    routes: ['pay-onchain', 'pay-lightning'],
+    commands: [],
+    updates: ['chat_join_request', 'callback_query'],
+    writes: [
+      'users.insert',
+      'chats.update',
+      'subscription_intents.insert',
+      'subscription_intents.update',
+      'subscription_payments.insert',
+      'subscription_payments.update',
+      'subscriptions.insert',
       'onchain_chat_payments.insert',
       'onchain_chat_payments.update',
       'onchain_chat_payments.delete',
     ],
-    jobs: [],
+    jobs: ['check-onchain-charges'],
     errors: [],
   },
   'subscriptions-renewal': {

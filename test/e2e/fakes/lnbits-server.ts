@@ -186,7 +186,134 @@ function route({
     return json({name: wallet.name, balance: wallet.balanceMsat, id: wallet.id})
   }
 
+  // --- Watch-Only + SatsPay (on-chain join) ---
+  if (method === 'POST' && path === '/watchonly/api/v1/wallet') {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const masterpub = bodyValue(body, 'masterpub')
+    const title = bodyValue(body, 'title')
+    const network = bodyValue(body, 'network')
+    if (typeof masterpub !== 'string' || masterpub.length < 10) {
+      return json({detail: 'masterpub required'}, 400)
+    }
+    const networkLabel = typeof network === 'string' ? network : 'Mainnet'
+    const existing = state.watchOnlyWallets.find(
+      w => w.masterpub === masterpub.trim() && w.network === networkLabel,
+    )
+    if (existing) return json(existing)
+    const wallet = {
+      id: `wo-${state.watchOnlyWallets.length + 1}`,
+      user: 'e2e-user',
+      masterpub: masterpub.trim(),
+      fingerprint: `fp${state.watchOnlyWallets.length + 1}`,
+      title: typeof title === 'string' ? title : 'wallet',
+      address_no: 0,
+      balance: 0,
+      type: 'wpkh',
+      network: networkLabel,
+      meta: '{}',
+    }
+    state.watchOnlyWallets.push(wallet)
+    return json(wallet)
+  }
+
+  if (method === 'GET' && path === '/watchonly/api/v1/wallet') {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const network = url.searchParams.get('network') ?? 'Mainnet'
+    return json(state.watchOnlyWallets.filter(w => w.network === network))
+  }
+
+  const woWalletMatch = path.match(/^\/watchonly\/api\/v1\/wallet\/([^/]+)$/)
+  if (method === 'GET' && woWalletMatch) {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const wallet = state.watchOnlyWallets.find(w => w.id === woWalletMatch[1])
+    if (!wallet) return json({detail: 'Not found'}, 404)
+    return json(wallet)
+  }
+  if (method === 'DELETE' && woWalletMatch) {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const id = woWalletMatch[1]
+    const idx = state.watchOnlyWallets.findIndex(w => w.id === id)
+    if (idx >= 0) state.watchOnlyWallets.splice(idx, 1)
+    return new Response(null, {status: 204})
+  }
+
+  if (method === 'POST' && path === '/satspay/api/v1/charge') {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const onchainwallet = bodyValue(body, 'onchainwallet')
+    const amount = bodyValue(body, 'amount')
+    const time = bodyValue(body, 'time')
+    const description = bodyValue(body, 'description')
+    if (typeof onchainwallet !== 'string' || typeof amount !== 'number') {
+      return json({detail: 'onchainwallet and amount required'}, 400)
+    }
+    const wo = state.watchOnlyWallets.find(w => w.id === onchainwallet)
+    if (!wo) return json({detail: 'Watch-Only wallet not found'}, 400)
+    state.watchOnlyAddressCounter += 1
+    const n = state.watchOnlyAddressCounter
+    const address =
+      wo.network === 'Testnet'
+        ? `tb1qe2e${String(n).padStart(30, '0')}`
+        : `bc1qe2e${String(n).padStart(30, '0')}`
+    const charge = {
+      id: `ch-e2e-${n}`,
+      user: 'e2e-user',
+      amount,
+      time: typeof time === 'number' ? time : 2880,
+      timestamp: nowIso(),
+      balance: 0,
+      pending: 0,
+      zeroconf: bodyValue(body, 'zeroconf') === true,
+      fasttrack: false,
+      paid: false,
+      name:
+        typeof bodyValue(body, 'name') === 'string' ? (bodyValue(body, 'name') as string) : null,
+      description: typeof description === 'string' ? description : null,
+      onchainwallet,
+      onchainaddress: address,
+      lnbitswallet: null,
+      payment_request: null,
+      payment_hash: null,
+      webhook:
+        typeof bodyValue(body, 'webhook') === 'string'
+          ? (bodyValue(body, 'webhook') as string)
+          : null,
+      completelink: null,
+      completelinktext: null,
+      extra: null as string | null,
+    }
+    state.satsPayCharges.push(charge)
+    return json(charge)
+  }
+
+  const chargeMatch = path.match(/^\/satspay\/api\/v1\/charge\/([^/]+)$/)
+  if (method === 'GET' && chargeMatch) {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const charge = state.satsPayCharges.find(c => c.id === chargeMatch[1])
+    if (!charge) return json({detail: 'Not found'}, 404)
+    return json(charge)
+  }
+  if (method === 'DELETE' && chargeMatch) {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const id = chargeMatch[1]
+    const idx = state.satsPayCharges.findIndex(c => c.id === id)
+    if (idx >= 0) state.satsPayCharges.splice(idx, 1)
+    return new Response(null, {status: 204})
+  }
+
+  const balanceMatch = path.match(/^\/satspay\/api\/v1\/charge\/balance\/([^/]+)$/)
+  if (method === 'PUT' && balanceMatch) {
+    if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
+    const charge = state.satsPayCharges.find(c => c.id === balanceMatch[1])
+    if (!charge) return json({detail: 'Not found'}, 404)
+    if (charge.paid) return json({detail: 'Charge is already paid.'}, 400)
+    return json(charge)
+  }
+
   return json({detail: 'Not found.'}, 404)
+}
+
+function hasAdminKey(request: Request, adminKey: string): boolean {
+  return request.headers.get('X-Api-Key') === adminKey
 }
 
 function paymentResponse(

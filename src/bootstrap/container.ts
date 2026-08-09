@@ -218,6 +218,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     log,
     translate,
+    posthog,
   })
 
   const container: AppContainer = {

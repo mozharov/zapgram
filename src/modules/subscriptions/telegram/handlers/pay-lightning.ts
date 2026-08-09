@@ -2,6 +2,7 @@ import {satsToMsats} from '@core/money/sats.js'
 import {getAccessibleChat} from '@modules/chats/repository.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import {payLightningRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {CallbackQueryContext} from 'grammy'
@@ -74,4 +75,15 @@ export const payLightningCallback = async (
   }
 
   await ctx.answerCallbackQuery()
+  captureBotEvent(
+    getRuntime().posthog,
+    'subscription_join_lightning_shown',
+    {
+      chat_title: chat.title,
+      price_sats: chat.price,
+      payment_id: invoice.attempt.id,
+      reused: invoice.reused,
+    },
+    {chatId: chat.id},
+  )
 }
