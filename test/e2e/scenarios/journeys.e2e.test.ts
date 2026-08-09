@@ -85,7 +85,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
     ],
   })
 
@@ -527,7 +527,7 @@ test('an invoice conversation survives a container restart on the same database'
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
     ],
   })
 

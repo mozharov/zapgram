@@ -86,7 +86,7 @@ test('the amount step mints an invoice without a memo and offers Add memo', asyn
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
     ],
   })
 
@@ -208,7 +208,7 @@ test('an invoice the bot issued itself is reviewed with no fee and no fee-reserv
 
   await e2e.send(privateText(pending.paymentRequest))
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Fee: <b>0 sats<\/b>/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Fee: <b>0 sats(?: \(~\$[^)]+\))?<\/b>/)
   expect(lnPathsSince(mark)).not.toContain('GET /api/v1/payments/fee-reserve')
   expectNoErrors(e2e.logs)
 })
@@ -220,7 +220,7 @@ test('a foreign invoice is reviewed with the fee reserve LNbits quotes for it', 
   await e2e.send(privateText(foreignInvoice().bolt11))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
-    new RegExp(`Fee: <b>${FOREIGN_FEE_SATS} sats</b>`),
+    new RegExp(`Fee: <b>${FOREIGN_FEE_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
   )
   expect(lnPathsSince(mark)).toContain('GET /api/v1/payments/fee-reserve')
   expectNoErrors(e2e.logs)
@@ -252,9 +252,11 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
 
   // An internal transfer costs nothing, so the payer is debited the invoice amount and no more.
   const receipt = String(e2e.tg.of('sendMessage').at(-2)?.text)
-  expect(receipt).toMatch(new RegExp(`Payment amount: <b>${PENDING_SATS} sats</b>`))
-  expect(receipt).toMatch(/Fee: <b>0 sats<\/b>/)
-  expect(receipt).toMatch(new RegExp(`Total: <b>${PENDING_SATS} sats</b>`))
+  expect(receipt).toMatch(
+    new RegExp(`Payment amount: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
+  )
+  expect(receipt).toMatch(/Fee: <b>0 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(receipt).toMatch(new RegExp(`Total: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`))
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })

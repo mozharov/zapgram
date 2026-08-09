@@ -3,8 +3,8 @@ import type {User} from '@infra/db/types.js'
 import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
-import {translate} from '@telegram/i18n/i18n.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
+import {translate} from '@telegram/i18n/i18n.js'
 
 export async function notifySatsReceived(
   toUserId: User['id'],

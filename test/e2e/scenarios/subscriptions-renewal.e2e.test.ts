@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, setSystemTime, test} from 'bun:test'
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import {ONE_MONTH_IN_MS} from '@core/subscriptions/policy.js'
 import type {Subscription, SubscriptionPayment} from '@infra/db/types.js'
 import {paySubscriptionRoute} from '@telegram/callback-data.js'
@@ -104,7 +105,8 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
       title: 'E2E paid chat',
       expiryDate: extendedEndsAt(subscription),
       price: PRICE,
-      usdSuffix: '',
+      // Default fake LNbits rate 100_000 → 1000 sats ≈ $1.00
+      usdSuffix: ' (~$1.00)',
     }),
   )
   expect(String(subscriberMessage?.text)).not.toContain('Доступ к сообществу')
@@ -641,7 +643,8 @@ async function issueManualRenewal(subscription: Subscription, invoiceSats: numbe
     translate('subscription-renewal.need-payment', 'ru', {
       title: 'E2E paid chat',
       price: subscription.price,
-      usdSuffix: '',
+      // Default fake LNbits rate 100_000 → price sats map to ~$price/1000
+      usdSuffix: formatExpectedUsdSuffix(subscription.price),
       invoice: payment.paymentRequest,
     }),
   )
@@ -724,6 +727,11 @@ function successfulRenewalTelegramCalls() {
     {method: 'sendMessage', to: USER_A, text: /подписка .* продлена/},
     {method: 'sendMessage', to: OWNER, text: /New subscription payment/},
   ]
+}
+
+/** Matches the fake LNbits default BTC/USD rate (100_000). */
+function formatExpectedUsdSuffix(sats: number): string {
+  return formatUsdSuffix(satsToUsd(sats, 100_000))
 }
 
 function expiryTelegramCalls() {

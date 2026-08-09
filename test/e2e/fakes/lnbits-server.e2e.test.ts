@@ -37,6 +37,20 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
+  test('serves BTC/USD rate without an API key', async () => {
+    await withFake(async fake => {
+      const response = await fetch(`${fake.url}/api/v1/rate/USD`)
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({rate: 100_000})
+
+      fake.state.btcUsdRate = 42_000
+      expect(await (await fetch(`${fake.url}/api/v1/rate/USD`)).json()).toEqual({rate: 42_000})
+
+      fake.state.btcUsdRate = null
+      expect((await fetch(`${fake.url}/api/v1/rate/USD`)).status).toBe(500)
+    })
+  })
+
   test('accepts bearer auth without X-Api-Key on users endpoints', async () => {
     await withFake(async fake => {
       const master = createMasterWallet(testConfig(fake.url, {bearerToken: 'e2e-token'}))

@@ -124,6 +124,12 @@ function route({
     return json({server_time: Math.floor(Date.now() / 1000), up_time: '0 days, 0 hours, 1 minutes'})
   }
 
+  // Public rate endpoint (no API key). null rate simulates LNbits outage for hide-suffix path.
+  if (method === 'GET' && path === '/api/v1/rate/USD') {
+    if (state.btcUsdRate === null) return json({detail: 'Rate unavailable.'}, 500)
+    return json({rate: state.btcUsdRate})
+  }
+
   // This exact route must be checked before /api/v1/payments/{hash}.
   if (method === 'GET' && path === '/api/v1/payments/fee-reserve') {
     const wallet = authenticatedWallet(request, state)

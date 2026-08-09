@@ -34,10 +34,7 @@ const GROUP_HANDLED_COMMANDS = new Set(['tip'])
  * Whether a group message is a slash command this bot would actually handle.
  * `/tip` and `/tip@this_bot` count; `/tip@other_bot` and private-only commands do not.
  */
-export function isHandledGroupSlashCommand(
-  text: string,
-  botUsername: string | undefined,
-): boolean {
+export function isHandledGroupSlashCommand(text: string, botUsername: string | undefined): boolean {
   const match = text.match(/^\/([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9_]+))?/)
   if (!match) return false
   const command = match[1]?.toLowerCase()

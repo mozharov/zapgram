@@ -5,8 +5,8 @@ import type {PendingInvoice, User} from '@infra/db/types.js'
 import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
-import {translate} from '@telegram/i18n/i18n.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
+import {translate} from '@telegram/i18n/i18n.js'
 import {getRuntime} from '../../runtime.js'
 
 export async function notifyInvoicePaid(

@@ -4,7 +4,7 @@ import {createRateService} from './rate-service.js'
 describe('createRateService', () => {
   test('returns fetched rate and serves cache within TTL', async () => {
     let calls = 0
-    let now = 1_000
+    const now = 1_000
     const rates = createRateService({
       fetchUsdBtcRate: async () => {
         calls++

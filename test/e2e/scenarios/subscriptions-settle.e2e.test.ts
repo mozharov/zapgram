@@ -73,9 +73,11 @@ test('a paid one-time invoice grants access and distributes the exact price once
   expect(String(ownerMessage?.text)).toContain(
     'Subscription type: <b>one-time (permanent access)</b>',
   )
-  expect(String(ownerMessage?.text)).toMatch(/Payment amount: <b>1\D?000 sats<\/b>/)
-  expect(String(ownerMessage?.text)).toContain('Fee: <b>50 sats</b>')
-  expect(String(ownerMessage?.text)).toContain('Credited: <b>950 sats</b>')
+  expect(String(ownerMessage?.text)).toMatch(
+    /Payment amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/,
+  )
+  expect(String(ownerMessage?.text)).toMatch(/Fee: <b>50 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(String(ownerMessage?.text)).toMatch(/Credited: <b>950 sats(?: \(~\$[^)]+\))?<\/b>/)
   expectNoErrors(e2e.logs)
 })
 
@@ -122,8 +124,8 @@ test('a zero fee transfers the whole payment to the owner and creates no fee leg
     }),
   ).toBe(false)
   const ownerMessage = e2e.tg.of('sendMessage')[1]
-  expect(String(ownerMessage?.text)).toContain('Fee: <b>0 sats</b>')
-  expect(String(ownerMessage?.text)).toMatch(/Credited: <b>1\D?000 sats<\/b>/)
+  expect(String(ownerMessage?.text)).toMatch(/Fee: <b>0 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(String(ownerMessage?.text)).toMatch(/Credited: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/)
   expectNoErrors(e2e.logs)
 })
 
@@ -752,7 +754,9 @@ test('settlement uses the invoiced price after the chat price changes', async ()
 
   expect(subscription.price).toBe(PRICE)
   expect((await e2e.container.chats.getOrThrow(CHAT_GROUP)).price).toBe(2000)
-  expect(String(e2e.tg.of('sendMessage')[1]?.text)).toMatch(/Payment amount: <b>1\D?000 sats<\/b>/)
+  expect(String(e2e.tg.of('sendMessage')[1]?.text)).toMatch(
+    /Payment amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/,
+  )
   expectNoErrors(e2e.logs)
 })
 

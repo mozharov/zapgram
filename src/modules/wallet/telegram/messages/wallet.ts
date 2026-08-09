@@ -1,6 +1,6 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
-import {usdSuffixForSats, usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
+import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
