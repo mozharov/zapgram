@@ -41,6 +41,7 @@ button =
     .enable-onchain = ⛓ Включить on-chain оплату
     .disable-onchain = 🚫 Выключить on-chain оплату
     .pay-onchain = ⛓ Оплатить on-chain
+    .pay-lightning = ⚡ Оплатить Lightning
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
@@ -346,7 +347,6 @@ onchain-invoice =
         }</b>
 
         <i>Сумма сверх {$price} сат — донат владельцу сообщества.</i>
-        <i>Доступ обычно открывается вскоре после появления транзакции в сети (ждать полных подтверждений не обязательно).</i>
 
         {$remaining}
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>

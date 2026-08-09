@@ -1,5 +1,6 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
+import {buildOnchainPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payOnchainRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
@@ -65,7 +66,7 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
   try {
     await ctx.editMessageText(text, {
       link_preview_options: {is_disabled: true},
-      reply_markup: {inline_keyboard: []},
+      reply_markup: buildOnchainPaymentKeyboard(ctx.t, chat.id),
     })
   } catch (error) {
     log.error({error, chatId, paymentId: payment.id}, 'Failed to edit on-chain payment message')

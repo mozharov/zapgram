@@ -272,6 +272,12 @@ const parameterizedCases: {
     text: /.*/,
   },
   {
+    route: 'pay-lightning',
+    data: ({chat}) => `pay-lightning:${chat.id}`,
+    methods: ['answerCallbackQuery'],
+    text: /.*/,
+  },
+  {
     route: 'subscriptions-page',
     data: () => 'subscriptions:1',
     methods: ['editMessageText'],

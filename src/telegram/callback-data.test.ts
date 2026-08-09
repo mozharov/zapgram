@@ -71,6 +71,6 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(15)
+    expect(parameterizedRoutes).toHaveLength(16)
   })
 })

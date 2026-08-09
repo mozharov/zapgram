@@ -255,7 +255,7 @@ export const scenarioCoverage = {
     errors: ['from_bot', 'not_found'],
   },
   'subscriptions-join': {
-    routes: ['pay-onchain'],
+    routes: ['pay-onchain', 'pay-lightning'],
     commands: [],
     updates: ['chat_join_request'],
     writes: [

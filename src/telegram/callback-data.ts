@@ -172,6 +172,14 @@ export const payOnchainRoute = defineCallback(
   ({chatId}) => `pay-onchain:${chatId}`,
 )
 
+/** Member switches join invoice view back to Lightning from on-chain. */
+export const payLightningRoute = defineCallback(
+  'pay-lightning',
+  /^pay-lightning:(-?\d+)$/,
+  match => ({chatId: parseInt(requireGroup(match, 1, 'pay-lightning'), 10)}),
+  ({chatId}) => `pay-lightning:${chatId}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -189,6 +197,7 @@ export const parameterizedRoutes = [
   subscriptionRenewRoute,
   paySubscriptionRoute,
   payOnchainRoute,
+  payLightningRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */

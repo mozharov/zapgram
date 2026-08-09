@@ -41,7 +41,8 @@ button =
     .enable-onchain = ⛓ Enable on-chain pay
     .disable-onchain = 🚫 Disable on-chain pay
     .pay-onchain = ⛓ Pay on-chain
-   
+    .pay-lightning = ⚡ Pay with Lightning
+
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
@@ -346,7 +347,6 @@ onchain-invoice =
         }</b>
 
         <i>Any amount above {$price} sats is a donation to the community owner.</i>
-        <i>Access is usually granted soon after the transaction appears on the network (no need to wait for full confirmations).</i>
 
         {$remaining}
     .paid = <b>✅ Access to the community "{$title}" received.</b>

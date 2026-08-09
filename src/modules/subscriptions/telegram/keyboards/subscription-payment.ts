@@ -1,5 +1,5 @@
 import type {SubscriptionPayment} from '@infra/db/types.js'
-import {payOnchainRoute, paySubscriptionRoute} from '@telegram/callback-data.js'
+import {payLightningRoute, payOnchainRoute, paySubscriptionRoute} from '@telegram/callback-data.js'
 import {InlineKeyboard} from 'grammy'
 
 export function buildSubscriptionPaymentKeyboard(
@@ -26,6 +26,14 @@ export function buildSubscriptionPaymentKeyboard(
     })
   }
   return keyboard
+}
+
+/** On-chain join invoice view: switch back to Lightning. */
+export function buildOnchainPaymentKeyboard(t: (key: string) => string, chatId: number) {
+  return new InlineKeyboard().row({
+    callback_data: payLightningRoute.build({chatId}),
+    text: t('button.pay-lightning'),
+  })
 }
 
 interface Args {
