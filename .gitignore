@@ -9,4 +9,5 @@
 main.db*
 .DS_Store
 .env*
-!.env*.example.worktrees/
+!.env*.example
+.worktrees/
