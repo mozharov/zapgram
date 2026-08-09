@@ -305,13 +305,31 @@ changing-price = <b>₿ Changing the price of paid access...</b>
 
 enabling-onchain = <b>⛓ Enable on-chain payments</b>
 
-    Paste your <b>zpub</b> (recommended, bc1q) or <b>xpub</b> / <b>ypub</b> from Sparrow / BlueWallet / Electrum (receive account, watch-only).
+    Paste an <b>account-level</b> public key from Sparrow / BlueWallet / Electrum (watch-only export):
 
-    Funds go only to addresses derived from this key. {bot-name} never receives your seed.
-    .invalid = <b>⚠️ That does not look like a zpub/xpub.</b>
-        Paste a master public key starting with zpub, xpub, or ypub (or a descriptor).
+    • <b>zpub</b> — recommended (Native SegWit, bc1q), path <code>m/84'/0'/0'</code>
+    • <b>ypub</b> — Nested SegWit, <code>m/49'/0'/0'</code>
+    • <b>xpub</b> — Legacy, <code>m/44'/0'/0'</code>
+    • Or a full <b>output descriptor</b> from Sparrow (for custom paths)
+
+    <i>Not the wallet root key (depth 0) — export the receive <b>account</b> xpub/zpub.</i>
+    <i>Network must match this bot (Mainnet keys vs Testnet <code>tpub</code>/<code>vpub</code>).</i>
+
+    Funds go only to addresses from this key. {bot-name} never receives your seed.
+    Paste another key or tap Cancel.
+    .invalid = <b>⚠️ That does not look like a valid account key.</b>
+        Paste a zpub / xpub / ypub (or descriptor). Check you copied the full string.
+        You can try again or tap Cancel.
+    .nonstandard-depth = <b>⚠️ This key is not an account-level xpub/zpub.</b>
+        LNbits only accepts bare keys at BIP44/49/84 account depth (<code>m/…/0'</code>).
+
+        In Sparrow: select the account → export <b>xpub</b> / <b>zpub</b> for that account, or export the <b>output descriptor</b>.
+        You can paste another key or tap Cancel.
+    .network-mismatch = <b>⚠️ Key network does not match this bot.</b>
+        Use a Mainnet zpub/xpub on Mainnet, or Testnet <code>tpub</code>/<code>vpub</code> on Testnet.
+        You can paste another key or tap Cancel.
     .failed = <b>⚠️ Could not enable on-chain payments.</b>
-        Check that the key is correct and try again. If it still fails, contact support.
+        Check the key and try again, or tap Cancel. If it still fails, contact support.
     .completed = <b>✅ On-chain pay enabled.</b>
         Fingerprint: <code>{$fingerprint}</code>
         Compare it with your wallet to confirm the correct account.

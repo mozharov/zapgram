@@ -305,13 +305,31 @@ changing-price = <b>₿ Изменение цены платного досту�
 
 enabling-onchain = <b>⛓ Включение on-chain оплаты</b>
 
-    Вставь <b>zpub</b> (рекомендуется, bc1q) или <b>xpub</b> / <b>ypub</b> из Sparrow / BlueWallet / Electrum (аккаунт receive, watch-only).
+    Вставь <b>account-level</b> публичный ключ из Sparrow / BlueWallet / Electrum (export watch-only):
+
+    • <b>zpub</b> — рекомендуется (Native SegWit, bc1q), путь <code>m/84'/0'/0'</code>
+    • <b>ypub</b> — Nested SegWit, <code>m/49'/0'/0'</code>
+    • <b>xpub</b> — Legacy, <code>m/44'/0'/0'</code>
+    • Или полный <b>output descriptor</b> из Sparrow (для кастомных путей)
+
+    <i>Не корневой ключ кошелька (depth 0) — нужен xpub/zpub именно <b>аккаунта</b> receive.</i>
+    <i>Сеть должна совпадать с ботом (Mainnet vs Testnet <code>tpub</code>/<code>vpub</code>).</i>
 
     Средства идут только на адреса из этого ключа. {bot-name} не получает твой seed.
-    .invalid = <b>⚠️ Это не похоже на zpub/xpub.</b>
-        Вставь master public key, начинающийся с zpub, xpub или ypub (или дескриптор).
+    Можно вставить другой ключ или нажать «Отмена».
+    .invalid = <b>⚠️ Это не похоже на валидный account-ключ.</b>
+        Вставь zpub / xpub / ypub (или дескриптор). Проверь, что скопировал строку целиком.
+        Можно попробовать снова или нажать «Отмена».
+    .nonstandard-depth = <b>⚠️ Это не account-level xpub/zpub.</b>
+        LNbits принимает bare-ключи только на глубине BIP44/49/84 (<code>m/…/0'</code>).
+
+        В Sparrow: аккаунт → export <b>xpub</b> / <b>zpub</b> этого аккаунта, либо <b>output descriptor</b>.
+        Можно вставить другой ключ или нажать «Отмена».
+    .network-mismatch = <b>⚠️ Сеть ключа не совпадает с ботом.</b>
+        На Mainnet — zpub/xpub, на Testnet — <code>tpub</code>/<code>vpub</code>.
+        Можно вставить другой ключ или нажать «Отмена».
     .failed = <b>⚠️ Не удалось включить on-chain оплату.</b>
-        Проверь, что ключ скопирован верно, и попробуй снова. Если не поможет — напиши в поддержку.
+        Проверь ключ и попробуй снова, или нажми «Отмена». Если не поможет — напиши в поддержку.
     .completed = <b>✅ On-chain оплата включена.</b>
         Fingerprint: <code>{$fingerprint}</code>
         Сверь его со своим кошельком.

@@ -1,16 +1,31 @@
 /**
- * Light validation for admin-pasted master public keys.
- * Full derivation / network checks happen in LNbits Watch-Only.
+ * Light shape check for admin-pasted keys before calling LNbits.
+ * Depth, network, checksum, and descriptor semantics are owned by Watch-Only —
+ * do not re-implement them here (risk of divergent errors).
  */
 
-const MASTERPUB_PREFIXES = ['xpub', 'ypub', 'zpub', 'tpub', 'upub', 'vpub'] as const
+const MASTERPUB_PREFIXES = [
+  'xpub',
+  'ypub',
+  'zpub',
+  'Ypub',
+  'Zpub',
+  'tpub',
+  'upub',
+  'vpub',
+  'Upub',
+  'Vpub',
+] as const
+
+export type MasterpubFailReason = 'empty' | 'too_short' | 'unknown_prefix'
 
 export type MasterpubValidation =
   | {ok: true; value: string}
-  | {ok: false; reason: 'empty' | 'too_short' | 'unknown_prefix'}
+  | {ok: false; reason: MasterpubFailReason}
 
+/** Reject empty / obvious non-keys only. Real validation is LNbits Watch-Only. */
 export function validateMasterpub(raw: string): MasterpubValidation {
-  const value = raw.trim()
+  const value = raw.trim().replace(/\s+/g, '')
   if (!value) return {ok: false, reason: 'empty'}
   if (value.length < 20) return {ok: false, reason: 'too_short'}
 
@@ -19,8 +34,7 @@ export function validateMasterpub(raw: string): MasterpubValidation {
     return {ok: true, value}
   }
 
-  const lower = value.toLowerCase()
-  if (!MASTERPUB_PREFIXES.some(prefix => lower.startsWith(prefix))) {
+  if (!MASTERPUB_PREFIXES.some(prefix => value.startsWith(prefix))) {
     return {ok: false, reason: 'unknown_prefix'}
   }
   return {ok: true, value}

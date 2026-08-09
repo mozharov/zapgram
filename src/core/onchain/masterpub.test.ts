@@ -1,26 +1,27 @@
 import {describe, expect, test} from 'bun:test'
 import {isLikelyMasterpub, validateMasterpub} from './masterpub.js'
 
+/** Even root (depth 0) keys pass the light check — LNbits decides depth. */
+const DEPTH0_XPUB =
+  'xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8'
+
+const DEPTH3_XPUB =
+  'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz'
+
 describe('validateMasterpub', () => {
-  test('accepts zpub/xpub/ypub prefixes', () => {
+  test('accepts bare xpub prefixes without depth checks', () => {
+    expect(validateMasterpub(DEPTH0_XPUB)).toEqual({ok: true, value: DEPTH0_XPUB})
+    expect(validateMasterpub(DEPTH3_XPUB)).toEqual({ok: true, value: DEPTH3_XPUB})
     expect(validateMasterpub('zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAC').ok).toBe(true)
-    expect(
-      validateMasterpub(
-        'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz',
-      ).ok,
-    ).toBe(true)
   })
 
   test('accepts descriptor form', () => {
-    expect(
-      validateMasterpub(
-        'wpkh([abcd1234/84h/0h/0h]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/0/*)',
-      ),
-    ).toEqual({
-      ok: true,
-      value:
-        'wpkh([abcd1234/84h/0h/0h]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/0/*)',
-    })
+    const desc = `wpkh([abcd1234/84h/0h/0h]${DEPTH0_XPUB}/0/*)`
+    expect(validateMasterpub(desc)).toEqual({ok: true, value: desc})
+  })
+
+  test('strips whitespace', () => {
+    expect(validateMasterpub(`  ${DEPTH3_XPUB}\n`)).toEqual({ok: true, value: DEPTH3_XPUB})
   })
 
   test('rejects empty and unknown prefixes', () => {
@@ -34,7 +35,7 @@ describe('validateMasterpub', () => {
   })
 
   test('isLikelyMasterpub mirrors ok', () => {
-    expect(isLikelyMasterpub('zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAC')).toBe(true)
+    expect(isLikelyMasterpub(DEPTH0_XPUB)).toBe(true)
     expect(isLikelyMasterpub('nope')).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import {validateMasterpub} from '@core/onchain/masterpub.js'
+import {type MasterpubFailReason, validateMasterpub} from '@core/onchain/masterpub.js'
 import type {Chat} from '@infra/db/types.js'
 import type {WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import type {AppLogger} from '@infra/logger.js'
@@ -10,8 +10,12 @@ export type EnableOnchainResult =
       fingerprint: string
       watchonlyWalletId: string
     }
-  | {status: 'invalid_masterpub'; reason: 'empty' | 'too_short' | 'unknown_prefix'}
-  | {status: 'watchonly_error'; message: string}
+  | {status: 'invalid_masterpub'; reason: MasterpubFailReason}
+  | {
+      status: 'watchonly_error'
+      reason: 'nonstandard_depth' | 'network_mismatch' | 'unknown'
+      message: string
+    }
 
 export type DisableOnchainResult = {status: 'disabled'; chat: Chat}
 
@@ -25,6 +29,7 @@ export type OnchainEnableServiceDeps = {
 export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
   return {
     async enable(chat: Chat, rawMasterpub: string): Promise<EnableOnchainResult> {
+      // Shape only (empty / not a key). Depth, network, checksum → LNbits Watch-Only.
       const parsed = validateMasterpub(rawMasterpub)
       if (!parsed.ok) return {status: 'invalid_masterpub', reason: parsed.reason}
 
@@ -69,8 +74,7 @@ export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
         }
       } catch (error) {
         deps.log.error({error, chatId: chat.id}, 'Watch-Only wallet create failed')
-        const message = error instanceof Error ? error.message : 'watchonly_error'
-        return {status: 'watchonly_error', message}
+        return classifyWatchOnlyError(error)
       }
     },
 
@@ -96,3 +100,35 @@ export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
 }
 
 export type OnchainEnableService = ReturnType<typeof createOnchainEnableService>
+
+export function classifyWatchOnlyError(
+  error: unknown,
+): Extract<EnableOnchainResult, {status: 'watchonly_error'}> {
+  const message = extractLnbitsDetail(error)
+  const lower = message.toLowerCase()
+  if (lower.includes('non-standard depth') || lower.includes('nonstandard depth')) {
+    return {status: 'watchonly_error', reason: 'nonstandard_depth', message}
+  }
+  if (
+    lower.includes('account network') ||
+    lower.includes('network error') ||
+    (lower.includes('network') && lower.includes('mainnet')) ||
+    (lower.includes('network') && lower.includes('testnet'))
+  ) {
+    return {status: 'watchonly_error', reason: 'network_mismatch', message}
+  }
+  return {status: 'watchonly_error', reason: 'unknown', message}
+}
+
+function extractLnbitsDetail(error: unknown): string {
+  // got HTTPError (and similar) expose response.body with LNbits `{detail: string}`.
+  if (error && typeof error === 'object' && 'response' in error) {
+    const body = (error as {response?: {body?: unknown}}).response?.body
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as {detail: unknown}).detail
+      if (typeof detail === 'string' && detail.trim()) return detail.trim()
+    }
+  }
+  if (error instanceof Error) return error.message
+  return 'watchonly_error'
+}
