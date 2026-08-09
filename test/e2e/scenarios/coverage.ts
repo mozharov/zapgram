@@ -193,6 +193,25 @@ export const scenarioCoverage = {
     jobs: [],
     errors: [],
   },
+  broadcast: {
+    routes: ['broadcast-locale', 'broadcast-confirm', 'cancel'],
+    commands: ['/broadcast'],
+    updates: ['message', 'callback_query', 'my_chat_member'],
+    writes: [
+      'users.insert',
+      'users.update',
+      'conversations.insert',
+      'conversations.delete',
+      'broadcasts.insert',
+      'broadcasts.update',
+      'broadcasts.delete',
+      'broadcast_recipients.insert',
+      'broadcast_recipients.update',
+      'broadcast_recipients.delete',
+    ],
+    jobs: ['process-broadcasts'],
+    errors: [],
+  },
   journeys: {
     routes: [
       'wallet',

@@ -221,6 +221,20 @@ export const featureFundAmountRoute = defineCallback(
   ({amountSats}) => `feature:fund:${amountSats}`,
 )
 
+export const broadcastLocaleRoute = defineCallback(
+  'broadcast-locale',
+  /^broadcast:locale:(en|ru)$/,
+  match => ({locale: requireGroup(match, 1, 'broadcast-locale') as 'en' | 'ru'}),
+  ({locale}) => `broadcast:locale:${locale}`,
+)
+
+export const broadcastConfirmRoute = defineCallback(
+  'broadcast-confirm',
+  /^broadcast:confirm:(yes|no)$/,
+  match => ({action: requireGroup(match, 1, 'broadcast-confirm') as 'yes' | 'no'}),
+  ({action}) => `broadcast:confirm:${action}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -244,6 +258,8 @@ export const parameterizedRoutes = [
   donateAmountRoute,
   donateMonthlyAmountRoute,
   featureFundAmountRoute,
+  broadcastLocaleRoute,
+  broadcastConfirmRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */

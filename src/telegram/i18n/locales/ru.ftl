@@ -133,6 +133,17 @@ feature =
     .submitted-funded = ✅ Спасибо! Запрос отправлен с <b>{$sats}</b> сат{$usdSuffix}.
     .fund-failed-submitted = ⚠️ Не удалось списать саты, но запрос всё равно отправлен без финансирования.
 
+broadcast =
+    .pick-locale = 📣 <b>Рассылка</b>
+        Выбери язык аудитории:
+    .locale-en = 🇬🇧 English
+    .locale-ru = 🇷🇺 Русский
+    .send-message = ✏️ Отправь сообщение для рассылки (текст, фото, видео, документ…).
+        Оно будет скопировано пользователям через Telegram <code>copyMessage</code>.
+    .invalid-message = ⚠️ Пришли обычное сообщение (не команду бота) как тело рассылки.
+    .confirm-yes = ✅ Отправить
+    .confirm-no = ❌ Отмена
+
 donation = 
     .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат{$usdSuffix} отправить не удалось. Проверь баланс / NWC или используй /donate.
 

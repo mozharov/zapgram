@@ -360,6 +360,7 @@ describe('mergePersonProperties', () => {
         monthlyDonationNextAt: null,
         monthlyDonationLastHash: null,
         monthlyDonationLastFailNotifyAt: null,
+        botBlocked: false,
       }),
       personPropertiesFromTelegram({
         id: 42,

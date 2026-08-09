@@ -1,6 +1,7 @@
 import {expect, test} from 'bun:test'
 import {readdirSync, readFileSync} from 'node:fs'
 import {defaultJobDefinitions} from '@jobs/scheduler.js'
+import {broadcastCommands} from '@modules/broadcast/register.js'
 import {chatsCommands} from '@modules/chats/register.js'
 import {donationCommands} from '@modules/donations/register.js'
 import {featureRequestCommands} from '@modules/feature-requests/register.js'
@@ -56,6 +57,12 @@ const writeOperations = [
   'donations.insert',
   'donation_platform_stats.insert',
   'donation_platform_stats.update',
+  'broadcasts.insert',
+  'broadcasts.update',
+  'broadcasts.delete',
+  'broadcast_recipients.insert',
+  'broadcast_recipients.update',
+  'broadcast_recipients.delete',
 ] as const
 
 const inventory: Record<Category, readonly string[]> = {
@@ -67,6 +74,7 @@ const inventory: Record<Category, readonly string[]> = {
     ...subscriptionsCommands,
     ...donationCommands,
     ...featureRequestCommands,
+    ...broadcastCommands,
   ].map(command => `/${command}`),
   updates: [...handledUpdateTypes, ...unhandledUpdateTypes],
   writes: writeOperations,

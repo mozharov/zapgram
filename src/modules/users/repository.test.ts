@@ -75,6 +75,34 @@ test('getOrCreate does not clobber stored fields the caller omitted', async () =
   expect(user?.languageCode).toBe('ru')
 })
 
+test('setBotBlocked toggles the flag', async () => {
+  const users = repo()
+  await users.getOrCreate({id: 1, username: 'a'})
+  expect((await users.findById(1))?.botBlocked).toBe(false)
+
+  await users.setBotBlocked(1, true)
+  expect((await users.findById(1))?.botBlocked).toBe(true)
+
+  await users.setBotBlocked(1, false)
+  expect((await users.findById(1))?.botBlocked).toBe(false)
+})
+
+test('listBroadcastRecipientIds filters locale, blocked, and excludeUserId', async () => {
+  const users = repo()
+  await users.getOrCreate({id: 1, username: 'admin', languageCode: 'en'})
+  await users.getOrCreate({id: 2, username: 'en1', languageCode: 'en'})
+  await users.getOrCreate({id: 3, username: 'ru1', languageCode: 'ru-RU'})
+  await users.getOrCreate({id: 4, username: 'de1', languageCode: 'de'})
+  await users.getOrCreate({id: 5, username: 'blocked', languageCode: 'en'})
+  await users.setBotBlocked(5, true)
+
+  const enIds = await users.listBroadcastRecipientIds({locale: 'en', excludeUserId: 1})
+  expect(enIds.sort()).toEqual([2, 4])
+
+  const ruIds = await users.listBroadcastRecipientIds({locale: 'ru', excludeUserId: 1})
+  expect(ruIds).toEqual([3])
+})
+
 test('getOrCreate preserves languageCode when another profile field changes without it', async () => {
   const users = repo()
   await users.getOrCreate({id: 1, username: 'old', firstName: 'A', languageCode: 'ru-RU'})

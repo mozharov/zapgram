@@ -148,6 +148,23 @@ export function myChatMember(
   })
 }
 
+/** Private block/unblock: member↔kicked. */
+export function privateMyChatMember(blocked: boolean, opts: CommonOptions = {}): TestUpdate {
+  const meta = nextMeta(opts)
+  const from = privateUser(opts.from)
+  return asUpdate({
+    update_id: meta.updateId,
+    reqId: meta.reqId,
+    my_chat_member: {
+      date: now(),
+      from,
+      chat: privateChat(from, opts.chat),
+      old_chat_member: blocked ? member('member') : member('kicked'),
+      new_chat_member: blocked ? member('kicked') : member('member'),
+    },
+  })
+}
+
 export function chatJoinRequest(
   chatType: 'supergroup' | 'channel',
   opts: CommonOptions = {},
@@ -354,10 +371,12 @@ function isMessage(value: Message | {text: string; from?: FromOverrides}): value
   return 'message_id' in value
 }
 
-function member(status: 'left' | 'administrator'): ChatMember {
-  if (status === 'left') return {status, user: botUser}
+function member(status: 'left' | 'administrator' | 'member' | 'kicked'): ChatMember {
+  if (status === 'left') return {status: 'left', user: botUser}
+  if (status === 'member') return {status: 'member', user: botUser}
+  if (status === 'kicked') return {status: 'kicked', user: botUser, until_date: 0}
   return {
-    status,
+    status: 'administrator',
     user: botUser,
     can_be_edited: false,
     is_anonymous: false,

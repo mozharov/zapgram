@@ -1,5 +1,7 @@
 import {describe, expect, test} from 'bun:test'
 import {
+  broadcastConfirmRoute,
+  broadcastLocaleRoute,
   chatChangePriceRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
@@ -14,7 +16,9 @@ import {
   donateMonthlyAmountRoute,
   donationPercentRoute,
   donationScopeRoute,
+  featureFundAmountRoute,
   parameterizedRoutes,
+  payLightningRoute,
   payOnchainRoute,
   paySubscriptionRoute,
   subscriptionRenewRoute,
@@ -66,6 +70,12 @@ describe('callback-data routes', () => {
       {route: donationScopeRoute, params: {scope: 'tips' as const}},
       {route: donateAmountRoute, params: {amountSats: 1000}},
       {route: donateMonthlyAmountRoute, params: {amountSats: 100}},
+      {route: payLightningRoute, params: {chatId: -100}},
+      {route: featureFundAmountRoute, params: {amountSats: 500}},
+      {route: broadcastLocaleRoute, params: {locale: 'en' as const}},
+      {route: broadcastLocaleRoute, params: {locale: 'ru' as const}},
+      {route: broadcastConfirmRoute, params: {action: 'yes' as const}},
+      {route: broadcastConfirmRoute, params: {action: 'no' as const}},
     ] as const
 
     for (const {route, params} of samples) {
@@ -80,6 +90,6 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(20)
+    expect(parameterizedRoutes).toHaveLength(23)
   })
 })

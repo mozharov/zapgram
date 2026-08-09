@@ -168,6 +168,17 @@ const staticCases: {
     text: /auto-donation percent|percent \(0/,
     conversation: true,
   },
+  // Conversation-only feature-request fund buttons.
+  {
+    data: staticCallback.featureFundSkip,
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
+  {
+    data: staticCallback.featureFundCustom,
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
   {
     data: staticCallback.donateMonthlyMenu,
     methods: ['editMessageText', 'answerCallbackQuery'],
@@ -406,6 +417,25 @@ const parameterizedCases: {
     db: {users: {changed: 1}},
     lnbits: {payments: [{out: false, sats: 21, times: 1}]},
   },
+  // Conversation-only routes: outside an active conversation they fall through to unknownCallback.
+  {
+    route: 'feature-fund-amount',
+    data: () => 'feature:fund:1000',
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
+  {
+    route: 'broadcast-locale',
+    data: () => 'broadcast:locale:en',
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
+  {
+    route: 'broadcast-confirm',
+    data: () => 'broadcast:confirm:yes',
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Unknown button/,
+  },
 ]
 
 for (const {route, data, methods, text, db, lnbits} of parameterizedCases) {
@@ -433,7 +463,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(40)
+  expect(registry).toHaveLength(45)
   expect(covered).toEqual(registry)
 })
 

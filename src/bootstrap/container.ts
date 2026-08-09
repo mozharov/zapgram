@@ -15,6 +15,13 @@ import {type AppLogger, createLogger} from '@infra/logger.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
+import {
+  type BroadcastService,
+  createBroadcastService,
+} from '@modules/broadcast/broadcast.service.js'
+import {formatBroadcastReport, formatBroadcastStarted} from '@modules/broadcast/format.js'
+import {type BroadcastRepository, createBroadcastRepository} from '@modules/broadcast/repository.js'
+import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import {type ChatRepository, createChatRepository} from '@modules/chats/repository.js'
 import {
   type ConversationRepository,
@@ -109,6 +116,8 @@ export type AppContainer = {
   donationPay: DonationPayService
   donationCollect: DonationCollectService
   featureRequests: FeatureRequestService
+  broadcasts: BroadcastRepository
+  broadcastService: BroadcastService
   /** Shared i18n for jobs / services that cannot import @telegram/* directly. */
   translate: typeof translate
 }
@@ -202,6 +211,29 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     formatAdminMeta: formatFeatureRequestAdminMeta,
     log,
     posthog,
+  })
+
+  const broadcasts = createBroadcastRepository(db)
+  const broadcastService = createBroadcastService({
+    broadcasts,
+    users,
+    copyMessage: async (toUserId, fromChatId, messageId) => {
+      try {
+        await bot.api.copyMessage(toUserId, fromChatId, messageId)
+        return 'sent'
+      } catch (error) {
+        if (isTelegramUserUnreachableError(error)) {
+          log.info({toUserId, error}, 'Broadcast target unreachable')
+          return 'blocked'
+        }
+        log.error({error, toUserId, fromChatId, messageId}, 'Broadcast copyMessage failed')
+        return 'failed'
+      }
+    },
+    notifyAdmin: (adminUserId, text) => notifier.send(adminUserId, text),
+    formatStarted: formatBroadcastStarted,
+    formatReport: formatBroadcastReport,
+    log,
   })
 
   const settleService = createSettleService({
@@ -322,6 +354,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     donationPay,
     donationCollect,
     featureRequests,
+    broadcasts,
+    broadcastService,
     translate,
   }
 

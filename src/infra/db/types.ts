@@ -1,4 +1,6 @@
 import type {
+  broadcastRecipientsTable,
+  broadcastsTable,
   chatsTable,
   conversationsTable,
   donationPlatformStatsTable,
@@ -49,3 +51,10 @@ export type DonationInsert = typeof donationsTable.$inferInsert
 export type NewDonation = Omit<DonationInsert, 'id'>
 
 export type DonationPlatformStats = typeof donationPlatformStatsTable.$inferSelect
+
+export type Broadcast = typeof broadcastsTable.$inferSelect
+export type BroadcastInsert = typeof broadcastsTable.$inferInsert
+export type NewBroadcast = Omit<BroadcastInsert, 'id'> & {id?: string}
+
+export type BroadcastRecipient = typeof broadcastRecipientsTable.$inferSelect
+export type BroadcastRecipientInsert = typeof broadcastRecipientsTable.$inferInsert

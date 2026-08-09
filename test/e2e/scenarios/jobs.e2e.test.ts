@@ -44,6 +44,7 @@ const ALL_JOBS = [
   'onchainCharges',
   'expiredSubscriptions',
   'expiringSubscriptions',
+  'processBroadcasts',
 ] as const
 
 export const COVERS = scenarioCoverage.jobs
@@ -72,7 +73,7 @@ afterEach(async () => {
 
 // --- Empty ticks ---
 
-test('each of the six jobs is a no-op on an empty database', async () => {
+test('each registered job is a no-op on an empty database', async () => {
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   const telegramMark = e2e.tg.calls.length

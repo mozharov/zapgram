@@ -4,6 +4,36 @@ import {setWebhook} from '@infra/telegram/webhook.js'
 import type {Bot, Context} from 'grammy'
 import type {ChatAdministratorRights} from 'grammy/types'
 
+const privateCommandsEn = [
+  {command: 'wallet', description: 'Main menu and wallet info'},
+  {command: 'settings', description: 'Wallet settings'},
+  {command: 'subscriptions', description: 'Your active subscriptions'},
+  {command: 'chats', description: 'Your chats with paid subscriptions'},
+  {command: 'donate', description: 'Support the project — one-shot, monthly, stats'},
+  {command: 'feature', description: 'Request a feature (optional sats tip)'},
+  {command: 'help', description: 'FAQ, links and instructions'},
+] as const
+
+const privateCommandsRu = [
+  {command: 'wallet', description: 'Меню и информация о кошельке'},
+  {command: 'settings', description: 'Настройки кошелька'},
+  {command: 'subscriptions', description: 'Твои активные подписки'},
+  {command: 'chats', description: 'Твои чаты с платным доступом'},
+  {command: 'donate', description: 'Поддержать проект — разово, ежемесячно, статистика'},
+  {command: 'feature', description: 'Запросить фичу (можно с сатоши)'},
+  {command: 'help', description: 'FAQ, ссылки и инструкции'},
+] as const
+
+const adminBroadcastEn = {
+  command: 'broadcast',
+  description: 'Admin: broadcast update to users by language',
+} as const
+
+const adminBroadcastRu = {
+  command: 'broadcast',
+  description: 'Админ: рассылка обновления пользователям по языку',
+} as const
+
 export async function configureBot(deps: {
   bot: Bot<Context>
   config: AppConfig
@@ -11,72 +41,22 @@ export async function configureBot(deps: {
 }): Promise<void> {
   const {bot, config, log} = deps
   log.info('Setting bot commands, webhook and default admin rights...')
-  await bot.api.setMyCommands(
-    [
-      {
-        command: 'wallet',
-        description: 'Main menu and wallet info',
-      },
-      {
-        command: 'settings',
-        description: 'Wallet settings',
-      },
-      {
-        command: 'subscriptions',
-        description: 'Your active subscriptions',
-      },
-      {
-        command: 'chats',
-        description: 'Your chats with paid subscriptions',
-      },
-      {
-        command: 'donate',
-        description: 'Support the project — one-shot, monthly, stats',
-      },
-      {
-        command: 'feature',
-        description: 'Request a feature (optional sats tip)',
-      },
-      {
-        command: 'help',
-        description: 'FAQ, links and instructions',
-      },
-    ],
-    {scope: {type: 'all_private_chats'}},
-  )
-  await bot.api.setMyCommands(
-    [
-      {
-        command: 'wallet',
-        description: 'Меню и информация о кошельке',
-      },
-      {
-        command: 'settings',
-        description: 'Настройки кошелька',
-      },
-      {
-        command: 'subscriptions',
-        description: 'Твои активные подписки',
-      },
-      {
-        command: 'chats',
-        description: 'Твои чаты с платным доступом',
-      },
-      {
-        command: 'donate',
-        description: 'Поддержать проект — разово, ежемесячно, статистика',
-      },
-      {
-        command: 'feature',
-        description: 'Запросить фичу (можно с сатоши)',
-      },
-      {
-        command: 'help',
-        description: 'FAQ, ссылки и инструкции',
-      },
-    ],
-    {scope: {type: 'all_private_chats'}, language_code: 'ru'},
-  )
+  await bot.api.setMyCommands([...privateCommandsEn], {scope: {type: 'all_private_chats'}})
+  await bot.api.setMyCommands([...privateCommandsRu], {
+    scope: {type: 'all_private_chats'},
+    language_code: 'ru',
+  })
+
+  // BotCommandScopeChat replaces the full list for that private chat — include public + admin.
+  for (const adminId of config.ADMIN_TELEGRAM_IDS) {
+    await bot.api.setMyCommands([...privateCommandsEn, adminBroadcastEn], {
+      scope: {type: 'chat', chat_id: adminId},
+    })
+    await bot.api.setMyCommands([...privateCommandsRu, adminBroadcastRu], {
+      scope: {type: 'chat', chat_id: adminId},
+      language_code: 'ru',
+    })
+  }
   await bot.api.setMyCommands(
     [
       {

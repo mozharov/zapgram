@@ -133,6 +133,17 @@ feature =
     .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.
     .fund-failed-submitted = ⚠️ Could not charge sats, but your feature request was still sent without funding.
 
+broadcast =
+    .pick-locale = 📣 <b>Broadcast</b>
+        Choose the audience language:
+    .locale-en = 🇬🇧 English
+    .locale-ru = 🇷🇺 Russian
+    .send-message = ✏️ Send the message to broadcast (text, photo, video, document…).
+        It will be copied to users via Telegram <code>copyMessage</code>.
+    .invalid-message = ⚠️ Send a regular message (not a bot command) to use as the broadcast body.
+    .confirm-yes = ✅ Send
+    .confirm-no = ❌ Cancel
+
 donation = 
     .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
 

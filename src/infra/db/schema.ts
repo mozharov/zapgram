@@ -26,6 +26,8 @@ export const usersTable = sqliteTable(
     monthlyDonationLastFailNotifyAt: integer('monthly_donation_last_fail_notify_at', {
       mode: 'timestamp',
     }),
+    /** User blocked the bot in private chat (or unreachable); skip broadcasts. */
+    botBlocked: integer('bot_blocked', {mode: 'boolean'}).notNull().default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [
@@ -33,6 +35,7 @@ export const usersTable = sqliteTable(
     index('users_monthly_donation_due_idx')
       .on(table.monthlyDonationNextAt)
       .where(sql`${table.monthlyDonationSats} > 0 AND ${table.monthlyDonationNextAt} is not null`),
+    index('users_bot_blocked_idx').on(table.botBlocked),
   ],
 )
 
@@ -296,5 +299,71 @@ export const onchainChatPaymentsTable = sqliteTable(
     uniqueIndex('onchain_chat_payments_satspay_charge_id_unique').on(table.satspayChargeId),
     index('onchain_chat_payments_open_idx').on(table.status, table.watchUntil),
     index('onchain_chat_payments_user_chat_idx').on(table.userId, table.chatId),
+  ],
+)
+
+/** Admin broadcast campaign header (recipients purged after completion). */
+export const broadcastsTable = sqliteTable(
+  'broadcasts',
+  {
+    id: text('id').primaryKey(),
+    adminUserId: integer('admin_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    locale: text('locale', {enum: ['en', 'ru']}).notNull(),
+    sourceChatId: integer('source_chat_id', {mode: 'number'}).notNull(),
+    sourceMessageId: integer('source_message_id', {mode: 'number'}).notNull(),
+    status: text('status', {
+      enum: ['sending', 'completed', 'cancelled', 'failed'],
+    })
+      .notNull()
+      .default('sending'),
+    totalCount: integer('total_count', {mode: 'number'}).notNull().default(0),
+    sentCount: integer('sent_count', {mode: 'number'}).notNull().default(0),
+    failedCount: integer('failed_count', {mode: 'number'}).notNull().default(0),
+    skippedCount: integer('skipped_count', {mode: 'number'}).notNull().default(0),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+    startedAt: integer('started_at', {mode: 'timestamp'}),
+    completedAt: integer('completed_at', {mode: 'timestamp'}),
+    reportSentAt: integer('report_sent_at', {mode: 'timestamp'}),
+  },
+  table => [
+    check(
+      'broadcasts_status_check',
+      sql`${table.status} in ('sending', 'completed', 'cancelled', 'failed')`,
+    ),
+    check('broadcasts_locale_check', sql`${table.locale} in ('en', 'ru')`),
+    index('broadcasts_status_idx').on(table.status),
+    index('broadcasts_completed_at_idx').on(table.completedAt),
+  ],
+)
+
+/** Per-user delivery state for an in-flight broadcast (deleted when campaign finishes). */
+export const broadcastRecipientsTable = sqliteTable(
+  'broadcast_recipients',
+  {
+    broadcastId: text('broadcast_id')
+      .notNull()
+      .references(() => broadcastsTable.id, {onDelete: 'cascade'}),
+    userId: integer('user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    status: text('status', {
+      enum: ['pending', 'sent', 'failed', 'skipped'],
+    })
+      .notNull()
+      .default('pending'),
+    error: text('error'),
+    updatedAt: integer('updated_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    check(
+      'broadcast_recipients_status_check',
+      sql`${table.status} in ('pending', 'sent', 'failed', 'skipped')`,
+    ),
+    uniqueIndex('broadcast_recipients_pk').on(table.broadcastId, table.userId),
+    index('broadcast_recipients_pending_idx')
+      .on(table.broadcastId, table.status)
+      .where(sql`${table.status} = 'pending'`),
   ],
 )
