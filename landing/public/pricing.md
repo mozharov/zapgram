@@ -28,7 +28,7 @@ Users may support the bot author. This is **not** the paid-chat platform fee.
 
 - Voluntary % on top of tips and invoice pays (new accounts default **5%**; change or disable in `/settings`)
 - One-shot and monthly donations via `/donate`
-- External Lightning address: `zapgram@getalby.com` (recurring possible via third-party tools such as ZapPlanner)
+- External Lightning address: `zapgram@getalby.com`
 - Auto-% never blocks the main payment
 
 ## Paid chats (hosted bot)

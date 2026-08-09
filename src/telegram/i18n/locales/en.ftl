@@ -108,9 +108,8 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     Use /chats to manage paid chats.
 
     💚 <b>Optional support:</b>
-    New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /settings.
-    One-time, monthly, and your totals: /donate
-    Outside the bot: <code>zapgram@getalby.com</code> — or set up monthly yourself with tools like <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>.
+    New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /donate.
+    Outside the bot: <code>zapgram@getalby.com</code>.
 
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
@@ -135,7 +134,6 @@ donate =
         Tap an amount for a one-shot donation, or open Monthly / Auto %.
 
         ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
-        Monthly outside the bot: tools like <a href="https://zapplanner.albylabs.com/">ZapPlanner</a> — no {bot-name} account required.
     .stats-last = Last: {$date}
     .stats-last-none = No donations yet
     .auto-off = Off

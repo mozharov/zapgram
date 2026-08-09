@@ -85,7 +85,7 @@ ZapGram is free to use. You can optionally support the bot author:
 - **Voluntary % on top of payments** — new accounts default to **5%** on tips and invoice pays (scope **all**). Change percent, scope (**tips only** / **all payments**), or turn off in `/settings` → Support the project.
 - **Auto-% never blocks your payment** — the main tip or invoice pay settles first; the support tip is best-effort. Success is silent (totals update on `/donate`); failure only notifies you in private chat.
 - **`/donate` hub** — your personal stats, **community totals** (all-time + last 30 days), one-shot amounts (**21 · 100 · 1 000 · 10 000 · 100 000** or custom), and in-bot **monthly** auto-donate (charges every 30 days; first charge when you enable).
-- **Outside the bot** — Lightning address `zapgram@getalby.com`, or set up recurring payments yourself with tools like [ZapPlanner](https://zapplanner.albylabs.com/) (no ZapGram integration required).
+- **Outside the bot** — Lightning address `zapgram@getalby.com`.
 
 This is separate from the small **platform fee** on paid-chat Lightning subscriptions (`SUBSCRIPTION_FEE_PERCENT`).
 

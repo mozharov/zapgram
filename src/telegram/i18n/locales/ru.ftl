@@ -108,9 +108,8 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning кошелёк в Telegram.</b>
     Используй /chats для контроля платных чатов.
 
     💚 <b>Добровольная поддержка:</b>
-    У новых аккаунтов включён <b>5%</b> вклад автору бота на платежах (донаты и оплата счетов). Изменить или отключить: /settings.
-    Разово, ежемесячно и статистика: /donate
-    Вне бота: <code>zapgram@getalby.com</code> — или настрой ежемесячный платёж сам через инструменты вроде <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>.
+    У новых аккаунтов включён <b>5%</b> вклад автору бота на платежах (донаты и оплата счетов). Изменить или отключить: /donate.
+    Вне бота: <code>zapgram@getalby.com</code>.
 
     🕊 <b>Добро пожаловать в мир свободных платежей!</b>
     <i>Подробнее о {bot-name}, Bitcoin, Lightning Network и совместимых кошельках в /help.</i>
@@ -135,7 +134,6 @@ donate =
         Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
 
         ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
-        Ежемесячно вне бота — инструменты вроде <a href="https://zapplanner.albylabs.com/">ZapPlanner</a>.
     .stats-last = Последний: {$date}
     .stats-last-none = Донатов пока нет
     .auto-off = Выкл

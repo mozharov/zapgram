@@ -35,7 +35,7 @@ test('/donate hub shows stats and external lightning address', async () => {
 
   const messages = e2e.tg.of('sendMessage').map(c => String(c.text))
   expect(messages.some(t => t.includes('zapgram@getalby.com'))).toBe(true)
-  expect(messages.some(t => /ZapPlanner/i.test(t))).toBe(true)
+  expect(messages.some(t => /ZapPlanner/i.test(t))).toBe(false)
   expect(messages.some(t => /Community|🌍/i.test(t))).toBe(true)
   expect(messages.some(t => /All time:.*0/i.test(t) && /Last 30 days:.*0/i.test(t))).toBe(true)
   expect(messages.some(t => /Auto on payments/i.test(t))).toBe(true)
