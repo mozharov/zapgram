@@ -5,6 +5,7 @@ import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payLightningRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import type {CallbackQueryContext} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -60,6 +61,7 @@ export const payLightningCallback = async (
     invoice: invoice.attempt.paymentRequest,
     type: chat.paymentType,
     price: chat.price,
+    usdSuffix: await usdSuffixForSats(chat.price),
     remaining,
   })
 

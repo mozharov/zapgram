@@ -4,6 +4,7 @@ import {buildOnchainPaymentKeyboard} from '@modules/subscriptions/telegram/keybo
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payOnchainRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import type {CallbackQueryContext} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -59,6 +60,7 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
     title: chat.title,
     address: payment.address,
     price: payment.amountSats,
+    usdSuffix: await usdSuffixForSats(payment.amountSats),
     type: chat.paymentType,
     remaining,
   })

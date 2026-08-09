@@ -3,6 +3,7 @@ import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {captureBotEvent, setTelegramChatGroup} from '@telegram/analytics.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function changingPrice(
@@ -28,6 +29,11 @@ export async function changingPrice(
     {price_sats: sats, chat_title: chat.title, payment_type: chat.paymentType},
     {chatId},
   )
-  await ctx.reply(ctx.t('changing-price.completed', {price: sats}))
+  await ctx.reply(
+    ctx.t('changing-price.completed', {
+      price: sats,
+      usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
+    }),
+  )
   await replyWithChat(ctx, chat)
 }
