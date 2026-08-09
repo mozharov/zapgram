@@ -215,7 +215,7 @@
                 "name": "Is it a wallet or just a tip bot?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Both. You get a full Lightning wallet on first open, plus /tip in groups, invoices with QR, username transfers, and Lightning-gated chats with subscriptions."
+                  "text": "Both. You get a full Lightning wallet on first open, plus /tip in groups, invoices with QR, username transfers, and sat-gated chats (Lightning and optional on-chain) with subscriptions."
                 }
               },
               {
@@ -271,7 +271,7 @@
                 "name": "Can I sell access to a private group or channel with Bitcoin?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Yes. In /chats, enable paid access, set a sat price (one-time or monthly), grant invite + ban rights. Members request to join, pay a Lightning invoice, and get access immediately."
+                  "text": "Yes. In /chats, enable paid access, set a sat price (one-time or monthly), grant invite + ban rights. Members pay Lightning and/or on-chain Bitcoin if you enable on-chain with a zpub/xpub. Access is granted after payment."
                 }
               },
               {
@@ -515,9 +515,10 @@
 
       <section class="section" id="paid-chats" aria-labelledby="paid-title">
         <div class="wrap">
-          <h2 id="paid-title">Monetize private chats with Lightning</h2>
+          <h2 id="paid-title">Monetize private chats with sats</h2>
           <p class="section__lead">
-            Turn a private group or channel into a sat-gated community — no Stripe, no bank account.
+            Turn a private group or channel into a sat-gated community — Lightning and optional
+            on-chain Bitcoin. No Stripe, no bank account.
           </p>
           <div class="split">
             <div class="panel">
@@ -532,10 +533,15 @@
                   Set price in sats: <strong>one-time</strong> permanent access or
                   <strong>monthly</strong> subscription. Optional join message in RU + EN.
                 </li>
+                <li>
+                  Optional: enable <strong>on-chain pay</strong> and paste your account
+                  <strong>zpub / xpub</strong> — members can pay on-chain; funds go to your wallet.
+                </li>
               </ol>
               <p class="note">
-                Owners are paid automatically (minus a small platform fee on the hosted bot).
-                Duplicate payments are refunded safely.
+                Lightning joins: owners are paid automatically (minus a small platform fee on the
+                hosted bot). On-chain joins: sats go straight to your key — no Lightning fee split.
+                Duplicate Lightning payments are refunded safely.
               </p>
             </div>
             <div class="panel">
@@ -543,19 +549,21 @@
               <ol>
                 <li>Request to join.</li>
                 <li>
-                  Get a Lightning invoice (and one-tap pay if your ZapGram or NWC balance covers it).
+                  Get a Lightning invoice (and one-tap pay if your ZapGram or NWC balance covers it),
+                  or <strong>Pay on-chain</strong> when the owner enabled it.
                 </li>
-                <li>Pay → access is granted immediately.</li>
+                <li>Pay either way → access is granted.</li>
               </ol>
               <p class="note">
-                Monthly renewals can auto-debit from the ZapGram wallet. Manage status in
-                <code class="inline">/subscriptions</code>.
+                Monthly renewals auto-debit via Lightning from the ZapGram wallet. Manage status in
+                <code class="inline">/subscriptions</code>. For expiry reminders, open the bot with
+                <code class="inline">/start</code>.
               </p>
             </div>
           </div>
           <div class="mid-cta">
             <a class="btn btn--primary" href="https://t.me/zap_gram_bot"><svg class="btn__icon" width="20" height="20" viewBox="0 0 128 128" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="nonzero" d="M28.9700376,63.3244248 C47.6273373,55.1957357 60.0684594,49.8368063 66.2934036,47.2476366 C84.0668845,39.855031 87.7600616,38.5708563 90.1672227,38.528 C90.6966555,38.5191258 91.8804274,38.6503351 92.6472251,39.2725385 C93.294694,39.7979149 93.4728387,40.5076237 93.5580865,41.0057381 C93.6433345,41.5038525 93.7494885,42.63857 93.6651041,43.5252052 C92.7019529,53.6451182 88.5344133,78.2034783 86.4142057,89.5379542 C85.5170662,94.3339958 83.750571,95.9420841 82.0403991,96.0994568 C78.3237996,96.4414641 75.5015827,93.6432685 71.9018743,91.2836143 C66.2690414,87.5912212 63.0868492,85.2926952 57.6192095,81.6896017 C51.3004058,77.5256038 55.3966232,75.2369981 58.9976911,71.4967761 C59.9401076,70.5179421 76.3155302,55.6232293 76.6324771,54.2720454 C76.6721165,54.1030573 76.7089039,53.4731496 76.3346867,53.1405352 C75.9604695,52.8079208 75.4081573,52.921662 75.0095933,53.0121213 C74.444641,53.1403447 65.4461175,59.0880351 48.0140228,70.8551922 C45.4598218,72.6091037 43.1463059,73.4636682 41.0734751,73.4188859 C38.7883453,73.3695169 34.3926725,72.1268388 31.1249416,71.0646282 C27.1169366,69.7617838 23.931454,69.0729605 24.208838,66.8603276 C24.3533167,65.7078514 25.9403832,64.5292172 28.9700376,63.3244248 Z"/></svg>Open in Telegram</a>
-            <p class="btn-micro">Price a chat in sats · members pay Lightning on join</p>
+            <p class="btn-micro">Price a chat in sats · Lightning or on-chain on join</p>
           </div>
         </div>
       </section>
@@ -684,7 +692,7 @@
               <p class="answer">
                 Both. You get a full Lightning wallet on first open, plus
                 <code class="inline">/tip</code> in groups, invoices with QR, username transfers, and
-                Lightning-gated chats with subscriptions.
+                sat-gated chats (Lightning and optional on-chain) with subscriptions.
               </p>
             </details>
             <details>
@@ -743,8 +751,9 @@
               <summary>Can I sell access to a private group or channel with Bitcoin?</summary>
               <p class="answer">
                 Yes. In <code class="inline">/chats</code>, enable paid access, set a sat price
-                (one-time or monthly), grant invite + ban rights. Members request to join, pay a
-                Lightning invoice, and get access immediately.
+                (one-time or monthly), grant invite + ban rights. Members pay Lightning and/or
+                <strong>on-chain</strong> if you enable on-chain pay with a zpub/xpub. Access is
+                granted after payment.
               </p>
             </details>
             <details>

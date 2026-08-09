@@ -2,6 +2,8 @@ import type {Chat} from '@infra/db/types.js'
 import {
   chatChangePriceRoute,
   chatCustomMessageRoute,
+  chatOnchainDisableRoute,
+  chatOnchainEnableRoute,
   chatPaidAccessRoute,
   chatPaymentTypeRoute,
   chatsPageRoute,
@@ -37,6 +39,17 @@ export function buildChatKeyboard(t: BotContext['t'], chat: Chat) {
     callback_data: chatChangePriceRoute.build({chatId: chat.id}),
     text: t('button.change-price'),
   })
+  if (chat.onchainEnabled && chat.watchonlyWalletId) {
+    keyboard.row({
+      callback_data: chatOnchainDisableRoute.build({chatId: chat.id}),
+      text: t('button.disable-onchain'),
+    })
+  } else {
+    keyboard.row({
+      callback_data: chatOnchainEnableRoute.build({chatId: chat.id}),
+      text: t('button.enable-onchain'),
+    })
+  }
   keyboard.row({
     callback_data: chatCustomMessageRoute.build({chatId: chat.id}),
     text: t('button.custom-message'),

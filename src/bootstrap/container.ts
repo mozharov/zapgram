@@ -3,6 +3,8 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
+import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
@@ -13,6 +15,22 @@ import {
 } from '@modules/conversations/repository.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
+import {
+  type CompleteOnchainJoinService,
+  createCompleteOnchainJoinService,
+} from '@modules/onchain/complete.service.js'
+import {
+  createOnchainEnableService,
+  type OnchainEnableService,
+} from '@modules/onchain/enable.service.js'
+import {
+  createOnchainJoinPaymentService,
+  type OnchainJoinPaymentService,
+} from '@modules/onchain/payment.service.js'
+import {
+  createOnchainPaymentRepository,
+  type OnchainPaymentRepository,
+} from '@modules/onchain/repository.js'
 import {createGrantSubscriptionAccess} from '@modules/subscriptions/access.js'
 import {
   createSubscriptionIntentRepository,
@@ -62,6 +80,12 @@ export type AppContainer = {
   getUserWallet: ReturnType<typeof createUserWalletFactory>
   settleService: SettleService
   renewalService: RenewalService
+  watchOnly: WatchOnlyClient
+  satsPay: SatsPayClient
+  onchainPayments: OnchainPaymentRepository
+  onchainEnableService: OnchainEnableService
+  onchainJoinPaymentService: OnchainJoinPaymentService
+  completeOnchainJoin: CompleteOnchainJoinService
 }
 
 /**
@@ -150,6 +174,53 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     invoiceExpirySeconds: INVOICE_EXPIRY,
   })
 
+  const watchOnly = createWatchOnlyClient({
+    baseUrl: config.LNBITS_URL,
+    adminKey: config.LNBITS_ADMIN_KEY,
+    log,
+  })
+  const satsPay = createSatsPayClient({
+    baseUrl: config.LNBITS_URL,
+    adminKey: config.LNBITS_ADMIN_KEY,
+    log,
+  })
+  const onchainPayments = createOnchainPaymentRepository(db)
+  const onchainEnableService = createOnchainEnableService({
+    watchOnly,
+    updateChat: (id, data) => chats.update(id, data),
+    network: config.LNBITS_ONCHAIN_NETWORK,
+    log,
+  })
+  const onchainJoinPaymentService = createOnchainJoinPaymentService({
+    onchainPayments,
+    satsPay,
+    host: config.HOST,
+    webhookSecret: config.BOT_WEBHOOK_SECRET,
+    log,
+  })
+  const completeOnchainJoin = createCompleteOnchainJoinService({
+    onchainPayments,
+    getOrCreateJoinIntent: (userId, chatId) =>
+      subscriptionIntents.getOrCreateActive({userId, chatId, kind: 'join'}),
+    createSubscriptionPayment: data => payments.create(data),
+    findSubscriptionPayment: id => payments.findById(id),
+    findSubscriptionPaymentByHash: hash => payments.findByPaymentHash(hash),
+    claimPaidAttempt: (id, claimedAt) => payments.claimPaidAttempt(id, claimedAt),
+    markWinnerCompleted: (id, processedAt) => payments.markWinnerCompleted(id, processedAt),
+    grantAccess,
+    approveChatJoinRequest: (chatId, userId) =>
+      bot.api.approveChatJoinRequest(chatId, userId).then(() => undefined),
+    getChatOrThrow: id => chats.getOrThrow(id),
+    getUserOrThrow: id => users.getOrThrow(id),
+    notifier,
+    editTelegramMessage: async (telegramChatId, telegramMessageId, text) => {
+      await bot.api.editMessageText(telegramChatId, telegramMessageId, text)
+    },
+    log,
+    translate,
+    posthog,
+  })
+
   const container: AppContainer = {
     config,
     log,
@@ -170,6 +241,12 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     getUserWallet,
     settleService,
     renewalService,
+    watchOnly,
+    satsPay,
+    onchainPayments,
+    onchainEnableService,
+    onchainJoinPaymentService,
+    completeOnchainJoin,
   }
 
   setRuntime(container)

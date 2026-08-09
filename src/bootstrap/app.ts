@@ -7,6 +7,7 @@ import {
   extractPaymentHashFromLnbitsWebhook,
   handleLnbitsPaymentWebhook,
 } from '@modules/lnbits-webhook/handle-payment-webhook.js'
+import {handleSatsPayWebhook} from '@modules/onchain/handle-satspay-webhook.js'
 import {registerHandlers} from '@telegram/composition.js'
 
 export type RunningApp = {
@@ -43,6 +44,9 @@ export function createApp(container: AppContainer): RunningApp {
             lnbitsPaymentWebhook: {
               extractPaymentHash: extractPaymentHashFromLnbitsWebhook,
               handle: handleLnbitsPaymentWebhook,
+            },
+            satsPayWebhook: {
+              handle: handleSatsPayWebhook,
             },
           },
           () => {

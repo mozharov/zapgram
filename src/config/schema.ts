@@ -18,6 +18,8 @@ export const envSchema = z.object({
   LNBITS_ADMIN_KEY: z.string().min(1),
   LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
   LNBITS_BEARER_TOKEN: z.string().optional(),
+  /** Network string accepted by Watch-Only / SatsPay (Mainnet | Testnet). */
+  LNBITS_ONCHAIN_NETWORK: z.enum(['Mainnet', 'Testnet']).default('Mainnet'),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
   HOST: z.preprocess(normalizePublicOrigin, z.url()),
   CONFIGURE_BOT: z.stringbool().default(true), // should call configureBot() on startup

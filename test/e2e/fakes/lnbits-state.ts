@@ -62,9 +62,51 @@ export class FakeLnbitsError extends Error {
   }
 }
 
+export type FakeWatchOnlyWallet = {
+  id: string
+  user: string
+  masterpub: string
+  fingerprint: string
+  title: string
+  address_no: number
+  balance: number
+  type: string
+  network: string
+  meta: string
+}
+
+export type FakeSatsPayCharge = {
+  id: string
+  user: string
+  amount: number
+  time: number
+  timestamp: string
+  balance: number
+  pending: number
+  zeroconf: boolean
+  fasttrack: boolean
+  paid: boolean
+  name: string | null
+  description: string | null
+  onchainwallet: string
+  onchainaddress: string
+  lnbitswallet: string | null
+  payment_request: string | null
+  payment_hash: string | null
+  webhook: string | null
+  completelink: string | null
+  completelinktext: string | null
+  extra: string | null
+}
+
 export class LnbitsState {
   readonly wallets: FakeWallet[] = []
   readonly payments: FakePayment[] = []
+  /** Watch-Only extension wallets (on-chain xpub accounts). */
+  readonly watchOnlyWallets: FakeWatchOnlyWallet[] = []
+  /** SatsPay charges (on-chain join invoices). */
+  readonly satsPayCharges: FakeSatsPayCharge[] = []
+  watchOnlyAddressCounter = 0
 
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []
@@ -240,6 +282,16 @@ export class LnbitsState {
         expiresAt: new Date(payment.expiresAt),
       })),
     }
+  }
+
+  /** Mark a SatsPay charge paid (E2E: simulate mempool detection). */
+  markSatsPayChargePaid(chargeId: string, opts?: {balance?: number; txid?: string}): void {
+    const charge = this.satsPayCharges.find(c => c.id === chargeId)
+    if (!charge) throw new Error(`SatsPay charge ${chargeId} not found`)
+    charge.balance = opts?.balance ?? charge.amount
+    charge.pending = 0
+    charge.paid = true
+    if (opts?.txid) charge.extra = JSON.stringify({txids: [opts.txid]})
   }
 
   failNext(match: FakeRequestMatch, failure: FakeFailure): void {

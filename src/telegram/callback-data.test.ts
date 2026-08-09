@@ -3,12 +3,15 @@ import {
   chatChangePriceRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
+  chatOnchainDisableRoute,
+  chatOnchainEnableRoute,
   chatPaidAccessRoute,
   chatPaymentTypeRoute,
   chatRemoveCustomMessageRoute,
   chatRoute,
   chatsPageRoute,
   parameterizedRoutes,
+  payOnchainRoute,
   paySubscriptionRoute,
   subscriptionRenewRoute,
   subscriptionRoute,
@@ -28,7 +31,10 @@ describe('callback-data routes', () => {
       {route: chatCustomMessageRoute, params: {chatId: 5}},
       {route: chatEditCustomMessageRoute, params: {chatId: 5}},
       {route: chatRemoveCustomMessageRoute, params: {chatId: 5}},
+      {route: chatOnchainEnableRoute, params: {chatId: -100}},
+      {route: chatOnchainDisableRoute, params: {chatId: -100}},
       {route: subscriptionsPageRoute, params: {page: 2}},
+      {route: payOnchainRoute, params: {chatId: -100123}},
       {
         route: subscriptionRoute,
         params: {subscriptionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'},
@@ -65,6 +71,6 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(12)
+    expect(parameterizedRoutes).toHaveLength(16)
   })
 })

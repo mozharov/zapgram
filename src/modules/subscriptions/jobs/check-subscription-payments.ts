@@ -1,5 +1,6 @@
 import {captureUserEvent} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
+import {isOnchainPaymentHash} from '@modules/onchain/complete.service.js'
 import {
   countExhaustedSubscriptionPayments,
   countSubscriptionPayments,
@@ -26,6 +27,10 @@ export async function checkSubscriptionPayments(): Promise<void> {
       fetch: (limit, offset) => getSubscriptionPayments(limit, offset),
       process: async payment => {
         try {
+          // Synthetic on-chain attempts use payment_hash `onchain:{chargeId}` — not LNbits LN.
+          // Completion is webhook + check-onchain-charges only.
+          if (isOnchainPaymentHash(payment.paymentHash)) return 'keep'
+
           const data = await getRuntime().masterWallet.lookupPayment(payment.paymentHash)
           if (data.paid) {
             // subscription_settled / subscription_duplicate_refunded fire inside settle.

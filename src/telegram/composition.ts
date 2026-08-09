@@ -2,6 +2,7 @@ import {createConversation} from '@grammyjs/conversations'
 import {register as registerChats} from '@modules/chats/register.js'
 import {changingPrice} from '@modules/chats/telegram/conversations/changing-price.js'
 import {editCustomMessage} from '@modules/chats/telegram/conversations/edit-custom-message.js'
+import {enablingOnchain} from '@modules/chats/telegram/conversations/enabling-onchain.js'
 import {register as registerInvoices} from '@modules/invoices/register.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
@@ -55,6 +56,7 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.use(createConversation(creatingInvoice))
   privateChat.use(createConversation(changingPrice))
   privateChat.use(createConversation(editCustomMessage))
+  privateChat.use(createConversation(enablingOnchain))
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)

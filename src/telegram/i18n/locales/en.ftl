@@ -38,7 +38,11 @@ button =
     .custom-message = 💬 Custom message
     .edit-custom-message = 💬 Edit message
     .remove-custom-message = ❌ Reset to default message
-    
+    .enable-onchain = ⛓ Enable on-chain pay
+    .disable-onchain = 🚫 Disable on-chain pay
+    .pay-onchain = ⛓ Pay on-chain
+    .pay-lightning = ⚡ Pay with Lightning
+
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
@@ -278,8 +282,13 @@ chat = <b>👥 {$title}</b>
     [one_time] one-time
     *[other] monthly
     }</b>
+    On-chain pay: <b>{$onchain ->
+    [on] enabled (fingerprint {$fingerprint})
+    *[other] disabled
+    }</b>
 
     <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
+    <i>On-chain payments go directly to your wallet (zpub/xpub). Access is usually granted soon after the transaction appears on the network.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
     .custom-message = You can change the part of the message that users see when they request to join the chat.
@@ -294,6 +303,80 @@ chat = <b>👥 {$title}</b>
 
 changing-price = <b>₿ Changing the price of paid access...</b>
     .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
+
+enabling-onchain = <b>⛓ Enable on-chain payments</b>
+
+    Paste an <b>account-level</b> public key from Sparrow / BlueWallet / Electrum (watch-only export):
+
+    • <b>zpub</b> — recommended (Native SegWit, bc1q), path <code>m/84'/0'/0'</code>
+    • <b>ypub</b> — Nested SegWit, <code>m/49'/0'/0'</code>
+    • <b>xpub</b> — Legacy, <code>m/44'/0'/0'</code>
+    • Or a full <b>output descriptor</b> from Sparrow (for custom paths)
+
+    <i>Not the wallet root key (depth 0) — export the receive <b>account</b> xpub/zpub.</i>
+
+    Funds go only to addresses from this key. {bot-name} never receives your seed.
+    Paste another key or tap Cancel.
+    .invalid = <b>⚠️ That does not look like a valid account key.</b>
+        Paste a zpub / xpub / ypub (or descriptor). Check you copied the full string.
+        You can try again or tap Cancel.
+    .nonstandard-depth = <b>⚠️ This key is not an account-level xpub/zpub.</b>
+        LNbits only accepts bare keys at BIP44/49/84 account depth (<code>m/…/0'</code>).
+
+        In Sparrow: select the account → export <b>xpub</b> / <b>zpub</b> for that account, or export the <b>output descriptor</b>.
+        You can paste another key or tap Cancel.
+    .network-mismatch = <b>⚠️ Key network does not match this bot.</b>
+        Use a Mainnet zpub/xpub on Mainnet, or Testnet <code>tpub</code>/<code>vpub</code> on Testnet.
+        You can paste another key or tap Cancel.
+    .failed = <b>⚠️ Could not enable on-chain payments.</b>
+        Check the key and try again, or tap Cancel. If it still fails, contact support.
+    .completed = <b>✅ On-chain pay enabled.</b>
+        Fingerprint: <code>{$fingerprint}</code>
+        Compare it with your wallet to confirm the correct account.
+
+onchain-invoice =
+    .created = <b>⛓ On-chain payment for "{$title}"</b>
+
+        Send <b>at least {$price} sats</b> to:
+
+        <code>{$address}</code>
+
+        Subscription type: <b>{$type ->
+        [one_time] permanent access
+        *[other] one month access
+        }</b>
+
+        <i>Any amount above {$price} sats is a donation to the community owner.</i>
+
+        {$remaining}
+    .paid = <b>✅ Access to the community "{$title}" received.</b>
+
+        {$type ->
+        [one_time] <i></i>
+        *[other] <i>Monthly access renews via Lightning from your {bot-name} balance when auto-renew is on.</i>
+            <i>To get expiry reminders, open the bot and press /start.</i>
+        }
+    .disabled = On-chain pay is not available for this chat.
+    .create-failed = Could not create an on-chain payment. Please try again later.
+    .expired = <b>⚠️ This on-chain payment request has expired.</b>
+        Tap <b>Pay on-chain</b> again (or send a new join request) for a fresh address.
+    .grace = <b>⚠️ The time to pay this address has ended.</b>
+        If you already sent the transaction, we still watch for a while and will grant access when it appears.
+        Otherwise tap <b>Pay on-chain</b> again for a new address.
+
+new-onchain-subscription-payment = <b>⛓ New on-chain subscription payment!</b>
+
+    User <b>{$username}</b> paid on-chain for access to <b>"{$title}"</b>.
+
+    Subscription type: <b>{$type ->
+    [one_time] one-time (permanent access)
+    *[other] monthly
+    }</b>
+
+    Amount: <b>{$price} sats</b>
+    Address: <code>{$address}</code>
+
+    <i>Funds are already on your on-chain wallet (no Lightning fee split).</i>
 
 subscription-invoice = 
     .default-message = <b>🔒 Access to private community "{$title}"</b>
@@ -330,7 +413,7 @@ subscription-invoice =
     {$type ->
     [one_time] <i></i>
     *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
-        <i>For control of automatic debits, use the /subscriptions command.</i>
+        <i>To get expiry reminders and manage auto-renew, open the bot (/start) and use /subscriptions.</i>
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.

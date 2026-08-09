@@ -4,6 +4,7 @@ import {
   chatChangePriceRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
+  chatOnchainEnableRoute,
   chatPaidAccessRoute,
   chatPaymentTypeRoute,
   chatRemoveCustomMessageRoute,
@@ -273,6 +274,7 @@ for (const cardCase of cardCases) {
         paymentType: finalChat.paymentType === 'monthly' ? 'one_time' : 'monthly',
       }),
       chatChangePriceRoute.build({chatId: CHAT_GROUP}),
+      chatOnchainEnableRoute.build({chatId: CHAT_GROUP}),
       chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
       chatsPageRoute.build({page: 1}),
     ])

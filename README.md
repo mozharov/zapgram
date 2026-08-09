@@ -86,26 +86,28 @@ Make the bot an admin (delete messages is enough) so owner-bound tips work clean
 
 ### Paid access to private chats
 
-Turn a private group or channel into a Lightning-gated community.
+Turn a private group or channel into a sat-gated community — **Lightning and/or on-chain Bitcoin**.
 
 **For owners**
 
 1. Add `@zap_gram_bot` with **invite users** and **ban users** rights
 2. Open `/chats` → enable paid access
 3. Set price (sats), payment type (**one-time** permanent access or **monthly**), optional custom join message (RU + EN)
+4. Optional: **Enable on-chain pay** and paste an account-level **zpub / xpub** (receive account). Members can then pay on-chain; funds go to addresses derived from your key. Platform Lightning fee does **not** apply to the on-chain rail.
 
 **For members**
 
 1. Request to join the chat
-2. Receive a Lightning invoice (and a one-tap pay option if your ZapGram or NWC balance covers it)
-3. Pay → access is granted immediately
+2. Receive a Lightning invoice (and one-tap pay if your ZapGram or NWC balance covers it), and optionally **Pay on-chain** when the owner enabled it
+3. Pay either rail → access is granted (on-chain usually after the tx appears on the network)
 
 **Subscriptions**
 
-- Monthly renewals can auto-debit from the ZapGram wallet
+- Monthly renewals can auto-debit from the ZapGram wallet (**Lightning**)
 - Manage auto-renew and status via `/subscriptions`
 - Manual renewal invoices when auto-renew is off or the balance is short
-- Owners are paid automatically (minus a small platform fee); duplicate payments are refunded safely
+- Lightning joins: owners are paid automatically (minus a small platform fee); duplicate payments are refunded safely
+- On-chain joins: sats go straight to the owner’s wallet (xpub); no Lightning fee split
 
 ### Language
 
@@ -171,6 +173,20 @@ bun run ci
 # local bot (needs .env; HOST must be a public HTTPS URL)
 bun run start:dev
 ```
+
+### On-chain pay (self-host / ops)
+
+Requires LNbits extensions **Watch Only** + **SatsPay** on the same instance as `LNBITS_URL`.
+
+| Setting | Notes |
+|---|---|
+| SatsPay `webhook_method` | **POST** (default GET breaks ZapGram) |
+| SatsPay / Watch Only network | Match `LNBITS_ONCHAIN_NETWORK` (`Mainnet` or `Testnet`) |
+| Mempool URL | Mainnet: `https://mempool.space` · Testnet: `https://mempool.space/testnet` |
+| `HOST` | Public HTTPS origin of the bot (SatsPay POSTs `${HOST}/satspay/webhook/${BOT_WEBHOOK_SECRET}`) |
+| `LNBITS_ADMIN_KEY` | Bot wallet admin key (creates WO wallets under that user) |
+
+Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-chain in `/chats`, smoke: paste account zpub → member join → Pay on-chain → pay ≥ price → grant.
 
 ---
 

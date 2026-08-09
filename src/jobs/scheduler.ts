@@ -2,6 +2,7 @@ import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
+import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
@@ -49,6 +50,12 @@ export function defaultJobDefinitions(): JobDefinition[] {
       cronTime: '0 */3 * * * *',
       runOnInit: false,
       tick: checkSubscriptionPayments,
+    },
+    {
+      name: 'check-onchain-charges',
+      cronTime: '0 */3 * * * *',
+      runOnInit: false,
+      tick: checkOnchainCharges,
     },
     {
       name: 'check-expired-subscriptions',

@@ -6,6 +6,7 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
+import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
@@ -31,6 +32,7 @@ export type E2E = {
     pendingInvoices(): Promise<void>
     expiredInvoices(): Promise<void>
     subscriptionPayments(): Promise<void>
+    onchainCharges(): Promise<void>
     expiredSubscriptions(): Promise<void>
     expiringSubscriptions(): Promise<void>
   }
@@ -103,6 +105,7 @@ export async function createE2E(opts?: {
       pendingInvoices: checkPendingInvoices,
       expiredInvoices: deleteExpiredInvoices,
       subscriptionPayments: checkSubscriptionPayments,
+      onchainCharges: checkOnchainCharges,
       expiredSubscriptions: checkExpiredSubscriptions,
       expiringSubscriptions: processExpiringSubscriptions,
     },

@@ -6,6 +6,8 @@ Canonical agent instructions.
 
 Local agent artifacts (marketing context, copy drafts, plans, design briefs, audit notes) live under **`.agents/`** (gitignored). Prefer `.agents/` for anything the agent reads or writes as working material.
 
+**On-chain paid chat MVP:** see `.agents/onchain-paid-chat-mvp-plan.md` and `.agents/lnbits-satspay-watchonly-api.md`. Live-validated on dev; E2E `onchain-join.e2e.test.ts` covers enable → charge → webhook/cron → grant.
+
 ## Stack
 
 Bun 1.3, TypeScript 7, grammY, Elysia, Drizzle + bun:sqlite, LNbits, pino, Biome.

@@ -48,6 +48,9 @@ const writeOperations = [
   'subscription_payments.insert',
   'subscription_payments.update',
   'subscription_payments.delete',
+  'onchain_chat_payments.insert',
+  'onchain_chat_payments.update',
+  'onchain_chat_payments.delete',
 ] as const
 
 const inventory: Record<Category, readonly string[]> = {

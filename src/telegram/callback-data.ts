@@ -111,6 +111,20 @@ export const chatRemoveCustomMessageRoute = defineCallback(
   ({chatId}) => `chat:${chatId}:remove-custom-message`,
 )
 
+export const chatOnchainEnableRoute = defineCallback(
+  'chat-onchain-enable',
+  /^chat:(-?\d+):onchain-enable$/,
+  match => ({chatId: parseInt(requireGroup(match, 1, 'chat-onchain-enable'), 10)}),
+  ({chatId}) => `chat:${chatId}:onchain-enable`,
+)
+
+export const chatOnchainDisableRoute = defineCallback(
+  'chat-onchain-disable',
+  /^chat:(-?\d+):onchain-disable$/,
+  match => ({chatId: parseInt(requireGroup(match, 1, 'chat-onchain-disable'), 10)}),
+  ({chatId}) => `chat:${chatId}:onchain-disable`,
+)
+
 // --- Subscriptions ---
 
 export const subscriptionsPageRoute = defineCallback(
@@ -150,6 +164,22 @@ export const paySubscriptionRoute = defineCallback(
   ({paymentId, from}) => `pay-sub:${paymentId}:${from}`,
 )
 
+/** Member chooses on-chain rail for a paid chat join. */
+export const payOnchainRoute = defineCallback(
+  'pay-onchain',
+  /^pay-onchain:(-?\d+)$/,
+  match => ({chatId: parseInt(requireGroup(match, 1, 'pay-onchain'), 10)}),
+  ({chatId}) => `pay-onchain:${chatId}`,
+)
+
+/** Member switches join invoice view back to Lightning from on-chain. */
+export const payLightningRoute = defineCallback(
+  'pay-lightning',
+  /^pay-lightning:(-?\d+)$/,
+  match => ({chatId: parseInt(requireGroup(match, 1, 'pay-lightning'), 10)}),
+  ({chatId}) => `pay-lightning:${chatId}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -160,10 +190,14 @@ export const parameterizedRoutes = [
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
   chatRemoveCustomMessageRoute,
+  chatOnchainEnableRoute,
+  chatOnchainDisableRoute,
   subscriptionsPageRoute,
   subscriptionRoute,
   subscriptionRenewRoute,
   paySubscriptionRoute,
+  payOnchainRoute,
+  payLightningRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */
