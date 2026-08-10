@@ -253,7 +253,7 @@ test('a group tip with nwc_tips pays through NWC and leaves the sender LNbits ba
 
 // --- Subscriptions via NWC ---
 
-test('a join invoice offers the NWC button when the NWC balance covers the price', async () => {
+test('a join chooser offers the balance button when the NWC balance covers the price', async () => {
   await seedUser(e2e, {id: OWNER, username: 'chat_owner', firstName: 'Chat Owner'})
   await connectNwc()
   await seedChat(e2e, {
@@ -275,23 +275,19 @@ test('a join invoice offers the NWC button when the NWC balance covers the price
         }),
       ),
     {
-      db: {
-        subscriptionIntents: {added: 1},
-        subscriptionPayments: {added: 1},
-      },
-      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-      telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
     },
   )
 
   const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
-  expect(callbacks.some(data => data.endsWith(':nwc'))).toBe(true)
+  expect(callbacks).toContain(`pay-join-balance:${CHAT_GROUP}:nwc`)
+  expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expect(callbacks.some(data => data.endsWith(':wallet'))).toBe(false)
   expect(nwcCalls.some(call => call.method === 'getBalance')).toBe(true)
   expectNoErrors(e2e.logs)
 })
 
-test('paying a join invoice via NWC settles the master invoice without debiting the user', async () => {
+test('paying a join via NWC balance settles the master invoice without debiting the user', async () => {
   await seedUser(e2e, {id: OWNER, username: 'chat_owner', firstName: 'Chat Owner'})
   await connectNwc()
   await seedChat(e2e, {
@@ -309,14 +305,20 @@ test('paying a join invoice via NWC settles the master invoice without debiting 
       from: {id: USER_A, username: 'user_a', language_code: 'en'},
     }),
   )
-  const nwcPayData = callbackDataOf(e2e.tg.last('sendMessage')).find(data => data.endsWith(':nwc'))
-  if (!nwcPayData) throw new Error('Expected an NWC pay-subscription button')
+  const balancePayData = callbackDataOf(e2e.tg.last('sendMessage')).find(
+    data => data === `pay-join-balance:${CHAT_GROUP}:nwc`,
+  )
+  if (!balancePayData) throw new Error('Expected a pay-join-balance NWC button')
 
   const userBefore = internalBalanceMsat(USER_A)
   const masterBefore = masterBalanceMsat()
   nwcCalls.length = 0
 
-  await expectDelta(e2e, () => e2e.send(privateCallback(nwcPayData)), {
+  await expectDelta(e2e, () => e2e.send(privateCallback(balancePayData)), {
+    db: {
+      subscriptionIntents: {added: 1},
+      subscriptionPayments: {added: 1},
+    },
     lnbits: {
       balances: {'master wallet': PRICE},
       // Unpaid master invoice flips to paid — external money, no outgoing LNbits leg.
@@ -324,6 +326,7 @@ test('paying a join invoice via NWC settles the master invoice without debiting 
     },
     telegram: [
       {method: 'deleteMessage', to: USER_A},
+      {method: 'answerCallbackQuery'},
       {method: 'sendMessage', to: USER_A, text: /Payment completed/},
     ],
   })
@@ -364,6 +367,7 @@ test('an insufficient NWC balance does not offer the NWC pay button', async () =
 
   const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
   expect(callbacks.some(data => data.endsWith(':nwc'))).toBe(false)
+  expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 

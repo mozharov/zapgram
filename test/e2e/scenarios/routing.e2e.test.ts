@@ -345,6 +345,13 @@ const parameterizedCases: {
     lnbits: {payments: [{out: false, sats: 1000, times: 1}]},
   },
   {
+    route: 'pay-join-balance',
+    data: ({chat}) => `pay-join-balance:${chat.id}:wallet`,
+    // No balance — answers insufficient and does not mint.
+    methods: ['answerCallbackQuery'],
+    text: /.*/,
+  },
+  {
     route: 'subscriptions-page',
     data: () => 'subscriptions:1',
     methods: ['editMessageText'],
@@ -463,7 +470,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(45)
+  expect(registry).toHaveLength(46)
   expect(covered).toEqual(registry)
 })
 

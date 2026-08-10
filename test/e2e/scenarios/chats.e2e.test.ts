@@ -504,22 +504,6 @@ for (const customJoin of [
           }),
         ),
       {
-        db: {
-          subscriptionIntents: {added: 1},
-          subscriptionPayments: {
-            added: 1,
-            match: rows => {
-              expect(rows[0]?.after).toMatchObject({
-                userId: USER_B,
-                chatId: CHAT_GROUP,
-                price: CHAT_PRICE,
-                subscriptionType: 'one_time',
-                kind: 'join',
-              })
-            },
-          },
-        },
-        lnbits: {payments: [{out: false, sats: CHAT_PRICE, times: 1}]},
         telegram: [{method: 'sendMessage', to: USER_B, text: customJoin.selected}],
       },
     )
@@ -527,6 +511,8 @@ for (const customJoin of [
     const notification = String(e2e.tg.last('sendMessage')?.text)
     expect(notification).not.toContain(customJoin.other)
     expect(notification).not.toContain('Access to private community')
+    expect(notification).toMatch(/Choose a payment method|Выбери способ оплаты/)
+    expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
     expectLedgerBalanced(beforeJoin, await snapshot(e2e))
     expectNoErrors(e2e.logs)
   })
@@ -575,18 +561,16 @@ test('removing a custom message restores the default join copy', async () => {
         }),
       ),
     {
-      db: {
-        subscriptionIntents: {added: 1},
-        subscriptionPayments: {added: 1},
-      },
-      lnbits: {payments: [{out: false, sats: CHAT_PRICE, times: 1}]},
       telegram: [
         {method: 'sendMessage', to: USER_B, text: /Access to private community "E2E paid chat"/},
       ],
     },
   )
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).not.toContain('Old custom welcome')
+  const joinText = String(e2e.tg.last('sendMessage')?.text)
+  expect(joinText).not.toContain('Old custom welcome')
+  expect(joinText).toMatch(/Choose a payment method/)
+  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
   expectLedgerBalanced(beforeJoin, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })

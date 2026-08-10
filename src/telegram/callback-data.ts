@@ -172,12 +172,28 @@ export const payOnchainRoute = defineCallback(
   ({chatId}) => `pay-onchain:${chatId}`,
 )
 
-/** Member switches join invoice view back to Lightning from on-chain. */
+/** Member switches join invoice view back to Lightning from on-chain / chooser. */
 export const payLightningRoute = defineCallback(
   'pay-lightning',
   /^pay-lightning:(-?\d+)$/,
   match => ({chatId: parseInt(requireGroup(match, 1, 'pay-lightning'), 10)}),
   ({chatId}) => `pay-lightning:${chatId}`,
+)
+
+/**
+ * Pay for join from a specific balance rail without showing an invoice first.
+ * Invoice is minted and paid inside the handler (chooser has no payment id yet).
+ */
+export const payJoinBalanceRoute = defineCallback(
+  'pay-join-balance',
+  /^pay-join-balance:(-?\d+):(wallet|nwc)$/,
+  match => {
+    const chatId = parseInt(requireGroup(match, 1, 'pay-join-balance'), 10)
+    const from = requireGroup(match, 2, 'pay-join-balance')
+    if (from !== 'wallet' && from !== 'nwc') throw new Error('Invalid pay-join-balance source')
+    return {chatId, from: from as 'wallet' | 'nwc'}
+  },
+  ({chatId, from}) => `pay-join-balance:${chatId}:${from}`,
 )
 
 // --- Donations ---
@@ -253,6 +269,7 @@ export const parameterizedRoutes = [
   paySubscriptionRoute,
   payOnchainRoute,
   payLightningRoute,
+  payJoinBalanceRoute,
   donationPercentRoute,
   donationScopeRoute,
   donateAmountRoute,

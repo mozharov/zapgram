@@ -1,6 +1,6 @@
-import {satsToMsats} from '@core/money/sats.js'
 import {getAccessibleChat} from '@modules/chats/repository.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
+import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payLightningRoute} from '@telegram/callback-data.js'
@@ -9,7 +9,10 @@ import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import type {CallbackQueryContext} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
-/** Restore Lightning join invoice on the same message (from on-chain view). */
+/**
+ * Show Lightning join invoice on the same message (from chooser or on-chain view).
+ * Always edits — join-request DMs cannot always receive a new bot message.
+ */
 export const payLightningCallback = async (
   ctx: CallbackQueryContext<BotContext>,
 ): Promise<void> => {
@@ -39,12 +42,12 @@ export const payLightningCallback = async (
     return
   }
 
-  const priceMsats = satsToMsats(chat.price)
+  const balanceAvailability = await getJoinBalanceAvailability(ctx, chat.price)
   const keyboard = buildSubscriptionPaymentKeyboard(ctx.t, {
-    payNWC: ((await ctx.user.nwc?.getBalance()) ?? 0) >= priceMsats,
-    payWallet: ctx.user.wallet.balance >= priceMsats,
     paymentId: invoice.attempt.id,
     onchainChatId: chatAllowsOnchain(chat) ? chat.id : undefined,
+    balanceAvailability,
+    chatIdForBalancePay: chat.id,
   })
 
   const locale = await ctx.i18n.getLocale()

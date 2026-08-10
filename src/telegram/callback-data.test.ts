@@ -18,6 +18,7 @@ import {
   donationScopeRoute,
   featureFundAmountRoute,
   parameterizedRoutes,
+  payJoinBalanceRoute,
   payLightningRoute,
   payOnchainRoute,
   paySubscriptionRoute,
@@ -71,6 +72,14 @@ describe('callback-data routes', () => {
       {route: donateAmountRoute, params: {amountSats: 1000}},
       {route: donateMonthlyAmountRoute, params: {amountSats: 100}},
       {route: payLightningRoute, params: {chatId: -100}},
+      {
+        route: payJoinBalanceRoute,
+        params: {chatId: -100123, from: 'wallet' as const},
+      },
+      {
+        route: payJoinBalanceRoute,
+        params: {chatId: -100123, from: 'nwc' as const},
+      },
       {route: featureFundAmountRoute, params: {amountSats: 500}},
       {route: broadcastLocaleRoute, params: {locale: 'en' as const}},
       {route: broadcastLocaleRoute, params: {locale: 'ru' as const}},
@@ -90,6 +99,6 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(23)
+    expect(parameterizedRoutes).toHaveLength(24)
   })
 })

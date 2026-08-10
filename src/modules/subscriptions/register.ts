@@ -1,4 +1,5 @@
 import {
+  payJoinBalanceRoute,
   payLightningRoute,
   payOnchainRoute,
   paySubscriptionRoute,
@@ -11,6 +12,7 @@ import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
 import type {Composer} from 'grammy'
 import {chatJoinRequestHandler} from './telegram/handlers/chat-join-request.js'
+import {payJoinBalanceCallback} from './telegram/handlers/pay-join-balance.js'
 import {payLightningCallback} from './telegram/handlers/pay-lightning.js'
 import {payOnchainCallback} from './telegram/handlers/pay-onchain.js'
 import {paySubscriptionCallback} from './telegram/handlers/pay-subscription.js'
@@ -31,6 +33,7 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.callbackQuery(subscriptionRoute.pattern, subscriptionCallback)
   privateChat.callbackQuery(subscriptionRenewRoute.pattern, toggleAutoRenewCallback)
   privateChat.callbackQuery(paySubscriptionRoute.pattern, paySubscriptionCallback)
+  privateChat.callbackQuery(payJoinBalanceRoute.pattern, payJoinBalanceCallback)
   privateChat.callbackQuery(payOnchainRoute.pattern, payOnchainCallback)
   privateChat.callbackQuery(payLightningRoute.pattern, payLightningCallback)
 }

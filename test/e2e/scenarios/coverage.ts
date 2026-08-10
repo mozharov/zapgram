@@ -35,14 +35,12 @@ export const scenarioCoverage = {
       'chats.update',
       'conversations.insert',
       'conversations.delete',
-      'subscription_intents.insert',
-      'subscription_payments.insert',
     ],
     jobs: [],
     errors: [],
   },
   errors: {
-    routes: ['pay-subscription', 'subscription'],
+    routes: ['pay-subscription', 'subscription', 'pay-lightning'],
     commands: ['/wallet'],
     updates: ['message', 'callback_query', 'hears', 'my_chat_member', 'chat_join_request'],
     writes: ['users.insert', 'users.update'],
@@ -270,7 +268,13 @@ export const scenarioCoverage = {
     errors: [],
   },
   nwc: {
-    routes: ['connect-nwc', 'disconnect-nwc', 'toggle-nwc-tips', 'pay-subscription'],
+    routes: [
+      'connect-nwc',
+      'disconnect-nwc',
+      'toggle-nwc-tips',
+      'pay-subscription',
+      'pay-join-balance',
+    ],
     commands: ['/wallet', '/settings'],
     updates: ['message', 'callback_query', 'hears', 'chat_join_request'],
     writes: [
@@ -336,9 +340,9 @@ export const scenarioCoverage = {
     errors: ['from_bot', 'not_found'],
   },
   'subscriptions-join': {
-    routes: [],
+    routes: ['pay-lightning', 'pay-join-balance'],
     commands: [],
-    updates: ['chat_join_request'],
+    updates: ['chat_join_request', 'callback_query'],
     writes: [
       'users.insert',
       'subscription_intents.insert',

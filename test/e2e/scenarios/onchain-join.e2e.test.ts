@@ -57,19 +57,21 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    db: {
-      subscriptionIntents: {added: 1},
-      subscriptionPayments: {added: 1},
-    },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
   })
 
   const joinMessage = e2e.tg.last('sendMessage')
-  if (!joinMessage?.reply_markup) throw new Error('join invoice missing markup')
-  const onchainData = callbackDatas(joinMessage).find(d => d.startsWith('pay-onchain:'))
-  expect(onchainData).toBe(payOnchainRoute.build({chatId: CHAT_GROUP}))
-  if (!onchainData) throw new Error('pay-onchain callback missing')
+  if (!joinMessage?.reply_markup) throw new Error('join chooser missing markup')
+  expect(callbackDatas(joinMessage)).toEqual([
+    payLightningRoute.build({chatId: CHAT_GROUP}),
+    payOnchainRoute.build({chatId: CHAT_GROUP}),
+  ])
+  // Lightning + Bitcoin share one row; no balance button without funds.
+  const markup = joinMessage.reply_markup as {inline_keyboard?: {text?: string}[][]}
+  expect(markup.inline_keyboard?.map(row => row.map(b => b.text))).toEqual([
+    ['⚡ Lightning', '⛓ Bitcoin'],
+  ])
+  const onchainData = payOnchainRoute.build({chatId: CHAT_GROUP})
 
   await expectDelta(
     e2e,
@@ -136,7 +138,7 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
     {
       db: {
         onchainChatPayments: {changed: 1},
-        subscriptionIntents: {changed: 1},
+        subscriptionIntents: {added: 1},
         subscriptionPayments: {added: 1},
         subscriptions: {added: 1},
       },
@@ -183,7 +185,7 @@ test('cron poll grants when charge is paid without webhook', async () => {
   await expectDelta(e2e, () => e2e.jobs.onchainCharges(), {
     db: {
       onchainChatPayments: {changed: 1},
-      subscriptionIntents: {changed: 1},
+      subscriptionIntents: {added: 1},
       subscriptionPayments: {added: 1},
       subscriptions: {added: 1},
     },
@@ -198,11 +200,11 @@ test('cron poll grants when charge is paid without webhook', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('pay-lightning restores the LN invoice on the same message', async () => {
+test('pay-lightning shows the LN invoice on the same message after on-chain', async () => {
   await seedOnchainChat()
   await e2e.send(joinUpdate())
   const joinMessage = e2e.tg.last('sendMessage')
-  const lnText = String(joinMessage?.text)
+  expect(String(joinMessage?.text)).not.toContain('lnbc')
   await e2e.send(
     privateCallback(payOnchainRoute.build({chatId: CHAT_GROUP}), {
       from: {id: USER_A},
@@ -222,7 +224,7 @@ test('pay-lightning restores the LN invoice on the same message', async () => {
   expect(lnPayments).toHaveLength(1)
   const lnPayment = lnPayments[0]
   if (!lnPayment) throw new Error('LN payment missing')
-  expect(lnText).toContain(lnPayment.paymentRequest)
+  expect(String(restored?.text)).toContain(lnPayment.paymentRequest)
   expectNoErrors(e2e.logs)
 })
 

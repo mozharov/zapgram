@@ -10,6 +10,7 @@ import {
   chatRemoveCustomMessageRoute,
   chatRoute,
   chatsPageRoute,
+  payLightningRoute,
   paySubscriptionRoute,
   staticCallback,
   subscriptionRenewRoute,
@@ -365,13 +366,30 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   })
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    db: {
-      subscriptionIntents: {added: 1},
-      subscriptionPayments: {added: 1},
-    },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
   })
+  const rejoinChooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: subscriberProfile(),
+          messageId: Number(rejoinChooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
+      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+      telegram: [
+        {method: 'editMessageText', text: /Access to private community/},
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
 
   expect(await e2e.db.query.subscriptionsTable.findMany()).toEqual([])
   expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual(
@@ -557,12 +575,31 @@ async function requestJoin(
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
     db: {
       ...(options.userAdded === false ? {} : {users: {added: 1}}),
-      subscriptionIntents: {added: 1},
-      subscriptionPayments: {added: 1},
     },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
   })
+  const chooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: subscriberProfile(),
+          messageId: Number(chooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
+      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+      telegram: [
+        {method: 'editMessageText', text: /Access to private community/},
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
   const payment = await onlySubscriptionPayment()
   expect(payment).toMatchObject({
     userId: USER_A,

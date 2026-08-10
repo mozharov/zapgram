@@ -250,7 +250,7 @@ test('disabled auto-renewal creates one exact manual invoice and one wallet butt
   expect(callbackDataOf(photo)).toEqual([
     paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
   ])
-  expect(buttonTextsOf(photo)).toEqual(['Оплатить с баланса ZapGram'])
+  expect(buttonTextsOf(photo)).toEqual(['💰 С баланса ZapGram'])
   const requests = paymentRequestsSince(requestMark)
   expect(requests).toHaveLength(1)
   expect(requests[0]?.body).toMatchObject({

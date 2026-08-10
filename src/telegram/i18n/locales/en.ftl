@@ -33,8 +33,8 @@ button =
     .change-price = Change price
     .enable-paid-access = Enable paid access
     .disable-paid-access = 🚫 Disable paid access
-    .pay-subcription-with-wallet = Pay with {bot-name} balance
-    .pay-subcription-with-nwc = Pay with NWC
+    .pay-subcription-with-wallet = 💰 Pay with {bot-name} balance
+    .pay-subcription-with-nwc = 💰 Pay with NWC
     .enable-auto-renew = 🔄 Enable auto-renewal
     .disable-auto-renew = 🚫 Disable auto-renewal
     .custom-message = 💬 Custom message
@@ -42,8 +42,8 @@ button =
     .remove-custom-message = ❌ Reset to default message
     .enable-onchain = ⛓ Enable on-chain pay
     .disable-onchain = 🚫 Disable on-chain pay
-    .pay-onchain = ⛓ Pay on-chain
-    .pay-lightning = ⚡ Pay with Lightning
+    .pay-onchain = ⛓ Bitcoin
+    .pay-lightning = ⚡ Lightning
     .donation-settings = ⚡️ Auto % on tips
     .donate = 💚 Support project
     .donate-amount = {$sats} sats
@@ -509,6 +509,15 @@ new-onchain-subscription-payment = <b>⛓ New on-chain subscription payment!</b>
 
 subscription-invoice = 
     .default-message = <b>🔒 Access to private community "{$title}"</b>
+    .choose-method = {$message}
+
+    Price: <b>{$price} sats{$usdSuffix}</b>
+    Subscription type: <b>{$type ->
+    [one_time] permanent access
+    *[other] one month access
+    }</b>
+
+    Choose a payment method:
     .created = {$message}
 
     Price: <b>{$price} sats{$usdSuffix}</b>
@@ -523,6 +532,7 @@ subscription-invoice =
     <b>After successful payment, I will immediately grant you access to the community.</b>
 
     {$remaining}
+    .insufficient-balance = ⚠️ Not enough balance to pay for access.
     .remaining-time = <i>The invoice is valid for another <b>{$hours ->
         [0] {$minutes ->
             [one] {$minutes} minute

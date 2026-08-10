@@ -33,8 +33,8 @@ button =
     .change-price = Изменить цену
     .enable-paid-access = Включить платный доступ
     .disable-paid-access = 🚫 Отключить платный доступ
-    .pay-subcription-with-wallet = Оплатить с баланса {bot-name}
-    .pay-subcription-with-nwc = Оплатить через NWC
+    .pay-subcription-with-wallet = 💰 С баланса {bot-name}
+    .pay-subcription-with-nwc = 💰 Через NWC
     .enable-auto-renew = 🔄 Включить автопродление
     .disable-auto-renew = 🚫 Отключить автопродление
     .custom-message = 💬 Пользовательское сообщение
@@ -42,8 +42,8 @@ button =
     .remove-custom-message = ❌ Вернуть сообщение по умолчанию
     .enable-onchain = ⛓ Включить on-chain оплату
     .disable-onchain = 🚫 Выключить on-chain оплату
-    .pay-onchain = ⛓ Оплатить on-chain
-    .pay-lightning = ⚡ Оплатить Lightning
+    .pay-onchain = ⛓ Биткоин
+    .pay-lightning = ⚡ Лайтнинг
     .donation-settings = ⚡️ Авто % с tips
     .donate = 💚 Поддержать проект
     .donate-amount = {$sats} сат
@@ -509,6 +509,15 @@ new-onchain-subscription-payment = <b>⛓ Новый on-chain платёж за 
 
 subscription-invoice = 
     .default-message = <b>🔒 Доступ к закрытому сообществу "{$title}"</b>
+    .choose-method = {$message}
+
+    Цена: <b>{$price} сат{$usdSuffix}</b>
+    Тип подписки: <b>{$type ->
+    [one_time] вечный доступ
+    *[other] доступ на месяц
+    }</b>
+
+    Выбери способ оплаты:
     .created = {$message}
 
     Цена: <b>{$price} сат{$usdSuffix}</b>
@@ -523,6 +532,7 @@ subscription-invoice =
     <b>После успешной оплаты, я сразу предоставу тебе доступ к сообществу.</b>
 
     {$remaining}
+    .insufficient-balance = ⚠️ Недостаточно баланса для оплаты доступа.
     .remaining-time = <i>Счёт действителен ещё <b>{$hours ->
         [0] {$minutes ->
             [one] {$minutes} минуту

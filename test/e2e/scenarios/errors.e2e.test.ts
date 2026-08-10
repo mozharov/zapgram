@@ -6,7 +6,7 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {chatsTable, usersTable} from '@infra/db/schema.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
-import {paySubscriptionRoute, subscriptionRoute} from '@telegram/callback-data.js'
+import {payLightningRoute, paySubscriptionRoute, subscriptionRoute} from '@telegram/callback-data.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {eq} from 'drizzle-orm'
@@ -153,8 +153,14 @@ test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', 
   await expectMoneyUnchanged(before)
 })
 
-test('invoice_generation_failed is DMed when a join invoice cannot be minted', async () => {
+test('invoice_generation_failed is DMed when a join Lightning invoice cannot be minted', async () => {
   await seedOwnerAndChat()
+  await e2e.send(
+    chatJoinRequest('supergroup', {
+      from: {id: USER_A, username: 'user_a', first_name: 'User A', language_code: 'en'},
+    }),
+  )
+  const chooser = e2e.tg.last('sendMessage')
   e2e.ln.state.failNext(
     {
       method: 'POST',
@@ -165,8 +171,9 @@ test('invoice_generation_failed is DMed when a join invoice cannot be minted', a
   )
 
   await e2e.send(
-    chatJoinRequest('supergroup', {
+    privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
       from: {id: USER_A, username: 'user_a', first_name: 'User A', language_code: 'en'},
+      messageId: Number(chooser?.message_id ?? 1),
     }),
   )
 

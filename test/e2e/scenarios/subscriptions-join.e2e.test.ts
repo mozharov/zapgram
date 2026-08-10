@@ -1,13 +1,13 @@
 import {afterEach, beforeEach, expect, setSystemTime, test} from 'bun:test'
 import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {SubscriptionPayment} from '@infra/db/types.js'
-import {paySubscriptionRoute} from '@telegram/callback-data.js'
+import {payJoinBalanceRoute, payLightningRoute} from '@telegram/callback-data.js'
 import {eq} from 'drizzle-orm'
 import {expectNoErrors, expectPayoutsExactly, expectWorldUnchanged} from '../asserts.js'
 import {decodeMintedInvoice} from '../fakes/bolt11.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
-import {chatJoinRequest} from '../fixtures/updates.js'
+import {chatJoinRequest, privateCallback} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -15,12 +15,8 @@ import {scenarioCoverage} from './coverage.js'
 export const COVERS = scenarioCoverage['subscriptions-join']
 
 /**
- * The join half of paid subscriptions: one request either receives one real invoice, is approved
- * from an existing subscription, or is ignored because paid access is unavailable.
- *
- * A join invoice is deliberately still unpaid here. It must preserve the ledger and produce zero
- * payouts; charging, granting access and distributing the payment belong to the settle scenarios.
- * NWC-positive branches need the isolated NWC transport used by the dedicated NWC suite.
+ * Join paid chats: chooser first (no invoice mint), then Lightning / balance / (optional) Bitcoin.
+ * Invoice mint and settle still belong to Lightning path + settle scenarios.
  */
 
 const PRICE = 1000
@@ -42,7 +38,6 @@ type JoinInvoiceOptions = {
   walletMsat?: number
   userChatId?: number
   text: RegExp
-  telegramFailure?: boolean
 }
 
 let e2e: E2E
@@ -58,30 +53,45 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
-test('a fresh join request creates one linked one-time payment and no pay buttons', async () => {
+test('a fresh join request sends a method chooser without minting an invoice', async () => {
+  const {chooser} = await issueJoinChooser({
+    walletMsat: (PRICE - 1) * 1000,
+    text: /Access to private community "E2E paid chat"/,
+  })
+
+  expect(String(chooser.text)).toMatch(/Subscription type: <b>permanent access<\/b>/)
+  expect(String(chooser.text)).toMatch(/Choose a payment method/)
+  expect(String(chooser.text)).not.toMatch(/lnbc/)
+  expect(callbackDataOf(chooser)).toEqual([payLightningRoute.build({chatId: CHAT_GROUP})])
+  expect(buttonTextsOf(chooser)).toEqual(['⚡ Lightning'])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionIntentsTable)).toEqual([])
+})
+
+test('choosing Lightning mints one linked one-time invoice with no balance button', async () => {
   const {payment, telegram} = await issueJoinInvoice({
     walletMsat: (PRICE - 1) * 1000,
     text: /Access to private community "E2E paid chat"/,
   })
 
   expect(String(telegram.text)).toMatch(/Subscription type: <b>permanent access<\/b>/)
+  expect(String(telegram.text)).toContain(`<code>${payment.paymentRequest}</code>`)
   expect(buttonsOf(telegram)).toEqual([])
   expect(payment.subscriptionType).toBe('one_time')
 })
 
-test('the invoice is sent to the join request private-chat id', async () => {
-  const {telegram, payment} = await issueJoinInvoice({
+test('the chooser is sent to the join request private-chat id', async () => {
+  const {chooser} = await issueJoinChooser({
     userChatId: JOIN_USER_CHAT,
     text: /Access to private community/,
   })
 
-  expect(telegram.chat_id).toBe(JOIN_USER_CHAT)
-  expect(telegram.chat_id).not.toBe(USER_A)
-  expect(payment.userId).toBe(USER_A)
+  expect(chooser.chat_id).toBe(JOIN_USER_CHAT)
+  expect(chooser.chat_id).not.toBe(USER_A)
 })
 
-test('an exact wallet balance offers the wallet button on a monthly channel invoice', async () => {
-  const {payment, telegram} = await issueJoinInvoice({
+test('an exact wallet balance offers the ZapGram button on chooser and Lightning invoice', async () => {
+  const {telegram, chooser} = await issueJoinInvoice({
     chatId: CHAT_CHANNEL,
     chatType: 'channel',
     locale: 'ru',
@@ -90,37 +100,45 @@ test('an exact wallet balance offers the wallet button on a monthly channel invo
     text: /Доступ к закрытому сообществу "E2E paid chat"/,
   })
 
+  expect(callbackDataOf(chooser)).toEqual([
+    payLightningRoute.build({chatId: CHAT_CHANNEL}),
+    payJoinBalanceRoute.build({chatId: CHAT_CHANNEL, from: 'wallet'}),
+  ])
+  // Method row, then wallet on its own row (no NWC without funds).
+  expect(buttonTextRowsOf(chooser)).toEqual([['⚡ Лайтнинг'], ['💰 С баланса ZapGram']])
+
   const telegramText = String(telegram.text)
   expect(telegramText).toMatch(/Тип подписки: <b>доступ на месяц<\/b>/)
   expect(callbackDataOf(telegram)).toEqual([
-    paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
+    payJoinBalanceRoute.build({chatId: CHAT_CHANNEL, from: 'wallet'}),
   ])
-  expect(buttonTextsOf(telegram)).toEqual(['Оплатить с баланса ZapGram'])
+  expect(buttonTextsOf(telegram)).toEqual(['💰 С баланса ZapGram'])
 })
 
-test('a wallet balance above the price still offers only the wallet button', async () => {
-  const {payment, telegram} = await issueJoinInvoice({
+test('a wallet balance above the price still offers only the ZapGram button', async () => {
+  const {telegram} = await issueJoinInvoice({
     walletMsat: (PRICE + 1) * 1000,
     text: /Access to private community/,
   })
 
   expect(callbackDataOf(telegram)).toEqual([
-    paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
+    payJoinBalanceRoute.build({chatId: CHAT_GROUP, from: 'wallet'}),
   ])
-  expect(callbackDataOf(telegram).some(data => data.endsWith(':nwc'))).toBe(false)
+  expect(buttonTextsOf(telegram)).toEqual(['💰 Pay with ZapGram balance'])
 })
 
-test('a half-satoshi short balance does not offer the wallet button', async () => {
-  const {telegram} = await issueJoinInvoice({
+test('a half-satoshi short balance does not offer the balance button', async () => {
+  const {telegram, chooser} = await issueJoinInvoice({
     walletMsat: PRICE * 1000 - 500,
     text: /Access to private community/,
   })
 
+  expect(callbackDataOf(chooser)).toEqual([payLightningRoute.build({chatId: CHAT_GROUP})])
   expect(callbackDataOf(telegram)).toEqual([])
   expect(buttonsOf(telegram)).toEqual([])
 })
 
-test('a current subscription approves the join request without issuing an invoice', async () => {
+test('a current subscription approves the join request without a chooser', async () => {
   await seedActiveChat({paymentType: 'monthly'})
   await seedSubscription(e2e, {
     userId: USER_A,
@@ -145,7 +163,7 @@ test('a current subscription approves the join request without issuing an invoic
   expectNoErrors(e2e.logs)
 })
 
-test('an expired subscription requires a new join invoice before cleanup runs', async () => {
+test('an expired subscription requires choosing Lightning before an invoice exists', async () => {
   await seedActiveChat({paymentType: 'monthly'})
   await seedSubscription(e2e, {
     userId: USER_A,
@@ -156,13 +174,32 @@ test('an expired subscription requires a new join invoice before cleanup runs', 
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    db: {
-      subscriptionIntents: {added: 1},
-      subscriptionPayments: {added: 1},
-    },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Access to private community/}],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
   })
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
+
+  const joinMessage = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('en'),
+          messageId: Number(joinMessage?.message_id ?? 1),
+        }),
+      ),
+    {
+      db: {
+        subscriptionIntents: {added: 1},
+        subscriptionPayments: {added: 1},
+      },
+      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+      telegram: [
+        {method: 'editMessageText', text: /Access to private community/},
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
 
   expect(e2e.tg.of('approveChatJoinRequest')).toHaveLength(0)
   const [payment] = await e2e.db.select().from(subscriptionPaymentsTable)
@@ -212,23 +249,27 @@ test('a join request for an unknown chat leaves the whole world unchanged', asyn
   expectNoErrors(e2e.logs)
 })
 
-test('a Telegram delivery failure is logged without losing the payment record', async () => {
+test('a Telegram delivery failure on the chooser leaves no payment record', async () => {
+  await seedActiveChat()
   e2e.tg.fail('sendMessage', {
     error_code: 400,
     description: 'Bad Request: user unavailable',
   })
 
-  const {payment} = await issueJoinInvoice({
-    text: /Access to private community/,
-    telegramFailure: true,
+  // fail() still records the attempted call; delta must allow the failed sendMessage.
+  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
+    telegram: [{method: 'sendMessage', to: USER_A}],
   })
 
-  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([payment])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionIntentsTable)).toEqual([])
   expect(errorMessages()).toEqual(['Error while sending message to user about chat join request'])
 })
 
-test('an LNbits mint failure DMs the applicant and leaves no payment', async () => {
+test('an LNbits mint failure on Lightning leaves no payment after the chooser', async () => {
   await seedActiveChat()
+  await e2e.send(joinUpdate({userChatId: JOIN_USER_CHAT}))
+  const chooser = e2e.tg.last('sendMessage')
   e2e.ln.state.failNext(
     {
       method: 'POST',
@@ -239,16 +280,28 @@ test('an LNbits mint failure DMs the applicant and leaves no payment', async () 
   )
 
   const before = await snapshot(e2e)
-  await expectDelta(e2e, () => e2e.send(joinUpdate({userChatId: JOIN_USER_CHAT})), {
-    db: {subscriptionIntents: {added: 1}},
-    telegram: [
-      {
-        method: 'sendMessage',
-        to: JOIN_USER_CHAT,
-        text: /Failed to create the Lightning invoice/,
-      },
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('en'),
+          messageId: Number(chooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      db: {subscriptionIntents: {added: 1}},
+      // Error handler DMs the failure and re-renders the wallet.
+      telegram: [
+        {
+          method: 'sendMessage',
+          to: USER_A,
+          text: /Failed to create the Lightning invoice/,
+        },
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
 
   const after = await snapshot(e2e)
   expectLedgerBalanced(before, after)
@@ -267,26 +320,41 @@ test('an LNbits mint failure DMs the applicant and leaves no payment', async () 
   expect(errorMessages()).toEqual(['Bot error'])
 })
 
-test('a sequential repeated join request reuses one invoice and reports remaining time', async () => {
-  const {payment, telegram: firstMessage} = await issueJoinInvoice({
+test('repeated Lightning picks reuse one invoice and report remaining time', async () => {
+  const {payment, telegram: firstInvoice} = await issueJoinInvoice({
     text: /valid for another.*hour/,
   })
 
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [
-      {
-        method: 'sendMessage',
-        to: USER_A,
-        text: new RegExp(escapeRegex(payment.paymentRequest)),
-      },
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
   })
+  const secondChooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('en'),
+          messageId: Number(secondChooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      telegram: [
+        {
+          method: 'editMessageText',
+          text: new RegExp(escapeRegex(payment.paymentRequest)),
+        },
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
 
-  const secondMessage = e2e.tg.last('sendMessage')
-  if (!secondMessage) throw new Error('Repeated invoice message was not sent')
-  expect(secondMessage.text).toBe(firstMessage.text)
+  const restored = e2e.tg.last('editMessageText')
+  if (!restored) throw new Error('Repeated Lightning invoice was not edited in place')
+  expect(String(restored.text)).toContain(payment.paymentRequest)
+  expect(String(firstInvoice.text)).toContain(payment.paymentRequest)
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([payment])
   expectLedgerBalanced(before, await snapshot(e2e))
@@ -294,35 +362,41 @@ test('a sequential repeated join request reuses one invoice and reports remainin
   expectNoErrors(e2e.logs)
 })
 
-test('parallel repeated join requests converge on one current attempt and one BOLT11', async () => {
-  await seedActiveChat()
+test('parallel Lightning picks converge on one current attempt and one BOLT11', async () => {
+  const {chooser} = await issueJoinChooser({})
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
+  const messageId = Number(chooser.message_id ?? 1)
+  const tgMark = e2e.tg.calls.length
 
-  await expectDelta(
-    e2e,
-    () => Promise.all([e2e.send(joinUpdate()), e2e.send(joinUpdate())]).then(() => undefined),
-    {
-      db: {
-        subscriptionIntents: {added: 1},
-        subscriptionPayments: {added: 1},
-      },
-      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-      telegram: [
-        {method: 'sendMessage', to: USER_A, text: /valid for another/},
-        {method: 'sendMessage', to: USER_A, text: /valid for another/},
-      ],
-    },
-  )
+  await Promise.all([
+    e2e.send(
+      privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+        from: applicantFrom('en'),
+        messageId,
+      }),
+    ),
+    e2e.send(
+      privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+        from: applicantFrom('en'),
+        messageId,
+      }),
+    ),
+  ])
 
   const [payment] = await e2e.db.select().from(subscriptionPaymentsTable)
   if (!payment) throw new Error('Parallel join invoice was not stored')
   expect(payment.isCurrent).toBe(true)
   expect(invoiceMintRequestsSince(requestMark)).toHaveLength(1)
-  const messages = e2e.tg.of('sendMessage')
-  expect(messages).toHaveLength(2)
-  expect(messages.every(message => String(message.text).includes(payment.paymentRequest))).toBe(
-    true,
+  // Race: edits/answers may interleave; both must still show the same BOLT11.
+  const edits = e2e.tg.calls
+    .slice(tgMark)
+    .filter(call => call.method === 'editMessageText')
+    .map(call => call.payload)
+  expect(edits).toHaveLength(2)
+  expect(edits.every(message => String(message.text).includes(payment.paymentRequest))).toBe(true)
+  expect(e2e.tg.calls.slice(tgMark).filter(call => call.method === 'answerCallbackQuery')).toHaveLength(
+    2,
   )
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoPaidMasterPayouts()
@@ -336,9 +410,24 @@ test('an invoice with exactly one hour remaining is reused and reports one hour'
   await setAttemptExpiry(payment.id, new Date(now.getTime() + HOUR_MS))
   const requestMark = e2e.ln.requests.length
 
-  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /valid for another <b>1 hour<\/b>/}],
-  })
+  await e2e.send(joinUpdate())
+  const chooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('en'),
+          messageId: Number(chooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      telegram: [
+        {method: 'editMessageText', text: /valid for another <b>1 hour<\/b>/},
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
 
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toHaveLength(1)
@@ -354,13 +443,28 @@ test('an invoice below one hour is replaced without deleting the previous attemp
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
 
-  await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    db: {
-      subscriptionPayments: {added: 1, changed: 1},
+  await e2e.send(joinUpdate())
+  const chooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('en'),
+          messageId: Number(chooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      db: {
+        subscriptionPayments: {added: 1, changed: 1},
+      },
+      lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
+      telegram: [
+        {method: 'editMessageText', text: /valid for another/},
+        {method: 'answerCallbackQuery'},
+      ],
     },
-    lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /valid for another/}],
-  })
+  )
 
   const attempts = await e2e.db.select().from(subscriptionPaymentsTable)
   expect(attempts).toHaveLength(2)
@@ -377,41 +481,79 @@ test('an invoice below one hour is replaced without deleting the previous attemp
   expectNoErrors(e2e.logs)
 })
 
-test('a restart after mint and failed reply reuses the persisted attempt', async () => {
+test('a restart after mint and failed Lightning edit reuses the persisted attempt', async () => {
   await e2e.dispose()
   e2e = await createE2E({mode: 'file'})
   await seedUser(e2e, {id: OWNER, username: 'chat_owner', firstName: 'Chat Owner'})
   await seedApplicant('ru')
   await seedActiveChat()
-  e2e.tg.fail('sendMessage', {
+
+  await e2e.send(joinUpdate({locale: 'ru'}))
+  const chooser = e2e.tg.last('sendMessage')
+  e2e.tg.fail('editMessageText', {
     error_code: 500,
     description: 'Internal Server Error: connection closed after mint',
   })
 
-  await e2e.send(joinUpdate({locale: 'ru'}))
+  await e2e.send(
+    privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+      from: applicantFrom('ru'),
+      messageId: Number(chooser?.message_id ?? 1),
+    }),
+  )
   const [persisted] = await e2e.db.select().from(subscriptionPaymentsTable)
-  if (!persisted) throw new Error('Minted attempt was not persisted before Telegram reply')
+  if (!persisted) throw new Error('Minted attempt was not persisted before Telegram edit')
   const requestMark = e2e.ln.requests.length
   await e2e.restart()
 
-  await expectDelta(e2e, () => e2e.send(joinUpdate({locale: 'ru'})), {
-    telegram: [
-      {
-        method: 'sendMessage',
-        to: USER_A,
-        text: new RegExp(escapeRegex(persisted.paymentRequest)),
-      },
-    ],
-  })
+  await e2e.send(joinUpdate({locale: 'ru'}))
+  const secondChooser = e2e.tg.last('sendMessage')
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+          from: applicantFrom('ru'),
+          messageId: Number(secondChooser?.message_id ?? 1),
+        }),
+      ),
+    {
+      telegram: [
+        {
+          method: 'editMessageText',
+          text: new RegExp(escapeRegex(persisted.paymentRequest)),
+        },
+        {method: 'answerCallbackQuery'},
+      ],
+    },
+  )
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Счёт действителен ещё/)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Счёт действителен ещё/)
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([persisted])
   expect(await e2e.db.select().from(subscriptionIntentsTable)).toHaveLength(1)
   expectNoPaidMasterPayouts()
 })
 
-async function issueJoinInvoice(options: JoinInvoiceOptions) {
+function applicantFrom(locale: Locale = 'en') {
+  return {
+    id: USER_A,
+    username: 'applicant',
+    first_name: 'Applicant',
+    language_code: locale,
+  }
+}
+
+async function issueJoinChooser(options: {
+  chatId?: number
+  chatType?: ChatType
+  locale?: Locale
+  paymentType?: PaymentType
+  price?: number
+  walletMsat?: number
+  userChatId?: number
+  text?: RegExp
+}) {
   const chatId = options.chatId ?? CHAT_GROUP
   const chatType = options.chatType ?? 'supergroup'
   const locale = options.locale ?? 'en'
@@ -423,11 +565,53 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
 
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
-  // Default fixture sets user_chat_id = from.id; an explicit override exercises the private-chat peer.
   const invoiceChatId = options.userChatId ?? USER_A
+  const chooserText =
+    options.text ??
+    (locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/)
   await expectDelta(
     e2e,
     () => e2e.send(joinUpdate({chatType, locale, userChatId: options.userChatId})),
+    {
+      telegram: [{method: 'sendMessage', to: invoiceChatId, text: chooserText}],
+    },
+  )
+
+  expect(invoiceMintRequestsSince(requestMark)).toEqual([])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoPaidMasterPayouts(price)
+  expectNoErrors(e2e.logs)
+
+  const chooser = e2e.tg.last('sendMessage')
+  if (!chooser) throw new Error('Join method chooser was not sent')
+  expect(chooser).toMatchObject({
+    chat_id: invoiceChatId,
+    parse_mode: 'HTML',
+    link_preview_options: {is_disabled: true},
+  })
+  expect(String(chooser.text)).toMatch(pricePattern(price, locale))
+  return {chooser, chatId, locale, price, paymentType}
+}
+
+async function issueJoinInvoice(options: JoinInvoiceOptions) {
+  const setup = await issueJoinChooser({
+    ...options,
+    // Chooser never includes the BOLT11; match only method-picker copy here.
+    text: options.locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/,
+  })
+  const before = await snapshot(e2e)
+  const requestMark = e2e.ln.requests.length
+
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(payLightningRoute.build({chatId: setup.chatId}), {
+          from: applicantFrom(setup.locale),
+          messageId: Number(setup.chooser.message_id ?? 1),
+        }),
+      ),
     {
       db: {
         subscriptionIntents: {added: 1},
@@ -437,9 +621,9 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
             expect(rows).toHaveLength(1)
             expect(rows[0]?.after).toMatchObject({
               userId: USER_A,
-              chatId,
-              price,
-              subscriptionType: paymentType,
+              chatId: setup.chatId,
+              price: setup.price,
+              subscriptionType: setup.paymentType,
               kind: 'join',
               settledAt: null,
               settleAttempts: 0,
@@ -449,21 +633,24 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
           },
         },
       },
-      lnbits: {payments: [{out: false, sats: price, times: 1}]},
-      telegram: [{method: 'sendMessage', to: invoiceChatId, text: options.text}],
+      lnbits: {payments: [{out: false, sats: setup.price, times: 1}]},
+      telegram: [
+        {method: 'editMessageText', text: options.text},
+        {method: 'answerCallbackQuery'},
+      ],
     },
   )
 
   const after = await snapshot(e2e)
   expectLedgerBalanced(before, after)
-  expectNoPaidMasterPayouts(price)
+  expectNoPaidMasterPayouts(setup.price)
 
   const payment = await onlySubscriptionPayment()
   expect(payment).toMatchObject({
     userId: USER_A,
-    chatId,
-    price,
-    subscriptionType: paymentType,
+    chatId: setup.chatId,
+    price: setup.price,
+    subscriptionType: setup.paymentType,
     kind: 'join',
     settledAt: null,
     settleAttempts: 0,
@@ -473,7 +660,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
   expect(payment.createdAt).toBeInstanceOf(Date)
   expect(decodeMintedInvoice(payment.paymentRequest)).toEqual({
     paymentHash: payment.paymentHash,
-    amountMsat: price * 1000,
+    amountMsat: setup.price * 1000,
     description: '',
   })
 
@@ -488,7 +675,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
   expect(incoming).toHaveLength(1)
   expect(incoming[0]).toMatchObject({
     walletId: masterWallet.id,
-    amountMsat: price * 1000,
+    amountMsat: setup.price * 1000,
     out: false,
     paid: false,
     feeMsat: 0,
@@ -509,7 +696,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
       path: '/api/v1/payments',
       body: {
         out: false,
-        amount: price,
+        amount: setup.price,
         unit: 'sat',
         expiry: DAY_SECONDS,
         webhook: `https://test.local/lnbits/webhook/${e2e.container.config.BOT_WEBHOOK_SECRET}`,
@@ -517,24 +704,14 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
     },
   ])
 
-  const telegram = e2e.tg.last('sendMessage')
-  if (!telegram) throw new Error('Subscription invoice message was not attempted')
-  expect(telegram).toMatchObject({
-    chat_id: invoiceChatId,
-    parse_mode: 'HTML',
-    link_preview_options: {is_disabled: true},
-  })
+  const telegram = e2e.tg.last('editMessageText')
+  if (!telegram) throw new Error('Lightning invoice edit was not attempted')
   const telegramText = String(telegram.text)
-  expect(telegramText).toMatch(pricePattern(price, locale))
+  expect(telegramText).toMatch(pricePattern(setup.price, setup.locale))
   expect(telegramText).toContain(`<code>${payment.paymentRequest}</code>`)
+  expectNoErrors(e2e.logs)
 
-  if (options.telegramFailure) {
-    expect(errorMessages()).toEqual(['Error while sending message to user about chat join request'])
-  } else {
-    expectNoErrors(e2e.logs)
-  }
-
-  return {payment, telegram}
+  return {payment, telegram, chooser: setup.chooser}
 }
 
 function seedApplicant(locale: Locale) {
@@ -627,6 +804,13 @@ function buttonsOf(payload: Record<string, unknown>): {callback_data?: string; t
     | {inline_keyboard?: {callback_data?: string; text?: string}[][]}
     | undefined
   return (markup?.inline_keyboard ?? []).flat()
+}
+
+function buttonTextRowsOf(payload: Record<string, unknown>): string[][] {
+  const markup = payload.reply_markup as
+    | {inline_keyboard?: {callback_data?: string; text?: string}[][]}
+    | undefined
+  return (markup?.inline_keyboard ?? []).map(row => row.flatMap(button => button.text ?? []))
 }
 
 function errorMessages(): string[] {

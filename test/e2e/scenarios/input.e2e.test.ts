@@ -79,29 +79,27 @@ test('the ignored update types are the ones Telegram can deliver to this bot', (
 
 // --- The same update delivered twice ---
 
-test('a redelivered join request reuses the current invoice for the same chat', async () => {
+test('a redelivered join request resends the method chooser without minting an invoice', async () => {
   await seedUser(e2e, {id: OWNER})
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active', price: CHAT_PRICE})
   const update = chatJoinRequest('supergroup', {from: {id: USER_A}})
   await e2e.send(update)
 
-  const firstPayment = (await e2e.db.select().from(subscriptionPaymentsTable))[0]
-  if (!firstPayment) throw new Error('First join invoice was not stored')
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Choose a payment method/)
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
 
-  // Telegram can redeliver an update it never got a 200 for. The handler runs again, but the
-  // active join intent makes it return the same safely reusable invoice.
+  // Telegram can redeliver an update it never got a 200 for. Chooser is re-sent; no invoice yet.
   await expectDelta(e2e, () => e2e.send(update), {
     telegram: [
       {
         method: 'sendMessage',
         to: USER_A,
-        text: new RegExp(escapeRegex(firstPayment.paymentRequest)),
+        text: /Choose a payment method/,
       },
     ],
   })
 
-  const payments = await e2e.db.select().from(subscriptionPaymentsTable)
-  expect(payments).toEqual([firstPayment])
+  expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
   expectNoErrors(e2e.logs)
 })
 
