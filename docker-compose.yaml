@@ -85,10 +85,10 @@ services:
           "-c",
           "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/health')",
         ]
-      interval: 60s
+      interval: 30s
       timeout: 3s
       retries: 10
-      start_period: 10s
+      start_period: 90s
       start_interval: 2s
     deploy:
       resources:
