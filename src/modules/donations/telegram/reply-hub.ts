@@ -11,6 +11,7 @@ export async function replyDonateHub(ctx: BotContext) {
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
   return ctx.reply(await formatDonateHubText(ctx.t, user, stats, platform), {
     reply_markup: buildDonateHubKeyboard(ctx.t, user),
+    link_preview_options: {is_disabled: true},
   })
 }
 
@@ -21,6 +22,7 @@ export async function editDonateHub(ctx: BotContext) {
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
   return ctx.editMessageText(await formatDonateHubText(ctx.t, user, stats, platform), {
     reply_markup: buildDonateHubKeyboard(ctx.t, user),
+    link_preview_options: {is_disabled: true},
   })
 }
 

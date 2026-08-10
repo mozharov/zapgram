@@ -33,6 +33,10 @@ test('/donate hub shows stats and external lightning address', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
   await e2e.send(privateCommand('/donate'))
 
+  const hub = e2e.tg.last('sendMessage')
+  expect(hub).toMatchObject({
+    link_preview_options: {is_disabled: true},
+  })
   const messages = e2e.tg.of('sendMessage').map(c => String(c.text))
   expect(messages.some(t => t.includes('zapgram@getalby.com'))).toBe(true)
   expect(messages.some(t => /ZapPlanner/i.test(t))).toBe(false)
