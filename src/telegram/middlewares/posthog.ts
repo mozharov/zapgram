@@ -1,3 +1,4 @@
+import {captureBotError} from '@infra/posthog.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Middleware} from 'grammy'
 import {getRuntime} from '../../runtime.js'
@@ -43,7 +44,8 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
       try {
         return await next()
       } catch (error) {
-        posthog.captureException(error)
+        // AppError → product event `app_error` (expected). Real bugs → $exception.
+        captureBotError(posthog, error, distinctId)
         throw error
       } finally {
         // After next(): attachUser may have filled ctx.user for private / tip paths.

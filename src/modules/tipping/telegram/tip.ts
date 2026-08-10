@@ -1,3 +1,4 @@
+import {attachErrorAnalytics} from '@core/errors/app-error.js'
 import {NoRecipientError} from '@core/errors/no-recipient.js'
 import {ToBotError} from '@core/errors/to-bot.js'
 import {ToYourselfError} from '@core/errors/to-yourself.js'
@@ -18,6 +19,14 @@ import {getRuntime} from '../../../runtime.js'
 
 type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
 
+type ResolvedTipRecipient = {
+  user: User
+  /** Tip was addressed to this bot and routed to the first ADMIN_TELEGRAM_IDS wallet. */
+  viaPlatformBot: boolean
+  attemptedRecipientId?: number
+  attemptedRecipientUsername?: string | null
+}
+
 export const tipInvalidCommand = async (ctx: Context) => {
   await deleteMessageSafely(ctx)
   return replyWithTempMessage(ctx, ctx.t('tip.invalid-command'))
@@ -29,48 +38,110 @@ export const tipCommand = async (ctx: Context) => {
   if (sats === 0) return
   await ctx.replyWithChatAction('typing').catch(() => null)
 
-  const toUser = await getToUser(ctx, username)
-  if (!toUser) throw new NoRecipientError()
-  if (toUser.id === ctx.user.id) throw new ToYourselfError()
+  let resolved: ResolvedTipRecipient
+  try {
+    const next = await getToUser(ctx, username)
+    if (!next) throw new NoRecipientError()
+    resolved = next
+  } catch (error) {
+    attachErrorAnalytics(error, tipAnalyticsBase(sats, username))
+    throw error
+  }
 
-  const usedNwc = Boolean(ctx.user.nwcTips && ctx.user.nwc)
-  if (usedNwc && ctx.user.nwc) {
-    const toUserWallet = await getUserWallet(toUser.id)
-    const invoice = await toUserWallet.createInvoice({sats})
-    await ctx.user.nwc.payInvoice(invoice.bolt11)
-  } else await internalTransfer(ctx.user.id, toUser.id, sats)
+  const {user: toUser, viaPlatformBot} = resolved
+  if (toUser.id === ctx.user.id) {
+    const error = new ToYourselfError()
+    attachErrorAnalytics(error, {
+      ...tipAnalyticsBase(sats, username),
+      ...recipientAnalytics(resolved),
+    })
+    throw error
+  }
 
-  const replyTo = ctx.message.reply_to_message
-  const toChatCreator = (!username && !replyTo) || !!replyTo?.sender_chat
-  const toMessageId = replyTo?.message_id
+  try {
+    const usedNwc = Boolean(ctx.user.nwcTips && ctx.user.nwc)
+    if (usedNwc && ctx.user.nwc) {
+      const toUserWallet = await getUserWallet(toUser.id)
+      const invoice = await toUserWallet.createInvoice({sats})
+      await ctx.user.nwc.payInvoice(invoice.bolt11)
+    } else await internalTransfer(ctx.user.id, toUser.id, sats)
 
-  captureBotEvent(
-    getRuntime().posthog,
-    'tip_sent',
-    {
-      amount_sats: sats,
-      payment_method: usedNwc ? 'nwc' : 'internal',
-      recipient_id: toUser.id,
-      recipient_username: toUser.username ?? null,
-      to_chat_creator: toChatCreator,
-      has_reply: Boolean(toMessageId),
-    },
-    {chatId: ctx.chat.id},
-  )
+    const replyTo = ctx.message.reply_to_message
+    const toChatCreator = (!username && !replyTo) || !!replyTo?.sender_chat
+    const toMessageId = replyTo?.message_id
 
-  // Best-effort voluntary platform donation — after main pay; failures only notify in PM.
-  await getRuntime().donationCollect.tryCollect({
-    userId: ctx.user.id,
-    baseAmountSats: sats,
-    kind: 'tip',
-    preferredRail: usedNwc ? 'nwc' : 'internal',
-    nwc: usedNwc ? ctx.user.nwc : undefined,
-    nwcUrl: ctx.user.nwcUrl,
-    user: ctx.user,
-  })
+    captureBotEvent(
+      getRuntime().posthog,
+      'tip_sent',
+      {
+        amount_sats: sats,
+        payment_method: usedNwc ? 'nwc' : 'internal',
+        recipient_id: toUser.id,
+        recipient_username: toUser.username ?? null,
+        to_chat_creator: toChatCreator,
+        has_reply: Boolean(toMessageId),
+        via_platform_bot: viaPlatformBot,
+        ...(viaPlatformBot
+          ? {
+              attempted_recipient_id: resolved.attemptedRecipientId ?? ctx.me.id,
+              attempted_recipient_username:
+                resolved.attemptedRecipientUsername ?? ctx.me.username?.toLowerCase() ?? null,
+            }
+          : {}),
+      },
+      {chatId: ctx.chat.id},
+    )
 
-  await notifyGroupTip(ctx, toUser, sats, toMessageId, toChatCreator)
-  await notifySatsReceived(toUser.id, sats, ctx.from.username)
+    // Best-effort voluntary platform donation — after main pay; failures only notify in PM.
+    await getRuntime().donationCollect.tryCollect({
+      userId: ctx.user.id,
+      baseAmountSats: sats,
+      kind: 'tip',
+      preferredRail: usedNwc ? 'nwc' : 'internal',
+      nwc: usedNwc ? ctx.user.nwc : undefined,
+      nwcUrl: ctx.user.nwcUrl,
+      user: ctx.user,
+    })
+
+    // Group confirmation names the intended target (the bot), not the admin wallet.
+    const publicRecipient = viaPlatformBot
+      ? ({
+          ...toUser,
+          username: ctx.me.username?.toLowerCase(),
+          firstName: ctx.me.first_name,
+        } satisfies User)
+      : toUser
+
+    await notifyGroupTip(ctx, publicRecipient, sats, toMessageId, toChatCreator)
+    await notifySatsReceived(toUser.id, sats, ctx.from.username)
+  } catch (error) {
+    attachErrorAnalytics(error, {
+      ...tipAnalyticsBase(sats, username),
+      ...recipientAnalytics(resolved),
+    })
+    throw error
+  }
+}
+
+function tipAnalyticsBase(sats: number, username?: string) {
+  return {
+    amount_sats: sats,
+    tip_username: username ?? null,
+  }
+}
+
+function recipientAnalytics(resolved: ResolvedTipRecipient) {
+  return {
+    recipient_id: resolved.user.id,
+    recipient_username: resolved.user.username ?? null,
+    via_platform_bot: resolved.viaPlatformBot,
+    ...(resolved.attemptedRecipientId !== undefined
+      ? {attempted_recipient_id: resolved.attemptedRecipientId}
+      : {}),
+    ...(resolved.attemptedRecipientUsername !== undefined
+      ? {attempted_recipient_username: resolved.attemptedRecipientUsername}
+      : {}),
+  }
 }
 
 function parseMatch(match: string | RegExpMatchArray): {
@@ -82,11 +153,17 @@ function parseMatch(match: string | RegExpMatchArray): {
   return {sats, username: username?.toLowerCase()}
 }
 
-async function getToUser(ctx: Context, username?: string) {
+async function getToUser(ctx: Context, username?: string): Promise<ResolvedTipRecipient | null> {
   if (username) {
+    if (isOurBotUsername(ctx, username)) {
+      return resolvePlatformBotTip({
+        attemptedRecipientId: ctx.me.id,
+        attemptedRecipientUsername: username,
+      })
+    }
     const user = await getUserByUsername(username)
     if (!user) throw new UserDoesNotHaveWalletError()
-    return user
+    return {user, viaPlatformBot: false}
   }
   if (ctx.message.reply_to_message) {
     const {reply_to_message} = ctx.message
@@ -94,15 +171,65 @@ async function getToUser(ctx: Context, username?: string) {
     if (sender_chat) {
       const user = await getUserFromChatCreator(ctx, sender_chat.id)
       if (!user) throw new UserDoesNotHaveWalletError()
-      return user
+      return {user, viaPlatformBot: false}
     }
     if (from) {
-      const {id, username, is_bot, language_code} = from
-      if (is_bot || id === 777000) throw new ToBotError() // Telegram service or bot
-      return getOrCreateUser({id, username, languageCode: language_code})
+      const {id, username: fromUsername, is_bot, language_code} = from
+      if (id === ctx.me.id) {
+        return resolvePlatformBotTip({
+          attemptedRecipientId: id,
+          attemptedRecipientUsername: fromUsername?.toLowerCase() ?? null,
+        })
+      }
+      if (is_bot || id === 777000) {
+        // Other bots / Telegram service — not a tippable wallet.
+        throw new ToBotError({
+          analytics: {
+            attempted_recipient_id: id,
+            attempted_recipient_username: fromUsername?.toLowerCase() ?? null,
+            attempted_is_bot: is_bot,
+          },
+        })
+      }
+      const user = await getOrCreateUser({id, username: fromUsername, languageCode: language_code})
+      return {user, viaPlatformBot: false}
     }
   }
-  return getUserFromChatCreator(ctx)
+  const user = await getUserFromChatCreator(ctx)
+  return user ? {user, viaPlatformBot: false} : null
+}
+
+/**
+ * Tips addressed to this bot land on the first configured admin's ZapGram wallet.
+ * No ADMIN_TELEGRAM_IDS → same refusal as tipping any other bot.
+ */
+async function resolvePlatformBotTip(attempted: {
+  attemptedRecipientId: number
+  attemptedRecipientUsername?: string | null
+}): Promise<ResolvedTipRecipient> {
+  const adminId = getRuntime().config.ADMIN_TELEGRAM_IDS[0]
+  if (!adminId) {
+    throw new ToBotError({
+      analytics: {
+        attempted_recipient_id: attempted.attemptedRecipientId,
+        attempted_recipient_username: attempted.attemptedRecipientUsername ?? null,
+        attempted_is_bot: true,
+        via_platform_bot: false,
+      },
+    })
+  }
+  const user = await getOrCreateUser({id: adminId})
+  return {
+    user,
+    viaPlatformBot: true,
+    attemptedRecipientId: attempted.attemptedRecipientId,
+    attemptedRecipientUsername: attempted.attemptedRecipientUsername ?? null,
+  }
+}
+
+function isOurBotUsername(ctx: Context, username: string): boolean {
+  const botUsername = ctx.me.username?.toLowerCase()
+  return Boolean(botUsername && username === botUsername)
 }
 
 export async function notifyGroupTip(

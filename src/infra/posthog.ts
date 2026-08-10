@@ -1,9 +1,13 @@
 import type {AppConfig} from '@config'
+import {AppError} from '@core/errors/app-error.js'
 import {PostHog} from 'posthog-node'
 import {serializeError} from 'serialize-error'
 
 /** PostHog group type for Telegram chats (groups, supergroups, channels). */
 export const TELEGRAM_CHAT_GROUP_TYPE = 'telegram_chat' as const
+
+/** Product event for domain failures (user-facing AppError). Not Error Tracking. */
+export const APP_ERROR_EVENT = 'app_error' as const
 
 export type CaptureClient = Pick<PostHog, 'capture' | 'captureException'>
 
@@ -73,17 +77,77 @@ export function captureUserEvent(
 export function errorProperties(error: unknown): Record<string, unknown> {
   if (error === undefined || error === null) return {}
   const serialized = serializeError(error) as Record<string, unknown>
+  const analytics =
+    typeof error === 'object' &&
+    error !== null &&
+    'analytics' in error &&
+    error.analytics &&
+    typeof error.analytics === 'object'
+      ? (error.analytics as Record<string, unknown>)
+      : undefined
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : undefined
   return {
     error_name: typeof serialized.name === 'string' ? serialized.name : undefined,
     error_message:
       typeof serialized.message === 'string' ? serialized.message : String(error).slice(0, 500),
     error_stack: typeof serialized.stack === 'string' ? serialized.stack.slice(0, 4000) : undefined,
     error: serialized,
+    ...(code ? {error_code: code} : {}),
+    ...analytics,
+  }
+}
+
+/**
+ * Domain AppError → product event `app_error` (expected, filterable, not Error Tracking).
+ * Anything else → `$exception` via captureException.
+ *
+ * Use this from Telegram middleware and job/service paths so normal refusals
+ * (to_bot, insufficient_funds, …) do not create exception issues.
+ */
+export function captureBotError(
+  posthog: CaptureClient | undefined,
+  error: unknown,
+  distinctId?: number | string,
+  properties?: Record<string, unknown>,
+): void {
+  if (!posthog) return
+  try {
+    if (error instanceof AppError) {
+      posthog.capture({
+        event: APP_ERROR_EVENT,
+        ...(distinctId !== undefined ? {distinctId: telegramUserDistinctId(distinctId)} : {}),
+        properties: {
+          expected: true,
+          error_code: error.code,
+          ...(error.params ?? {}),
+          ...(error.analytics ?? {}),
+          ...errorProperties(error),
+          ...properties,
+        },
+      })
+      return
+    }
+    if (!posthog.captureException) return
+    posthog.captureException(
+      error,
+      distinctId !== undefined ? telegramUserDistinctId(distinctId) : undefined,
+      {
+        expected: false,
+        ...errorProperties(error),
+        ...properties,
+      },
+    )
+  } catch {
+    // Analytics must never throw into request / money paths.
   }
 }
 
 /**
  * Exception for a Telegram user (jobs / services outside request middleware).
+ * AppError is recorded as expected `app_error`; other throws go to Error Tracking.
  * Prefer this over bare captureException so distinct_id is always set.
  */
 export function captureUserException(
@@ -92,13 +156,5 @@ export function captureUserException(
   distinctId: number | string,
   properties?: Record<string, unknown>,
 ): void {
-  if (!posthog?.captureException) return
-  try {
-    posthog.captureException(error, telegramUserDistinctId(distinctId), {
-      ...errorProperties(error),
-      ...properties,
-    })
-  } catch {
-    // Analytics must never throw into money / job paths.
-  }
+  captureBotError(posthog, error, distinctId, properties)
 }

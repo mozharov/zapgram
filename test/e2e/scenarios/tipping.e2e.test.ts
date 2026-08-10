@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
-import {CHAT_CHANNEL, CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
+import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
 import {
   groupReply,
@@ -226,6 +226,82 @@ for (const recipient of botRecipients) {
     ])
   })
 }
+
+// Platform bot (this bot) tips route to ADMIN_TELEGRAM_IDS[0] — separate E2E world with admins set.
+test('replying to this bot pays the configured admin wallet', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({env: {ADMIN_TELEGRAM_IDS: String(OWNER)}})
+  await seedSender()
+  const update = groupReply(
+    `/tip ${TIP_SATS}`,
+    {
+      text: 'ZapGram says hi',
+      from: {
+        id: 1,
+        is_bot: true,
+        username: 'zap_gram_bot',
+        first_name: 'ZapGram',
+      },
+    },
+    {from: {id: USER_A, username: 'user_a'}},
+  )
+
+  await expectInternalTransfer(
+    () => e2e.send(update),
+    OWNER,
+    `${OWNER} wallet`,
+    [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, text: /sent 21 sats to @zap_gram_bot/},
+      {method: 'sendMessage', to: OWNER, text: /You received 21 sats/},
+    ],
+    {recipientAdded: true},
+  )
+})
+
+test('/tip @zap_gram_bot pays the configured admin wallet', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({env: {ADMIN_TELEGRAM_IDS: String(OWNER)}})
+  await seedSender()
+
+  await expectInternalTransfer(
+    () => e2e.send(groupText('/tip 21 @zap_gram_bot', {from: {id: USER_A, username: 'user_a'}})),
+    OWNER,
+    `${OWNER} wallet`,
+    [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, text: /sent 21 sats to @zap_gram_bot/},
+      {method: 'sendMessage', to: OWNER, text: /You received 21 sats/},
+    ],
+    {recipientAdded: true},
+  )
+})
+
+test('replying to this bot without ADMIN_TELEGRAM_IDS is refused', async () => {
+  await seedSender()
+  const update = groupReply(
+    `/tip ${TIP_SATS}`,
+    {
+      text: 'ZapGram says hi',
+      from: {
+        id: 1,
+        is_bot: true,
+        username: 'zap_gram_bot',
+        first_name: 'ZapGram',
+      },
+    },
+    {from: {id: USER_A, username: 'user_a'}},
+  )
+
+  await expectRefusedTip(update, /can't send sats to bots/, [
+    {method: 'deleteMessage', to: CHAT_GROUP},
+    {method: 'sendChatAction', to: CHAT_GROUP},
+    {method: 'sendMessage', to: CHAT_GROUP, text: /can't send sats to bots/},
+    {method: 'deleteMessages', to: CHAT_GROUP},
+  ])
+})
 
 test('an unknown username is refused without creating a wallet', async () => {
   await seedSender()

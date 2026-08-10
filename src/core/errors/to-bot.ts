@@ -1,7 +1,7 @@
-import {AppError} from './app-error.js'
+import {AppError, type AppErrorOpts} from './app-error.js'
 
 export class ToBotError extends AppError {
-  constructor(opts?: {message?: string; cause?: unknown}) {
+  constructor(opts?: AppErrorOpts) {
     super('to_bot', opts)
     this.name = ToBotError.name
   }
