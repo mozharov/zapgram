@@ -36,9 +36,8 @@ const adminBroadcastRu = {
 
 /**
  * Empty-chat **picture** is not settable via Bot API (only BotFather
- * “Edit Description Picture”, static photo **640×360**). Sources + PNGs:
- *   landing/public/assets/bot-description-card{,-ru}.html
- *   assets/bot-description/bot-description-{en,ru}.png
+ * “Edit Description Picture”). Media + regenerate (landing assets):
+ *   landing/public/assets/bot-description-{en,ru}.{png,gif}
  *   bun landing/scripts/render-og.mjs
  */
 

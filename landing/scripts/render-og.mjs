@@ -1,50 +1,47 @@
 #!/usr/bin/env bun
 /**
- * Render HTML cards → PNG (Open Graph + bot empty-chat description).
+ * Render HTML cards → PNG/GIF.
  *
  *   bun landing/scripts/render-og.mjs
  *
- * Sources:
- *   public/assets/og-card.html                 → public/assets/og.png            (1200×630)
- *   public/assets/og-card-ru.html              → public/assets/og-ru.png         (1200×630)
- *   public/assets/bot-description-card.html    → public/assets/bot-description-en.png (640×360)
- *   public/assets/bot-description-card-ru.html → public/assets/bot-description-ru.png (640×360)
+ * Open Graph (1200×630 PNG):
+ *   public/assets/og-card.html    → public/assets/og.png
+ *   public/assets/og-card-ru.html → public/assets/og-ru.png
  *
- * Bot description PNGs are also copied to repo `assets/bot-description/` for
- * BotFather upload (Bot API cannot set description media — only text via
- * setMyDescription / configureBot). BotFather requires photo **640×360**.
+ * Bot empty-chat description (BotFather):
+ *   public/assets/bot-description-card.html
+ *     → bot-description-en.png  (640×360 photo)
+ *     → bot-description-en.gif  (960×540 GIF)
+ *   public/assets/bot-description-card-ru.html
+ *     → bot-description-ru.png / .gif
  *
- * Requires Playwright Chromium (ms-playwright cache) or CHROME_PATH.
+ * Requires Playwright Chromium (ms-playwright cache) or CHROME_PATH + Pillow.
  */
 import {spawnSync} from 'node:child_process'
-import {copyFileSync, existsSync, mkdirSync, readdirSync, statSync} from 'node:fs'
+import {existsSync, readdirSync, statSync, unlinkSync} from 'node:fs'
 import {homedir} from 'node:os'
 import {dirname, join, resolve} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const repoRoot = resolve(root, '..')
 const assets = join(root, 'public', 'assets')
-const botDescriptionDir = join(repoRoot, 'assets', 'bot-description')
 
+/** @typedef {{html: string, kind: 'og', out: string, width: number, height: number}} OgJob */
+/** @typedef {{html: string, kind: 'bot-description', base: string}} BotJob */
+/** @typedef {OgJob | BotJob} Job */
+
+/** @type {Job[]} */
 const jobs = [
-  {html: 'og-card.html', out: 'og.png', width: 1200, height: 630},
-  {html: 'og-card-ru.html', out: 'og-ru.png', width: 1200, height: 630},
-  {
-    html: 'bot-description-card.html',
-    out: 'bot-description-en.png',
-    width: 640,
-    height: 360,
-    botCopy: true,
-  },
-  {
-    html: 'bot-description-card-ru.html',
-    out: 'bot-description-ru.png',
-    width: 640,
-    height: 360,
-    botCopy: true,
-  },
+  {html: 'og-card.html', kind: 'og', out: 'og.png', width: 1200, height: 630},
+  {html: 'og-card-ru.html', kind: 'og', out: 'og-ru.png', width: 1200, height: 630},
+  {html: 'bot-description-card.html', kind: 'bot-description', base: 'bot-description-en'},
+  {html: 'bot-description-card-ru.html', kind: 'bot-description', base: 'bot-description-ru'},
 ]
+
+const BOT_DESIGN_W = 960
+const BOT_DESIGN_H = 540
+const BOT_PHOTO_W = 640
+const BOT_PHOTO_H = 360
 
 function findChrome() {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) {
@@ -105,12 +102,15 @@ async function loadPlaywright() {
   }
 }
 
-async function renderOne(browser, job) {
-  const {html: htmlName, out: outName, width, height, botCopy = false} = job
+/**
+ * @param {import('playwright-core').Browser} browser
+ * @param {number} width
+ * @param {number} height
+ * @param {string} htmlName
+ * @param {string} rawPath
+ */
+async function screenshotHtml(browser, width, height, htmlName, rawPath) {
   const htmlPath = join(assets, htmlName)
-  const pngPath = join(assets, outName)
-  const rawPath = join(assets, `og-raw-${outName}`)
-
   if (!existsSync(htmlPath)) {
     console.error('Missing', htmlPath)
     process.exit(1)
@@ -133,6 +133,18 @@ async function renderOne(browser, job) {
     omitBackground: false,
   })
   await page.close()
+}
+
+/**
+ * @param {import('playwright-core').Browser} browser
+ * @param {OgJob} job
+ */
+async function renderOg(browser, job) {
+  const {html: htmlName, out: outName, width, height} = job
+  const pngPath = join(assets, outName)
+  const rawPath = join(assets, `og-raw-${outName}`)
+
+  await screenshotHtml(browser, width, height, htmlName, rawPath)
 
   const py = `
 from PIL import Image
@@ -161,17 +173,66 @@ print(f'{os.path.basename(png)} size={im.size} bytes={os.path.getsize(png)}')
 `
   const pyResult = spawnSync('python3', ['-c', py], {encoding: 'utf8'})
   if (pyResult.status !== 0) {
+    try {
+      unlinkSync(rawPath)
+    } catch {
+      /* ignore */
+    }
     console.error(pyResult.stderr || pyResult.stdout)
     process.exit(pyResult.status ?? 1)
   }
   console.log(pyResult.stdout.trim())
+}
 
-  if (botCopy) {
-    mkdirSync(botDescriptionDir, {recursive: true})
-    const dest = join(botDescriptionDir, outName)
-    copyFileSync(pngPath, dest)
-    console.log(`copied → assets/bot-description/${outName}`)
+/**
+ * Design at 960×540 → GIF full size + PNG photo 640×360.
+ * @param {import('playwright-core').Browser} browser
+ * @param {BotJob} job
+ */
+async function renderBotDescription(browser, job) {
+  const rawPath = join(assets, `og-raw-${job.base}.png`)
+  const pngPath = join(assets, `${job.base}.png`)
+  const gifPath = join(assets, `${job.base}.gif`)
+
+  await screenshotHtml(browser, BOT_DESIGN_W, BOT_DESIGN_H, job.html, rawPath)
+
+  const py = `
+from PIL import Image
+import os
+
+raw = ${JSON.stringify(rawPath)}
+png = ${JSON.stringify(pngPath)}
+gif = ${JSON.stringify(gifPath)}
+design = (${BOT_DESIGN_W}, ${BOT_DESIGN_H})
+photo = (${BOT_PHOTO_W}, ${BOT_PHOTO_H})
+
+im = Image.open(raw).convert('RGB')
+if im.size == (design[0] * 2, design[1] * 2):
+    full = im.resize(design, Image.Resampling.LANCZOS)
+else:
+    full = im.resize(design, Image.Resampling.LANCZOS)
+
+gif_im = full.convert('P', palette=Image.Palette.ADAPTIVE, colors=64)
+gif_im.save(gif, 'GIF', optimize=True)
+print(f'{os.path.basename(gif)} size={full.size} bytes={os.path.getsize(gif)}')
+
+photo_im = full.resize(photo, Image.Resampling.LANCZOS)
+photo_im.save(png, 'PNG', optimize=True)
+print(f'{os.path.basename(png)} size={photo_im.size} bytes={os.path.getsize(png)}')
+
+os.remove(raw)
+`
+  const pyResult = spawnSync('python3', ['-c', py], {encoding: 'utf8'})
+  if (pyResult.status !== 0) {
+    try {
+      unlinkSync(rawPath)
+    } catch {
+      /* ignore */
+    }
+    console.error(pyResult.stderr || pyResult.stdout)
+    process.exit(pyResult.status ?? 1)
   }
+  console.log(pyResult.stdout.trim())
 }
 
 const chrome = findChrome()
@@ -194,7 +255,11 @@ const browser = await pw.chromium.launch({
 })
 try {
   for (const job of jobs) {
-    await renderOne(browser, job)
+    if (job.kind === 'og') {
+      await renderOg(browser, job)
+    } else {
+      await renderBotDescription(browser, job)
+    }
   }
 } finally {
   await browser.close()
