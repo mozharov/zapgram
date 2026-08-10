@@ -17,6 +17,9 @@ import {extractTxidFromChargeExtra} from './txid.js'
 
 export type CompleteOnchainResult = 'settled' | 'already_settled' | 'kept' | 'not_found'
 
+/** How paid was observed — used on settle + terminal-late analytics. */
+export type OnchainDetectionSource = 'webhook' | 'cron'
+
 export type CompleteOnchainJoinDeps = {
   onchainPayments: OnchainPaymentRepository
   /**
@@ -81,7 +84,10 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
       paid: boolean
       extra?: string | null
       amount?: number
+      /** Default webhook — only override in tests. */
+      source?: OnchainDetectionSource
     }): Promise<CompleteOnchainResult> {
+      const source = args.source ?? 'webhook'
       if (!args.paid) return 'kept'
 
       const onchain = await deps.onchainPayments.findByChargeId(args.chargeId)
@@ -95,25 +101,59 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           {chargeId: args.chargeId, status: onchain.status},
           'On-chain charge paid after terminal status; not granting',
         )
+        captureUserEvent(
+          deps.posthog,
+          'onchain_paid_after_terminal',
+          onchain.userId,
+          {
+            charge_id: args.chargeId,
+            onchain_id: onchain.id,
+            chat_id: onchain.chatId,
+            amount_sats: onchain.amountSats,
+            status: onchain.status,
+            detection_source: source,
+          },
+          {chatId: onchain.chatId},
+        )
         return 'kept'
       }
 
-      return settleOnchain(onchain, extractTxidFromChargeExtra(args.extra))
+      return settleOnchain(onchain, extractTxidFromChargeExtra(args.extra), source)
     },
 
     async complete(
       onchain: OnchainChatPayment,
       txid?: string | null,
+      source: OnchainDetectionSource = 'cron',
     ): Promise<CompleteOnchainResult> {
       if (onchain.status === 'paid') return 'already_settled'
-      if (onchain.status !== 'pending' && onchain.status !== 'grace') return 'kept'
-      return settleOnchain(onchain, txid ?? onchain.txid)
+      if (onchain.status !== 'pending' && onchain.status !== 'grace') {
+        if (onchain.status === 'expired' || onchain.status === 'cancelled') {
+          captureUserEvent(
+            deps.posthog,
+            'onchain_paid_after_terminal',
+            onchain.userId,
+            {
+              charge_id: onchain.satspayChargeId,
+              onchain_id: onchain.id,
+              chat_id: onchain.chatId,
+              amount_sats: onchain.amountSats,
+              status: onchain.status,
+              detection_source: source,
+            },
+            {chatId: onchain.chatId},
+          )
+        }
+        return 'kept'
+      }
+      return settleOnchain(onchain, txid ?? onchain.txid, source)
     },
   }
 
   async function settleOnchain(
     onchain: OnchainChatPayment,
     txid: string | null | undefined,
+    source: OnchainDetectionSource,
   ): Promise<CompleteOnchainResult> {
     try {
       const paymentHash = onchainPaymentHash(onchain.satspayChargeId)
@@ -247,6 +287,7 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
         fee_sats: 0,
         owner_sats: onchain.amountSats,
         payment_method: 'onchain' as const,
+        detection_source: source,
         charge_id: onchain.satspayChargeId,
         address: onchain.address,
         txid: txid ?? null,

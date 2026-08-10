@@ -32,6 +32,7 @@ function buildService(
   onchainPayments: ReturnType<typeof createOnchainPaymentRepository>,
   notifies: Array<{userId: number; text: string}>,
   edits: Array<{chatId: number; messageId: number; text: string}> = [],
+  captures: Array<{event: string; distinctId: string; properties?: Record<string, unknown>}> = [],
 ) {
   const users = createUserRepository(db)
   const chats = createChatRepository(db)
@@ -71,6 +72,16 @@ function buildService(
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     translate: (key, _lang, vars) => `${key}:${JSON.stringify(vars ?? {})}`,
     getBtcUsd: async () => null,
+    posthog: {
+      capture: args => {
+        captures.push({
+          event: args.event,
+          distinctId: String(args.distinctId),
+          properties: args.properties as Record<string, unknown> | undefined,
+        })
+      },
+      captureException: () => undefined,
+    },
     now: () => new Date('2026-08-08T12:00:00.000Z'),
   })
 }
@@ -160,5 +171,46 @@ describe('completeOnchainJoin', () => {
       }),
     ).toBe('settled')
     expect(await subscriptions.findByUserAndChat(2, -100)).toBeDefined()
+  })
+
+  test('paid after expired captures analytics and does not grant', async () => {
+    const db = createTestDb()
+    await seedChat(db)
+    const onchainPayments = createOnchainPaymentRepository(db)
+    const subscriptions = createSubscriptionRepository(db)
+
+    const row = await onchainPayments.create({
+      chatId: -100,
+      userId: 2,
+      satspayChargeId: 'ch-late',
+      address: 'bc1qlate',
+      amountSats: 1000,
+      expiresAt: new Date('2026-08-07T12:00:00.000Z'),
+      watchUntil: new Date('2026-08-08T12:00:00.000Z'),
+    })
+    await onchainPayments.markExpired(row.id)
+
+    const captures: Array<{
+      event: string
+      distinctId: string
+      properties?: Record<string, unknown>
+    }> = []
+    const service = buildService(db, onchainPayments, [], [], captures)
+
+    expect(await service.completeFromCharge({chargeId: 'ch-late', paid: true})).toBe('kept')
+    expect(await subscriptions.findByUserAndChat(2, -100)).toBeUndefined()
+    const terminal = captures.find(c => c.event === 'onchain_paid_after_terminal')
+    expect(terminal).toEqual({
+      event: 'onchain_paid_after_terminal',
+      distinctId: '2',
+      properties: {
+        charge_id: 'ch-late',
+        onchain_id: row.id,
+        chat_id: -100,
+        amount_sats: 1000,
+        status: 'expired',
+        detection_source: 'webhook',
+      },
+    })
   })
 })

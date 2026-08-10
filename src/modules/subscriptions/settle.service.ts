@@ -336,6 +336,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
         amount_sats: payment.price,
         fee_sats: fee,
         owner_sats: payment.price - fee,
+        payment_method: 'lightning' as const,
       }
       captureUserEvent(deps.posthog, 'subscription_settled', payment.userId, settleProps, {
         chatId: payment.chatId,

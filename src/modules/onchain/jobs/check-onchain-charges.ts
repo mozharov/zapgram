@@ -1,4 +1,5 @@
 import type {SatsPayCharge} from '@infra/lnbits/schemas.js'
+import {captureUserEvent} from '@infra/posthog.js'
 import {editOnchainStatusMessage} from '@modules/onchain/telegram/edit-status-message.js'
 import {getRuntime} from '../../../runtime.js'
 import {extractTxidFromChargeExtra} from '../txid.js'
@@ -8,7 +9,7 @@ import {extractTxidFromChargeExtra} from '../txid.js'
  * Also edits Telegram address messages when UI TTL or watch window ends.
  */
 export async function checkOnchainCharges() {
-  const {onchainPayments, satsPay, completeOnchainJoin, log} = getRuntime()
+  const {onchainPayments, satsPay, completeOnchainJoin, log, posthog} = getRuntime()
   const watchable = await onchainPayments.listWatchable(200)
   log.info(`Found ${watchable.length} open on-chain charges.`)
 
@@ -18,13 +19,41 @@ export async function checkOnchainCharges() {
 
       if (row.watchUntil.getTime() < now.getTime()) {
         const expired = await onchainPayments.markExpired(row.id)
-        if (expired) await editOnchainStatusMessage(expired, 'onchain-invoice.expired')
+        if (expired) {
+          captureUserEvent(
+            posthog,
+            'onchain_charge_expired',
+            expired.userId,
+            {
+              onchain_id: expired.id,
+              charge_id: expired.satspayChargeId,
+              chat_id: expired.chatId,
+              amount_sats: expired.amountSats,
+            },
+            {chatId: expired.chatId},
+          )
+          await editOnchainStatusMessage(expired, 'onchain-invoice.expired')
+        }
         continue
       }
 
       if (row.status === 'pending' && row.expiresAt.getTime() < now.getTime()) {
         const graced = await onchainPayments.markGrace(row.id)
-        if (graced) await editOnchainStatusMessage(graced, 'onchain-invoice.grace')
+        if (graced) {
+          captureUserEvent(
+            posthog,
+            'onchain_charge_grace',
+            graced.userId,
+            {
+              onchain_id: graced.id,
+              charge_id: graced.satspayChargeId,
+              chat_id: graced.chatId,
+              amount_sats: graced.amountSats,
+            },
+            {chatId: graced.chatId},
+          )
+          await editOnchainStatusMessage(graced, 'onchain-invoice.grace')
+        }
       }
 
       const current = (await onchainPayments.findById(row.id)) ?? row
@@ -44,7 +73,25 @@ export async function checkOnchainCharges() {
       }
 
       if (charge.paid) {
-        await completeOnchainJoin.complete(current, extractTxidFromChargeExtra(charge.extra))
+        const result = await completeOnchainJoin.complete(
+          current,
+          extractTxidFromChargeExtra(charge.extra),
+          'cron',
+        )
+        captureUserEvent(
+          posthog,
+          'onchain_cron_paid',
+          current.userId,
+          {
+            onchain_id: current.id,
+            charge_id: current.satspayChargeId,
+            chat_id: current.chatId,
+            amount_sats: current.amountSats,
+            status_before: current.status,
+            result,
+          },
+          {chatId: current.chatId},
+        )
       }
     } catch (error) {
       log.error(
