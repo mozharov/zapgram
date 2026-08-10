@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Политика конфиденциальности — ZapGram</title>
+    <meta
+      name="description"
+      content="Политика конфиденциальности ZapGram (@zap_gram_bot): данные Telegram, Lightning-кошельки, платежи, NWC и аналитика."
+    />
+    <link rel="canonical" href="https://zapgram.mozharov.me/ru/privacy/" />
+    <link rel="alternate" hreflang="en" href="https://zapgram.mozharov.me/privacy/" />
+    <link rel="alternate" hreflang="ru" href="https://zapgram.mozharov.me/ru/privacy/" />
+    <link rel="alternate" hreflang="x-default" href="https://zapgram.mozharov.me/privacy/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ZapGram" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Политика конфиденциальности — ZapGram" />
+    <meta
+      property="og:description"
+      content="Что хранит ZapGram для кошелька, tips, инвойсов и платных чатов в Telegram."
+    />
+    <meta property="og:url" content="https://zapgram.mozharov.me/ru/privacy/" />
+    <meta property="og:image" content="https://zapgram.mozharov.me/assets/og-ru.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Политика конфиденциальности — ZapGram" />
+    <meta
+      name="twitter:description"
+      content="Что хранит ZapGram для кошелька, tips, инвойсов и платных чатов в Telegram."
+    />
+    <meta name="twitter:image" content="https://zapgram.mozharov.me/assets/og-ru.png" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link
+      rel="preload"
+      href="/assets/fonts/sora-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/assets/fonts/ibm-plex-sans-cyrillic-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">К содержанию</a>
+
+    <header class="site-header">
+      <div class="wrap site-header__inner">
+        <a class="brand" href="/ru/">
+          <span class="brand__mark" aria-hidden="true">
+            <img src="/assets/logo.svg" alt="Логотип ZapGram" width="32" height="32" />
+          </span>
+          <span>ZapGram</span>
+        </a>
+        <nav class="nav" aria-label="Основная навигация">
+          <a href="/ru/#features">Возможности</a>
+          <a href="/ru/#faq">FAQ</a>
+          <span class="nav__locale">
+            <a href="/privacy/" lang="en" hreflang="en">EN</a>
+            <span class="nav__locale-sep" aria-hidden="true">·</span>
+            <span aria-current="true">RU</span>
+          </span>
+        </nav>
+        <a class="btn btn--primary header-cta" href="https://t.me/zap_gram_bot"
+          >Открыть в Telegram</a
+        >
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="legal">
+        <div class="wrap legal__inner">
+          <p class="legal__eyebrow">Документы</p>
+          <h1>Политика конфиденциальности</h1>
+          <p class="legal__meta">
+            Для hosted-бота
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            и этого сайта.
+            <span class="legal__updated">Обновлено 2026-08-10.</span>
+          </p>
+
+          <p>
+            Эта Политика конфиденциальности регулирует hosted Telegram-бота
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            и сайт
+            <a href="https://zapgram.mozharov.me/">zapgram.mozharov.me</a>
+            (вместе — «ZapGram», «мы»). Пользуясь ZapGram, вы соглашаетесь с этой политикой. Здесь
+            описано, как мы собираем, используем, храним и передаём персональные данные сервиса — это
+            политика конфиденциальности бота, в том числе для Telegram BotFather. Собственная
+            <a href="https://telegram.org/privacy">политика Telegram</a>
+            по-прежнему действует в части данных, которые обрабатывает платформа Telegram.
+          </p>
+
+          <h2>Кто оператор</h2>
+          <p>
+            Hosted-сервис ведёт автор бота
+            (<a href="https://t.me/vmozharov">@vmozharov</a>). Self-host копии open-source кода
+            обслуживает тот, кто их развернул, и под эту политику не подпадает — только
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            и
+            <a href="https://zapgram.mozharov.me/">zapgram.mozharov.me</a>.
+          </p>
+
+          <h2>Что собираем</h2>
+          <p>Для работы ZapGram мы собираем и обрабатываем следующие данные:</p>
+          <ul>
+            <li>
+              <strong>Профиль Telegram</strong> — id пользователя, username (если есть),
+              отображаемое имя и язык, который Telegram передаёт боту.
+            </li>
+            <li>
+              <strong>Сообщения, которые вы отправляете боту</strong> — команды, нажатия кнопок и
+              текст (memo инвойса, идеи фич, настройка чата и т.п.). В группах и каналах бот
+              получает только то, что позволяет privacy mode Telegram (обычно команды, ответы боту и
+              нужные служебные события).
+            </li>
+            <li>
+              <strong>Встроенный Lightning-кошелёк</strong> — кастодиальный кошелёк создаётся по
+              вашему Telegram id (через LNbits). Балансы, инвойсы и статусы платежей обрабатываются
+              на этой инфраструктуре, чтобы send/receive работал.
+            </li>
+            <li>
+              <strong>Платёжные записи</strong> — суммы в сатах, BOLT11 (request/hash), попытки
+              входа и продления подписки, возвраты, переводы комиссии платформы, записи донатов при
+              поддержке проекта и связанные метки времени. Нужны для доступа, продлений, refund и
+              идемпотентных выплат.
+            </li>
+            <li>
+              <strong>Платные чаты, которыми вы владеете или в которые входите</strong> — id чата,
+              название, цена, режим (разово / ежемесячно), текст при вступлении, статус подписки и
+              доступ.
+            </li>
+            <li>
+              <strong>On-chain оплата (если владелец чата включил)</strong> —
+              <code class="inline">zpub</code> / <code class="inline">xpub</code>, который вставляет
+              владелец (watch-only; не приватные ключи), адреса для оплаты, суммы, срок и on-chain
+              txid при обнаружении платежа.
+            </li>
+            <li>
+              <strong>NWC (если вы подключили)</strong> — Nostr Wallet Connect URL и предпочтение, с
+              какого кошелька tips, чтобы бот мог запрашивать платежи в рамках ваших прав. Отключить
+              можно в любой момент в боте.
+            </li>
+            <li>
+              <strong>Настройки поддержки</strong> — добровольный % , ежемесячный автодонат при
+              включении, суммы успешных донатов для вашей и общей статистики.
+            </li>
+            <li>
+              <strong>Служебные данные</strong> — например, что вы заблокировали бота (чтобы не
+              слать broadcast), временное состояние многошаговых сценариев, краткоживущее состояние
+              рассылок.
+            </li>
+            <li>
+              <strong>Аналитика сайта</strong> — visitor id (local storage / cookie), просмотры
+              страниц и клики по CTA бота через PostHog. Session replay на лендинге не используется.
+              Deep-link может передать visitor id, чтобы позже
+              <code class="inline">/start</code>
+              в боте связать «пришёл с сайта».
+            </li>
+            <li>
+              <strong>Продуктовая аналитика</strong> — события вроде start, платежей, ошибок и
+              feature request, с ключом Telegram user id, через PostHog — чтобы обслуживать,
+              понимать и улучшать продукт. Текст feature request попадает в эти события. Мы не
+              продаём эти данные и не строим на них рекламные профили.
+            </li>
+          </ul>
+          <p>
+            Мы <strong>не</strong> запрашиваем телефон, email, паспорт или банковские/карточные
+            данные. KYC не проводим.
+          </p>
+
+          <h2>Зачем это нужно</h2>
+          <ul>
+            <li>Кошелёк, tips, инвойсы, доступ в платные чаты, продления и донаты.</li>
+            <li>
+              Выплаты владельцам чатов, комиссия платформы на hosted-боте (где применимо), безопасные
+              refund дубликатов Lightning.
+            </li>
+            <li>Язык интерфейса и ваши настройки (NWC, % поддержки, auto-renew).</li>
+            <li>Безопасность, антиабьюз, разбор сбоев.</li>
+            <li>Измерение использования продукта и сайта (PostHog).</li>
+          </ul>
+
+          <h2>Кто ещё обрабатывает данные</h2>
+          <ul>
+            <li>
+              <strong>Telegram</strong> — доставка сообщений и updates; см. политики Telegram.
+            </li>
+            <li>
+              <strong>LNbits</strong> (и Lightning-нода за ним) — кастодиальные кошельки, инвойсы,
+              платежи, webhooks; Watch-Only / SatsPay для on-chain charge, когда включено.
+            </li>
+            <li>
+              <strong>Lightning Network / Bitcoin</strong> — платежи, которые вы отправляете или
+              получаете в публичных сетях. On-chain транзакции и адреса публичны по природе сети.
+            </li>
+            <li>
+              <strong>Провайдер вашего NWC-кошелька</strong> (только если подключили) — например
+              Alby, Coinos; они обрабатывают платежи, которые вы авторизуете.
+            </li>
+            <li>
+              <strong>PostHog</strong> — продуктовая аналитика и аналитика сайта hosted-сервиса.
+            </li>
+          </ul>
+          <p>
+            Мы не продаём персональные данные и не используем их для сторонней рекламы. Тексты
+            feature request пересылаются в admin-чаты оператора для разбора и записываются в
+            продуктовую аналитику, как описано выше.
+          </p>
+
+          <h2>Сколько храним</h2>
+          <ul>
+            <li>Данные аккаунта и кошелька — пока вы пользуетесь сервисом.</li>
+            <li>NWC-подключение — пока не отключите (или не попросите удалить).</li>
+            <li>Ожидающие receive-инвойсы удаляются по короткому TTL (порядка дней).</li>
+            <li>
+              Платёжные и подписочные записи — пока нужны для доступа, refund, выплат и базового
+              аудита движения сатов.
+            </li>
+            <li>Списки получателей broadcast — очищаются после завершения кампании.</li>
+            <li>История блокчейна публична и нами не удаляется.</li>
+          </ul>
+
+          <h2>Ваш выбор</h2>
+          <ul>
+            <li>Можно перестать пользоваться ботом; блокировка останавливает новые личные сообщения
+              от нас.</li>
+            <li>Отключить NWC в боте — прекратить использование внешнего подключения.</li>
+            <li>Выключить или изменить добровольный %; отменить ежемесячный донат.</li>
+            <li>
+              Запросить копию данных о вас или удаление (где возможно) — напишите
+              <a href="https://t.me/vmozharov">@vmozharov</a>
+              с того же Telegram-аккаунта (может понадобиться проверка). Стараемся ответить в
+              течение 30 дней.
+            </li>
+          </ul>
+          <p>
+            Удаление ограничено: могут остаться платёжные записи, нужные для refund, антифрода или
+            юридических/налоговых обязательств (если применимо); публичные данные сети остаются
+            публичными; сообщения, уже доставленные в Telegram, не «лежат» у нас как полная копия
+            чата.
+          </p>
+
+          <h2>Безопасность</h2>
+          <p>
+            Доступ к production ограничен. NWC connection string — чувствительные credentials:
+            относитесь как к паролю и подключайте только доверенный кошелёк. Встроенный кошелёк —
+            для удобства (custodial); для self-custody — NWC. Код:
+            <a href="https://github.com/mozharov/zapgram">github.com/mozharov/zapgram</a>.
+          </p>
+
+          <h2>Дети</h2>
+          <p>
+            Сервис не ориентирован на детей. Пользуйтесь только если вам можно пользоваться
+            Telegram и Bitcoin-сервисами по применимому праву.
+          </p>
+
+          <h2>Изменения</h2>
+          <p>
+            Страницу можем обновить при изменении продукта или процессоров. Дата «Обновлено»
+            сверху изменится. Продолжение использования hosted-бота после обновления означает
+            принятие новой редакции для этого сервиса.
+          </p>
+
+          <h2>Контакты</h2>
+          <p>
+            Запросы по данным:
+            <a href="https://t.me/vmozharov">@vmozharov</a>
+            в Telegram. Продукт:
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>.
+          </p>
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="site-footer__grid">
+          <div>
+            <p class="site-footer__label">Продукт</p>
+            <p>ZapGram — Bitcoin Lightning в Telegram</p>
+          </div>
+          <div>
+            <p class="site-footer__label">Ссылки</p>
+            <ul>
+              <li><a href="https://t.me/zap_gram_bot">@zap_gram_bot</a></li>
+              <li><a href="https://github.com/mozharov/zapgram">GitHub</a></li>
+              <li><a href="https://t.me/vmozharov">Автор бота</a></li>
+              <li><a href="/ru/privacy/" aria-current="page">Конфиденциальность</a></li>
+              <li>
+                <a href="https://github.com/mozharov/zapgram/blob/main/LICENSE">MIT License</a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p class="site-footer__label">Язык</p>
+            <ul>
+              <li><a href="/privacy/" lang="en">English</a></li>
+              <li><a href="/ru/privacy/" aria-current="page">Русский</a></li>
+            </ul>
+          </div>
+        </div>
+        <p class="site-footer__legal">
+          Не банк. Не инвестиционная рекомендация. Сетевые комиссии Lightning — на внешних платежах.
+          <span class="site-footer__updated">Обновлено 2026-08-10.</span>
+        </p>
+      </div>
+    </footer>
+    <script src="/assets/analytics.js" defer></script>
+  </body>
+</html>

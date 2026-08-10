@@ -43,4 +43,6 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 - [Support / donate](https://zapgram.mozharov.me/#support): optional project support
 - [FAQ](https://zapgram.mozharov.me/#faq): common questions and answers
 - [How it works](https://zapgram.mozharov.me/#how): step-by-step product walkthrough
+- [Privacy Policy (EN)](https://zapgram.mozharov.me/privacy/): official privacy policy for hosted @zap_gram_bot and the site (BotFather URL)
+- [Privacy Policy (RU)](https://zapgram.mozharov.me/ru/privacy/): Russian privacy policy
 - [NWC protocol](https://nwc.dev/): Nostr Wallet Connect specification

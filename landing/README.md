@@ -9,6 +9,8 @@ landing/
   public/                  # document root (everything here is served)
     index.html             # EN canonical + JSON-LD
     ru/index.html          # RU + JSON-LD
+    privacy/index.html     # EN Privacy Policy (BotFather URL)
+    ru/privacy/index.html  # RU Privacy Policy
     404.html               # EN noindex error page
     ru/404.html            # RU noindex error page
     styles.css

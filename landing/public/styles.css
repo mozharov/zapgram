@@ -1274,6 +1274,77 @@ table.cmd .amt {
   margin-top: 1.5rem;
 }
 
+/* Legal / privacy prose pages */
+.legal {
+  padding: calc(var(--header-h) + 2.5rem) 0 4rem;
+}
+
+.legal__inner {
+  max-width: var(--prose);
+}
+
+.legal__eyebrow {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.legal h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.legal__meta {
+  margin: 0 0 1.75rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.legal__updated {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+}
+
+.legal h2 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.legal p {
+  margin: 0 0 1rem;
+  color: var(--ink);
+}
+
+.legal ul {
+  margin: 0 0 1.25rem;
+  padding-left: 1.25rem;
+}
+
+.legal li {
+  margin: 0 0 0.5rem;
+}
+
+.legal li:last-child {
+  margin-bottom: 0;
+}
+
+.legal a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 code.inline {
   font-family: var(--font-mono);
   font-size: 0.875em;

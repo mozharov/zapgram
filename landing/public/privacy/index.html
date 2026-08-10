@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — ZapGram</title>
+    <meta
+      name="description"
+      content="Privacy Policy for ZapGram (@zap_gram_bot): Telegram data, Lightning wallets, payments, NWC, and analytics."
+    />
+    <link rel="canonical" href="https://zapgram.mozharov.me/privacy/" />
+    <link rel="alternate" hreflang="en" href="https://zapgram.mozharov.me/privacy/" />
+    <link rel="alternate" hreflang="ru" href="https://zapgram.mozharov.me/ru/privacy/" />
+    <link rel="alternate" hreflang="x-default" href="https://zapgram.mozharov.me/privacy/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ZapGram" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ru_RU" />
+    <meta property="og:title" content="Privacy Policy — ZapGram" />
+    <meta
+      property="og:description"
+      content="What ZapGram stores to run Lightning wallets, tips, invoices, and paid chats in Telegram."
+    />
+    <meta property="og:url" content="https://zapgram.mozharov.me/privacy/" />
+    <meta property="og:image" content="https://zapgram.mozharov.me/assets/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Privacy Policy — ZapGram" />
+    <meta
+      name="twitter:description"
+      content="What ZapGram stores to run Lightning wallets, tips, invoices, and paid chats in Telegram."
+    />
+    <meta name="twitter:image" content="https://zapgram.mozharov.me/assets/og.png" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link
+      rel="preload"
+      href="/assets/fonts/sora-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/assets/fonts/ibm-plex-sans-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="wrap site-header__inner">
+        <a class="brand" href="/">
+          <span class="brand__mark" aria-hidden="true">
+            <img src="/assets/logo.svg" alt="ZapGram logo" width="32" height="32" />
+          </span>
+          <span>ZapGram</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+          <a href="/#features">Features</a>
+          <a href="/#faq">FAQ</a>
+          <span class="nav__locale">
+            <span aria-current="true">EN</span>
+            <span class="nav__locale-sep" aria-hidden="true">·</span>
+            <a href="/ru/privacy/" lang="ru" hreflang="ru">RU</a>
+          </span>
+        </nav>
+        <a class="btn btn--primary header-cta" href="https://t.me/zap_gram_bot"
+          >Open in Telegram</a
+        >
+      </div>
+    </header>
+
+    <main id="main">
+      <article class="legal">
+        <div class="wrap legal__inner">
+          <p class="legal__eyebrow">Legal</p>
+          <h1>Privacy Policy</h1>
+          <p class="legal__meta">
+            For the hosted bot
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            and this website.
+            <span class="legal__updated">Last updated 2026-08-10.</span>
+          </p>
+
+          <p>
+            This Privacy Policy governs the hosted Telegram bot
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            and the website
+            <a href="https://zapgram.mozharov.me/">zapgram.mozharov.me</a>
+            (together, “ZapGram”, “we”, “us”). By using ZapGram you agree to this policy. It
+            describes how we collect, use, store, and share personal data for this service and is the
+            privacy policy published for the bot (including for Telegram BotFather). Telegram’s own
+            <a href="https://telegram.org/privacy">Privacy Policy</a>
+            still applies to data Telegram processes as the platform.
+          </p>
+
+          <h2>Who operates this</h2>
+          <p>
+            The hosted service is operated by the bot author
+            (<a href="https://t.me/vmozharov">@vmozharov</a>). Self-hosted copies of the open-source
+            code are run by whoever deploys them and are not covered by this policy — only
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>
+            and
+            <a href="https://zapgram.mozharov.me/">zapgram.mozharov.me</a>
+            are.
+          </p>
+
+          <h2>What we collect</h2>
+          <p>We collect and process the following data to run ZapGram:</p>
+          <ul>
+            <li>
+              <strong>Telegram profile</strong> — user id, username (if any), display name, and
+              language preference Telegram sends to the bot.
+            </li>
+            <li>
+              <strong>Messages you send the bot</strong> — commands, button presses, and text you
+              type (invoice memos, feature ideas, chat setup, and similar). In groups and channels
+              the bot only receives what Telegram’s bot privacy mode allows (typically commands,
+              replies to the bot, and service events it needs).
+            </li>
+            <li>
+              <strong>Built-in Lightning wallet</strong> — a custodial wallet is created for your
+              Telegram id (via LNbits). Balances, invoices, and payment status are processed on that
+              infrastructure so send and receive work.
+            </li>
+            <li>
+              <strong>Payment records</strong> — amounts in sats, BOLT11 payment requests and hashes,
+              subscription and join attempts, refunds, platform-fee transfers, donation ledger
+              entries when you support the project, and related timestamps. Required for access
+              grants, renewals, refunds, and idempotent payouts.
+            </li>
+            <li>
+              <strong>Paid chats you own or join</strong> — chat id, title, price, payment mode
+              (one-time / monthly), custom join text, subscription status, and access state.
+            </li>
+            <li>
+              <strong>On-chain pay (when a chat owner enables it)</strong> — the
+              <code class="inline">zpub</code> / <code class="inline">xpub</code> the owner pastes
+              (watch-only; not private keys), deposit addresses, amounts, expiry, and on-chain txids
+              when a payment is detected.
+            </li>
+            <li>
+              <strong>NWC (when you connect it)</strong> — the Nostr Wallet Connect URL you provide
+              and your tip-wallet preference, so the bot can request payments you authorize.
+              Disconnect anytime in the bot.
+            </li>
+            <li>
+              <strong>Support settings</strong> — voluntary % tip settings, monthly donate schedule
+              when you enable them, and successful donation amounts for your totals and community
+              stats.
+            </li>
+            <li>
+              <strong>Operational data</strong> — for example that you blocked the bot (so we skip
+              broadcasts), temporary multi-step flow state, and short-lived broadcast delivery state.
+            </li>
+            <li>
+              <strong>Website analytics</strong> — visitor id (local storage / cookie), page views,
+              and clicks on bot CTAs via PostHog. Session replay is not used on the landing. Deep
+              links may carry the visitor id so a later bot
+              <code class="inline">/start</code>
+              can attribute “came from the site.”
+            </li>
+            <li>
+              <strong>Product analytics</strong> — events such as starts, payments, errors, and
+              feature requests, keyed by Telegram user id, via PostHog — to operate, understand, and
+              improve the product. Feature-request text you submit is included in those events.
+              We do not sell this data or build advertising profiles from it.
+            </li>
+          </ul>
+          <p>
+            We do <strong>not</strong> ask for phone numbers, email addresses, government IDs, or
+            bank/card details. We do not run KYC.
+          </p>
+
+          <h2>Why we use it</h2>
+          <ul>
+            <li>Provide the wallet, tips, invoices, paid-chat access, renewals, and donations.</li>
+            <li>
+              Pay chat owners, collect the hosted platform fee where applicable, and refund
+              duplicate Lightning payments safely.
+            </li>
+            <li>Show the right language and keep settings (NWC, support %, auto-renew).</li>
+            <li>Secure the service, prevent abuse, and debug failures.</li>
+            <li>Measure product and website usage (PostHog).</li>
+          </ul>
+
+          <h2>Who processes data with us</h2>
+          <ul>
+            <li>
+              <strong>Telegram</strong> — delivers bot messages and updates; see Telegram’s
+              policies.
+            </li>
+            <li>
+              <strong>LNbits</strong> (and the Lightning node behind it) — custodial wallets,
+              invoices, payments, webhooks; Watch-Only / SatsPay for on-chain chat charges when
+              enabled.
+            </li>
+            <li>
+              <strong>Lightning Network / Bitcoin</strong> — payments you make or receive on the
+              public networks. On-chain transactions and addresses are public by design.
+            </li>
+            <li>
+              <strong>Your NWC wallet provider</strong> (only if you connect one) — e.g. Alby,
+              Coinos; they process payments you authorize from that wallet.
+            </li>
+            <li>
+              <strong>PostHog</strong> — product and website analytics for the hosted service.
+            </li>
+          </ul>
+          <p>
+            We do not sell your personal data. We do not use it for third-party advertising.
+            Feature ideas you send are forwarded to the operator’s Telegram admin chats for review
+            and recorded in product analytics as described above.
+          </p>
+
+          <h2>How long we keep it</h2>
+          <ul>
+            <li>Account and wallet data while you use the service.</li>
+            <li>
+              NWC connection until you disconnect it (or ask us to clear it).
+            </li>
+            <li>
+              Pending receive invoices are dropped after a short TTL (on the order of days).
+            </li>
+            <li>
+              Payment and subscription records are kept as long as needed for access control,
+              refunds, payouts, and basic audit of money movements.
+            </li>
+            <li>
+              In-flight broadcast recipient lists are removed when a campaign finishes.
+            </li>
+            <li>
+              Blockchain history is public and cannot be deleted by us.
+            </li>
+          </ul>
+
+          <h2>Your choices</h2>
+          <ul>
+            <li>Stop using the bot anytime; blocking it stops new private messages from us.</li>
+            <li>Disconnect NWC in the bot to stop using an external wallet connection.</li>
+            <li>Turn off or change voluntary support % in settings; cancel monthly donate.</li>
+            <li>
+              Ask for a copy of data we hold about you, or deletion where we can, by messaging
+              <a href="https://t.me/vmozharov">@vmozharov</a>
+              from the same Telegram account (we may need to verify it’s you). We aim to respond
+              within 30 days.
+            </li>
+          </ul>
+          <p>
+            Deletion has limits: we may keep payment-related rows needed for refunds, fraud
+            prevention, or legal/tax obligations where they apply; public chain data stays public;
+            messages already delivered in Telegram are outside our database.
+          </p>
+
+          <h2>Security</h2>
+          <p>
+            Access to production systems is limited. NWC connection strings are sensitive credentials
+            — treat them like a password and only connect wallets you trust. The built-in wallet is
+            custodial convenience; prefer NWC if you want keys on your side. Open source code:
+            <a href="https://github.com/mozharov/zapgram">github.com/mozharov/zapgram</a>.
+          </p>
+
+          <h2>Children</h2>
+          <p>
+            ZapGram is not directed at children. Use only if you may use Telegram and Bitcoin services
+            under the laws that apply to you.
+          </p>
+
+          <h2>Changes</h2>
+          <p>
+            We may update this page when the product or processors change. The “Last updated” date
+            above will change. Continued use of the hosted bot after an update means you accept the
+            revised policy for that service.
+          </p>
+
+          <h2>Contact</h2>
+          <p>
+            Privacy and data requests:
+            <a href="https://t.me/vmozharov">@vmozharov</a>
+            on Telegram. Product:
+            <a href="https://t.me/zap_gram_bot">@zap_gram_bot</a>.
+          </p>
+        </div>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="site-footer__grid">
+          <div>
+            <p class="site-footer__label">Product</p>
+            <p>ZapGram — Bitcoin Lightning in Telegram</p>
+          </div>
+          <div>
+            <p class="site-footer__label">Links</p>
+            <ul>
+              <li><a href="https://t.me/zap_gram_bot">@zap_gram_bot</a></li>
+              <li><a href="https://github.com/mozharov/zapgram">GitHub</a></li>
+              <li><a href="https://t.me/vmozharov">Bot author</a></li>
+              <li><a href="/privacy/" aria-current="page">Privacy</a></li>
+              <li>
+                <a href="https://github.com/mozharov/zapgram/blob/main/LICENSE">MIT License</a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <p class="site-footer__label">Language</p>
+            <ul>
+              <li><a href="/privacy/" aria-current="page">English</a></li>
+              <li><a href="/ru/privacy/" lang="ru">Русский</a></li>
+            </ul>
+          </div>
+        </div>
+        <p class="site-footer__legal">
+          Not a bank. Not financial advice. Lightning network fees apply to external payments.
+          <span class="site-footer__updated">Last updated 2026-08-10.</span>
+        </p>
+      </div>
+    </footer>
+    <script src="/assets/analytics.js" defer></script>
+  </body>
+</html>
