@@ -38,14 +38,9 @@ export async function handleSatsPayWebhook(
     })
     return 'ignored'
   }
-  if (!charge.paid) {
-    captureUserEvent(posthog, 'onchain_webhook_ignored', SATSPAY_WEBHOOK_ANALYTICS_DISTINCT_ID, {
-      reason: 'not_paid',
-      charge_id: charge.id,
-      amount: charge.amount,
-    })
-    return 'ignored'
-  }
+  // Unpaid body is normal noise: cron checkChargeBalance always re-fires the SatsPay
+  // webhook (even when balance is still 0). Do not capture — floods PostHog for every open charge.
+  if (!charge.paid) return 'ignored'
 
   const known = await onchainPayments.findByChargeId(charge.id)
   const result = await completeOnchainJoin.completeFromCharge({
