@@ -1,5 +1,5 @@
 import type {Chat} from '@infra/db/types.js'
-import {chatRoute, chatsPageRoute} from '@telegram/callback-data.js'
+import {chatRoute, chatsPageRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -30,8 +30,13 @@ export function buildChatsKeyboard(
       text: t('button.next'),
     })
   }
-  return keyboard.row({
-    url: `https://t.me/${getRuntime().bot.botInfo.username}?startgroup=true`,
-    text: t('button.add-chat'),
-  })
+  return keyboard
+    .row({
+      url: `https://t.me/${getRuntime().bot.botInfo.username}?startgroup=true`,
+      text: t('button.add-chat'),
+    })
+    .row({
+      callback_data: staticCallback.groupSettings,
+      text: t('button.back'),
+    })
 }

@@ -15,8 +15,9 @@ button =
     .disconnect-nwc = 🚫 Disconnect the NWC wallet
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
-    .add-to-group = 👥 Add to a chat · paid: /chats
-    .add-chat = 👥 Add chat · paid setup: /chats
+    .add-to-group = 👥 Add to a chat
+    .add-chat = 👥 Add chat
+    .paid-chats = 🔐 Paid chats
     .add-invoice-memo = 🔡 Add memo
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
@@ -243,7 +244,7 @@ settings = <b>⚙️ Settings</b>
     .groups = <b>👥 Groups and channels</b>
         You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
-        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <code>/chats</code>. Adding the bot alone does not enable paid access.
+        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below (or <code>/chats</code>). Adding the bot alone does not enable paid access.
 
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner

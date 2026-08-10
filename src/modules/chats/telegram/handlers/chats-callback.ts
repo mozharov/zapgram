@@ -1,6 +1,6 @@
 import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '@modules/chats/repository.js'
 import {buildChatsKeyboard} from '@modules/chats/telegram/keyboards/chats.js'
-import {chatsPageRoute} from '@telegram/callback-data.js'
+import {chatsPageRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -10,10 +10,15 @@ export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
   const limit = getRuntime().config.chatsPerPage
   const totalChats = await getAccessibleChatsCount(ctx.user.id)
   if (totalChats === 0) {
-    const keyboard = new InlineKeyboard().add({
-      url: `https://t.me/${ctx.me.username}?startgroup=true`,
-      text: ctx.t('button.add-chat'),
-    })
+    const keyboard = new InlineKeyboard()
+      .row({
+        url: `https://t.me/${ctx.me.username}?startgroup=true`,
+        text: ctx.t('button.add-chat'),
+      })
+      .row({
+        callback_data: staticCallback.groupSettings,
+        text: ctx.t('button.back'),
+      })
     return ctx.editMessageText(ctx.t('chats.empty'), {reply_markup: keyboard})
   }
   if (totalChats <= (page - 1) * limit) page = Math.ceil(totalChats / limit)

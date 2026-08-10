@@ -162,11 +162,11 @@ test('toggling NWC tips twice puts the column back', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('group settings opens the groups screen with a way back', async () => {
+test('group settings opens the groups screen with paid chats and a way back', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('group-settings')), {
     telegram: [{method: 'editMessageText', to: USER_A, text: /Groups and channels/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['settings'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'settings'])
   expectNoErrors(e2e.logs)
 })
 
