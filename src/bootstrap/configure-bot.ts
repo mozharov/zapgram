@@ -34,13 +34,50 @@ const adminBroadcastRu = {
   description: 'Админ: рассылка обновления пользователям по языку',
 } as const
 
+/** Profile “About” — max 120 chars. Shown under the bot name. */
+const shortDescriptionEn =
+  'Bitcoin Lightning wallet in Telegram: tips, invoices, and paid chats in sats.'
+const shortDescriptionRu =
+  'Bitcoin Lightning-кошелёк в Telegram: tips, инвойсы и платные чаты в сатоши.'
+
+/** Empty-chat description — max 512 chars. Shown before Start. */
+const descriptionEn = `Bitcoin Lightning wallet inside Telegram.
+
+• Send and receive sats (invoices + QR)
+• Tips in groups and channels: /tip
+• Paid chat access — Lightning and on-chain, one-time or monthly
+• Transfers between ZapGram users — instant, zero fee
+• Connect any external Lightning wallet via NWC
+
+Tap Start — wallet is created on first open.
+
+zapgram.mozharov.me`
+
+const descriptionRu = `Bitcoin Lightning-кошелёк внутри Telegram.
+
+• Отправляйте и получайте саты (инвойсы + QR)
+• Tips в группах и каналах: /tip
+• Платный доступ к чатам — Lightning и on-chain, разовый или ежемесячный
+• Переводы между пользователями ZapGram — мгновенно и без комиссии
+• Можно подключить любой внешний Lightning-кошелёк через NWC
+
+Нажмите Start — кошелёк создаётся сразу.
+
+zapgram.mozharov.me`
+
 export async function configureBot(deps: {
   bot: Bot<Context>
   config: AppConfig
   log: AppLogger
 }): Promise<void> {
   const {bot, config, log} = deps
-  log.info('Setting bot commands, webhook and default admin rights...')
+  log.info('Setting bot profile, commands, webhook and default admin rights...')
+
+  await bot.api.setMyShortDescription(shortDescriptionEn)
+  await bot.api.setMyShortDescription(shortDescriptionRu, {language_code: 'ru'})
+  await bot.api.setMyDescription(descriptionEn)
+  await bot.api.setMyDescription(descriptionRu, {language_code: 'ru'})
+
   await bot.api.setMyCommands([...privateCommandsEn], {scope: {type: 'all_private_chats'}})
   await bot.api.setMyCommands([...privateCommandsRu], {
     scope: {type: 'all_private_chats'},
@@ -99,5 +136,5 @@ export async function configureBot(deps: {
 
   await bot.api.setMyDefaultAdministratorRights({for_channels: true, rights})
   await bot.api.setMyDefaultAdministratorRights({for_channels: false, rights})
-  log.info('Bot commands, webhook and default admin rights were set successfully')
+  log.info('Bot profile, commands, webhook and default admin rights were set successfully')
 }
