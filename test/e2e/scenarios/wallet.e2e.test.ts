@@ -39,16 +39,25 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
   const mark = e2e.ln.requests.length
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: USER_A,
+        // Default fake rate 100_000 → 1234 sats ≈ $1.23
+        text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/,
+      },
+    ],
   })
 
   // The middleware resolves the user's wallet, then the screen asks for the balance. The last one
-  // is what makes this a live read: the number on screen cannot be stale.
+  // is what makes this a live read: the number on screen cannot be stale. Rate is public LNbits.
   expect(lnPathsSince(mark)).toEqual([
     'GET /users/api/v1/user',
     'GET /users/api/v1/user/<id>/wallet',
     'GET /api/v1/wallet',
+    'GET /api/v1/rate/USD',
   ])
+  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('(~$')
   expectNoErrors(e2e.logs)
 })
 
@@ -57,13 +66,16 @@ test('the wallet button re-renders in place without asking for the balance again
   const mark = e2e.ln.requests.length
 
   await expectDelta(e2e, () => e2e.send(privateCallback('wallet')), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/},
+    ],
   })
 
   // Editing a screen reuses the balance the middleware already loaded, so no `/api/v1/wallet`.
   expect(lnPathsSince(mark)).toEqual([
     'GET /users/api/v1/user',
     'GET /users/api/v1/user/<id>/wallet',
+    'GET /api/v1/rate/USD',
   ])
   expectNoErrors(e2e.logs)
 })

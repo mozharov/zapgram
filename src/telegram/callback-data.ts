@@ -214,6 +214,27 @@ export const donateMonthlyAmountRoute = defineCallback(
   ({amountSats}) => `donate:monthly:${amountSats}`,
 )
 
+export const featureFundAmountRoute = defineCallback(
+  'feature-fund-amount',
+  /^feature:fund:(\d+)$/,
+  match => ({amountSats: parseInt(requireGroup(match, 1, 'feature-fund-amount'), 10)}),
+  ({amountSats}) => `feature:fund:${amountSats}`,
+)
+
+export const broadcastLocaleRoute = defineCallback(
+  'broadcast-locale',
+  /^broadcast:locale:(en|ru)$/,
+  match => ({locale: requireGroup(match, 1, 'broadcast-locale') as 'en' | 'ru'}),
+  ({locale}) => `broadcast:locale:${locale}`,
+)
+
+export const broadcastConfirmRoute = defineCallback(
+  'broadcast-confirm',
+  /^broadcast:confirm:(yes|no)$/,
+  match => ({action: requireGroup(match, 1, 'broadcast-confirm') as 'yes' | 'no'}),
+  ({action}) => `broadcast:confirm:${action}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -236,6 +257,9 @@ export const parameterizedRoutes = [
   donationScopeRoute,
   donateAmountRoute,
   donateMonthlyAmountRoute,
+  featureFundAmountRoute,
+  broadcastLocaleRoute,
+  broadcastConfirmRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */
@@ -248,6 +272,7 @@ export const staticCallback = {
   sendToUser: 'send-to-user',
   payInvoice: 'pay-invoice',
   createInvoice: 'create-invoice',
+  addInvoiceMemo: 'add-invoice-memo',
   connectNwc: 'connect-nwc',
   disconnectNwc: 'disconnect-nwc',
   toggleNwcTips: 'toggle-nwc-tips',
@@ -259,4 +284,6 @@ export const staticCallback = {
   donateMonthlyMenu: 'donate-monthly-menu',
   donateMonthlyDisable: 'donate-monthly-disable',
   donateMonthlyCustom: 'donate-monthly-custom',
+  featureFundSkip: 'feature-fund-skip',
+  featureFundCustom: 'feature-fund-custom',
 } as const

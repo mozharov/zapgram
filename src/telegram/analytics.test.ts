@@ -3,6 +3,7 @@ import type {Context} from 'grammy'
 import {
   buildUpdateProperties,
   isBotRelevantUpdate,
+  isHandledGroupSlashCommand,
   landingStartPayload,
   mergePersonProperties,
   parseLandingStartPayload,
@@ -70,10 +71,75 @@ describe('isBotRelevantUpdate', () => {
         ctx({
           from: {id: 42, is_bot: false, first_name: 'A'},
           chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/tip@zap_gram_bot 21'},
+        }),
+      ),
+    ).toBe(true)
+
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
           message: {text: 'hey @zap_gram_bot'},
         }),
       ),
     ).toBe(true)
+  })
+
+  test('ignores group commands the bot does not handle', () => {
+    // Private-only bot commands that privacy mode still delivers in groups.
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/wallet'},
+        }),
+      ),
+    ).toBe(false)
+
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/start'},
+        }),
+      ),
+    ).toBe(false)
+
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/settings@zap_gram_bot'},
+        }),
+      ),
+    ).toBe(false)
+
+    // Other bots' commands, even when the name matches a handled command.
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/tip@some_other_bot 21'},
+        }),
+      ),
+    ).toBe(false)
+
+    // Unrelated slash commands from other bots / admins.
+    expect(
+      isBotRelevantUpdate(
+        ctx({
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: -100, type: 'supergroup', title: 'G'},
+          message: {text: '/ban 123'},
+        }),
+      ),
+    ).toBe(false)
   })
 
   test('tracks my_chat_member and join requests', () => {
@@ -99,6 +165,21 @@ describe('isBotRelevantUpdate', () => {
         }),
       ),
     ).toBe(true)
+  })
+})
+
+describe('isHandledGroupSlashCommand', () => {
+  test('accepts tip for this bot or unscoped', () => {
+    expect(isHandledGroupSlashCommand('/tip 21', 'zap_gram_bot')).toBe(true)
+    expect(isHandledGroupSlashCommand('/tip@zap_gram_bot', 'zap_gram_bot')).toBe(true)
+    expect(isHandledGroupSlashCommand('/TIP@Zap_Gram_Bot 5 @alice', 'zap_gram_bot')).toBe(true)
+  })
+
+  test('rejects private-only commands and other bots', () => {
+    expect(isHandledGroupSlashCommand('/wallet', 'zap_gram_bot')).toBe(false)
+    expect(isHandledGroupSlashCommand('/tip@other_bot', 'zap_gram_bot')).toBe(false)
+    expect(isHandledGroupSlashCommand('/tip@other_bot', undefined)).toBe(false)
+    expect(isHandledGroupSlashCommand('hello', 'zap_gram_bot')).toBe(false)
   })
 })
 
@@ -279,6 +360,7 @@ describe('mergePersonProperties', () => {
         monthlyDonationNextAt: null,
         monthlyDonationLastHash: null,
         monthlyDonationLastFailNotifyAt: null,
+        botBlocked: false,
       }),
       personPropertiesFromTelegram({
         id: 42,

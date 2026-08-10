@@ -9,6 +9,7 @@ export type RecordedNotification =
       file: InputFile | string
       opts?: Parameters<Api['sendPhoto']>[2]
     }
+  | {kind: 'copyMessage'; toUserId: number; fromChatId: number; messageId: number}
 
 export function createFakeNotifier(): Notifier & {calls: RecordedNotification[]} {
   const calls: RecordedNotification[] = []
@@ -20,6 +21,10 @@ export function createFakeNotifier(): Notifier & {calls: RecordedNotification[]}
     },
     async sendPhoto(userId, file, opts) {
       calls.push({kind: 'sendPhoto', userId, file, opts})
+      return true
+    },
+    async copyMessage(toUserId, fromChatId, messageId) {
+      calls.push({kind: 'copyMessage', toUserId, fromChatId, messageId})
       return true
     },
   }

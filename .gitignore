@@ -6,7 +6,9 @@
 /data
 /.grok
 /.impeccable
+/docs/superpowers
 main.db*
 .DS_Store
 .env*
 !.env*.example
+.worktrees/

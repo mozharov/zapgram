@@ -1,4 +1,5 @@
 import {advanceMonthlyNextAt} from '@core/money/donation.js'
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {User} from '@infra/db/types.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
@@ -11,7 +12,7 @@ const FAIL_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000
  * Failure: stay due, throttled PM (once per 24h).
  */
 export async function processMonthlyDonations(now: Date = new Date()): Promise<void> {
-  const {log, users, donationPay, posthog, notifier, masterWallet, translate} = getRuntime()
+  const {log, users, donationPay, posthog, notifier, masterWallet, translate, rates} = getRuntime()
 
   await runBatch({
     name: 'monthly donations',
@@ -91,7 +92,12 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
         !lastFail || now.getTime() - lastFail.getTime() >= FAIL_NOTIFY_COOLDOWN_MS
       if (shouldNotify) {
         try {
-          const text = translate('donate.monthly-failed', user.languageCode, {sats: amount})
+          const btcUsd = await rates.getBtcUsd()
+          const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(amount, btcUsd))
+          const text = translate('donate.monthly-failed', user.languageCode, {
+            sats: amount,
+            usdSuffix,
+          })
           await notifier.send(user.id, text)
           await users.update(user.id, {monthlyDonationLastFailNotifyAt: now})
         } catch (error) {

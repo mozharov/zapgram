@@ -15,8 +15,9 @@ button =
     .disconnect-nwc = 🚫 Disconnect the NWC wallet
     .groups = 👥 Groups and channels
     .cancel = ❌ Cancel
-    .add-to-group = 👥 Add {bot-name} to a chat
-    .add-chat = 👥 Add a chat
+    .add-to-group = 👥 Add to a chat · paid: /chats
+    .add-chat = 👥 Add chat · paid setup: /chats
+    .add-invoice-memo = 🔡 Add memo
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
@@ -56,6 +57,8 @@ button =
     .donation-scope-tips = Tips only
     .donation-scope-all = Tips + invoices
     .back-to-support = ⬅️ Support
+    .feature-fund-skip = Skip
+    .feature-fund-custom-short = ✏️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -111,22 +114,49 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /donate.
     Outside the bot: <code>zapgram@getalby.com</code>.
 
+    💡 <b>Feature ideas:</b>
+    Send a request with /feature — optionally attach sats so we know what matters most.
+
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
 
+feature =
+    .prompt = 💡 <b>What should we build?</b>
+        Send one text message with your idea.
+        Or use <code>/feature your idea here</code>.
+    .invalid-text = ⚠️ Send a non-empty text message with your idea.
+    .fund-prompt = 💰 Optionally attach sats to this idea (tip, not a promise we ship it).
+        Or skip to send for free.
+    .custom-amount = 🔤 Enter how many sats to attach (1–100000000).
+    .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
+    .submitted = ✅ Thanks! Your feature request was sent.
+    .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.
+    .fund-failed-submitted = ⚠️ Could not charge sats, but your feature request was still sent without funding.
+
+broadcast =
+    .pick-locale = 📣 <b>Broadcast</b>
+        Choose the audience language:
+    .locale-en = 🇬🇧 English
+    .locale-ru = 🇷🇺 Russian
+    .send-message = ✏️ Send the message to broadcast (text, photo, video, document…).
+        It will be copied to users via Telegram <code>copyMessage</code>.
+    .invalid-message = ⚠️ Send a regular message (not a bot command) to use as the broadcast body.
+    .confirm-yes = ✅ Send
+    .confirm-no = ❌ Cancel
+
 donation = 
-    .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat support tip could not be sent. Check balance / NWC, or use /donate.
+    .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
 
 donate = 
     .hub = 💚 <b>Support {bot-name}</b>
         Thanks for keeping the project alive.
 
         🌍 <b>Community</b>
-        ⏱ All time: <b>{$platformTotalSats}</b> sats
-        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats
+        ⏱ All time: <b>{$platformTotalSats}</b> sats{$platformTotalUsdSuffix}
+        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats{$platformLastMonthUsdSuffix}
 
         👤 <b>You</b>
-        💸 Sent: <b>{$totalSats}</b> sats · {$count} payments
+        💸 Sent: <b>{$totalSats}</b> sats{$totalUsdSuffix} · {$count} payments
         🕐 {$last}
         📅 Monthly: <b>{$monthlyStatus}</b>
         ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
@@ -140,22 +170,22 @@ donate =
     .auto-on = {$percent}%
     .auto-scope-tips = tips only
     .auto-scope-all = tips + invoices
-    .success = ✅ Thanks! You sent {$sats} sats to support {bot-name}.
-    .failed = ⚠️ Could not send {$sats} sats. Check your balance or NWC connection.
+    .success = ✅ Thanks! You sent {$sats} sats{$usdSuffix} to support {bot-name}.
+    .failed = ⚠️ Could not send {$sats} sats{$usdSuffix}. Check your balance or NWC connection.
     .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
     .custom-amount = 🔤 Enter the amount in sats you want to donate.
-    .monthly-status-on = {$sats} sats / 30 days
+    .monthly-status-on = {$sats} sats{$usdSuffix} / 30 days
     .monthly-status-off = Off
     .monthly-menu = 📅 <b>Monthly donation</b>
 
-        Current: <b>{$sats}</b> sats (0 = off).
+        Current: <b>{$sats}</b> sats{$usdSuffix} (0 = off).
         Choose an amount. Enabling charges once now, then every 30 days.
         Back returns to the full support hub (one-shot + auto %).
-    .monthly-enabled = ✅ Monthly donation set to {$sats} sats. First payment received; next charge in 30 days.
-    .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats, but the first charge failed. We will retry automatically. Check balance / NWC.
-    .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats. Next charge stays on schedule.
+    .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
+    .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
+    .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats{$usdSuffix}. Next charge stays on schedule.
     .monthly-disabled-toast = Monthly donation disabled
-    .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat donation. Check balance / NWC or /donate.
+    .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat{$usdSuffix} donation. Check balance / NWC or /donate.
     .monthly-custom-amount = 🔤 Enter monthly donation amount in sats.
 
 help = <b>ℹ️ Bitcoin</b>
@@ -178,6 +208,7 @@ help = <b>ℹ️ Bitcoin</b>
     <b>ℹ️ {bot-name}</b>
     • Quick Payment: Simply send a Lightning invoice to the chat.
     • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
+    • Feature requests: /feature — describe an idea; optional sats tip to signal priority.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
     <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
@@ -187,9 +218,9 @@ help = <b>ℹ️ Bitcoin</b>
 wallet = <b>👛 Wallet</b> ㅤ ㅤ ㅤ ㅤ ㅤ
 
     {$nwcBalance -> 
-    [no] <b>Balance:</b> {$balance} sats 
-    *[other]<b>{bot-name}:</b> {$balance} sats
-        <b>NWC:</b> {$nwcBalance} sats
+    [no] <b>Balance:</b> {$balance} sats{$usdSuffix}
+    *[other]<b>{bot-name}:</b> {$balance} sats{$usdSuffix}
+        <b>NWC:</b> {$nwcBalance} sats{$nwcUsdSuffix}
     }
 
 nwc = 
@@ -211,6 +242,8 @@ settings = <b>⚙️ Settings</b>
     <i>Use /help to learn more.</i>
     .groups = <b>👥 Groups and channels</b>
         You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
+
+        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <code>/chats</code>. Adding the bot alone does not enable paid access.
 
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner
@@ -246,7 +279,7 @@ send-menu = <b>✉️ Send payment</b>
         Pay a Lightning invoice or send payment to a Telegram user.
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
-    .completed = <b>✅ You sent {$amount} sats to @{$recipient}.</b>
+    .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>
@@ -257,13 +290,15 @@ wait-for-sats = <b>🔢 Enter the amount of sats.</b>
 wait-for-wallet = <b>👛 Select Wallet</b>
     .nwc = <b>⚡️ NWC wallet selected.</b>
     .internal = <b>🤖 {bot-name} wallet selected.</b>
+    .auto-only-internal = <b>🤖 Only the {bot-name} wallet has enough balance, so it was selected automatically.</b>
+    .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
 
-sats-received = <b>📩 You received {$amount} sats</b>. 
+sats-received = <b>📩 You received {$amount} sats{$usdSuffix}</b>.
     {$username -> 
-    [no] Balance: <b>{$balance} sats</b>
+    [no] Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
     *[other] Sender: @{$username}.
 
-        Balance: <b>{$balance} sats</b>
+        Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
     }
 
 wait-for-invoice = <b>🗳 Send or forward a message with a Lightning invoice to this chat.</b>
@@ -271,14 +306,14 @@ wait-for-invoice = <b>🗳 Send or forward a message with a Lightning invoice to
 
 wait-for-invoice-review = <b>ℹ️ Invoice review</b>
 
-        Amount: <b>{$amount} sats</b>
+        Amount: <b>{$amount} sats{$usdSuffix}</b>
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
         }{$fee -> 
         [no] <i></i>
-        *[other] Fee: <b>{$fee} sats</b>
+        *[other] Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         <i></i>
         }Created at: <b>{DATETIME($createdDate, timeZone: "UTC")} {DATETIME($createdDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
         {$expiryDate ->
@@ -293,23 +328,23 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         }
 
 received-incoming-invoice = 📥 <b>You received payment for a Lightning invoice.</b>
-        Amount: <b>{$amount} sats</b>.
+        Amount: <b>{$amount} sats{$usdSuffix}</b>.
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
 
-            Balance: <b>{$balance} sats</b>
-        *[other] Balance: <b>{$balance} sats</b>
+            Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
+        *[other] Balance: <b>{$balance} sats{$balanceUsdSuffix}</b>
         }
 
 paying-invoice = <b>🧾 Paying Lightning invoice...</b>
     .paid = <b>✅ Invoice paid.</b>
 
-        Payment amount: <b>{$amount} sats</b>
-        Fee: <b>{$fee} sats</b>
-        Total: <b>{$total} sats</b>
+        Payment amount: <b>{$amount} sats{$usdSuffix}</b>
+        Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
+        Total: <b>{$total} sats{$totalUsdSuffix}</b>
 
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
-    .created = Amount: <b>{$amount} sats</b>
+    .created = Amount: <b>{$amount} sats{$usdSuffix}</b>
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
@@ -321,7 +356,6 @@ creating-invoice = <b>🧾 Creating Lightning invoice...</b>
 
 wait-for-memo = <b>🔡 Enter a memo for the invoice.</b>
     .invalid = <b>⚠️ Invalid memo. Expected string up to 150 characters.</b>
-    .skipped = <b>Skipped.</b>
 
 tip = 
     .invalid-command = <b>⚠️ Invalid command usage.</b>
@@ -345,9 +379,10 @@ paid-chat =
         You can set up paid access to this chat.
 
 chats = <b>👥 Your chats with the ability to enable paid access.</b>
-    Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+    This list is for configuring paid access on chats where the bot is already an admin.
+    Add {bot-username} to a chat with invite and ban permissions to make it appear here.
     .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
-        Add {bot-username} to a chat with invite and ban permissions to make it appear in the list.
+        Add {bot-username} to a chat with invite and ban permissions (button below), then open /chats again to configure paid access.
 
 chat = <b>👥 {$title}</b>
     
@@ -355,7 +390,7 @@ chat = <b>👥 {$title}</b>
     [active] enabled
     *[other] disabled
     }</b>
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Payment type: <b>{$paymentType ->
     [one_time] one-time
     *[other] monthly
@@ -367,6 +402,7 @@ chat = <b>👥 {$title}</b>
 
     <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
     <i>On-chain payments go directly to your wallet (zpub/xpub). Access is usually granted soon after the transaction appears on the network.</i>
+    <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request). Then the bot can message applicants with an invoice and approve them after payment.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
     .custom-message = You can change the part of the message that users see when they request to join the chat.
@@ -380,7 +416,7 @@ chat = <b>👥 {$title}</b>
         {$enMessage}
 
 changing-price = <b>₿ Changing the price of paid access...</b>
-    .completed = <b>✅ The price of paid access has been set to {$price} sats.</b>
+    .completed = <b>✅ The price of paid access has been set to {$price} sats{$usdSuffix}.</b>
 
 enabling-onchain = <b>⛓ Enable on-chain payments</b>
 
@@ -415,7 +451,7 @@ enabling-onchain = <b>⛓ Enable on-chain payments</b>
 onchain-invoice =
     .created = <b>⛓ On-chain payment for "{$title}"</b>
 
-        Send <b>at least {$price} sats</b> to:
+        Send <b>at least {$price} sats{$usdSuffix}</b> to:
 
         <code>{$address}</code>
 
@@ -424,7 +460,7 @@ onchain-invoice =
         *[other] one month access
         }</b>
 
-        <i>Any amount above {$price} sats is a donation to the community owner.</i>
+        <i>Any amount above {$price} sats{$usdSuffix} is a donation to the community owner.</i>
 
         {$remaining}
     .paid = <b>✅ Access to the community "{$title}" received.</b>
@@ -451,7 +487,7 @@ new-onchain-subscription-payment = <b>⛓ New on-chain subscription payment!</b>
     *[other] monthly
     }</b>
 
-    Amount: <b>{$price} sats</b>
+    Amount: <b>{$price} sats{$usdSuffix}</b>
     Address: <code>{$address}</code>
 
     <i>Funds are already on your on-chain wallet (no Lightning fee split).</i>
@@ -460,7 +496,7 @@ subscription-invoice =
     .default-message = <b>🔒 Access to private community "{$title}"</b>
     .created = {$message}
 
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Subscription type: <b>{$type ->
     [one_time] permanent access
     *[other] one month access
@@ -495,7 +531,7 @@ subscription-invoice =
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.
-    .duplicate-refunded = <b>↩️ A repeated subscription payment of {$price} sats was credited to your ZapGram balance.</b>
+    .duplicate-refunded = <b>↩️ A repeated subscription payment of {$price} sats{$usdSuffix} was credited to your ZapGram balance.</b>
 
         Access and the payment to the community owner were processed only once.
     .expired = <b>⚠️ This subscription invoice has expired.</b>
@@ -503,8 +539,8 @@ subscription-invoice =
 
 subscription-renewal = 
     .renewed = <b>✅ Your subscription to "{$title}" has been extended until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
-        Payment amount: <b>{$price} sats</b>
-    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats to extend access for one month:</b>
+        Payment amount: <b>{$price} sats{$usdSuffix}</b>
+    .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats{$usdSuffix} to extend access for one month:</b>
         <code>{$invoice}</code>
 
 new-subscription-payment = <b>₿ New subscription payment!</b>
@@ -516,9 +552,9 @@ new-subscription-payment = <b>₿ New subscription payment!</b>
     *[other] monthly
     }</b>
     
-    Payment amount: <b>{$price} sats</b>
-    Fee: <b>{$fee} sats</b>
-    Credited: <b>{$total} sats</b>
+    Payment amount: <b>{$price} sats{$usdSuffix}</b>
+    Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
+    Credited: <b>{$total} sats{$totalUsdSuffix}</b>
 
 subscriptions = <b>👥 Your subscriptions to private chats.</b>
     .empty = <b>👥 You don't have any subscriptions.</b>
@@ -526,7 +562,7 @@ subscriptions = <b>👥 Your subscriptions to private chats.</b>
 
 subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
 
-    Price: <b>{$price} sats</b>
+    Price: <b>{$price} sats{$usdSuffix}</b>
     Valid until: <b>{$endsAt ->
         [no] permanent
         *[other] {$endsAt}

@@ -5,6 +5,7 @@ const context = {
   title: 'Test Community',
   expiryDate: new Date('2026-05-01T12:00:00.000Z'),
   price: 1000,
+  usdSuffix: '',
 }
 
 describe('settlement messages', () => {
@@ -61,9 +62,9 @@ describe('duplicate subscription refund', () => {
     ['en', 'A repeated subscription payment of 1,000 sats was credited'],
     ['ru', 'Повторный платёж за подписку на 1 000 сат зачислен'],
   ])('resolves the confirmed refund message in %s', (language, expected) => {
-    expect(translate('subscription-invoice.duplicate-refunded', language, {price: 1000})).toContain(
-      expected,
-    )
+    expect(
+      translate('subscription-invoice.duplicate-refunded', language, {price: 1000, usdSuffix: ''}),
+    ).toContain(expected)
   })
 })
 
@@ -76,14 +77,14 @@ describe('stored Telegram language tags', () => {
     ['sr-Latn', /A repeated subscription payment/],
     ['not_a_tag', /A repeated subscription payment/],
   ])('normalizes %s for background notifications', (language, expected) => {
-    expect(translate('subscription-invoice.duplicate-refunded', language, {price: 1000})).toMatch(
-      expected,
-    )
+    expect(
+      translate('subscription-invoice.duplicate-refunded', language, {price: 1000, usdSuffix: ''}),
+    ).toMatch(expected)
   })
 
   test('uses English when a background notification has no stored tag', () => {
-    expect(translate('subscription-invoice.duplicate-refunded', undefined, {price: 1000})).toMatch(
-      /A repeated subscription payment/,
-    )
+    expect(
+      translate('subscription-invoice.duplicate-refunded', undefined, {price: 1000, usdSuffix: ''}),
+    ).toMatch(/A repeated subscription payment/)
   })
 })

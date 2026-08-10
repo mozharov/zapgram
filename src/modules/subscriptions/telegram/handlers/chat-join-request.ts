@@ -6,6 +6,7 @@ import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import type {ChatTypeContext} from 'grammy'
 import type {ChatJoinRequest} from 'grammy/types'
 import {getRuntime} from '../../../../runtime.js'
@@ -90,6 +91,7 @@ async function replyWithSubscriptionInvoice(ctx: Context, chat: Chat) {
         invoice: invoice.attempt.paymentRequest,
         type: chat.paymentType,
         price: chat.price,
+        usdSuffix: await usdSuffixForSats(chat.price),
         remaining,
       }),
       {reply_markup: keyboard, link_preview_options: {is_disabled: true}},

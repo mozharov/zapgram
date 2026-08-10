@@ -34,7 +34,27 @@ export const envSchema = z.object({
     v => (v === '' || v === undefined ? undefined : v),
     z.url().optional(),
   ),
+  /**
+   * Comma-separated Telegram user ids that receive feature-request DMs.
+   * Empty / unset: requests still go to PostHog; no admin notify.
+   */
+  ADMIN_TELEGRAM_IDS: z.preprocess(parseAdminTelegramIds, z.array(z.number().int().positive())),
 })
+
+/** `"1, 2"` → `[1, 2]`; empty / missing → `[]`. */
+function parseAdminTelegramIds(value: unknown): number[] {
+  if (value === undefined || value === null || value === '') return []
+  if (Array.isArray(value)) {
+    return value.map(Number).filter(n => Number.isInteger(n) && n > 0)
+  }
+  if (typeof value !== 'string') return []
+  return value
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => Number(part))
+    .filter(n => Number.isInteger(n) && n > 0)
+}
 
 export type Env = z.infer<typeof envSchema>
 

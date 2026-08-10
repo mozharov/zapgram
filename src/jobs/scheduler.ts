@@ -1,5 +1,6 @@
 import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
+import {processBroadcasts} from '@modules/broadcast/jobs/process-broadcasts.js'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
@@ -75,6 +76,12 @@ export function defaultJobDefinitions(): JobDefinition[] {
       cronTime: '0 15 * * * *',
       runOnInit: false,
       tick: () => processMonthlyDonations(),
+    },
+    {
+      name: 'process-broadcasts',
+      cronTime: '*/30 * * * * *',
+      runOnInit: false,
+      tick: () => processBroadcasts(),
     },
   ]
 }

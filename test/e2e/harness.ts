@@ -4,6 +4,7 @@ import {join} from 'node:path'
 import {type AppContainer, createContainer} from '@bootstrap/container.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
+import {processBroadcasts} from '@modules/broadcast/jobs/process-broadcasts.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
@@ -35,6 +36,7 @@ export type E2E = {
     onchainCharges(): Promise<void>
     expiredSubscriptions(): Promise<void>
     expiringSubscriptions(): Promise<void>
+    processBroadcasts(): Promise<void>
   }
   restart(): Promise<void>
   dispose(): Promise<void>
@@ -108,6 +110,7 @@ export async function createE2E(opts?: {
       onchainCharges: checkOnchainCharges,
       expiredSubscriptions: checkExpiredSubscriptions,
       expiringSubscriptions: processExpiringSubscriptions,
+      processBroadcasts: processBroadcasts,
     },
     async restart() {
       if (mode !== 'file') {

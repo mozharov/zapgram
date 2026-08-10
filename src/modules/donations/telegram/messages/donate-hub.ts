@@ -1,16 +1,32 @@
 import type {User} from '@infra/db/types.js'
 import type {PlatformDonationStats, UserDonationStats} from '@modules/donations/repository.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 
-export function formatDonateHubText(
+export async function formatDonateHubText(
   t: BotContext['t'],
   user: User,
   stats: UserDonationStats,
   platform: PlatformDonationStats,
-): string {
+): Promise<string> {
+  const [
+    totalUsdSuffix = '',
+    platformTotalUsdSuffix = '',
+    platformLastMonthUsdSuffix = '',
+    monthlyUsdSuffix = '',
+  ] = await usdSuffixesForSats([
+    stats.totalSats,
+    platform.totalSats,
+    platform.lastMonthSats,
+    user.monthlyDonationSats,
+  ])
+
   const monthlyStatus =
     user.monthlyDonationSats > 0
-      ? t('donate.monthly-status-on', {sats: user.monthlyDonationSats})
+      ? t('donate.monthly-status-on', {
+          sats: user.monthlyDonationSats,
+          usdSuffix: monthlyUsdSuffix,
+        })
       : t('donate.monthly-status-off')
 
   const last =
@@ -27,11 +43,14 @@ export function formatDonateHubText(
 
   return t('donate.hub', {
     totalSats: stats.totalSats,
+    totalUsdSuffix,
     count: stats.count,
     last,
     monthlyStatus,
     platformTotalSats: platform.totalSats,
+    platformTotalUsdSuffix,
     platformLastMonthSats: platform.lastMonthSats,
+    platformLastMonthUsdSuffix,
     autoPercent,
     autoScope,
   })

@@ -63,12 +63,14 @@ function buildService(
         return true
       },
       sendPhoto: async () => true,
+      copyMessage: async () => true,
     },
     editTelegramMessage: async (chatId, messageId, text) => {
       edits.push({chatId, messageId, text})
     },
     log: {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}},
     translate: (key, _lang, vars) => `${key}:${JSON.stringify(vars ?? {})}`,
+    getBtcUsd: async () => null,
     now: () => new Date('2026-08-08T12:00:00.000Z'),
   })
 }

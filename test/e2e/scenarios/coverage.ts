@@ -104,7 +104,14 @@ export const scenarioCoverage = {
     errors: ['invoice_already_paid', 'not_found'],
   },
   invoices: {
-    routes: ['create-invoice', 'pay-invoice', 'cancel', 'connect-nwc', 'send-to-user'],
+    routes: [
+      'create-invoice',
+      'add-invoice-memo',
+      'pay-invoice',
+      'cancel',
+      'connect-nwc',
+      'send-to-user',
+    ],
     commands: ['/wallet'],
     updates: ['callback_query', 'message', 'hears'],
     writes: [
@@ -170,6 +177,40 @@ export const scenarioCoverage = {
     ],
     jobs: ['process-monthly-donations'],
     errors: ['insufficient_funds'],
+  },
+  'feature-requests': {
+    routes: ['feature-fund-amount', 'feature-fund-skip', 'feature-fund-custom', 'cancel'],
+    commands: ['/feature'],
+    updates: ['message', 'callback_query'],
+    writes: [
+      'users.insert',
+      'donations.insert',
+      'donation_platform_stats.insert',
+      'donation_platform_stats.update',
+      'conversations.insert',
+      'conversations.delete',
+    ],
+    jobs: [],
+    errors: [],
+  },
+  broadcast: {
+    routes: ['broadcast-locale', 'broadcast-confirm', 'cancel'],
+    commands: ['/broadcast'],
+    updates: ['message', 'callback_query', 'my_chat_member'],
+    writes: [
+      'users.insert',
+      'users.update',
+      'conversations.insert',
+      'conversations.delete',
+      'broadcasts.insert',
+      'broadcasts.update',
+      'broadcasts.delete',
+      'broadcast_recipients.insert',
+      'broadcast_recipients.update',
+      'broadcast_recipients.delete',
+    ],
+    jobs: ['process-broadcasts'],
+    errors: [],
   },
   journeys: {
     routes: [

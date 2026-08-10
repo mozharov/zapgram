@@ -4,6 +4,7 @@ import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -68,6 +69,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
     }),
   )
 
+  const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
   if (result.status !== 'paid') {
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'donate_one_shot_ui_failed', {
@@ -78,11 +80,11 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
         reason: result.reason,
       }),
     )
-    await ctx.reply(ctx.t('donate.failed', {sats}))
+    await ctx.reply(ctx.t('donate.failed', {sats, usdSuffix}))
     await replyDonateHub(ctx)
     return
   }
 
-  await ctx.reply(ctx.t('donate.success', {sats}))
+  await ctx.reply(ctx.t('donate.success', {sats, usdSuffix}))
   await replyDonateHub(ctx)
 }

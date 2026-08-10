@@ -4,6 +4,7 @@ import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -47,6 +48,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   const current = await conversation.external(() => getRuntime().users.getOrThrow(ctx.user.id))
   const wasOff = current.monthlyDonationSats <= 0
   const now = new Date()
+  const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
 
   if (!wasOff && current.monthlyDonationNextAt && current.monthlyDonationNextAt > now) {
     await conversation.external(() =>
@@ -64,7 +66,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         $set: {monthly_donation_sats: sats},
       }),
     )
-    await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats}))
+    await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats, usdSuffix}))
     await replyDonateHub(ctx)
     return
   }
@@ -109,7 +111,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         $set: {monthly_donation_sats: sats},
       }),
     )
-    await ctx.reply(ctx.t('donate.monthly-enabled', {sats}))
+    await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
   } else {
     await conversation.external(() =>
       getRuntime().users.update(ctx.user.id, {
@@ -132,7 +134,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         $set: {monthly_donation_sats: sats},
       }),
     )
-    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats}))
+    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats, usdSuffix}))
   }
 
   await replyDonateHub(ctx)

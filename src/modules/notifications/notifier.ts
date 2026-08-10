@@ -11,6 +11,11 @@ export type Notifier = {
     file: InputFile | string,
     opts?: Parameters<Api['sendPhoto']>[2],
   ): Promise<boolean>
+  /**
+   * Copy a message the bot already received into another chat (no “Forwarded from” header).
+   * `true` when Telegram accepted the copy.
+   */
+  copyMessage(toUserId: number, fromChatId: number, messageId: number): Promise<boolean>
 }
 
 /** Telegram-backed notifier. Methods never throw — they log and return success/failure. */
@@ -34,6 +39,15 @@ export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
         return false
       }
     },
+    async copyMessage(toUserId, fromChatId, messageId) {
+      try {
+        await api.copyMessage(toUserId, fromChatId, messageId)
+        return true
+      } catch (error) {
+        log.error({error, toUserId, fromChatId, messageId}, 'Failed to copy Telegram message')
+        return false
+      }
+    },
   }
 }
 
@@ -41,4 +55,5 @@ export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
 export const notifier: Notifier = {
   send: (...args) => getRuntime().notifier.send(...args),
   sendPhoto: (...args) => getRuntime().notifier.sendPhoto(...args),
+  copyMessage: (...args) => getRuntime().notifier.copyMessage(...args),
 }

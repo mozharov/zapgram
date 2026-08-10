@@ -1,4 +1,6 @@
 import {createConversation} from '@grammyjs/conversations'
+import {register as registerBroadcast} from '@modules/broadcast/register.js'
+import {broadcasting} from '@modules/broadcast/telegram/conversations/broadcasting.js'
 import {register as registerChats} from '@modules/chats/register.js'
 import {changingPrice} from '@modules/chats/telegram/conversations/changing-price.js'
 import {editCustomMessage} from '@modules/chats/telegram/conversations/edit-custom-message.js'
@@ -7,12 +9,15 @@ import {register as registerDonations} from '@modules/donations/register.js'
 import {customDonateAmount} from '@modules/donations/telegram/conversations/custom-donate-amount.js'
 import {customDonationPercent} from '@modules/donations/telegram/conversations/custom-donation-percent.js'
 import {customMonthlyAmount} from '@modules/donations/telegram/conversations/custom-monthly-amount.js'
+import {register as registerFeatureRequests} from '@modules/feature-requests/register.js'
+import {requestingFeature} from '@modules/feature-requests/telegram/conversations/requesting-feature.js'
 import {register as registerInvoices} from '@modules/invoices/register.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
 import {register as registerSubscriptions} from '@modules/subscriptions/register.js'
 import {register as registerTipping} from '@modules/tipping/register.js'
 import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
+import {privateMyChatMemberHandler} from '@modules/users/telegram/handlers/private-my-chat-member.js'
 import {register as registerWallet} from '@modules/wallet/register.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
 import {walletCommand} from '@modules/wallet/telegram/handlers/wallet-command.js'
@@ -64,11 +69,14 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.use(createConversation(customDonateAmount))
   privateChat.use(createConversation(customDonationPercent))
   privateChat.use(createConversation(customMonthlyAmount))
+  privateChat.use(createConversation(requestingFeature))
+  privateChat.use(createConversation(broadcasting))
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)
   privateChat.command(shellCommands[1], helpCommand)
   privateChat.callbackQuery(staticCallback.help, helpCallback)
+  privateChat.on('my_chat_member', privateMyChatMemberHandler)
 
   registerWallet(composer)
   registerTipping(composer)
@@ -76,6 +84,8 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   registerChats(composer)
   registerSubscriptions(composer)
   registerDonations(composer)
+  registerFeatureRequests(composer)
+  registerBroadcast(composer)
 
   // Terminal handlers must live on a composer created AFTER the feature registers.
   // grammY fixes a child composer's position in the parent chain at chatType() call time,

@@ -1,9 +1,11 @@
 import {AppError} from '@core/errors/app-error.js'
+import {matchesAppLocale} from '@core/i18n/language-code-match.js'
+import type {AppLocale} from '@core/i18n/locale.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {and, eq, isNotNull, lte, sql} from 'drizzle-orm'
+import {and, eq, isNotNull, lte, ne, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserRepositoryOptions = {
@@ -120,6 +122,34 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         orderBy: (t, {asc}) => [asc(t.monthlyDonationNextAt)],
       })
     },
+
+    async setBotBlocked(id: User['id'], botBlocked: boolean) {
+      return database
+        .update(usersTable)
+        .set({botBlocked})
+        .where(eq(usersTable.id, id))
+        .returning()
+        .then(rows => firstOrThrow(rows, `User ${id}`))
+    },
+
+    /**
+     * User ids eligible for a locale broadcast: not blocked, locale match, exclude launcher.
+     * Locale uses the same primary-language rule as `resolveAppLocale` (ru → ru, else en).
+     */
+    async listBroadcastRecipientIds(opts: {
+      locale: AppLocale
+      excludeUserId: number
+    }): Promise<number[]> {
+      const rows = await database
+        .select({
+          id: usersTable.id,
+          languageCode: usersTable.languageCode,
+        })
+        .from(usersTable)
+        .where(and(eq(usersTable.botBlocked, false), ne(usersTable.id, opts.excludeUserId)))
+
+      return rows.filter(row => matchesAppLocale(row.languageCode, opts.locale)).map(row => row.id)
+    },
   }
 }
 
@@ -131,3 +161,5 @@ export const getUserByUsername = (username: string) => getRuntime().users.findBy
 export const createOrUpdateUser = (data: NewUser) => getRuntime().users.createOrUpdate(data)
 export const updateUser = (id: User['id'], data: Partial<User>) =>
   getRuntime().users.update(id, data)
+export const setUserBotBlocked = (id: User['id'], botBlocked: boolean) =>
+  getRuntime().users.setBotBlocked(id, botBlocked)

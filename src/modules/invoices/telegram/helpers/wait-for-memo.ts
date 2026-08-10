@@ -5,33 +5,35 @@ import {InlineKeyboard} from 'grammy'
 
 const MAX_MEMO_LENGTH = 150
 
-export async function waitForMemo(conversation: BotConversation, ctx: ConversationContext) {
-  const message = await replyWithWaitForMemo(ctx)
+export type MemoTextResult =
+  | {status: 'ok'; memo: string}
+  | {status: 'cancelled'; reason: 'cancel' | 'invalid'}
+
+/**
+ * Prompt for invoice memo text (after the user opted in via Add memo).
+ */
+export async function waitForMemoText(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+): Promise<MemoTextResult> {
+  const message = await ctx.reply(ctx.t('wait-for-memo'), {
+    reply_markup: new InlineKeyboard().row({
+      callback_data: staticCallback.cancel,
+      text: ctx.t('button.cancel'),
+    }),
+  })
   const context = await conversation.wait()
   await conversation.external(() => removeInlineKeyboard(message))
-  if (context.hasCallbackQuery('skip')) {
-    await ctx.reply(ctx.t('wait-for-memo.skipped'))
-    return undefined
-  }
+
   if (context.callbackQuery) {
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt({next: true})
+    return {status: 'cancelled', reason: 'cancel'}
   }
 
   const memo = context.message?.text?.trim()
   if (!memo || memo.length > MAX_MEMO_LENGTH) {
     await ctx.reply(ctx.t('wait-for-memo.invalid'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+    return {status: 'cancelled', reason: 'invalid'}
   }
 
-  return memo
-}
-
-function replyWithWaitForMemo(ctx: ConversationContext) {
-  return ctx.reply(ctx.t('wait-for-memo'), {
-    reply_markup: new InlineKeyboard()
-      .add({callback_data: 'skip', text: ctx.t('button.skip')})
-      .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}),
-  })
+  return {status: 'ok', memo}
 }

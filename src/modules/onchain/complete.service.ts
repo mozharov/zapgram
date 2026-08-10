@@ -1,3 +1,4 @@
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {PaidAttemptOutcome} from '@core/subscriptions/payment-attempt.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
 import type {
@@ -61,6 +62,8 @@ export type CompleteOnchainJoinDeps = {
   ) => Promise<void>
   log: AppLogger
   translate: (key: string, language?: string, context?: TranslationVariables) => string
+  /** BTC/USD spot for owner notify amount suffix; null omits the suffix. */
+  getBtcUsd: () => Promise<number | null>
   posthog?: CaptureClient
   now?: () => Date
 }
@@ -221,6 +224,8 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
       }
 
       // Owner almost always has an open chat with the bot (admin).
+      const rate = await deps.getBtcUsd()
+      const usdSuffix = rate === null ? '' : formatUsdSuffix(satsToUsd(onchain.amountSats, rate))
       await deps.notifier.send(
         chat.ownerId,
         deps.translate('new-onchain-subscription-payment', chat.owner.languageCode, {
@@ -228,6 +233,7 @@ export function createCompleteOnchainJoinService(deps: CompleteOnchainJoinDeps) 
           title: chat.title,
           type: subscriptionPayment.subscriptionType,
           price: onchain.amountSats,
+          usdSuffix,
           address: onchain.address,
         }),
       )

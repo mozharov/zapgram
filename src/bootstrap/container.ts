@@ -1,14 +1,27 @@
 import {type AppConfig, createConfig} from '@config'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import {
+  createLnbitsRateFetcher,
+  createRateService,
+  type RateService,
+} from '@infra/lnbits/rate-service.js'
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
+import {
+  type BroadcastService,
+  createBroadcastService,
+} from '@modules/broadcast/broadcast.service.js'
+import {formatBroadcastReport, formatBroadcastStarted} from '@modules/broadcast/format.js'
+import {type BroadcastRepository, createBroadcastRepository} from '@modules/broadcast/repository.js'
+import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import {type ChatRepository, createChatRepository} from '@modules/chats/repository.js'
 import {
   type ConversationRepository,
@@ -20,6 +33,11 @@ import {
 } from '@modules/donations/collect.service.js'
 import {createDonationPayService, type DonationPayService} from '@modules/donations/pay.service.js'
 import {createDonationRepository, type DonationRepository} from '@modules/donations/repository.js'
+import {
+  createFeatureRequestService,
+  type FeatureRequestService,
+  formatFeatureRequestAdminMeta,
+} from '@modules/feature-requests/submit.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
 import {
@@ -74,6 +92,7 @@ export type AppContainer = {
   db: AppDatabase
   bot: Bot<BotContext>
   masterWallet: MasterWalletInstance
+  rates: RateService
   notifier: Notifier
   users: UserRepository
   chats: ChatRepository
@@ -96,6 +115,9 @@ export type AppContainer = {
   donations: DonationRepository
   donationPay: DonationPayService
   donationCollect: DonationCollectService
+  featureRequests: FeatureRequestService
+  broadcasts: BroadcastRepository
+  broadcastService: BroadcastService
   /** Shared i18n for jobs / services that cannot import @telegram/* directly. */
   translate: typeof translate
 }
@@ -114,6 +136,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const masterWallet = createMasterWallet(config)
   await masterWallet.checkStatus()
+
+  const rates = createRateService({
+    fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
+    log,
+  })
 
   const bot = createBot<BotContext>(
     config.BOT_TOKEN,
@@ -166,11 +193,47 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
     notifyDonationFailed: async (userId, donationSats, languageCode) => {
-      const text = translate('donation.failed', languageCode, {donationSats})
+      const btcUsd = await rates.getBtcUsd()
+      const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
+      const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
     log,
     posthog,
+  })
+
+  const featureRequests = createFeatureRequestService({
+    payDonation: input => donationPay.payDonation(input),
+    notify: (userId, text) => notifier.send(userId, text),
+    copyMessage: (toUserId, fromChatId, messageId) =>
+      notifier.copyMessage(toUserId, fromChatId, messageId),
+    adminTelegramIds: config.ADMIN_TELEGRAM_IDS,
+    formatAdminMeta: formatFeatureRequestAdminMeta,
+    log,
+    posthog,
+  })
+
+  const broadcasts = createBroadcastRepository(db)
+  const broadcastService = createBroadcastService({
+    broadcasts,
+    users,
+    copyMessage: async (toUserId, fromChatId, messageId) => {
+      try {
+        await bot.api.copyMessage(toUserId, fromChatId, messageId)
+        return 'sent'
+      } catch (error) {
+        if (isTelegramUserUnreachableError(error)) {
+          log.info({toUserId, error}, 'Broadcast target unreachable')
+          return 'blocked'
+        }
+        log.error({error, toUserId, fromChatId, messageId}, 'Broadcast copyMessage failed')
+        return 'failed'
+      }
+    },
+    notifyAdmin: (adminUserId, text) => notifier.send(adminUserId, text),
+    formatStarted: formatBroadcastStarted,
+    formatReport: formatBroadcastReport,
+    log,
   })
 
   const settleService = createSettleService({
@@ -194,6 +257,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     log,
     feePercent: config.SUBSCRIPTION_FEE_PERCENT,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     posthog,
   })
 
@@ -207,6 +271,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     notifier,
     log,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     invoiceExpirySeconds: INVOICE_EXPIRY,
   })
 
@@ -254,6 +319,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     log,
     translate,
+    getBtcUsd: () => rates.getBtcUsd(),
     posthog,
   })
 
@@ -264,6 +330,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     db,
     bot,
     masterWallet,
+    rates,
     notifier,
     users,
     chats,
@@ -286,6 +353,9 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     donations,
     donationPay,
     donationCollect,
+    featureRequests,
+    broadcasts,
+    broadcastService,
     translate,
   }
 

@@ -44,6 +44,7 @@ const ALL_JOBS = [
   'onchainCharges',
   'expiredSubscriptions',
   'expiringSubscriptions',
+  'processBroadcasts',
 ] as const
 
 export const COVERS = scenarioCoverage.jobs
@@ -72,7 +73,7 @@ afterEach(async () => {
 
 // --- Empty ticks ---
 
-test('each of the six jobs is a no-op on an empty database', async () => {
+test('each registered job is a no-op on an empty database', async () => {
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   const telegramMark = e2e.tg.calls.length
@@ -112,7 +113,7 @@ test('a paid pending invoice is notified and deleted', async () => {
   expectLedgerBalanced(before, after)
   expect(await e2e.db.select().from(pendingInvoicesTable)).toEqual([])
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
-    new RegExp(`Amount: <b>${PENDING_SATS} sats</b>`),
+    new RegExp(`Amount: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
   )
   expectNoErrors(e2e.logs)
 })

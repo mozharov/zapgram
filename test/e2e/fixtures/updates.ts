@@ -35,7 +35,9 @@ export function privateText(text: string, opts: CommonOptions = {}): TestUpdate 
 export function privateCommand(text: string, opts: CommonOptions = {}): TestUpdate {
   const update = privateText(text, opts)
   if (!update.message) throw new Error('privateCommand did not create a message')
-  update.message.entities = [{type: 'bot_command', offset: 0, length: text.length}]
+  // Entity covers only the command token so grammY can put the rest in ctx.match.
+  const commandLength = text.split(/\s/, 1)[0]?.length ?? text.length
+  update.message.entities = [{type: 'bot_command', offset: 0, length: commandLength}]
   return update
 }
 
@@ -142,6 +144,23 @@ export function myChatMember(
       old_chat_member: granted ? member('left') : member('administrator'),
       new_chat_member:
         typeof rights === 'boolean' ? member(granted ? 'administrator' : 'left') : rights,
+    },
+  })
+}
+
+/** Private block/unblock: member↔kicked. */
+export function privateMyChatMember(blocked: boolean, opts: CommonOptions = {}): TestUpdate {
+  const meta = nextMeta(opts)
+  const from = privateUser(opts.from)
+  return asUpdate({
+    update_id: meta.updateId,
+    reqId: meta.reqId,
+    my_chat_member: {
+      date: now(),
+      from,
+      chat: privateChat(from, opts.chat),
+      old_chat_member: blocked ? member('member') : member('kicked'),
+      new_chat_member: blocked ? member('kicked') : member('member'),
     },
   })
 }
@@ -352,10 +371,12 @@ function isMessage(value: Message | {text: string; from?: FromOverrides}): value
   return 'message_id' in value
 }
 
-function member(status: 'left' | 'administrator'): ChatMember {
-  if (status === 'left') return {status, user: botUser}
+function member(status: 'left' | 'administrator' | 'member' | 'kicked'): ChatMember {
+  if (status === 'left') return {status: 'left', user: botUser}
+  if (status === 'member') return {status: 'member', user: botUser}
+  if (status === 'kicked') return {status: 'kicked', user: botUser, until_date: 0}
   return {
-    status,
+    status: 'administrator',
     user: botUser,
     can_be_edited: false,
     is_anonymous: false,

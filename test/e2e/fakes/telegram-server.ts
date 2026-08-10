@@ -153,6 +153,8 @@ function defaultResult(
     case 'sendMessage':
     case 'sendPhoto':
     case 'editMessageText':
+    case 'editMessageMedia':
+    case 'copyMessage':
       return message(payload, botInfo, nextMessageId())
     case 'getChatAdministrators':
       return [{status: 'creator', user: ownerUser, is_anonymous: false}]
@@ -183,6 +185,11 @@ function message(
   }
   if (typeof payload.text === 'string') result.text = payload.text
   if (typeof payload.caption === 'string') result.caption = payload.caption
+  const media = payload.media
+  if (media && typeof media === 'object' && !Array.isArray(media)) {
+    const mediaCaption = Reflect.get(media, 'caption')
+    if (typeof mediaCaption === 'string') result.caption = mediaCaption
+  }
   return result
 }
 

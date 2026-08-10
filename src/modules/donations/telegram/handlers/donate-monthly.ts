@@ -8,6 +8,7 @@ import {
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donateMonthlyAmountRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function donateMonthlyMenuCallback(ctx: BotContext) {
@@ -18,9 +19,15 @@ export async function donateMonthlyMenuCallback(ctx: BotContext) {
     monthly_donation_sats: user.monthlyDonationSats,
     monthly_donation_next_at: user.monthlyDonationNextAt?.toISOString() ?? null,
   })
-  await ctx.editMessageText(ctx.t('donate.monthly-menu', {sats: user.monthlyDonationSats}), {
-    reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
-  })
+  await ctx.editMessageText(
+    ctx.t('donate.monthly-menu', {
+      sats: user.monthlyDonationSats,
+      usdSuffix: await usdSuffixForSats(user.monthlyDonationSats),
+    }),
+    {
+      reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
+    },
+  )
   await ctx.answerCallbackQuery()
 }
 
@@ -71,6 +78,8 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
 
   await clearDonateCallbackMessage(ctx)
 
+  const usdSuffix = await usdSuffixForSats(amountSats)
+
   if (!wasOff && current.monthlyDonationNextAt && current.monthlyDonationNextAt > now) {
     await users.update(ctx.user.id, {monthlyDonationSats: amountSats})
     captureBotEvent(posthog, 'monthly_donate_amount_updated', {
@@ -83,7 +92,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       source: 'preset',
       $set: {monthly_donation_sats: amountSats},
     })
-    await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats: amountSats}))
+    await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats: amountSats, usdSuffix}))
     await replyDonateHub(ctx)
     return
   }
@@ -120,7 +129,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       source: 'preset',
       $set: {monthly_donation_sats: amountSats},
     })
-    await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats}))
+    await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
   } else {
     await users.update(ctx.user.id, {
       monthlyDonationSats: amountSats,
@@ -139,7 +148,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       source: 'preset',
       $set: {monthly_donation_sats: amountSats},
     })
-    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats: amountSats}))
+    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats: amountSats, usdSuffix}))
   }
 
   await replyDonateHub(ctx)

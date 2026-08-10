@@ -1,3 +1,4 @@
+import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
@@ -41,6 +42,8 @@ export type RenewalServiceDeps = {
   notifier: Notifier
   log: AppLogger
   translate: (key: string, language?: string, context?: TranslationVariables) => string
+  /** BTC/USD spot for renewal reminder amount suffix; null omits the suffix. */
+  getBtcUsd: () => Promise<number | null>
   invoiceExpirySeconds: number
 }
 
@@ -216,12 +219,16 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         },
       )
 
+      const rate = await deps.getBtcUsd()
+      const usdSuffix = rate === null ? '' : formatUsdSuffix(satsToUsd(subscription.price, rate))
+
       const buffer = await QRCode.toBuffer(bolt11)
       const inputFile = new InputFile(buffer)
       const delivered = await deps.notifier.sendPhoto(user.id, inputFile, {
         caption: deps.translate('subscription-renewal.need-payment', user.languageCode, {
           title: chat.title,
           price: subscription.price,
+          usdSuffix,
           invoice: bolt11,
         }),
         show_caption_above_media: true,
