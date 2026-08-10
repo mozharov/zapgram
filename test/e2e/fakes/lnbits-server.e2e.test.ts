@@ -41,10 +41,13 @@ describe('fake LNbits HTTP server', () => {
     await withFake(async fake => {
       const response = await fetch(`${fake.url}/api/v1/rate/USD`)
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({rate: 100_000})
+      expect(await response.json()).toEqual({price: 100_000, rate: 1000})
 
       fake.state.btcUsdRate = 42_000
-      expect(await (await fetch(`${fake.url}/api/v1/rate/USD`)).json()).toEqual({rate: 42_000})
+      expect(await (await fetch(`${fake.url}/api/v1/rate/USD`)).json()).toEqual({
+        price: 42_000,
+        rate: 100_000_000 / 42_000,
+      })
 
       fake.state.btcUsdRate = null
       expect((await fetch(`${fake.url}/api/v1/rate/USD`)).status).toBe(500)

@@ -110,8 +110,14 @@ export const balanceResponseSchema = z.object({
   id: z.string(),
 })
 
+/**
+ * LNbits GET /api/v1/rate/USD:
+ * - `price` — USD per 1 BTC (what we need for sats→USD)
+ * - `rate` — sats per 1 USD (= 1e8 / price); do not treat as BTC/USD
+ */
 export const rateResponseSchema = z.object({
-  rate: z.number().positive(),
+  price: z.number().positive(),
+  rate: z.number().positive().optional(),
 })
 export type RateResponse = z.infer<typeof rateResponseSchema>
 

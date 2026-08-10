@@ -108,7 +108,7 @@ export class LnbitsState {
   readonly satsPayCharges: FakeSatsPayCharge[] = []
   watchOnlyAddressCounter = 0
   /**
-   * BTC/USD rate for GET /api/v1/rate/USD.
+   * USD per BTC for GET /api/v1/rate/USD (`price` field).
    * Default 100_000 so 1000 sats → $1.00. Set null to make the rate endpoint fail (500).
    */
   btcUsdRate: number | null = 100_000

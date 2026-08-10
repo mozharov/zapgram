@@ -59,6 +59,7 @@ export function createLnbitsRateFetcher(baseUrl: string, log?: AppLogger): () =>
   const client = new RateClient({baseUrl, log})
   return async () => {
     const body = await client.getUsdRate()
-    return body.rate
+    // LNbits: `price` = USD/BTC; `rate` = sats per USD — never use rate as BTC/USD.
+    return body.price
   }
 }

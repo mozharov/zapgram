@@ -125,9 +125,11 @@ function route({
   }
 
   // Public rate endpoint (no API key). null rate simulates LNbits outage for hide-suffix path.
+  // Shape matches real LNbits: price = USD/BTC, rate = sats per 1 USD.
   if (method === 'GET' && path === '/api/v1/rate/USD') {
     if (state.btcUsdRate === null) return json({detail: 'Rate unavailable.'}, 500)
-    return json({rate: state.btcUsdRate})
+    const price = state.btcUsdRate
+    return json({price, rate: 100_000_000 / price})
   }
 
   // This exact route must be checked before /api/v1/payments/{hash}.
