@@ -4,7 +4,7 @@ import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
-import {seedChat, seedUser} from '../fixtures/seed.js'
+import {seedChat, seedExpiringSubscription, seedUser} from '../fixtures/seed.js'
 import {
   chatJoinRequest,
   groupText,
@@ -367,6 +367,76 @@ test('an insufficient NWC balance does not offer the NWC pay button', async () =
   expectNoErrors(e2e.logs)
 })
 
+// --- Auto-renew via NWC ---
+
+const RENEWAL_FEE = 50 // SUBSCRIPTION_FEE_PERCENT default 5% of PRICE
+const RENEWAL_OWNER_PAYOUT = PRICE - RENEWAL_FEE
+
+test('an expiring subscription auto-renews via NWC when the internal balance is empty', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'chat_owner', firstName: 'Chat Owner'})
+  await connectNwc()
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: OWNER,
+    title: 'E2E paid chat',
+    type: 'supergroup',
+    status: 'active',
+    paymentType: 'monthly',
+    price: PRICE,
+  })
+  const subscription = await seedExpiringSubscription(e2e, {price: PRICE, autoRenew: true})
+  // Internal balance stays empty — auto-renew must fall back to NWC.
+  const userBefore = internalBalanceMsat(USER_A)
+  const ownerWallet = walletByUsername(OWNER)
+  const feeWallet = walletByName('fees wallet')
+  nwcCalls.length = 0
+
+  await expectDelta(e2e, () => e2e.jobs.expiringSubscriptions(), {
+    db: {
+      subscriptions: {
+        changed: 1,
+        match: rows => {
+          expect(rows).toHaveLength(1)
+          expect(rows[0]?.before).toMatchObject({id: subscription.id, endsAt: subscription.endsAt})
+          expect(rows[0]?.after).toMatchObject({
+            id: subscription.id,
+            price: PRICE,
+            autoRenew: true,
+            notificationSent: false,
+          })
+          const afterEnds = (rows[0]?.after as {endsAt: Date}).endsAt
+          expect(afterEnds.getTime()).toBeGreaterThan(subscription.endsAt!.getTime())
+        },
+      },
+    },
+    lnbits: {
+      // NWC credits master externally (no user LNbits debit); settle pays owner + fee.
+      balances: {
+        [ownerWallet.name]: RENEWAL_OWNER_PAYOUT,
+        [feeWallet.name]: RENEWAL_FEE,
+      },
+      payments: [
+        {out: false, sats: PRICE, times: 1},
+        {out: false, sats: RENEWAL_OWNER_PAYOUT, times: 1},
+        {out: true, sats: RENEWAL_OWNER_PAYOUT, times: 1},
+        {out: false, sats: RENEWAL_FEE, times: 1},
+        {out: true, sats: RENEWAL_FEE, times: 1},
+      ],
+    },
+    telegram: [
+      {method: 'approveChatJoinRequest', to: CHAT_GROUP},
+      {method: 'sendMessage', to: USER_A, text: /has been extended|продлена/i},
+      {method: 'sendMessage', to: OWNER, text: /New subscription payment/},
+    ],
+  })
+
+  expect(internalBalanceMsat(USER_A)).toBe(userBefore)
+  expect(nwcCalls.some(call => call.method === 'payInvoice')).toBe(true)
+  expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
+  // Balance pay fails (empty wallet) before NWC succeeds — those errors are expected.
+  expect(errorMessages().some(msg => msg.includes('Error paying invoice from balance'))).toBe(true)
+})
+
 // --- helpers ---
 
 /**
@@ -412,6 +482,19 @@ function masterBalanceMsat(): number {
   const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
   if (!master) throw new Error('Fake LNbits master wallet not found')
   return master.balanceMsat
+}
+
+function walletByUsername(userId: number) {
+  const lnUser = e2e.ln.state.getUserByUsername(String(userId))
+  const wallet = lnUser ? e2e.ln.state.walletsOfUser(lnUser.id)[0] : undefined
+  if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
+  return wallet
+}
+
+function walletByName(name: string) {
+  const wallet = e2e.ln.state.wallets.find(candidate => candidate.name === name)
+  if (!wallet) throw new Error(`Fake LNbits wallet not found: ${name}`)
+  return wallet
 }
 
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {

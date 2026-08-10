@@ -115,9 +115,9 @@ Turn a private group or channel into a sat-gated community — **Lightning and/o
 
 **Subscriptions**
 
-- Monthly renewals can auto-debit from the ZapGram wallet (**Lightning**)
+- Monthly renewals auto-debit the ZapGram wallet first, then NWC if connected and the internal balance is short
 - Manage auto-renew and status via `/subscriptions`
-- Manual renewal invoices when auto-renew is off or the balance is short
+- Manual renewal invoices when auto-renew is off or both wallets cannot pay
 - Lightning joins: owners are paid automatically (minus a small platform fee); duplicate payments are refunded safely
 - On-chain joins: sats go straight to the owner’s wallet (xpub); no Lightning fee split
 

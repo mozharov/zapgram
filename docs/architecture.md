@@ -66,7 +66,7 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 2. Detection is push-first: LNbits POSTs `${HOST}/lnbits/webhook/${BOT_WEBHOOK_SECRET}` (secret in path). Cron (`check-subscription-payments`) is the fallback.
 3. `settleService.complete` → grant access (idempotent via `settledAt`) → pay owner → fee → notify → complete row.
 4. Failures leave the row; cron retries with `MAX_SETTLE_ATTEMPTS` budget.
-5. Auto-renew: create row → charge balance → `complete` (same settle path).
+5. Auto-renew: create row → charge balance (then NWC if unpaid) → `complete` (same settle path).
 
 ## Money path (receive invoices)
 

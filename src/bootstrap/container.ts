@@ -267,6 +267,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     createSubscriptionPayment: data => payments.create(data),
     masterWallet,
     getUserWallet,
+    getUserNwcUrl: async userId => {
+      const user = await users.findById(userId)
+      return user?.nwcUrl
+    },
+    createNwc: nwcUrl => new NostrWallet(nwcUrl, config.memoFooter, log),
     completePayment: payment => settleService.complete(payment),
     notifier,
     log,

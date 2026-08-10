@@ -37,6 +37,10 @@ export type RenewalServiceDeps = {
   getUserWallet: (userId: number) => Promise<{
     payInvoice: (bolt11: string) => Promise<unknown>
   }>
+  /** Stored NWC connection string for the subscriber, if any. */
+  getUserNwcUrl: (userId: number) => Promise<string | null | undefined>
+  /** Build an NWC client from a stored URL for auto-renew fallback. */
+  createNwc: (nwcUrl: string) => {payInvoice: (bolt11: string) => Promise<unknown>}
   /** Single settlement path — grant access, pay owner, notify. */
   completePayment: (payment: SubscriptionPayment) => Promise<CompleteSubscriptionPaymentResult>
   notifier: Notifier
@@ -105,21 +109,10 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
         kind: 'renewal',
       })
 
-      // TODO: also try NWC when balance payment fails (needs careful handling of LNbits lag).
-      const paymentResult = await attemptPaymentFromBalance(subscription, invoice.bolt11)
-      if (!paymentResult.success) {
-        // An ambiguous wallet error must not open a second payable invoice while this one may
-        // already be paid. Ask LNbits by hash; if paid, continue into settle. If not, keep the row
-        // and let createAndSendRenewalInvoice reuse this paymentRequest for the manual reminder.
-        if (await isMasterInvoicePaid(payment.paymentHash)) {
-          deps.log.info(
-            {subscriptionId: subscription.id, paymentId: payment.id},
-            'Balance charge reported failure but the renewal invoice is paid; settling it.',
-          )
-        } else {
-          return {status: 'failed'}
-        }
-      }
+      // Internal balance first, then NWC. After any failed rail, re-check the master invoice so
+      // LNbits lag (or NWC "already paid") cannot double-charge and still can settle a paid row.
+      const charged = await chargeSubscriber(subscription, invoice.bolt11, payment.paymentHash)
+      if (!charged) return {status: 'failed'}
     } catch (error) {
       deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptAutoRenewal')
       return {status: 'failed'}
@@ -145,6 +138,40 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     }
   }
 
+  /**
+   * Collect the renewal amount from the subscriber.
+   *
+   * Order: ZapGram balance → (if unpaid) NWC → (if still unpaid after NWC) give up.
+   * Between rails we re-check the master invoice so a laggy success is not charged twice.
+   */
+  async function chargeSubscriber(
+    subscription: Subscription,
+    bolt11: string,
+    paymentHash: string,
+  ): Promise<boolean> {
+    if ((await attemptPaymentFromBalance(subscription, bolt11)).success) return true
+
+    if (await isMasterInvoicePaid(paymentHash)) {
+      deps.log.info(
+        {subscriptionId: subscription.id, paymentHash},
+        'Balance charge reported failure but the renewal invoice is paid; settling it.',
+      )
+      return true
+    }
+
+    if ((await attemptPaymentFromNwc(subscription, bolt11)).success) return true
+
+    if (await isMasterInvoicePaid(paymentHash)) {
+      deps.log.info(
+        {subscriptionId: subscription.id, paymentHash},
+        'NWC charge reported failure but the renewal invoice is paid; settling it.',
+      )
+      return true
+    }
+
+    return false
+  }
+
   async function attemptPaymentFromBalance(subscription: Subscription, invoice: string) {
     try {
       deps.log.info(`Attempting payment from balance for subscription ${subscription.id}`)
@@ -156,6 +183,29 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       return {success: !!result}
     } catch (error) {
       deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptPaymentFromBalance')
+      return {success: false}
+    }
+  }
+
+  async function attemptPaymentFromNwc(subscription: Subscription, invoice: string) {
+    try {
+      const nwcUrl = await deps.getUserNwcUrl(subscription.userId)
+      if (!nwcUrl) {
+        deps.log.info(
+          {subscriptionId: subscription.id, userId: subscription.userId},
+          'No NWC URL for auto-renew fallback',
+        )
+        return {success: false}
+      }
+      deps.log.info(
+        {subscriptionId: subscription.id, userId: subscription.userId},
+        'Attempting auto-renew payment from NWC',
+      )
+      const nwc = deps.createNwc(nwcUrl)
+      await nwc.payInvoice(invoice)
+      return {success: true}
+    } catch (error) {
+      deps.log.error({error, subscriptionId: subscription.id}, 'Error paying renewal invoice via NWC')
       return {success: false}
     }
   }
