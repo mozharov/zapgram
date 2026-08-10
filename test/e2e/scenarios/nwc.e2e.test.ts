@@ -397,15 +397,21 @@ test('an expiring subscription auto-renews via NWC when the internal balance is 
         changed: 1,
         match: rows => {
           expect(rows).toHaveLength(1)
-          expect(rows[0]?.before).toMatchObject({id: subscription.id, endsAt: subscription.endsAt})
-          expect(rows[0]?.after).toMatchObject({
+          const row = rows[0]
+          if (!row?.after || !(row.after instanceof Object)) {
+            throw new Error('Expected subscription after-row')
+          }
+          if (!subscription.endsAt) throw new Error('Expiring seed must have endsAt')
+          const beforeEndsAt = subscription.endsAt
+          expect(row.before).toMatchObject({id: subscription.id, endsAt: beforeEndsAt})
+          expect(row.after).toMatchObject({
             id: subscription.id,
             price: PRICE,
             autoRenew: true,
             notificationSent: false,
           })
-          const afterEnds = (rows[0]?.after as {endsAt: Date}).endsAt
-          expect(afterEnds.getTime()).toBeGreaterThan(subscription.endsAt!.getTime())
+          const afterEndsAt = (row.after as {endsAt: Date}).endsAt
+          expect(afterEndsAt.getTime()).toBeGreaterThan(beforeEndsAt.getTime())
         },
       },
     },

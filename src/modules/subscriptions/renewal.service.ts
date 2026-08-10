@@ -205,7 +205,10 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       await nwc.payInvoice(invoice)
       return {success: true}
     } catch (error) {
-      deps.log.error({error, subscriptionId: subscription.id}, 'Error paying renewal invoice via NWC')
+      deps.log.error(
+        {error, subscriptionId: subscription.id},
+        'Error paying renewal invoice via NWC',
+      )
       return {success: false}
     }
   }

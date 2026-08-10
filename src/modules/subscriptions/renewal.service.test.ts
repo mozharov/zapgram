@@ -52,20 +52,21 @@ function makeDeps(overrides: Partial<RenewalServiceDeps> = {}) {
   const payBalance = mock(async () => ({payment_hash: 'internal'}))
   const payNwc = mock(async () => undefined)
   const completePayment = mock(async () => 'settled' as const)
-  const createSubscriptionPayment = mock(async (data: {
-    chatId: number
-    userId: number
-    paymentHash: string
-    paymentRequest: string
-    subscriptionType: 'monthly'
-    price: number
-    kind: 'renewal'
-  }) =>
-    paymentRow({
-      paymentHash: data.paymentHash,
-      paymentRequest: data.paymentRequest,
-      price: data.price,
-    }),
+  const createSubscriptionPayment = mock(
+    async (data: {
+      chatId: number
+      userId: number
+      paymentHash: string
+      paymentRequest: string
+      subscriptionType: 'monthly'
+      price: number
+      kind: 'renewal'
+    }) =>
+      paymentRow({
+        paymentHash: data.paymentHash,
+        paymentRequest: data.paymentRequest,
+        price: data.price,
+      }),
   )
   const lookupPayment = mock(async () => ({paid: false}))
   const getUserNwcUrl = mock(async () => 'nostr+walletconnect://test')
