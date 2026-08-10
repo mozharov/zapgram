@@ -58,7 +58,8 @@ const descriptionEn = `Bitcoin Lightning wallet inside Telegram.
 
 Tap Start — wallet is created on first open.
 
-zapgram.mozharov.me`
+Supported by 21ideas — @bitcoin21ideas
+Project site: zapgram.mozharov.me`
 
 const descriptionRu = `Bitcoin Lightning-кошелёк внутри Telegram.
 
@@ -70,7 +71,8 @@ const descriptionRu = `Bitcoin Lightning-кошелёк внутри Telegram.
 
 Нажмите Start — кошелёк создаётся сразу.
 
-zapgram.mozharov.me`
+Поддерживается сообществом 21 идея — @bitcoin21ideas
+Сайт проекта: zapgram.mozharov.me`
 
 export async function configureBot(deps: {
   bot: Bot<Context>
