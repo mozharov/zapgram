@@ -15,12 +15,26 @@ function grammy(error_code: number, description: string) {
   )
 }
 
-test('isTelegramUserUnreachableError detects blocked and deactivated 403s', () => {
+test('isTelegramUserUnreachableError detects blocked, deactivated, no-chat, cannot-initiate', () => {
   expect(
     isTelegramUserUnreachableError(grammy(403, 'Forbidden: bot was blocked by the user')),
   ).toBe(true)
   expect(isTelegramUserUnreachableError(grammy(403, 'Forbidden: user is deactivated'))).toBe(true)
+  expect(
+    isTelegramUserUnreachableError(
+      grammy(403, "Forbidden: bot can't initiate conversation with a user"),
+    ),
+  ).toBe(true)
+  expect(
+    isTelegramUserUnreachableError(
+      grammy(403, 'Forbidden: bot cannot initiate conversation with a user'),
+    ),
+  ).toBe(true)
+  expect(isTelegramUserUnreachableError(grammy(400, 'Bad Request: chat not found'))).toBe(true)
   expect(isTelegramUserUnreachableError(grammy(403, 'Forbidden: other'))).toBe(false)
+  expect(
+    isTelegramUserUnreachableError(grammy(400, 'Bad Request: message to copy not found')),
+  ).toBe(false)
   expect(isTelegramUserUnreachableError(grammy(400, 'Bad Request'))).toBe(false)
   expect(isTelegramUserUnreachableError(new Error('nope'))).toBe(false)
 })

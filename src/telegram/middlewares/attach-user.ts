@@ -7,16 +7,32 @@ import type {BotContext} from '@telegram/context.js'
 import type {Middleware} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
+/**
+ * Load/refresh the DB user on private (and other) paths that need `ctx.user`.
+ *
+ * In private chats, any message/command/callback clears `bot_blocked` so broadcasts resume
+ * after the user opens the bot again (join-request-only users often never /start but can still
+ * press invoice buttons or open the wallet). `my_chat_member` block/unblock is left to
+ * {@link privateMyChatMemberHandler} so attachUser does not fight a block event.
+ */
 export const attachUser: Middleware<Context> = async (ctx, next) => {
   if (!ctx.from) return next()
   if (ctx.from.is_bot) throw new FromBotError()
-  ctx.user = await getOrCreateUser({
+
+  const {config, log, users} = getRuntime()
+  let user = await getOrCreateUser({
     id: ctx.from.id,
     username: ctx.from.username,
     languageCode: normalizeTelegramLanguageCode(ctx.from.language_code),
     firstName: ctx.from.first_name,
   })
-  const {config, log} = getRuntime()
+
+  if (ctx.chat?.type === 'private' && user.botBlocked && !ctx.myChatMember) {
+    user = await users.setBotBlocked(user.id, false)
+    log.info({userId: user.id}, 'Cleared botBlocked after private interaction')
+  }
+
+  ctx.user = user
   if (ctx.user.nwcUrl) {
     ctx.user.nwc = new NostrWallet(ctx.user.nwcUrl, config.memoFooter, log)
   }
