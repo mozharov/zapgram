@@ -170,7 +170,7 @@ donate =
 
         Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
 
-        🤝 Проект поддерживается сообществом <a href="https://21ideas.org">21 идея</a>
+        🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>
 
         ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
     .stats-last = Последний: {$date}
