@@ -91,11 +91,13 @@ describe('captureBotError / captureUserException', () => {
 
     expect(captureException).not.toHaveBeenCalled()
     expect(capture).toHaveBeenCalledTimes(1)
-    const payload = capture.mock.calls[0]?.[0] as {
-      event: string
-      distinctId: string
-      properties: Record<string, unknown>
-    }
+    const [payload] = capture.mock.calls[0] as unknown as [
+      {
+        event: string
+        distinctId: string
+        properties: Record<string, unknown>
+      },
+    ]
     expect(payload.event).toBe(APP_ERROR_EVENT)
     expect(payload.distinctId).toBe('316195118')
     expect(payload.properties.expected).toBe(true)
