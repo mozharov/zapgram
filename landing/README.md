@@ -24,16 +24,30 @@ landing/
     assets/og-card-ru.html   # OG RU source
     assets/og.png            # EN Open Graph / Twitter 1200×630
     assets/og-ru.png         # RU Open Graph / Twitter 1200×630
+    assets/bot-description-card.html    # bot empty-chat preview EN
+    assets/bot-description-card-ru.html # bot empty-chat preview RU
+    assets/bot-description-en.png       # EN bot description picture 640×360
+    assets/bot-description-ru.png       # RU bot description picture 640×360
     assets/fonts/            # self-hosted Sora + IBM Plex (woff2)
     robots.txt
     sitemap.xml
     llms.txt               # AI agent context
     pricing.md             # machine-readable fees
-  scripts/render-og.mjs    # HTML → PNG via Chromium
+  scripts/render-og.mjs    # HTML → PNG via Chromium (OG + bot description)
   Dockerfile               # production nginx image with minified CSS
   nginx.conf               # compression, caching, locale-aware 404
   README.md
+
+# Also copied for BotFather upload (API cannot set description media):
+assets/bot-description/    # bot-description-en.png, bot-description-ru.png
 ```
+
+### Bot description pictures
+
+Empty-chat preview cards (logo + headline + feature chips). Regenerate with
+`bun landing/scripts/render-og.mjs`. Install via BotFather → Edit Description
+Picture (one image per bot; not per language). See
+`assets/bot-description/README.md`.
 
 ## 404 routing (nginx)
 

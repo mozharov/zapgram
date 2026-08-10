@@ -34,6 +34,14 @@ const adminBroadcastRu = {
   description: 'Админ: рассылка обновления пользователям по языку',
 } as const
 
+/**
+ * Empty-chat **picture** is not settable via Bot API (only BotFather
+ * “Edit Description Picture”, static photo **640×360**). Sources + PNGs:
+ *   landing/public/assets/bot-description-card{,-ru}.html
+ *   assets/bot-description/bot-description-{en,ru}.png
+ *   bun landing/scripts/render-og.mjs
+ */
+
 /** Profile “About” — max 120 chars. Shown under the bot name. */
 const shortDescriptionEn =
   'Bitcoin Lightning wallet in Telegram: tips, invoices, and paid chats in sats.'
