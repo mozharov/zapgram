@@ -21,6 +21,13 @@ ZapGram is a free Telegram bot that gives every user a Lightning wallet on first
 
 Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or fiat rails.
 
+## Partner / used by
+
+- [21 Ideas](https://21ideas.org/en/): community with Bitcoin learning materials
+- In the 21 Ideas community ZapGram is used for tips in chat and paid community access
+- Channel: [t.me/bitcoin21ideas](https://t.me/bitcoin21ideas)
+- ZapGram guide from 21 Ideas: [21ideas.org/zapgram/](https://21ideas.org/zapgram/)
+
 ## Fees
 
 - Bot and wallet: free to open and use

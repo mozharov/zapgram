@@ -20,7 +20,19 @@
 
 ZapGram turns Telegram into a Lightning payment app: instant tips in groups, invoices with QR codes, transfers between users at message speed, and paid access to private communities.
 
-No bank. No borders. Just sats.
+---
+
+## Used by
+
+**Partner: [21 Ideas](https://21ideas.org/en/)** — community with Bitcoin learning materials.
+
+In the 21 Ideas community ZapGram is used for:
+
+- **Tips** in chat
+- **Paid access** to the community
+
+Telegram channel: [**@bitcoin21ideas**](https://t.me/bitcoin21ideas)  
+ZapGram guide from 21 Ideas: [21ideas.org/zapgram/](https://21ideas.org/zapgram/)
 
 ---
 
@@ -212,6 +224,7 @@ Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-c
 - **Bot:** [t.me/zap_gram_bot](https://t.me/zap_gram_bot)
 - **Source:** [github.com/mozharov/zapgram](https://github.com/mozharov/zapgram)
 - **Architecture:** [docs/architecture.md](./docs/architecture.md)
+- **Partner:** [21 Ideas](https://21ideas.org/en/) · channel [@bitcoin21ideas](https://t.me/bitcoin21ideas) · [ZapGram guide from 21 Ideas](https://21ideas.org/zapgram/)
 - **Contact:** [@vmozharov](https://t.me/vmozharov)
 
 ---

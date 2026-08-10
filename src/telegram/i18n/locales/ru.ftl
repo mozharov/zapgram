@@ -118,6 +118,12 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning кошелёк в Telegram.</b>
     💡 <b>Идеи фич:</b>
     Напиши запрос через /feature — можно прикрепить сатоши, чтобы показать, что важно.
 
+    <b>🤝 Партнёр</b>
+    В сообществе <a href="https://21ideas.org">21 идея</a> {bot-name} используется для tips в чате и платного доступа к сообществу.
+    Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
+    • <a href="https://21ideas.org">21ideas.org</a> — обучающие материалы по Bitcoin
+    • <a href="https://21ideas.org/zapgram/">Гайд по ZapGram от 21 идея</a>
+
     🕊 <b>Добро пожаловать в мир свободных платежей!</b>
     <i>Подробнее о {bot-name}, Bitcoin, Lightning Network и совместимых кошельках в /help.</i>
 
@@ -163,6 +169,8 @@ donate =
         ⚡️ Авто с платежей: <b>{$autoPercent}</b> · {$autoScope}
 
         Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
+
+        🤝 Проект поддерживается сообществом <a href="https://21ideas.org">21 идея</a> (<a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>)
 
         ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
     .stats-last = Последний: {$date}
@@ -211,6 +219,12 @@ help = <b>ℹ️ Bitcoin</b>
     • Платный доступ к чату: добавь {bot-username} в закрытый чат, для создания платного доступа с разовой оплатой или ежемесячной подпиской. Используй /chats для контроля чатов с платным доступом.
     • Запросы фич: /feature — опиши идею; можно прикрепить сатоши как сигнал приоритета.
     • Открытый исходный код: код {bot-name} полностью открыт и доступен на <a href="https://github.com/v-mozharov/zapgram">GitHub</a>.
+
+    <b>🤝 Партнёр</b>
+    В сообществе <a href="https://21ideas.org">21 идея</a> {bot-name} используется для tips в чате и платного доступа к сообществу.
+    Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
+    • <a href="https://21ideas.org">21ideas.org</a> — обучающие материалы по Bitcoin
+    • <a href="https://21ideas.org/zapgram/">Гайд по ZapGram от 21 идея</a>
 
     <i>При оплате счетов, созданных вне кошелька {bot-name}, взимается комиссия в размере 1 сат + 1.5% от суммы перевода. Комиссия взимается только при оплате из кошелька {bot-name}.</i>
 

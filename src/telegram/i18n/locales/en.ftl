@@ -118,6 +118,12 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     💡 <b>Feature ideas:</b>
     Send a request with /feature — optionally attach sats so we know what matters most.
 
+    <b>🤝 Partner</b>
+    In the <a href="https://21ideas.org/en/">21 Ideas</a> community {bot-name} is used for tips in chat and paid access to the community.
+    Channel: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
+    • <a href="https://21ideas.org/en/">21ideas.org</a> — Bitcoin learning materials
+    • <a href="https://21ideas.org/zapgram/">ZapGram guide from 21 Ideas</a>
+
     🕊 <b>Welcome to the world of free payments!</b>
     <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
 
@@ -163,6 +169,8 @@ donate =
         ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
 
         Tap an amount for a one-shot donation, or open Monthly / Auto %.
+
+        🤝 Project is supported by the <a href="https://21ideas.org/en/">21 Ideas</a> community (<a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>)
 
         ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
     .stats-last = Last: {$date}
@@ -211,6 +219,12 @@ help = <b>ℹ️ Bitcoin</b>
     • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
     • Feature requests: /feature — describe an idea; optional sats tip to signal priority.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
+
+    <b>🤝 Partner</b>
+    In the <a href="https://21ideas.org/en/">21 Ideas</a> community {bot-name} is used for tips in chat and paid access to the community.
+    Channel: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
+    • <a href="https://21ideas.org/en/">21ideas.org</a> — Bitcoin learning materials
+    • <a href="https://21ideas.org/zapgram/">ZapGram guide from 21 Ideas</a>
 
     <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
 
