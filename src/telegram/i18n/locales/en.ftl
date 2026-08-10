@@ -170,7 +170,7 @@ donate =
 
         Tap an amount for a one-shot donation, or open Monthly / Auto %.
 
-        🤝 Project is supported by the <a href="https://21ideas.org/en/">21ideas</a> community (<a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>)
+        🤝 Project is supported by the <a href="https://21ideas.org/en/">21ideas</a> community
 
         ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
     .stats-last = Last: {$date}
