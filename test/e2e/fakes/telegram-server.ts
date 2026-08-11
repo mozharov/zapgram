@@ -1,6 +1,7 @@
 import type {UserFromGetMe} from 'grammy/types'
 
 export type TgCall = {method: string; payload: Record<string, unknown>}
+type TgResult = {method: string; result: unknown}
 
 type BotApiError = {
   error_code: number
@@ -15,6 +16,8 @@ export type FakeTelegram = {
   calls: TgCall[]
   of(method: string): Record<string, unknown>[]
   last(method: string): Record<string, unknown> | undefined
+  lastResult(method: string): unknown | undefined
+  lastMessageId(method: string): number | undefined
   reply(method: string, result: unknown): void
   fail(method: string, err: BotApiError): void
   reset(): void
@@ -26,6 +29,7 @@ export async function startFakeTelegram(opts?: {
 }): Promise<FakeTelegram> {
   const botInfo: UserFromGetMe = {...defaultBotInfo, ...opts?.botInfo}
   const calls: TgCall[] = []
+  const results: TgResult[] = []
   const responses = new Map<string, QueuedResponse[]>()
   let messageId = 0
   let stopped = false
@@ -46,10 +50,14 @@ export async function startFakeTelegram(opts?: {
 
       const queued = responses.get(method)?.shift()
       if (responses.get(method)?.length === 0) responses.delete(method)
-      if (queued?.type === 'success') return success(queued.result)
       if (queued?.type === 'error') return failure(queued.error)
 
-      return success(defaultResult(method, payload, botInfo, () => ++messageId))
+      const result =
+        queued?.type === 'success'
+          ? queued.result
+          : defaultResult(method, payload, botInfo, () => ++messageId)
+      results.push({method, result})
+      return success(result)
     },
   })
 
@@ -66,6 +74,12 @@ export async function startFakeTelegram(opts?: {
       }
       return undefined
     },
+    lastResult(method) {
+      return findLastResult(results, method)
+    },
+    lastMessageId(method) {
+      return resultMessageId(findLastResult(results, method))
+    },
     reply(method, result) {
       enqueue(responses, method, {type: 'success', result})
     },
@@ -74,6 +88,7 @@ export async function startFakeTelegram(opts?: {
     },
     reset() {
       calls.length = 0
+      results.length = 0
       responses.clear()
     },
     stop() {
@@ -152,10 +167,13 @@ function defaultResult(
       return botInfo
     case 'sendMessage':
     case 'sendPhoto':
-    case 'editMessageText':
-    case 'editMessageMedia':
     case 'copyMessage':
       return message(payload, botInfo, nextMessageId())
+    case 'editMessageText':
+    case 'editMessageCaption':
+    case 'editMessageMedia':
+      if (typeof payload.inline_message_id === 'string') return true
+      return message(payload, botInfo, editedMessageId(payload, nextMessageId))
     case 'getChatAdministrators':
       return [{status: 'creator', user: ownerUser, is_anonymous: false}]
     case 'getChat':
@@ -163,6 +181,26 @@ function defaultResult(
     default:
       return true
   }
+}
+
+function findLastResult(results: TgResult[], method: string): unknown | undefined {
+  for (let index = results.length - 1; index >= 0; index--) {
+    const entry = results[index]
+    if (entry?.method === method) return entry.result
+  }
+  return undefined
+}
+
+function resultMessageId(result: unknown): number | undefined {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return undefined
+  const value = Reflect.get(result, 'message_id')
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
+}
+
+function editedMessageId(payload: Record<string, unknown>, nextMessageId: () => number): number {
+  const value =
+    typeof payload.message_id === 'number' ? payload.message_id : Number(payload.message_id)
+  return Number.isSafeInteger(value) ? value : nextMessageId()
 }
 
 const ownerUser = {
