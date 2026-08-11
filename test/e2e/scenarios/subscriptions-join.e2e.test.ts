@@ -395,9 +395,9 @@ test('parallel Lightning picks converge on one current attempt and one BOLT11', 
     .map(call => call.payload)
   expect(edits).toHaveLength(2)
   expect(edits.every(message => String(message.text).includes(payment.paymentRequest))).toBe(true)
-  expect(e2e.tg.calls.slice(tgMark).filter(call => call.method === 'answerCallbackQuery')).toHaveLength(
-    2,
-  )
+  expect(
+    e2e.tg.calls.slice(tgMark).filter(call => call.method === 'answerCallbackQuery'),
+  ).toHaveLength(2)
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoPaidMasterPayouts()
   expectNoErrors(e2e.logs)
@@ -567,8 +567,7 @@ async function issueJoinChooser(options: {
   const requestMark = e2e.ln.requests.length
   const invoiceChatId = options.userChatId ?? USER_A
   const chooserText =
-    options.text ??
-    (locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/)
+    options.text ?? (locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/)
   await expectDelta(
     e2e,
     () => e2e.send(joinUpdate({chatType, locale, userChatId: options.userChatId})),
@@ -634,10 +633,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
         },
       },
       lnbits: {payments: [{out: false, sats: setup.price, times: 1}]},
-      telegram: [
-        {method: 'editMessageText', text: options.text},
-        {method: 'answerCallbackQuery'},
-      ],
+      telegram: [{method: 'editMessageText', text: options.text}, {method: 'answerCallbackQuery'}],
     },
   )
 

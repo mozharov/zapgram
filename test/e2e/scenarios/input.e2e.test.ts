@@ -343,7 +343,3 @@ function errorMessages(): string[] {
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
 }
-
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}

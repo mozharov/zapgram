@@ -58,16 +58,20 @@ export function buildSubscriptionPaymentKeyboard(
   } else if (payWallet || payNWC) {
     // Renewal: one button per funded rail (no combined fallback).
     if (payWallet) {
-      keyboard.row().text(
-        t('button.pay-subcription-with-wallet'),
-        paySubscriptionRoute.build({paymentId, from: 'wallet'}),
-      )
+      keyboard
+        .row()
+        .text(
+          t('button.pay-subcription-with-wallet'),
+          paySubscriptionRoute.build({paymentId, from: 'wallet'}),
+        )
     }
     if (payNWC) {
-      keyboard.row().text(
-        t('button.pay-subcription-with-nwc'),
-        paySubscriptionRoute.build({paymentId, from: 'nwc'}),
-      )
+      keyboard
+        .row()
+        .text(
+          t('button.pay-subcription-with-nwc'),
+          paySubscriptionRoute.build({paymentId, from: 'nwc'}),
+        )
     }
   }
 
@@ -87,16 +91,17 @@ function appendJoinBalanceRows(
 ): void {
   if (!availability) return
   if (availability.walletCovers) {
-    keyboard.row().text(
-      t('button.pay-subcription-with-wallet'),
-      payJoinBalanceRoute.build({chatId, from: 'wallet'}),
-    )
+    keyboard
+      .row()
+      .text(
+        t('button.pay-subcription-with-wallet'),
+        payJoinBalanceRoute.build({chatId, from: 'wallet'}),
+      )
   }
   if (availability.nwcCovers) {
-    keyboard.row().text(
-      t('button.pay-subcription-with-nwc'),
-      payJoinBalanceRoute.build({chatId, from: 'nwc'}),
-    )
+    keyboard
+      .row()
+      .text(t('button.pay-subcription-with-nwc'), payJoinBalanceRoute.build({chatId, from: 'nwc'}))
   }
 }
 

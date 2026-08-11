@@ -6,7 +6,11 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {chatsTable, usersTable} from '@infra/db/schema.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
-import {payLightningRoute, paySubscriptionRoute, subscriptionRoute} from '@telegram/callback-data.js'
+import {
+  payLightningRoute,
+  paySubscriptionRoute,
+  subscriptionRoute,
+} from '@telegram/callback-data.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {eq} from 'drizzle-orm'
