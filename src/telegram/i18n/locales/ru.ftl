@@ -9,6 +9,14 @@ conversation-state =
     .interrupted-fallback = ❌ Предыдущее действие отменено: {$action}.
     .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
 
+conversation-action =
+    .enter-sats = ввод суммы
+    .enter-invoice = ввод Lightning-счёта
+    .connect-nwc = подключение NWC-кошелька
+    .select-recipient = выбор получателя
+    .edit-message-ru = редактирование сообщения на русском
+    .edit-message-en = редактирование сообщения на английском
+
 button = 
     .back = ⬅️ Назад
     .help = ℹ️ Помощь

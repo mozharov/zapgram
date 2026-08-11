@@ -335,15 +335,26 @@ test('a valid price is stored and the completed conversation sends a fresh card'
 })
 
 for (const price of [0, -5]) {
-  test(`price ${price} is rejected without changing the chat`, async () => {
+  test(`price ${price} is rejected and can be corrected`, async () => {
     await enterChangingPrice()
 
     await expectDelta(e2e, () => e2e.send(privateText(String(price))), {
-      db: {conversations: {removed: 1}},
+      db: {conversations: {changed: 1}},
+      telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
+    })
+
+    await expectDelta(e2e, () => e2e.send(privateText(String(CHANGED_PRICE))), {
+      db: {
+        chats: {
+          changed: 1,
+          match: rows => expectOnlyChatChanges(rows, {price: CHANGED_PRICE}),
+        },
+        conversations: {removed: 1},
+      },
       telegram: [
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/},
-        {method: 'sendMessage', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /set to 123 sats/},
+        {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
       ],
     })
 
@@ -352,20 +363,15 @@ for (const price of [0, -5]) {
   })
 }
 
-test('a nonnumeric price cancels the conversation and falls through to the wallet', async () => {
+test('a nonnumeric price keeps the conversation active', async () => {
   await enterChangingPrice()
 
   await expectDelta(e2e, () => e2e.send(privateText('abc')), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
-    ],
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
   })
 
-  await expectNoConversations(e2e.db)
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
 

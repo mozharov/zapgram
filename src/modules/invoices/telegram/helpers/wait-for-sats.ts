@@ -1,31 +1,54 @@
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 
 const MAX_AMOUNT = 100000000
 
 export async function waitForSats(conversation: BotConversation, ctx: ConversationContext) {
-  const message = await replyWithWaitForSats(ctx)
-  const sats = await conversation.form.int({
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      if (ctx.update.message?.text) await ctx.reply(ctx.t('wait-for-sats.invalid'))
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const html = ctx.t('wait-for-sats')
+  const message = await replyWithWaitForSats(ctx, html)
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.enter-sats'),
   })
-  await conversation.external(() => removeInlineKeyboard(message))
-  if (sats > MAX_AMOUNT || sats <= 0) {
-    await ctx.reply(ctx.t('wait-for-sats.invalid'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+  const cancelled = cancelledPromptState(ctx, prompt)
+
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    const text = next.message?.text?.trim()
+    const sats = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
+    if (!Number.isSafeInteger(sats) || sats <= 0 || sats > MAX_AMOUNT) {
+      await next.reply(next.t('wait-for-sats.invalid'))
+      continue
+    }
+
+    await clearPromptControls(conversation, prompt)
+    return sats
   }
-  return sats
 }
 
-function replyWithWaitForSats(ctx: ConversationContext) {
-  return ctx.reply(ctx.t('wait-for-sats'), {
+function replyWithWaitForSats(ctx: ConversationContext, html: string) {
+  return ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),

@@ -5,26 +5,58 @@ import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function connectingNWC(conversation: BotConversation, ctx: ConversationContext) {
   await ctx.reply(ctx.t('nwc.connecting'))
-  const message = await replyWithWaitForUrl(ctx)
-  const urlContext = await conversation.waitForHears(/^(nostr\+walletconnect:.*)$/, {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      if (ctx.update.message?.text) await ctx.reply(ctx.t('nwc.invalid-url'))
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const html = ctx.t('nwc.wait-url')
+  const message = await replyWithWaitForUrl(ctx, html)
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.connect-nwc'),
   })
+  const cancelled = cancelledPromptState(ctx, prompt)
+
+  let urlContext: ConversationContext
+  let nwcUrl: string
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    const match = /^(nostr\+walletconnect:.*)$/.exec(next.message?.text?.trim() ?? '')
+    if (!match?.[1]) {
+      await next.reply(next.t('nwc.invalid-url'))
+      continue
+    }
+
+    urlContext = next
+    nwcUrl = match[1]
+    break
+  }
+
   await deleteMessageSafely(urlContext)
-  await removeInlineKeyboard(message)
+  await clearPromptControls(conversation, prompt)
   await ctx.replyWithChatAction('typing')
-  const nwcUrl = urlContext.match[0]
   await new NostrWallet(nwcUrl).getBalance().catch((error: unknown) => {
     ctx.log.error({error}, 'Error while validating NWC connection')
     throw new NWCConnectionError()
@@ -47,8 +79,8 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   await replyWithWallet(ctx)
 }
 
-async function replyWithWaitForUrl(ctx: BotContext) {
-  return ctx.reply(ctx.t('nwc.wait-url'), {
+async function replyWithWaitForUrl(ctx: BotContext, html: string) {
+  return ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),

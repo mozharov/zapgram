@@ -1,4 +1,4 @@
-import type {BotConversation} from '@telegram/context.js'
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {getRuntime} from '../../runtime.js'
 import {removeInlineKeyboardById} from './keyboard.js'
 
@@ -9,7 +9,11 @@ type PromptMessage = {
 
 type CallbackContext = {
   callbackQuery?: {
+    data?: string
     message?: PromptMessage
+  }
+  message?: {
+    entities?: {type: string; offset: number}[]
   }
 }
 
@@ -27,6 +31,8 @@ export type PromptEndState = {
   fallbackText: string
 }
 
+export type PromptUpdateKind = 'cancel' | 'interrupt' | 'input'
+
 export function createActivePrompt(
   message: PromptMessage,
   options: Pick<ActivePrompt, 'kind' | 'html' | 'actionLabel'>,
@@ -41,6 +47,37 @@ export function createActivePrompt(
 export function isCallbackFromPrompt(ctx: CallbackContext, prompt: ActivePrompt): boolean {
   const message = ctx.callbackQuery?.message
   return message?.chat.id === prompt.chatId && message.message_id === prompt.messageId
+}
+
+export function classifyPromptUpdate(
+  ctx: CallbackContext,
+  prompt: ActivePrompt,
+  cancelData: string,
+): PromptUpdateKind {
+  if (ctx.callbackQuery) {
+    return ctx.callbackQuery.data === cancelData && isCallbackFromPrompt(ctx, prompt)
+      ? 'cancel'
+      : 'interrupt'
+  }
+
+  const isCommand = ctx.message?.entities?.some(
+    entity => entity.type === 'bot_command' && entity.offset === 0,
+  )
+  if (isCommand || !ctx.message) return 'interrupt'
+  return 'input'
+}
+
+export function cancelledPromptState(
+  ctx: Pick<ConversationContext, 't'>,
+  prompt: ActivePrompt,
+): PromptEndState {
+  return {
+    kind: 'cancelled',
+    statusHtml: ctx.t('conversation-state.cancelled'),
+    fallbackText: ctx.t('conversation-state.interrupted-fallback', {
+      action: prompt.actionLabel,
+    }),
+  }
 }
 
 export function renderPromptEndState(html: string, statusHtml: string): string {

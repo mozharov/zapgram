@@ -75,6 +75,38 @@ test('the private send conversation transfers sats and closes after the amount',
   expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(~\$[^)]+\))?<\/b>/)
 })
 
+test('an invalid private-send amount can be corrected without restarting the flow', async () => {
+  await seedSenderAndRecipient()
+  e2e.tg.reply('getChat', {
+    id: USER_B,
+    type: 'private',
+    username: 'user_b',
+    first_name: 'User B',
+  })
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+
+  await expectDelta(e2e, () => e2e.send(privateText('not-a-number')), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
+  })
+
+  await expectInternalTransfer(
+    () => e2e.send(privateText(String(TIP_SATS))),
+    USER_B,
+    '100002 wallet',
+    [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
+      {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(~\$[^)]+\))? to @user_b/},
+      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+    ],
+    {conversationRemoved: true},
+  )
+  expectNoErrors(e2e.logs)
+})
+
 // --- Group recipient resolution ---
 
 test('/tip with an amount and username pays that stored user', async () => {

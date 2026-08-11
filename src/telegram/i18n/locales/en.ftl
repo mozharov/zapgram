@@ -9,6 +9,14 @@ conversation-state =
     .interrupted-fallback = ❌ Previous action canceled: {$action}.
     .invoice-memo-inactive = <i>Adding a description is no longer active.</i>
 
+conversation-action =
+    .enter-sats = entering an amount
+    .enter-invoice = entering a Lightning invoice
+    .connect-nwc = connecting an NWC wallet
+    .select-recipient = selecting a recipient
+    .edit-message-ru = editing the Russian join message
+    .edit-message-en = editing the English join message
+
 button = 
     .back = ⬅️ Back
     .help = ℹ️ Help

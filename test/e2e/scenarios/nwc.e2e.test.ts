@@ -1,5 +1,5 @@
 import {afterAll, afterEach, beforeEach, expect, mock, test} from 'bun:test'
-import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import {conversationsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
@@ -134,6 +134,30 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
   expect(walletText).not.toMatch(/<b>Balance:<\/b>/)
 
   expect(nwcCalls.filter(call => call.method === 'getBalance').length).toBeGreaterThanOrEqual(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('an invalid NWC URL keeps the prompt active and can be corrected', async () => {
+  await e2e.send(privateCallback(staticCallback.connectNwc))
+
+  await expectDelta(e2e, () => e2e.send(privateText('https://example.com/wallet')), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid NWC URL/}],
+  })
+  expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
+
+  await expectDelta(e2e, () => e2e.send(privateText(NWC_URL)), {
+    db: {users: {changed: 1}, conversations: {removed: 1}},
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
+      {method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+    ],
+  })
+
+  expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: NWC_URL})
   expectNoErrors(e2e.logs)
 })
 

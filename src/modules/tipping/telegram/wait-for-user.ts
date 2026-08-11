@@ -3,30 +3,54 @@ import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet
 import {getUserByUsername} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 
 export async function waitForUser(conversation: BotConversation, ctx: ConversationContext) {
-  const message = await replyWithWaitForUser(ctx)
-  const usernameContext = await conversation.waitForHears(USERNAME_REGEX, {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      if (ctx.update.message?.text) await ctx.reply(ctx.t('wait-for-user.invalid'))
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const html = ctx.t('wait-for-user')
+  const message = await replyWithWaitForUser(ctx, html)
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.select-recipient'),
   })
-  const matched = usernameContext.match[1]
-  if (matched === undefined) throw new Error('Username match missing')
-  const username = matched.toLowerCase()
-  await conversation.external(() => removeInlineKeyboard(message))
-  return validateUsername(ctx, username)
+  const cancelled = cancelledPromptState(ctx, prompt)
+
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    const matched = USERNAME_REGEX.exec(next.message?.text?.trim() ?? '')?.[1]
+    if (!matched) {
+      await next.reply(next.t('wait-for-user.invalid'))
+      continue
+    }
+
+    await clearPromptControls(conversation, prompt)
+    return validateUsername(next, matched.toLowerCase())
+  }
 }
 
-function replyWithWaitForUser(ctx: ConversationContext) {
-  return ctx.reply(ctx.t('wait-for-user'), {
+function replyWithWaitForUser(ctx: ConversationContext, html: string) {
+  return ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),

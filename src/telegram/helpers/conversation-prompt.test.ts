@@ -1,6 +1,8 @@
 import {describe, expect, test} from 'bun:test'
 import {translate} from '@telegram/i18n/i18n.js'
 import {
+  cancelledPromptState,
+  classifyPromptUpdate,
   createActivePrompt,
   isCallbackFromPrompt,
   renderPromptEndState,
@@ -38,6 +40,57 @@ describe('conversation prompt identity', () => {
     ).toBe(false)
     expect(isCallbackFromPrompt({}, prompt)).toBe(false)
   })
+
+  test('classifies only the current cancel button as a local cancel', () => {
+    expect(
+      classifyPromptUpdate(
+        {
+          callbackQuery: {
+            data: 'cancel',
+            message: {chat: {id: 42}, message_id: 73},
+          },
+        },
+        prompt,
+        'cancel',
+      ),
+    ).toBe('cancel')
+    expect(
+      classifyPromptUpdate(
+        {
+          callbackQuery: {
+            data: 'cancel',
+            message: {chat: {id: 42}, message_id: 72},
+          },
+        },
+        prompt,
+        'cancel',
+      ),
+    ).toBe('interrupt')
+    expect(
+      classifyPromptUpdate(
+        {
+          callbackQuery: {
+            data: 'wallet',
+            message: {chat: {id: 42}, message_id: 73},
+          },
+        },
+        prompt,
+        'cancel',
+      ),
+    ).toBe('interrupt')
+  })
+
+  test('classifies commands and system updates as interrupts, but ordinary messages as input', () => {
+    expect(
+      classifyPromptUpdate(
+        {message: {entities: [{type: 'bot_command', offset: 0}]}},
+        prompt,
+        'cancel',
+      ),
+    ).toBe('interrupt')
+    expect(classifyPromptUpdate({}, prompt, 'cancel')).toBe('interrupt')
+    expect(classifyPromptUpdate({message: {}}, prompt, 'cancel')).toBe('input')
+  })
 })
 
 describe('conversation prompt end state', () => {
@@ -64,5 +117,19 @@ describe('conversation prompt end state', () => {
     expect(translate('conversation-state.invoice-memo-inactive', language)).not.toContain(
       'conversation-state',
     )
+  })
+
+  test('builds a localized cancellation state with the prompt action', () => {
+    const ctx = {
+      t: (key: string, variables?: Record<string, unknown>) =>
+        key === 'conversation-state.cancelled'
+          ? '<i>Action canceled.</i>'
+          : `Previous action canceled: ${String(variables?.action)}`,
+    }
+    expect(cancelledPromptState(ctx as never, prompt)).toEqual({
+      kind: 'cancelled',
+      statusHtml: '<i>Action canceled.</i>',
+      fallbackText: 'Previous action canceled: entering an amount',
+    })
   })
 })
