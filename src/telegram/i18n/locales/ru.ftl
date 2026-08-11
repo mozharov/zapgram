@@ -3,6 +3,12 @@ bot-username = @zap_gram_bot
 
 canceled = <b>❌ Действие отменено.</b>
 
+conversation-state =
+    .cancelled = <i>Действие отменено.</i>
+    .inactive = <i>Этот шаг больше не активен.</i>
+    .interrupted-fallback = ❌ Предыдущее действие отменено: {$action}.
+    .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
+
 button = 
     .back = ⬅️ Назад
     .help = ℹ️ Помощь
