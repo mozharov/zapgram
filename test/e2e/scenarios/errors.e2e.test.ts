@@ -136,7 +136,7 @@ test('invoice_already_paid keeps the payee pending row and shows the dedicated c
   await e2e.send(privateText(pending.paymentRequest))
   const before = await snapshot(e2e)
 
-  await e2e.send(privateCallback(payButton()))
+  await e2e.send(privateCallback(payButton(), {messageId: requiredPromptMessageId()}))
 
   expectPrivateErrorAndWallet('invoice_already_paid', 'en')
   const after = await snapshot(e2e)
@@ -591,6 +591,12 @@ function payButton(): string {
   const button = buttons.at(-1)
   if (!button) throw new Error('Pay button not found')
   return button
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound invoice review message ID')
+  return messageId
 }
 
 function stubNwcPayInvoice(impl: () => Promise<void> | void): void {

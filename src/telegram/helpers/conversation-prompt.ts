@@ -80,6 +80,20 @@ export function cancelledPromptState(
   }
 }
 
+export function inactivePromptState(
+  ctx: Pick<ConversationContext, 't'>,
+  prompt: ActivePrompt,
+  statusHtml = ctx.t('conversation-state.inactive'),
+): PromptEndState {
+  return {
+    kind: 'inactive',
+    statusHtml,
+    fallbackText: ctx.t('conversation-state.inactive-fallback', {
+      action: prompt.actionLabel,
+    }),
+  }
+}
+
 export function renderPromptEndState(html: string, statusHtml: string): string {
   const prompt = html.trimEnd()
   const status = statusHtml.trim()

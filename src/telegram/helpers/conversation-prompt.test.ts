@@ -4,6 +4,7 @@ import {
   cancelledPromptState,
   classifyPromptUpdate,
   createActivePrompt,
+  inactivePromptState,
   isCallbackFromPrompt,
   renderPromptEndState,
 } from './conversation-prompt.js'
@@ -130,6 +131,20 @@ describe('conversation prompt end state', () => {
       kind: 'cancelled',
       statusHtml: '<i>Action canceled.</i>',
       fallbackText: 'Previous action canceled: entering an amount',
+    })
+  })
+
+  test('builds a localized inactive state with a custom status', () => {
+    const ctx = {
+      t: (key: string, variables?: Record<string, unknown>) =>
+        key === 'conversation-state.inactive-fallback'
+          ? `Previous step is no longer active: ${String(variables?.action)}`
+          : key,
+    }
+    expect(inactivePromptState(ctx as never, prompt, '<i>Memo is no longer active.</i>')).toEqual({
+      kind: 'inactive',
+      statusHtml: '<i>Memo is no longer active.</i>',
+      fallbackText: 'Previous step is no longer active: entering an amount',
     })
   })
 })

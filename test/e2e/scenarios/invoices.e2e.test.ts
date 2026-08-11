@@ -12,7 +12,12 @@ import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {decodeMintedInvoice, mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
-import {privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
+import {
+  privateCallback,
+  privateCommand,
+  privatePhotoCaptionCallback,
+  privateText,
+} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -122,7 +127,7 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
   await enterCreateInvoiceAtQr()
   const previous = await onlyPendingInvoice()
 
-  await e2e.send(privateCallback(staticCallback.addInvoiceMemo))
+  await openMemoPrompt()
 
   await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
     db: {
@@ -230,7 +235,7 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
   await e2e.send(privateText(pending.paymentRequest))
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => e2e.send(privateCallback(payButton())), {
+  await expectDelta(e2e, () => e2e.send(payButton()), {
     db: {pendingInvoices: {removed: 1}, conversations: {removed: 1}},
     lnbits: {
       balances: {'100001 wallet': -PENDING_SATS, '100002 wallet': PENDING_SATS},
@@ -240,6 +245,7 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
       ],
     },
     telegram: [
+      {method: 'answerCallbackQuery'},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received payment for a Lightning invoice/},
@@ -301,9 +307,10 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
   e2e.ln.state.payInvoice({payerWallet: walletOf(USER_A), bolt11: pending.paymentRequest})
   await e2e.send(privateText(pending.paymentRequest))
 
-  await expectDelta(e2e, () => e2e.send(privateCallback(payButton())), {
+  await expectDelta(e2e, () => e2e.send(payButton()), {
     db: {conversations: {removed: 1}},
     telegram: [
+      {method: 'answerCallbackQuery'},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /already been paid/},
@@ -321,19 +328,23 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
   ])
 })
 
-test('a pay button from an earlier review cancels instead of paying', async () => {
+test('a pay callback from another review message cannot pay the current invoice', async () => {
   credit(USER_A, 1000)
   await e2e.send(privateText(foreignInvoice().bolt11))
+  const currentReviewId = requiredPromptMessageId()
 
-  await expectDelta(e2e, () => e2e.send(privateCallback('pay:1')), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'answerCallbackQuery', text: /Unknown button/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(payButtonData(), {messageId: currentReviewId + 1000})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'answerCallbackQuery', text: /Unknown button/},
+      ],
+    },
+  )
 
   expectNoErrors(e2e.logs)
 })
@@ -344,80 +355,102 @@ const cancelCases: {
   conversation: string
   step: string
   reach: () => Promise<void>
-  lifecyclePrompt?: boolean
+  lifecyclePrompt: 'text' | 'caption' | 'memo'
 }[] = [
   {
     conversation: creatingInvoice.name,
     step: 'amount',
     reach: enterCreateInvoiceAtAmount,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
-  {conversation: creatingInvoice.name, step: 'qr', reach: enterCreateInvoiceAtQr},
-  {conversation: creatingInvoice.name, step: 'memo', reach: enterCreateInvoiceAtMemo},
+  {
+    conversation: creatingInvoice.name,
+    step: 'qr',
+    reach: enterCreateInvoiceAtQr,
+    lifecyclePrompt: 'caption',
+  },
+  {
+    conversation: creatingInvoice.name,
+    step: 'memo',
+    reach: enterCreateInvoiceAtMemo,
+    lifecyclePrompt: 'memo',
+  },
   {
     conversation: payingInvoice.name,
     step: 'invoice',
     reach: enterPayInvoiceAtInvoice,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
-  {conversation: payingInvoice.name, step: 'review', reach: enterPayInvoiceAtReview},
+  {
+    conversation: payingInvoice.name,
+    step: 'review',
+    reach: enterPayInvoiceAtReview,
+    lifecyclePrompt: 'text',
+  },
   {
     conversation: connectingNWC.name,
     step: 'url',
     reach: enterConnectNwcAtUrl,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
   {
     conversation: sendingToUser.name,
     step: 'username',
     reach: enterSendToUserAtUsername,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
   {
     conversation: sendingToUser.name,
     step: 'amount',
     reach: enterSendToUserAtAmount,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
   {
     conversation: changingPrice.name,
     step: 'price',
     reach: enterChangePriceAtPrice,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
   {
     conversation: editCustomMessage.name,
     step: 'russian',
     reach: enterCustomMessageAtRussian,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
   {
     conversation: editCustomMessage.name,
     step: 'english',
     reach: enterCustomMessageAtEnglish,
-    lifecyclePrompt: true,
+    lifecyclePrompt: 'text',
   },
 ]
 
 for (const {conversation, step, reach, lifecyclePrompt} of cancelCases) {
   test(`cancel at the ${step} step of ${conversation} leaves nothing behind`, async () => {
     await reach()
-    const update = lifecyclePrompt
-      ? privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
-      : privateCallback(staticCallback.cancel)
+    const update =
+      lifecyclePrompt === 'caption'
+        ? privatePhotoCaptionCallback(staticCallback.cancel, {
+            messageId: requiredPhotoPromptMessageId(),
+          })
+        : privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
+    const telegram =
+      lifecyclePrompt === 'caption'
+        ? [{method: 'answerCallbackQuery'}, {method: 'editMessageCaption', to: USER_A}]
+        : lifecyclePrompt === 'memo'
+          ? [
+              {method: 'answerCallbackQuery'},
+              {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+              {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+            ]
+          : [
+              {method: 'answerCallbackQuery'},
+              {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+            ]
 
     await expectDelta(e2e, () => e2e.send(update), {
       db: {conversations: {removed: 1}},
-      telegram: lifecyclePrompt
-        ? [
-            {method: 'answerCallbackQuery'},
-            {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-          ]
-        : [
-            {method: 'editMessageReplyMarkup', to: USER_A},
-            {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-            {method: 'sendMessage', to: USER_A, text: /Balance:/},
-          ],
+      telegram,
     })
 
     await expectNoConversations(e2e.db)
@@ -445,10 +478,82 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
   await enterCreateInvoiceAtMemo()
 
   await expectDelta(e2e, () => e2e.send(privateText('m'.repeat(151))), {
-    db: {conversations: {removed: 1}},
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid memo/}],
+  })
+
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+
+  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
+    db: {conversations: {removed: 1}, pendingInvoices: {added: 1}},
+    lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Invalid memo/},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'editMessageMedia', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+    ],
+  })
+
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(2)
+  expectNoErrors(e2e.logs)
+})
+
+test('ordinary text on the QR step keeps its buttons active', async () => {
+  await enterCreateInvoiceAtQr()
+
+  await expectDelta(e2e, () => e2e.send(privateText('add a memo')), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+  })
+
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('ordinary text on invoice review does not confirm payment', async () => {
+  await enterPayInvoiceAtReview()
+  const before = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.send(privateText('pay')), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+  })
+
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoErrors(e2e.logs)
+})
+
+test('a callback from another message deactivates the QR and starts its own flow', async () => {
+  await enterCreateInvoiceAtQr()
+  const qrMessageId = requiredPhotoPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.payInvoice, {messageId: qrMessageId + 1000})),
+    {
+      db: {conversations: {changed: 1}},
+      telegram: [
+        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'sendMessage', to: USER_A, text: /Paying Lightning invoice/},
+        {method: 'sendMessage', to: USER_A, text: /Send or forward a message/},
+      ],
+    },
+  )
+
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('/wallet during memo input deactivates both memo prompts and keeps the invoice valid', async () => {
+  await enterCreateInvoiceAtMemo()
+
+  await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
@@ -676,7 +781,18 @@ async function enterCreateInvoiceAtQr(): Promise<void> {
 
 async function enterCreateInvoiceAtMemo(): Promise<void> {
   await enterCreateInvoiceAtQr()
-  await e2e.send(privateCallback(staticCallback.addInvoiceMemo))
+  await openMemoPrompt()
+}
+
+async function openMemoPrompt(): Promise<void> {
+  const messageId = e2e.tg.lastMessageId('sendPhoto')
+  if (messageId === undefined) throw new Error('Expected an outbound QR photo message ID')
+  await e2e.send(
+    privatePhotoCaptionCallback(staticCallback.addInvoiceMemo, {
+      messageId,
+      caption: String(e2e.tg.last('sendPhoto')?.caption ?? ''),
+    }),
+  )
 }
 
 async function enterPayInvoiceAtInvoice(): Promise<void> {
@@ -751,7 +867,11 @@ function credit(userId: number, sats: number): void {
 }
 
 /** The review keyboard's pay button, whose data carries a timestamp and cannot be constructed. */
-function payButton(): string {
+function payButton(): Update {
+  return privateCallback(payButtonData(), {messageId: requiredPromptMessageId()})
+}
+
+function payButtonData(): string {
   const data = keyboardOf(e2e.tg.last('sendMessage'))[0]
   if (!data?.startsWith('pay:')) throw new Error(`Expected a pay button, got ${String(data)}`)
   return data
@@ -765,6 +885,12 @@ function keyboardOf(payload: Record<string, unknown> | undefined): string[] {
 function requiredPromptMessageId(): number {
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound text prompt message ID')
+  return messageId
+}
+
+function requiredPhotoPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendPhoto')
+  if (messageId === undefined) throw new Error('Expected an outbound photo prompt message ID')
   return messageId
 }
 

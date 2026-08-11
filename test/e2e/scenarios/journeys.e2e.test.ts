@@ -27,6 +27,7 @@ import {
   myChatMember,
   privateCallback,
   privateCommand,
+  privatePhotoCaptionCallback,
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
@@ -91,14 +92,22 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   // Leave the optional Add memo step: cancel keeps the invoice and ends the conversation.
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privatePhotoCaptionCallback(staticCallback.cancel, {
+          messageId: requiredMessageId('sendPhoto'),
+        }),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      ],
+    },
+  )
 
   const pending = await onlyPendingInvoice()
   payFromOutside(pending.paymentRequest, PRICE)
@@ -428,14 +437,20 @@ test('private keyboard navigation keeps one world through screens and conversati
       {method: 'sendMessage', to: USER_A, text: /Enter the username/},
     ],
   })
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(staticCallback.cancel, {messageId: requiredMessageId('sendMessage')}),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      ],
+    },
+  )
 
   await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
   await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
@@ -554,14 +569,22 @@ test('an invoice conversation survives a container restart on the same database'
   expect(await snapshot(e2e)).toEqual(beforeRestart)
 
   // Conversation is still open on the optional Add memo step after restart.
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privatePhotoCaptionCallback(staticCallback.cancel, {
+          messageId: requiredMessageId('sendPhoto'),
+        }),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      ],
+    },
+  )
 
   expect(await e2e.db.query.pendingInvoicesTable.findMany()).toHaveLength(1)
   await expectNoConversations(e2e.db)
@@ -803,4 +826,10 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
     | {inline_keyboard?: {callback_data?: string}[][]}
     | undefined
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function requiredMessageId(method: 'sendMessage' | 'sendPhoto'): number {
+  const messageId = e2e.tg.lastMessageId(method)
+  if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)
+  return messageId
 }

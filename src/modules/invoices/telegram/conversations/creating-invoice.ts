@@ -12,7 +12,15 @@ import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  inactivePromptState,
+  interruptConversation,
+  isCallbackFromPrompt,
+} from '@telegram/helpers/conversation-prompt.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard, InputFile} from 'grammy'
 import type {Message} from 'grammy/types'
@@ -31,17 +39,41 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
   captureInvoiceCreated({sats, wallet, hasMemo: false, isReplacement: false})
 
-  const qrMessage = await replyWithQRCode(ctx, paymentRequest, {offerAddMemo: true, usdSuffix})
-
-  const addMemoCtx = await conversation.waitForCallbackQuery(staticCallback.addInvoiceMemo, {
-    otherwise: async otherwiseCtx => {
-      await conversation.external(() => removeInlineKeyboard(qrMessage))
-      await otherwiseCtx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const qr = await replyWithQRCode(ctx, paymentRequest, {offerAddMemo: true, usdSuffix})
+  const qrPrompt = createActivePrompt(qr.message, {
+    kind: 'caption',
+    html: qr.caption,
+    actionLabel: ctx.t('conversation-action.invoice-memo-options'),
   })
-  await addMemoCtx.answerCallbackQuery()
-  await conversation.external(() => removeInlineKeyboard(qrMessage))
+  const inactive = inactivePromptState(
+    ctx,
+    qrPrompt,
+    ctx.t('conversation-state.invoice-memo-inactive'),
+  )
+
+  for (;;) {
+    const next = await conversation.wait()
+    if (
+      next.callbackQuery?.data === staticCallback.addInvoiceMemo &&
+      isCallbackFromPrompt(next, qrPrompt)
+    ) {
+      await next.answerCallbackQuery()
+      await clearPromptControls(conversation, qrPrompt)
+      break
+    }
+
+    const kind = classifyPromptUpdate(next, qrPrompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, qrPrompt, inactive)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, qrPrompt, inactive)
+    }
+
+    await next.reply(next.t('conversation-state.use-buttons'))
+  }
 
   captureBotEvent(getRuntime().posthog, 'invoice_memo_add_tapped', {
     amount_sats: sats,
@@ -55,9 +87,10 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       amount_sats: sats,
       wallet_type: wallet,
     })
-    if (memoResult.reason === 'cancel') await ctx.reply(ctx.t('canceled'))
-    await replyWithWallet(ctx)
-    return
+    await deactivatePrompt(conversation, qrPrompt, inactive)
+    return memoResult.status === 'interrupted'
+      ? conversation.halt({next: true})
+      : conversation.halt()
   }
 
   await ctx.replyWithChatAction('typing')
@@ -66,7 +99,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
   captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
-  await editQRCode(ctx, qrMessage, paymentRequest, usdSuffix)
+  await editQRCode(ctx, qr.message, paymentRequest, usdSuffix)
   await replyWithWallet(ctx)
 }
 
@@ -142,7 +175,7 @@ async function replyWithQRCode(
   ctx: BotContext,
   paymentRequest: string,
   opts: {offerAddMemo: boolean; usdSuffix: string},
-): Promise<Message.PhotoMessage> {
+): Promise<{message: Message.PhotoMessage; caption: string}> {
   const {buffer, caption} = await buildQRPayload(ctx, paymentRequest, opts.usdSuffix)
   const keyboard = opts.offerAddMemo
     ? new InlineKeyboard()
@@ -153,10 +186,11 @@ async function replyWithQRCode(
         .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
     : undefined
 
-  return ctx.replyWithPhoto(new InputFile(buffer), {
+  const message = await ctx.replyWithPhoto(new InputFile(buffer), {
     caption,
     reply_markup: keyboard,
   })
+  return {message, caption}
 }
 
 async function editQRCode(

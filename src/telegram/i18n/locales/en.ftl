@@ -7,7 +7,9 @@ conversation-state =
     .cancelled = <i>Action canceled.</i>
     .inactive = <i>This step is no longer active.</i>
     .interrupted-fallback = ❌ Previous action canceled: {$action}.
+    .inactive-fallback = ℹ️ Previous step is no longer active: {$action}.
     .invoice-memo-inactive = <i>Adding a description is no longer active.</i>
+    .use-buttons = Use the buttons on the active message.
 
 conversation-action =
     .enter-sats = entering an amount
@@ -16,6 +18,10 @@ conversation-action =
     .select-recipient = selecting a recipient
     .edit-message-ru = editing the Russian join message
     .edit-message-en = editing the English join message
+    .select-wallet = selecting a wallet
+    .confirm-invoice-payment = confirming an invoice payment
+    .invoice-memo-options = adding an invoice description
+    .enter-invoice-memo = entering an invoice description
 
 button = 
     .back = ⬅️ Back

@@ -237,6 +237,51 @@ test('/settings with a connected NWC offers disconnect and tips toggle', async (
   expectNoErrors(e2e.logs)
 })
 
+test('wallet selection ignores text and accepts a button only from its own prompt', async () => {
+  await connectNwc()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+  const promptMessageId = requiredPromptMessageId()
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['internal', 'nwc', 'cancel'])
+
+  await expectDelta(e2e, () => e2e.send(privateText('internal')), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+  })
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback('internal', {messageId: promptMessageId})),
+    {
+      db: {conversations: {changed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {method: 'sendMessage', to: USER_A, text: /ZapGram wallet selected/},
+        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
+      ],
+    },
+  )
+  expectNoErrors(e2e.logs)
+})
+
+test('wallet selection consumes Cancel from its own prompt', async () => {
+  await connectNwc()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      ],
+    },
+  )
+  expectNoErrors(e2e.logs)
+})
+
 // --- Tips via NWC ---
 
 test('a group tip with nwc_tips pays through NWC and leaves the sender LNbits balance alone', async () => {
@@ -534,6 +579,12 @@ function walletByName(name: string) {
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {
   const markup = payload?.reply_markup as {inline_keyboard?: {callback_data?: string}[][]}
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }
 
 function errorMessages(): string[] {

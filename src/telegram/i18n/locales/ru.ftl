@@ -7,7 +7,9 @@ conversation-state =
     .cancelled = <i>Действие отменено.</i>
     .inactive = <i>Этот шаг больше не активен.</i>
     .interrupted-fallback = ❌ Предыдущее действие отменено: {$action}.
+    .inactive-fallback = ℹ️ Предыдущий шаг больше не активен: {$action}.
     .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
+    .use-buttons = Используй кнопки в активном сообщении.
 
 conversation-action =
     .enter-sats = ввод суммы
@@ -16,6 +18,10 @@ conversation-action =
     .select-recipient = выбор получателя
     .edit-message-ru = редактирование сообщения на русском
     .edit-message-en = редактирование сообщения на английском
+    .select-wallet = выбор кошелька
+    .confirm-invoice-payment = подтверждение оплаты счёта
+    .invoice-memo-options = добавление описания счёта
+    .enter-invoice-memo = ввод описания счёта
 
 button = 
     .back = ⬅️ Назад

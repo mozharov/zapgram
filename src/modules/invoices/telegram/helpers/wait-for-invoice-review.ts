@@ -3,7 +3,15 @@ import type {Invoice} from '@getalby/lightning-tools'
 import {getPendingInvoiceBy} from '@modules/invoices/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+  isCallbackFromPrompt,
+} from '@telegram/helpers/conversation-prompt.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -34,33 +42,49 @@ export async function waitForInvoiceReview(
   const [usdSuffix = '', feeUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi, satsFee === 'no' ? 0 : satsFee]),
   )
-  const message = await ctx.reply(
-    ctx.t('wait-for-invoice-review', {
-      amount: invoice.satoshi,
-      usdSuffix,
-      fee: satsFee,
-      feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
-      description: invoice.description ?? '',
-      hasDescription: (!!invoice.description).toString(),
-      createdDate: invoice.createdDate,
-      expiryDate: invoice.expiryDate ?? 'no',
-      hasExpired: invoice.hasExpired().toString(),
-    }),
-    {
-      reply_markup: invoice.hasExpired() ? undefined : keyboard,
-      link_preview_options: {is_disabled: true},
-    },
-  )
+  const html = ctx.t('wait-for-invoice-review', {
+    amount: invoice.satoshi,
+    usdSuffix,
+    fee: satsFee,
+    feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
+    description: invoice.description ?? '',
+    hasDescription: (!!invoice.description).toString(),
+    createdDate: invoice.createdDate,
+    expiryDate: invoice.expiryDate ?? 'no',
+    hasExpired: invoice.hasExpired().toString(),
+  })
+  const message = await ctx.reply(html, {
+    reply_markup: invoice.hasExpired() ? undefined : keyboard,
+    link_preview_options: {is_disabled: true},
+  })
 
   if (invoice.hasExpired()) return conversation.halt()
 
-  await conversation.waitForCallbackQuery(payCallback, {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.confirm-invoice-payment'),
   })
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-  await conversation.external(() => removeInlineKeyboard(message))
+  for (;;) {
+    const next = await conversation.wait()
+    if (next.callbackQuery?.data === payCallback && isCallbackFromPrompt(next, prompt)) {
+      await next.answerCallbackQuery()
+      await clearPromptControls(conversation, prompt)
+      return
+    }
+
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    await next.reply(next.t('conversation-state.use-buttons'))
+  }
 }

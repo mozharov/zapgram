@@ -2,7 +2,15 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+  isCallbackFromPrompt,
+} from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 import {fundedWalletsForAmount, readWalletBalances} from './funded-wallets.js'
@@ -88,17 +96,39 @@ export async function waitForWallet(
     }
   }
 
-  const message = await replyWithWaitForWallet(ctx)
-  const context = await conversation.waitForCallbackQuery(['internal', 'nwc'], {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const html = ctx.t('wait-for-wallet')
+  const message = await replyWithWaitForWallet(ctx, html)
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.select-wallet'),
   })
-  await conversation.external(() => removeInlineKeyboard(message))
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-  const wallet = context.callbackQuery.data === 'nwc' ? 'nwc' : 'internal'
+  let wallet: 'internal' | 'nwc'
+  for (;;) {
+    const next = await conversation.wait()
+    const data = next.callbackQuery?.data
+    if ((data === 'internal' || data === 'nwc') && isCallbackFromPrompt(next, prompt)) {
+      await next.answerCallbackQuery()
+      await clearPromptControls(conversation, prompt)
+      wallet = data
+      break
+    }
+
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    await next.reply(next.t('conversation-state.use-buttons'))
+  }
+
   if (wallet === 'nwc') await ctx.reply(ctx.t('wait-for-wallet.nwc'))
   else await ctx.reply(ctx.t('wait-for-wallet.internal'))
 
@@ -111,7 +141,7 @@ export async function waitForWallet(
   return wallet
 }
 
-function replyWithWaitForWallet(ctx: ConversationContext) {
+function replyWithWaitForWallet(ctx: ConversationContext, html: string) {
   const keyboard = new InlineKeyboard()
     .row({
       callback_data: 'internal',
@@ -122,5 +152,5 @@ function replyWithWaitForWallet(ctx: ConversationContext) {
       text: ctx.t('button.nwc-wallet'),
     })
     .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
-  return ctx.reply(ctx.t('wait-for-wallet'), {reply_markup: keyboard})
+  return ctx.reply(html, {reply_markup: keyboard})
 }
