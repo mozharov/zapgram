@@ -128,7 +128,7 @@ error =
 
 start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <h1>⚡ {bot-name}</h1>
-    <p>A Bitcoin Lightning wallet inside Telegram: send and receive sats, tip people in chats, and manage paid access to groups and channels.</p>
+    <p>A Bitcoin Lightning wallet: send and receive sats, tip people in chats, and manage paid access to groups and channels.</p>
 
     <h2>How it works</h2>
     <ol>
@@ -137,7 +137,7 @@ start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <li>Optionally connect your own Lightning wallet through NWC. Your sats remain under your control.</li>
     </ol>
 
-    <details><summary>Voluntary support</summary><p>For new accounts, a voluntary 5% donation is enabled by default for tips only. Invoice payments are excluded. Change or disable it in /donate.</p></details>
+    <details><summary>Voluntary support 5% included</summary><p>For new accounts, a voluntary 5% donation is enabled by default for tips only. Invoice payments are excluded. Change or disable it in /donate.</p></details>
 
     <footer>🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.</footer>
 
@@ -232,7 +232,7 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     </ul>
     </details>
 
-    <details><summary>Groups, channels, and paid access</summary><p>Add {bot-username} to a private group or channel to create access with a one-time payment or a monthly subscription. Manage everything through Chats in the Wallet.</p></details>
+    <details><summary>Groups, channels, and paid access</summary><p>Add {bot-username} to a private group or channel to create access with a one-time payment or a monthly subscription. For paid access, make the bot an admin with invite and ban rights. Manage everything through Chats in the Wallet.</p></details>
 
     <details><summary>Voluntary support</summary><p>New accounts contribute 5% on tips only by default; invoice payments are excluded. Change or disable this in /donate. You can also use <code>zapgram@getalby.com</code>.</p></details>
 
@@ -243,7 +243,8 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     </ul>
     </details>
 
-    <details><summary>Partner: 21ideas</summary><p>The <a href="https://21ideas.org/en/">21ideas</a> community uses {bot-name} for tips and paid access. Follow <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a> or read the <a href="https://21ideas.org/zapgram/">ZapGram guide</a>.</p></details>
+    <h2>Partner: 21ideas</h2>
+    <p>The <a href="https://21ideas.org/en/">21ideas</a> community uses {bot-name} for tips and paid access. Follow <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a> or read the <a href="https://21ideas.org/zapgram/">ZapGram guide</a>.</p>
 
     <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature: /feature</footer>
 

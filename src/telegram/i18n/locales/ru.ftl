@@ -128,7 +128,7 @@ error =
 
 start = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
     <h1>⚡ {bot-name}</h1>
-    <p>Bitcoin Lightning кошелёк внутри Telegram: отправляй и получай сатоши, оставляй tips в чатах и настраивай платный доступ к группам и каналам.</p>
+    <p>Bitcoin Lightning кошелёк: отправляй и получай сатоши в чатах, включай платный доступ к группам и каналам.</p>
 
     <h2>Как это работает</h2>
     <ol>
@@ -137,7 +137,7 @@ start = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
     <li>При желании подключи свой Lightning-кошелёк через NWC. Сатоши останутся под твоим контролем.</li>
     </ol>
 
-    <details><summary>Добровольная поддержка</summary><p>Для новых аккаунтов по умолчанию включён добровольный донат 5% только при отправке tips. Оплата счетов не входит. Изменить или отключить: /donate.</p></details>
+    <details><summary>Добровольная поддержка 5% включена</summary><p>По умолчанию включён добровольный донат 5% от суммы перевода только при отправке /tip в чатах. Оплата счетов не входит. Изменить или отключить: /donate.</p></details>
 
     <footer>🤝 При поддержке сообщества <a href="https://t.me/bitcoin21ideas">21 идея</a>.</footer>
 
@@ -232,7 +232,7 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
     </ul>
     </details>
 
-    <details><summary>Группы, каналы и платный доступ</summary><p>Добавь {bot-username} в закрытую группу или канал, чтобы настроить разовую оплату или ежемесячную подписку. Управление доступно в разделе «Чаты» внутри Кошелька.</p></details>
+    <details><summary>Группы, каналы и платный доступ</summary><p>Добавь {bot-username} в закрытую группу или канал, чтобы настроить разовую оплату или ежемесячную подписку. Для платного доступа сделай бота админом с правами приглашать и банить. Управление доступно в разделе «Чаты» внутри Кошелька.</p></details>
 
     <details><summary>Добровольная поддержка</summary><p>Для новых аккаунтов по умолчанию включён вклад 5% только с tips; оплата счетов не входит. Изменить или отключить: /donate. Также доступен адрес <code>zapgram@getalby.com</code>.</p></details>
 
@@ -243,7 +243,8 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
     </ul>
     </details>
 
-    <details><summary>Партнёр: 21 идея</summary><p>Сообщество <a href="https://21ideas.org">21 идея</a> использует {bot-name} для tips и платного доступа. Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>. Также доступен <a href="https://21ideas.org/zapgram/">гайд по ZapGram</a>.</p></details>
+    <h2>Партнёр: 21 идея</h2>
+    <p>Сообщество <a href="https://21ideas.org">21 идея</a> использует {bot-name} для tips и платного доступа. Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>. Также доступен <a href="https://21ideas.org/zapgram/">гайд по ZapGram</a>.</p>
 
     <footer>Открытый код: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Поддержка: @vmozharov · Предложить функцию: /feature</footer>
 
