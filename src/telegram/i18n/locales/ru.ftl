@@ -186,7 +186,7 @@ donate =
         🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>
 
         ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
-    .stats-last = Последний: {$date}
+    .stats-last = Последний: {TGTIME($date, format: "d")}
     .stats-last-none = Донатов пока нет
     .auto-off = Выкл
     .auto-on = {$percent}%
@@ -346,10 +346,10 @@ wait-for-invoice-review = <b>ℹ️ Проверка счёта</b>
         [no] <i></i>
         *[other] Комиссия: <b>{$fee} сат{$feeUsdSuffix}</b>
         <i></i>
-        }Дата создания: <b>{DATETIME($createdDate, timeZone: "UTC")} {DATETIME($createdDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Дата создания: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
         [no] <i></i>
-        *[other] Срок действия: <b>{DATETIME($expiryDate, timeZone: "UTC")} {DATETIME($expiryDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        *[other] Срок действия: <b>{TGTIME($expiryDate, format: "Dt")}</b>
         <i></i>
         }
 
@@ -380,7 +380,7 @@ creating-invoice = <b>🧾 Создание счёта Lightning...</b>
         [true] Описание: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
-        }Срок действия: <b>{DATETIME($expiresAt, timeZone: "UTC")} {DATETIME($expiresAt, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Срок действия: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
         Lightning счёт:
         <code>{$invoice}</code>
@@ -550,23 +550,7 @@ subscription-invoice =
 
     {$remaining}
     .insufficient-balance = ⚠️ Недостаточно баланса для оплаты доступа.
-    .remaining-time = <i>Счёт действителен ещё <b>{$hours ->
-        [0] {$minutes ->
-            [one] {$minutes} минуту
-            [few] {$minutes} минуты
-           *[many] {$minutes} минут
-        }
-       *[other] {$hours ->
-            [one] {$hours} час
-            [few] {$hours} часа
-           *[many] {$hours} часов
-        }{$minutes ->
-            [0] { "" }
-            [one] { " " }и {$minutes} минуту
-            [few] { " " }и {$minutes} минуты
-           *[many] { " " }и {$minutes} минут
-        }
-    }</b>.</i>
+    .remaining-time = <i>Счёт истекает <b>{TGTIME($expiresAt, format: "r")}</b>.</i>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>
 
     {$type ->
@@ -583,7 +567,7 @@ subscription-invoice =
         Отправь новую заявку на вступление в чат, чтобы получить новый счёт.
 
 subscription-renewal = 
-    .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+    .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {TGTIME($expiryDate, format: "D")}.</b>
         Сумма оплаты: <b>{$price} сат{$usdSuffix}</b>
     .need-payment = <b>⚠️ Твоя подписка на "{$title}" истекает через 24 часа. Оплати счёт Lightning на сумму {$price} сат{$usdSuffix}, чтобы продлить доступ на месяц:</b>
         <code>{$invoice}</code>
@@ -609,7 +593,7 @@ subscription = <b>👥 Подписка на чат "{$chatTitle}"</b>
     Стоимость: <b>{$price} сат{$usdSuffix}</b>
     Срок действия до: <b>{$endsAt ->
         [no] бессрочно
-        *[other] {$endsAt}
+        *[other] {TGTIME($endsAt, format: "Dt")}
     }</b>
     {$endsAt ->
         [no] <i></i>

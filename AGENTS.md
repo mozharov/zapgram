@@ -43,6 +43,14 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Dates
+
+Every timestamp a user sees goes through `TGTIME($var, format: "Dt")` in the `.ftl` files
+(`src/telegram/i18n/tg-time.ts`), which emits a Telegram `date_time` entity so the client renders it
+in the viewer's own timezone. Pass the raw `Date` as the translation variable — never a
+pre-formatted string. Fluent's built-in `DATETIME` is banned in locale files and a test enforces it:
+it can only render a timezone we choose, and the Bot API exposes no user timezone.
+
 ## Logging
 
 Full rules: `docs/architecture.md` → Logging.

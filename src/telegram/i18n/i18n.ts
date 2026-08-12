@@ -3,12 +3,17 @@ import {normalizeTelegramLanguageCode, resolveAppLocale} from '@core/i18n/locale
 import {I18n, type TranslationVariables} from '@grammyjs/i18n'
 import type {BotContext} from '@telegram/context.js'
 import {getRuntime} from '../../runtime.js'
+import {tgTimeFluentFunction} from './tg-time.js'
 
 const directory = path.resolve(import.meta.dirname, './locales')
 export const i18n = new I18n<BotContext>({
   defaultLocale: 'en',
   directory,
   useSession: false,
+  // TGTIME emits a Telegram date_time entity so the client shows the user's local time.
+  // Fluent's built-in DATETIME can only render a fixed timezone and must not be used for
+  // anything a user sees.
+  fluentBundleOptions: {functions: {TGTIME: tgTimeFluentFunction}},
   localeNegotiator: async ctx => {
     const telegramLanguageCode = normalizeTelegramLanguageCode(ctx.from?.language_code)
     if (telegramLanguageCode) return resolveAppLocale({telegramLanguageCode})

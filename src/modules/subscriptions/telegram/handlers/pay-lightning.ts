@@ -52,12 +52,11 @@ export const payLightningCallback = async (
   })
 
   const locale = await ctx.i18n.getLocale()
-  const remainingHours = Math.floor(invoice.remainingMinutes / 60)
-  const remainingMinutes = invoice.remainingMinutes % 60
-  const remaining = ctx.t('subscription-invoice.remaining-time', {
-    hours: remainingHours,
-    minutes: remainingMinutes,
-  })
+  // Minted attempts always store the decoded expiry; the reuse path is the only one that could
+  // hand back a row without it, and there the remaining minutes are exact enough.
+  const expiresAt =
+    invoice.attempt.expiresAt ?? new Date(Date.now() + invoice.remainingMinutes * 60_000)
+  const remaining = ctx.t('subscription-invoice.remaining-time', {expiresAt})
 
   const text = ctx.t('subscription-invoice.created', {
     message: effectiveCustomMessage(chat, locale),

@@ -322,7 +322,7 @@ test('an LNbits mint failure on Lightning leaves no payment after the chooser', 
 
 test('repeated Lightning picks reuse one invoice and report remaining time', async () => {
   const {payment, telegram: firstInvoice} = await issueJoinInvoice({
-    text: /valid for another.*hour/,
+    text: /The invoice expires <b><tg-time unix="\d+" format="r">/,
   })
 
   const before = await snapshot(e2e)
@@ -404,10 +404,11 @@ test('parallel Lightning picks converge on one current attempt and one BOLT11', 
 })
 
 test('an invoice with exactly one hour remaining is reused and reports one hour', async () => {
-  const {payment} = await issueJoinInvoice({text: /valid for another/})
+  const {payment} = await issueJoinInvoice({text: /The invoice expires/})
   const now = currentWholeSecond()
   setSystemTime(now)
-  await setAttemptExpiry(payment.id, new Date(now.getTime() + HOUR_MS))
+  const expiresAt = new Date(now.getTime() + HOUR_MS)
+  await setAttemptExpiry(payment.id, expiresAt)
   const requestMark = e2e.ln.requests.length
 
   await e2e.send(joinUpdate())
@@ -423,7 +424,11 @@ test('an invoice with exactly one hour remaining is reused and reports one hour'
       ),
     {
       telegram: [
-        {method: 'editMessageText', text: /valid for another <b>1 hour<\/b>/},
+        {
+          method: 'editMessageText',
+          // The client counts down from the entity, so the message must carry the exact expiry.
+          text: new RegExp(`<tg-time unix="${expiresAt.getTime() / 1000}" format="r">`),
+        },
         {method: 'answerCallbackQuery'},
       ],
     },
@@ -436,7 +441,7 @@ test('an invoice with exactly one hour remaining is reused and reports one hour'
 })
 
 test('an invoice below one hour is replaced without deleting the previous attempt', async () => {
-  const {payment: previous} = await issueJoinInvoice({text: /valid for another/})
+  const {payment: previous} = await issueJoinInvoice({text: /The invoice expires/})
   const now = currentWholeSecond()
   setSystemTime(now)
   await setAttemptExpiry(previous.id, new Date(now.getTime() + HOUR_MS - 1000))
@@ -460,7 +465,7 @@ test('an invoice below one hour is replaced without deleting the previous attemp
       },
       lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
       telegram: [
-        {method: 'editMessageText', text: /valid for another/},
+        {method: 'editMessageText', text: /The invoice expires/},
         {method: 'answerCallbackQuery'},
       ],
     },
@@ -528,7 +533,7 @@ test('a restart after mint and failed Lightning edit reuses the persisted attemp
     },
   )
 
-  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Счёт действителен ещё/)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Счёт истекает/)
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([persisted])
   expect(await e2e.db.select().from(subscriptionIntentsTable)).toHaveLength(1)

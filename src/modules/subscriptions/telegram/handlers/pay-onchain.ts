@@ -48,12 +48,8 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
   }
 
   const payment = result.payment
-  const remainingMs = Math.max(0, payment.expiresAt.getTime() - Date.now())
-  const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000))
-  const remainingMinutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000))
   const remaining = ctx.t('subscription-invoice.remaining-time', {
-    hours: remainingHours,
-    minutes: remainingMinutes,
+    expiresAt: payment.expiresAt,
   })
 
   const text = ctx.t('onchain-invoice.created', {

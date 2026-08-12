@@ -20,6 +20,13 @@ describe('settlement messages', () => {
       expect(message).toMatch(/1\D?000/) // Fluent groups digits per locale: "1,000" / "1 000"
     })
 
+    test(`subscription-renewal.renewed dates in ${language} are rendered by the client`, () => {
+      // Background notifications go through translate(), so they must carry the entity too.
+      const message = translate('subscription-renewal.renewed', language, context)
+      expect(message).toContain('<tg-time unix="1777636800" format="D">')
+      expect(message).not.toContain('UTC)')
+    })
+
     test(`subscription-invoice.expired resolves in ${language}`, () => {
       const message = translate('subscription-invoice.expired', language)
       expect(message).not.toContain('subscription-invoice')
@@ -44,16 +51,17 @@ describe('settlement messages', () => {
 })
 
 describe('subscription invoice remaining time', () => {
+  // The countdown is the client's job now: a relative date_time entity keeps ticking after the
+  // message is sent, which hand-counted hours and minutes could not.
+  const expiresAt = new Date('2026-05-01T12:00:00.000Z')
+
   test.each([
-    ['en', 0, 1, '1 minute'],
-    ['en', 1, 0, '1 hour'],
-    ['en', 23, 59, '23 hours and 59 minutes'],
-    ['ru', 0, 1, '1 минуту'],
-    ['ru', 2, 0, '2 часа'],
-    ['ru', 5, 21, '5 часов и 21 минуту'],
-  ])('%s renders %s hours and %s minutes', (language, hours, minutes, expected) => {
-    const message = translate('subscription-invoice.remaining-time', language, {hours, minutes})
+    ['en', 'The invoice expires'],
+    ['ru', 'Счёт истекает'],
+  ])('%s hands the expiry to the client to count down', (language, expected) => {
+    const message = translate('subscription-invoice.remaining-time', language, {expiresAt})
     expect(message).toContain(expected)
+    expect(message).toContain('<tg-time unix="1777636800" format="r">')
   })
 })
 

@@ -186,7 +186,7 @@ donate =
         🤝 Project is supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community
 
         ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
-    .stats-last = Last: {$date}
+    .stats-last = Last: {TGTIME($date, format: "d")}
     .stats-last-none = No donations yet
     .auto-off = Off
     .auto-on = {$percent}%
@@ -346,10 +346,10 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         [no] <i></i>
         *[other] Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         <i></i>
-        }Created at: <b>{DATETIME($createdDate, timeZone: "UTC")} {DATETIME($createdDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Created at: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
         [no] <i></i>
-        *[other] Expires at: <b>{DATETIME($expiryDate, timeZone: "UTC")} {DATETIME($expiryDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        *[other] Expires at: <b>{TGTIME($expiryDate, format: "Dt")}</b>
         <i></i>
         }
 
@@ -380,7 +380,7 @@ creating-invoice = <b>🧾 Creating Lightning invoice...</b>
         [true] Description: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
-        }Expires at: <b>{DATETIME($expiresAt, timeZone: "UTC")} {DATETIME($expiresAt, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Expires at: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
         Lightning Invoice:
         <code>{$invoice}</code>
@@ -550,20 +550,7 @@ subscription-invoice =
 
     {$remaining}
     .insufficient-balance = ⚠️ Not enough balance to pay for access.
-    .remaining-time = <i>The invoice is valid for another <b>{$hours ->
-        [0] {$minutes ->
-            [one] {$minutes} minute
-           *[other] {$minutes} minutes
-        }
-       *[other] {$hours ->
-            [one] {$hours} hour
-           *[other] {$hours} hours
-        }{$minutes ->
-            [0] { "" }
-            [one] { " " }and {$minutes} minute
-           *[other] { " " }and {$minutes} minutes
-        }
-    }</b>.</i>
+    .remaining-time = <i>The invoice expires <b>{TGTIME($expiresAt, format: "r")}</b>.</i>
     .paid = <b>✅ Access to the community "{$title}" received.</b>
 
     {$type ->
@@ -580,7 +567,7 @@ subscription-invoice =
         Submit another request to join the chat to get a new invoice.
 
 subscription-renewal = 
-    .renewed = <b>✅ Your subscription to "{$title}" has been extended until {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+    .renewed = <b>✅ Your subscription to "{$title}" has been extended until {TGTIME($expiryDate, format: "D")}.</b>
         Payment amount: <b>{$price} sats{$usdSuffix}</b>
     .need-payment = <b>⚠️ Your subscription to "{$title}" expires in 24 hours. Pay the Lightning invoice for {$price} sats{$usdSuffix} to extend access for one month:</b>
         <code>{$invoice}</code>
@@ -607,7 +594,7 @@ subscription = <b>👥 Subscription to chat "{$chatTitle}"</b>
     Price: <b>{$price} sats{$usdSuffix}</b>
     Valid until: <b>{$endsAt ->
         [no] permanent
-        *[other] {$endsAt}
+        *[other] {TGTIME($endsAt, format: "Dt")}
     }</b>
     {$endsAt ->
         [no] <i></i>
