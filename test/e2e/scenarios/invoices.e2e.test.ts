@@ -85,23 +85,24 @@ test('the amount step mints an invoice without a memo and offers Add memo', asyn
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageText',
+        method: 'editMessageMedia',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
     ],
   })
 
-  expect(keyboardOf(e2e.tg.last('editMessageText'))).toEqual([
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([
     staticCallback.addInvoiceMemo,
     staticCallback.wallet,
   ])
   expect(lastInvoiceMemo()).toBe(MEMO_FOOTER)
-  expect(lastInvoiceHtml()).toContain('Wallet: <b>ZapGram</b>')
-  expect(lastInvoiceHtml()).toContain('<details>')
-  expect(lastInvoiceHtml()).not.toContain('Description:')
+  expect(lastInvoiceCaption()).toContain('Wallet: <b>ZapGram</b>')
+  expect(lastInvoiceCaption()).toContain('<blockquote expandable>')
+  expect(lastInvoiceCaption()).not.toContain('Description:')
   expectNoErrors(e2e.logs)
 })
 
@@ -173,7 +174,7 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'editMessageText', to: USER_A, text: /Description: <b>coffee<\/b>/},
+      {method: 'editMessageMedia', to: USER_A, text: /Description: <b>coffee<\/b>/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
@@ -184,10 +185,10 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
   expect(rows.some(row => row.paymentRequest !== previous.paymentRequest)).toBe(true)
 
   expect(lastInvoiceMemo()).toBe(`${MEMO}\n\n${MEMO_FOOTER}`)
-  expect(lastInvoiceHtml()).toContain(`Description: <b>${MEMO}</b>`)
-  expect(lastInvoiceHtml()).not.toContain(MEMO_FOOTER)
-  expect(lastInvoiceHtml()).not.toContain(previous.paymentRequest)
-  expect(keyboardOf(e2e.tg.last('editMessageText'))).toEqual([staticCallback.wallet])
+  expect(lastInvoiceCaption()).toContain(`Description: <b>${MEMO}</b>`)
+  expect(lastInvoiceCaption()).not.toContain(MEMO_FOOTER)
+  expect(lastInvoiceCaption()).not.toContain(previous.paymentRequest)
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.wallet])
   expectNoErrors(e2e.logs)
 })
 
@@ -199,6 +200,7 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Failed to create the Lightning invoice/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
@@ -478,7 +480,7 @@ for (const {conversation, step, reach, lifecyclePrompt, parentText, parentMethod
         : lifecyclePrompt === 'memo'
           ? [
               {method: 'answerCallbackQuery'},
-              {method: 'editMessageText', to: USER_A, text: /Amount:/},
+              {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
               parent,
             ]
           : [
@@ -534,7 +536,7 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'editMessageText', to: USER_A, text: /Description:/},
+      {method: 'editMessageMedia', to: USER_A, text: /Description:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
@@ -578,7 +580,7 @@ test('a callback from another message deactivates the QR and starts its own flow
     {
       db: {conversations: {changed: 1}},
       telegram: [
-        {method: 'editMessageText', to: USER_A, text: /no longer active/},
+        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
         {method: 'editMessageText', to: USER_A, text: /Send or forward a message/},
       ],
     },
@@ -594,7 +596,7 @@ test('/wallet during memo input deactivates both memo prompts and keeps the invo
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      {method: 'editMessageCaption', to: USER_A, text: /Action canceled/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
@@ -1043,13 +1045,16 @@ function requiredPromptMessageId(): number {
 }
 
 function requiredInvoiceHostMessageId(): number {
-  const messageId = e2e.tg.lastMessageId('editMessageText')
+  const messageId =
+    e2e.tg.lastMessageId('editMessageMedia') ?? e2e.tg.lastMessageId('editMessageText')
   if (messageId === undefined) throw new Error('Expected an outbound invoice host message ID')
   return messageId
 }
 
-function lastInvoiceHtml(): string {
-  return richHtmlOf(e2e.tg.last('editMessageText'))
+function lastInvoiceCaption(): string {
+  const media = e2e.tg.last('editMessageMedia')?.media
+  if (!media || typeof media !== 'object' || Array.isArray(media)) return ''
+  return String(Reflect.get(media, 'caption') ?? '')
 }
 
 function lnPathsSince(mark: number): string[] {

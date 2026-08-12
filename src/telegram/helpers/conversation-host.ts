@@ -53,6 +53,19 @@ export async function editHost(
   return promptMessageFromHost(host)
 }
 
+export async function editHostCaption(
+  ctx: BotContext,
+  host: ConversationHost,
+  caption: string,
+  replyMarkup?: InlineKeyboard,
+): Promise<PromptMessage> {
+  await ctx.api.editMessageCaption(host.chatId, host.messageId, {
+    caption,
+    reply_markup: replyMarkup,
+  })
+  return promptMessageFromHost(host)
+}
+
 export async function editHostRich(
   ctx: BotContext,
   host: ConversationHost,

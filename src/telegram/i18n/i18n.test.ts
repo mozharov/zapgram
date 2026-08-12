@@ -65,9 +65,9 @@ describe('created lightning invoice copy', () => {
     })
     expect(message).toContain('Expires:')
     expect(message).not.toContain('Expires at:')
-    expect(message).toContain('<details>')
-    expect(message).toContain('Wallet: <b>ZapGram</b>')
-    expect(message).toContain('tg://photo?id=invoice-qr')
+    expect(message).toContain('<blockquote expandable>')
+    expect(message).toMatch(/<\/b>\n+Wallet: <b>ZapGram<\/b>/)
+    expect(message).toContain('<code>lnbc1test</code>')
   })
 })
 

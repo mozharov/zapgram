@@ -379,6 +379,7 @@ paying-invoice = <b>🧾 Оплата счёта Lightning...</b>
 
 creating-invoice = <b>🧾 Создание счёта Lightning...</b>
     .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>
+
         {$wallet ->
         [nwc] Кошелёк: <b>NWC</b>
         *[internal] Кошелёк: <b>{bot-name}</b>
@@ -390,12 +391,7 @@ creating-invoice = <b>🧾 Создание счёта Lightning...</b>
         *[other] <i></i>
         }Срок действия: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
-        <img src="tg://photo?id=invoice-qr"/>
-
-        <details>
-        <summary>Lightning-счёт</summary>
-        <pre><code>{$invoice}</code></pre>
-        </details>
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 wait-for-memo = <b>🔡 Введи описание счёта.</b>
     .invalid = <b>⚠️ Невалидное описание. Ожидается строка до 150 символов.</b>

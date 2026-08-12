@@ -9,6 +9,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {InlineKeyboard} from 'grammy'
 
 const MAX_AMOUNT = 100000000
@@ -19,6 +20,7 @@ export async function waitForSats(
   opts?: {
     host?: ConversationHost
     html?: string
+    deleteInput?: boolean
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ) {
@@ -56,6 +58,7 @@ export async function waitForSats(
     }
 
     await clearPromptControls(conversation, prompt)
+    if (opts?.deleteInput) await deleteMessageSafely(next)
     return sats
   }
 }

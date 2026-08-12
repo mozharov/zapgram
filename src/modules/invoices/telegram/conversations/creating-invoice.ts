@@ -14,9 +14,9 @@ import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
-  editHostRich,
   ensureHost,
   joinWizardHtml,
+  promptMessageFromHost,
 } from '@telegram/helpers/conversation-host.js'
 import {
   classifyPromptUpdate,
@@ -29,11 +29,8 @@ import {
 import {copyableText} from '@telegram/helpers/copy-text.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard, InputFile} from 'grammy'
-import type {InputRichMessage} from 'grammy/types'
 import QRCode from 'qrcode'
 import {getRuntime} from '../../../../runtime.js'
-
-const QR_MEDIA_ID = 'invoice-qr'
 
 export async function creatingInvoice(conversation: BotConversation, ctx: ConversationContext) {
   const title = ctx.t('creating-invoice')
@@ -50,6 +47,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   const sats = await waitForSats(conversation, ctx, {
     host,
     html: joinWizardHtml(title, selectedWallet, ctx.t('wait-for-sats')),
+    deleteInput: true,
     onCancel: restoreWallet,
   })
   const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
@@ -66,7 +64,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     offerAddMemo: true,
   })
   const qrPrompt = createActivePrompt(invoiceView.message, {
-    kind: 'rich',
+    kind: 'caption',
     html: invoiceView.html,
     actionLabel: ctx.t('conversation-action.invoice-memo-options'),
   })
@@ -116,7 +114,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   const memoResult = await waitForMemoText(conversation, ctx, {
     host,
     html: memoHtml,
-    rich: {html: memoHtml, media: invoiceQrMedia(invoiceView.buffer)},
+    kind: 'caption',
   })
   if (memoResult.status !== 'ok') {
     captureBotEvent(getRuntime().posthog, 'invoice_memo_add_cancelled', {
@@ -226,11 +224,20 @@ async function renderInvoice(
   host: ConversationHost,
   paymentRequest: string,
   opts: {wallet: 'internal' | 'nwc'; usdSuffix: string; offerAddMemo: boolean},
-): Promise<{message: {chat: {id: number}; message_id: number}; html: string; buffer: Buffer}> {
-  const {html, buffer, rich} = await buildInvoiceRichMessage(ctx, paymentRequest, opts)
+): Promise<{message: {chat: {id: number}; message_id: number}; html: string}> {
+  const {html, buffer} = await buildInvoiceCaption(ctx, paymentRequest, opts)
   const keyboard = invoiceKeyboard(ctx, paymentRequest, opts.offerAddMemo)
-  const message = await editHostRich(ctx, host, rich, keyboard)
-  return {message, html, buffer}
+  await ctx.api.editMessageMedia(
+    host.chatId,
+    host.messageId,
+    {
+      type: 'photo',
+      media: new InputFile(buffer),
+      caption: html,
+    },
+    {reply_markup: keyboard},
+  )
+  return {message: promptMessageFromHost(host), html}
 }
 
 function invoiceKeyboard(
@@ -253,11 +260,11 @@ function invoiceKeyboard(
   return keyboard
 }
 
-async function buildInvoiceRichMessage(
+async function buildInvoiceCaption(
   ctx: ConversationContext,
   paymentRequest: string,
   opts: {wallet: 'internal' | 'nwc'; usdSuffix: string},
-): Promise<{html: string; buffer: Buffer; rich: InputRichMessage}> {
+): Promise<{html: string; buffer: Buffer}> {
   const invoice = decodeInvoice(paymentRequest)
   const expiresAt = invoice.expiryDate ?? 0
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
@@ -271,9 +278,5 @@ async function buildInvoiceRichMessage(
     expiresAt,
     invoice: paymentRequest,
   })
-  return {html, buffer, rich: {html, media: invoiceQrMedia(buffer)}}
-}
-
-function invoiceQrMedia(buffer: Buffer): InputRichMessage['media'] {
-  return [{id: QR_MEDIA_ID, media: {type: 'photo', media: new InputFile(buffer)}}]
+  return {html, buffer}
 }

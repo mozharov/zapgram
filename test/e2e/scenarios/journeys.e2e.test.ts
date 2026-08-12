@@ -86,9 +86,10 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageText',
+        method: 'editMessageMedia',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
@@ -101,7 +102,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     () =>
       e2e.send(
         privateCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('editMessageText'),
+          messageId: requiredMessageId('editMessageMedia'),
         }),
       ),
     {
@@ -572,9 +573,10 @@ test('an invoice conversation survives a container restart on the same database'
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageText',
+        method: 'editMessageMedia',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
@@ -591,7 +593,7 @@ test('an invoice conversation survives a container restart on the same database'
     () =>
       e2e.send(
         privateCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('editMessageText'),
+          messageId: requiredMessageId('editMessageMedia'),
         }),
       ),
     {
@@ -846,7 +848,9 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
 }
 
-function requiredMessageId(method: 'sendMessage' | 'sendPhoto' | 'editMessageText'): number {
+function requiredMessageId(
+  method: 'sendMessage' | 'sendPhoto' | 'editMessageText' | 'editMessageMedia',
+): number {
   const messageId = e2e.tg.lastMessageId(method)
   if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)
   return messageId

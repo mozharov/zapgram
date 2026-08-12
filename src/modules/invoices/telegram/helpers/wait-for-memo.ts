@@ -2,7 +2,7 @@ import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
-  editHostRich,
+  editHostCaption,
   showHostOrReply,
 } from '@telegram/helpers/conversation-host.js'
 import {
@@ -13,7 +13,6 @@ import {
   deactivatePrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
-import type {InputRichMessage} from 'grammy/types'
 
 const MAX_MEMO_LENGTH = 150
 
@@ -31,7 +30,7 @@ export async function waitForMemoText(
   opts?: {
     host?: ConversationHost
     html?: string
-    rich?: InputRichMessage
+    kind?: 'text' | 'caption'
   },
 ): Promise<MemoTextResult> {
   const html = opts?.html ?? ctx.t('wait-for-memo')
@@ -40,11 +39,11 @@ export async function waitForMemoText(
     text: ctx.t('button.cancel'),
   })
   const message =
-    opts?.host && opts.rich
-      ? await editHostRich(ctx, opts.host, opts.rich, keyboard)
+    opts?.host && opts.kind === 'caption'
+      ? await editHostCaption(ctx, opts.host, html, keyboard)
       : await showHostOrReply(ctx, html, keyboard, opts?.host)
   const prompt = createActivePrompt(message, {
-    kind: opts?.rich ? 'rich' : 'text',
+    kind: opts?.kind === 'caption' ? 'caption' : 'text',
     html,
     actionLabel: ctx.t('conversation-action.enter-invoice-memo'),
   })

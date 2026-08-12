@@ -286,6 +286,11 @@ function assertTelegramDelta(
 function telegramText(payload: Record<string, unknown>): string {
   if (typeof payload.text === 'string') return payload.text
   if (typeof payload.caption === 'string') return payload.caption
+  const media = payload.media
+  if (media && typeof media === 'object' && !Array.isArray(media)) {
+    const mediaCaption = Reflect.get(media, 'caption')
+    if (typeof mediaCaption === 'string') return mediaCaption
+  }
   const richMessage = payload.rich_message
   if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
   const html = Reflect.get(richMessage, 'html')
