@@ -582,14 +582,46 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
   expectNoErrors(e2e.logs)
 })
 
-test('ordinary text on the QR step keeps its buttons active', async () => {
+test('ordinary text on the QR step drops the buttons and opens Wallet', async () => {
   await enterCreateInvoiceAtQr()
+  const qrMessageId = requiredInvoiceHostMessageId()
 
   await expectDelta(e2e, () => e2e.send(privateText('add a memo')), {
-    db: {conversations: {changed: 1}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
+    ],
   })
 
+  expect(e2e.tg.last('editMessageCaption')).toMatchObject({
+    message_id: qrMessageId,
+    reply_markup: {inline_keyboard: []},
+  })
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('a bolt11 on the QR step drops the buttons and starts payment review', async () => {
+  await enterCreateInvoiceAtQr()
+  const qrMessageId = requiredInvoiceHostMessageId()
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+
+  await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
+    db: {conversations: {changed: 1}},
+    telegram: [
+      {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Invoice review/},
+    ],
+  })
+
+  expect(e2e.tg.last('editMessageCaption')).toMatchObject({
+    message_id: qrMessageId,
+    reply_markup: {inline_keyboard: []},
+  })
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Select a wallet to pay this invoice/)
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })

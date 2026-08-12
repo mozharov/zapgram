@@ -19,7 +19,6 @@ import {
   promptMessageFromHost,
 } from '@telegram/helpers/conversation-host.js'
 import {
-  classifyPromptUpdate,
   clearPromptControls,
   createActivePrompt,
   inactivePromptState,
@@ -74,35 +73,27 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     ctx.t('conversation-state.invoice-memo-inactive'),
   )
 
-  for (;;) {
-    const next = await conversation.wait()
-    if (
-      next.callbackQuery?.data === staticCallback.addInvoiceMemo &&
-      isCallbackFromPrompt(next, qrPrompt)
-    ) {
-      await next.answerCallbackQuery()
-      await clearPromptControls(conversation, qrPrompt)
-      break
-    }
-
-    if (
-      next.callbackQuery?.data === staticCallback.wallet &&
-      isCallbackFromPrompt(next, qrPrompt)
-    ) {
-      // Invoice is already live. Open Wallet as a new message and drop the invoice buttons.
-      // Do not fall through: the global wallet handler would replace this invoice.
-      await next.answerCallbackQuery()
-      await clearPromptControls(conversation, qrPrompt)
-      await replyWithWallet(ctx)
-      return conversation.halt()
-    }
-
-    const kind = classifyPromptUpdate(next, qrPrompt, staticCallback.cancel)
-    if (kind === 'interrupt') {
-      return interruptConversation(conversation, qrPrompt, inactive)
-    }
-
-    await next.reply(next.t('conversation-state.use-buttons'))
+  const next = await conversation.wait()
+  if (
+    next.callbackQuery?.data === staticCallback.addInvoiceMemo &&
+    isCallbackFromPrompt(next, qrPrompt)
+  ) {
+    await next.answerCallbackQuery()
+    await clearPromptControls(conversation, qrPrompt)
+  } else if (
+    next.callbackQuery?.data === staticCallback.wallet &&
+    isCallbackFromPrompt(next, qrPrompt)
+  ) {
+    // Invoice is already live. Open Wallet as a new message and drop the invoice buttons.
+    // Do not fall through: the global wallet handler would replace this invoice.
+    await next.answerCallbackQuery()
+    await clearPromptControls(conversation, qrPrompt)
+    await replyWithWallet(ctx)
+    return conversation.halt()
+  } else {
+    // Invoice is already live. Any other update (command, bolt11, leftover text)
+    // drops the memo buttons so the update can open Wallet or start payment.
+    return interruptConversation(conversation, qrPrompt, inactive)
   }
 
   captureBotEvent(getRuntime().posthog, 'invoice_memo_add_tapped', {
