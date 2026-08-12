@@ -92,16 +92,16 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/},
     ],
   })
 
-  // Leave the optional Add memo step: cancel keeps the invoice and ends the conversation.
+  // Leave the optional Add memo step: Wallet keeps the invoice and opens the menu as a new message.
   await expectDelta(
     e2e,
     () =>
       e2e.send(
-        privatePhotoCaptionCallback(staticCallback.cancel, {
+        privatePhotoCaptionCallback(staticCallback.wallet, {
           messageId: requiredMessageId('sendPhoto'),
         }),
       ),
@@ -109,7 +109,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'editMessageReplyMarkup', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Wallet/},
       ],
     },
@@ -591,7 +591,7 @@ test('an invoice conversation survives a container restart on the same database'
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/},
     ],
   })
 
@@ -604,7 +604,7 @@ test('an invoice conversation survives a container restart on the same database'
     e2e,
     () =>
       e2e.send(
-        privatePhotoCaptionCallback(staticCallback.cancel, {
+        privatePhotoCaptionCallback(staticCallback.wallet, {
           messageId: requiredMessageId('sendPhoto'),
         }),
       ),
@@ -612,7 +612,7 @@ test('an invoice conversation survives a container restart on the same database'
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'editMessageReplyMarkup', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Wallet/},
       ],
     },

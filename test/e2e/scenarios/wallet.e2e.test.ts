@@ -40,7 +40,7 @@ test('/start is one compact English onboarding screen with partner and two actio
       {
         method: 'sendRichMessage',
         to: USER_A,
-        text: /Bitcoin Lightning wallet inside Telegram[\s\S]*How it works[\s\S]*21ideas/,
+        text: /Bitcoin Lightning wallet[\s\S]*How it works[\s\S]*21ideas/,
       },
     ],
   })
@@ -67,7 +67,7 @@ test('/start renders the compact screen and actions in Russian', async () => {
   const html = richHtmlOf(start)
   expect(html).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как это работает/)
   expect(html).toMatch(/комиссия — 0/)
-  expect(html).toMatch(/добровольный донат 5%[\s\S]*при отправке tips[\s\S]*\/donate/)
+  expect(html).toMatch(/добровольный донат 5%[\s\S]*\/tip[\s\S]*\/donate/)
   expect(html).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
   expect(html).toContain('21 идея')
   expect(html).toContain('bot-description-ru.png')
@@ -147,7 +147,7 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
         method: 'sendMessage',
         to: USER_A,
         // Default fake rate 100_000 → 1234 sats ≈ $1.23
-        text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/,
+        text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/,
       },
     ],
   })
@@ -160,7 +160,7 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
     'GET /api/v1/wallet',
     'GET /api/v1/rate/USD',
   ])
-  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('(~$')
+  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('($')
   expectNoErrors(e2e.logs)
 })
 
@@ -170,7 +170,7 @@ test('the wallet button re-renders in place without asking for the balance again
 
   await expectDelta(e2e, () => e2e.send(privateCallback('wallet')), {
     telegram: [
-      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/},
+      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/},
     ],
   })
 

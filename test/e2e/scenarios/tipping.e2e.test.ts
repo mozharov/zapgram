@@ -74,14 +74,14 @@ test('the private send conversation transfers sats and closes after the amount',
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
-      {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(~\$[^)]+\))? to @user_b/},
+      {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
   )
 
   expect(notificationTo(USER_B)).toContain('Sender: @user_a')
-  expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(\$[^)]+\))?<\/b>/)
 })
 
 test('an invalid private-send amount can be corrected without restarting the flow', async () => {
@@ -108,7 +108,7 @@ test('an invalid private-send amount can be corrected without restarting the flo
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
-      {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(~\$[^)]+\))? to @user_b/},
+      {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
@@ -134,7 +134,7 @@ test('/tip with an amount and username pays that stored user', async () => {
   )
 
   expect(notificationTo(USER_B)).toContain('Sender: @user_a')
-  expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(\$[^)]+\))?<\/b>/)
 })
 
 // Clients append the bot username as soon as a group holds more than one bot.

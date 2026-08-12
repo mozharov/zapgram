@@ -94,16 +94,48 @@ test('the amount step mints an invoice without a memo and offers Add memo', asyn
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
+      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/},
     ],
   })
 
   expect(keyboardOf(e2e.tg.last('sendPhoto'))).toEqual([
     staticCallback.addInvoiceMemo,
-    staticCallback.cancel,
+    staticCallback.wallet,
   ])
   expect(lastInvoiceMemo()).toBe(MEMO_FOOTER)
   expect(String(e2e.tg.last('sendPhoto')?.caption)).not.toContain('Description:')
+  expectNoErrors(e2e.logs)
+})
+
+test('wallet on the QR step sends a new wallet and drops the invoice keyboard', async () => {
+  await enterCreateInvoiceAtQr()
+  const qrMessageId = requiredPhotoPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privatePhotoCaptionCallback(staticCallback.wallet, {
+          messageId: qrMessageId,
+        }),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
+
+  expect(e2e.tg.last('editMessageReplyMarkup')).toMatchObject({
+    message_id: qrMessageId,
+    reply_markup: {inline_keyboard: []},
+  })
+  expect(e2e.tg.of('editMessageCaption')).toHaveLength(0)
+  expect(e2e.tg.of('editMessageText')).toHaveLength(0)
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
 
@@ -216,7 +248,7 @@ test('an invoice the bot issued itself is reviewed with no fee and no fee-reserv
 
   await e2e.send(privateText(pending.paymentRequest))
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Fee: <b>0 sats(?: \(~\$[^)]+\))?<\/b>/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
   expect(lnPathsSince(mark)).not.toContain('GET /api/v1/payments/fee-reserve')
   expectNoErrors(e2e.logs)
 })
@@ -228,7 +260,7 @@ test('a foreign invoice is reviewed with the fee reserve LNbits quotes for it', 
   await e2e.send(privateText(foreignInvoice().bolt11))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
-    new RegExp(`Fee: <b>${FOREIGN_FEE_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
+    new RegExp(`Fee: <b>${FOREIGN_FEE_SATS} sats(?: \\(\\$[^)]+\\))?</b>`),
   )
   expect(lnPathsSince(mark)).toContain('GET /api/v1/payments/fee-reserve')
   expectNoErrors(e2e.logs)
@@ -262,10 +294,10 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
   // An internal transfer costs nothing, so the payer is debited the invoice amount and no more.
   const receipt = String(e2e.tg.of('sendMessage').at(-2)?.text)
   expect(receipt).toMatch(
-    new RegExp(`Payment amount: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
+    new RegExp(`Payment amount: <b>${PENDING_SATS} sats(?: \\(\\$[^)]+\\))?</b>`),
   )
-  expect(receipt).toMatch(/Fee: <b>0 sats(?: \(~\$[^)]+\))?<\/b>/)
-  expect(receipt).toMatch(new RegExp(`Total: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`))
+  expect(receipt).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
+  expect(receipt).toMatch(new RegExp(`Total: <b>${PENDING_SATS} sats(?: \\(\\$[^)]+\\))?</b>`))
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })
@@ -360,7 +392,7 @@ const cancelCases: {
   conversation: string
   step: string
   reach: () => Promise<void>
-  lifecyclePrompt: 'text' | 'caption' | 'memo'
+  lifecyclePrompt: 'text' | 'memo'
   parentText: RegExp
 }[] = [
   {
@@ -368,13 +400,6 @@ const cancelCases: {
     step: 'amount',
     reach: enterCreateInvoiceAtAmount,
     lifecyclePrompt: 'text',
-    parentText: /Wallet/,
-  },
-  {
-    conversation: creatingInvoice.name,
-    step: 'qr',
-    reach: enterCreateInvoiceAtQr,
-    lifecyclePrompt: 'caption',
     parentText: /Wallet/,
   },
   {
@@ -446,31 +471,20 @@ const cancelCases: {
 for (const {conversation, step, reach, lifecyclePrompt, parentText} of cancelCases) {
   test(`cancel at the ${step} step of ${conversation} returns to its parent screen`, async () => {
     await reach()
-    const update =
-      lifecyclePrompt === 'caption'
-        ? privatePhotoCaptionCallback(staticCallback.cancel, {
-            messageId: requiredPhotoPromptMessageId(),
-          })
-        : privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
+    const update = privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
     const telegram =
-      lifecyclePrompt === 'caption'
+      lifecyclePrompt === 'memo'
         ? [
             {method: 'answerCallbackQuery'},
-            {method: 'editMessageCaption', to: USER_A},
+            {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+            {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
             {method: 'sendMessage' as const, to: USER_A, text: parentText},
           ]
-        : lifecyclePrompt === 'memo'
-          ? [
-              {method: 'answerCallbackQuery'},
-              {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-              {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
-              {method: 'sendMessage' as const, to: USER_A, text: parentText},
-            ]
-          : [
-              {method: 'answerCallbackQuery'},
-              {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-              {method: 'sendMessage' as const, to: USER_A, text: parentText},
-            ]
+        : [
+            {method: 'answerCallbackQuery'},
+            {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+            {method: 'sendMessage' as const, to: USER_A, text: parentText},
+          ]
 
     await expectDelta(e2e, () => e2e.send(update), {
       db: {conversations: {removed: 1}},

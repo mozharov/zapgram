@@ -66,13 +66,19 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       break
     }
 
-    const kind = classifyPromptUpdate(next, qrPrompt, staticCallback.cancel)
-    if (kind === 'cancel') {
+    if (
+      next.callbackQuery?.data === staticCallback.wallet &&
+      isCallbackFromPrompt(next, qrPrompt)
+    ) {
+      // Invoice is already live. Open Wallet as a new message and drop the QR buttons.
+      // Do not fall through: the global wallet handler would try to edit this photo.
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, qrPrompt, inactive)
+      await clearPromptControls(conversation, qrPrompt)
       await returnToWallet()
       return conversation.halt()
     }
+
+    const kind = classifyPromptUpdate(next, qrPrompt, staticCallback.cancel)
     if (kind === 'interrupt') {
       return interruptConversation(conversation, qrPrompt, inactive)
     }
@@ -196,7 +202,7 @@ async function replyWithQRCode(
           callback_data: staticCallback.addInvoiceMemo,
           text: ctx.t('button.add-invoice-memo'),
         })
-        .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
+        .row({callback_data: staticCallback.wallet, text: ctx.t('button.open-wallet')})
     : undefined
 
   const message = await ctx.replyWithPhoto(new InputFile(buffer), {

@@ -49,7 +49,7 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
   {
     command: '/start',
     telegram: [
-      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet inside Telegram/},
+      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/},
     ],
   },
   {

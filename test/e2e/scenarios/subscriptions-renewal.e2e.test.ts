@@ -106,7 +106,7 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
       expiryDate: extendedEndsAt(subscription),
       price: PRICE,
       // Default fake LNbits rate 100_000 → 1000 sats ≈ $1.00
-      usdSuffix: ' (~$1.00)',
+      usdSuffix: ' ($1.00)',
     }),
   )
   expect(String(subscriberMessage?.text)).not.toContain('Доступ к сообществу')

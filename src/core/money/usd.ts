@@ -23,5 +23,5 @@ export function formatUsdAmount(usd: number): string {
 
 export function formatUsdSuffix(usd: number | null): string {
   if (usd === null) return ''
-  return ` (~$${formatUsdAmount(usd)})`
+  return ` ($${formatUsdAmount(usd)})`
 }
