@@ -12,7 +12,11 @@ import {InlineKeyboard} from 'grammy'
 
 const MAX_AMOUNT = 100000000
 
-export async function waitForSats(conversation: BotConversation, ctx: ConversationContext) {
+export async function waitForSats(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  opts?: {onCancel?: () => Promise<unknown>},
+) {
   const html = ctx.t('wait-for-sats')
   const message = await replyWithWaitForSats(ctx, html)
   const prompt = createActivePrompt(message, {
@@ -29,6 +33,7 @@ export async function waitForSats(conversation: BotConversation, ctx: Conversati
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await opts?.onCancel?.()
       return conversation.halt()
     }
     if (kind === 'interrupt') {

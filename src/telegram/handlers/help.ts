@@ -3,10 +3,12 @@ import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
 export function helpCommand(ctx: BotContext) {
-  return ctx.reply(ctx.t('help'), {
-    link_preview_options: {is_disabled: true},
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.wallet, text: ctx.t('button.back')}],
-    ]),
-  })
+  return ctx.replyWithRichMessage(
+    {html: ctx.t('help')},
+    {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.wallet, text: ctx.t('button.back')}],
+      ]),
+    },
+  )
 }

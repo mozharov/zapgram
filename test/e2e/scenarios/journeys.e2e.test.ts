@@ -62,9 +62,9 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
     db: {users: {added: 1}},
     lnbits: {balances: {[userWalletName(USER_A)]: 0}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /How the wallet works/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /How it works/}],
   })
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('sendRichMessage'))).toEqual([
     staticCallback.wallet,
     staticCallback.help,
   ])
@@ -110,6 +110,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -453,6 +454,7 @@ test('private keyboard navigation keeps one world through screens and conversati
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /Send payment/},
       ],
     },
   )
@@ -611,6 +613,7 @@ test('an invoice conversation survives a container restart on the same database'
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )

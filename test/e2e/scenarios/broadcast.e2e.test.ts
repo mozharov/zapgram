@@ -33,6 +33,21 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
+test('canceling a broadcast returns to Wallet', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'owner', languageCode: 'en'})
+  const from = {id: OWNER, username: 'owner'}
+
+  await e2e.send(privateCommand('/broadcast', {from}))
+  await e2e.send(
+    privateCallback(staticCallback.cancel, {from, messageId: requiredPromptMessageId()}),
+  )
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet|Кошелёк/)
+  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
+  expectNoErrors(e2e.logs)
+})
+
 test('admin /broadcast en: copyMessage to en users only, excludes admin', async () => {
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner', languageCode: 'en'})
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'A', languageCode: 'en'})
@@ -152,7 +167,9 @@ test('help callback from another message interrupts broadcast and still opens he
   await expectNoConversations(e2e.db)
   const edits = e2e.tg.of('editMessageText')
   expect(edits.some(call => Number(call.message_id) === promptMessageId)).toBe(true)
-  expect(String(edits.at(-1)?.text)).toMatch(/Bitcoin|Биткоин/i)
+  expect(String((edits.at(-1)?.rich_message as {html?: string} | undefined)?.html)).toMatch(
+    /Bitcoin|Биткоин/i,
+  )
   expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
   expectNoErrors(e2e.logs)
 })

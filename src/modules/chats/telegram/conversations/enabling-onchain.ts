@@ -1,6 +1,7 @@
 import {getAccessibleChatForOwner} from '@modules/chats/repository.js'
 import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
 import type {EnableOnchainResult} from '@modules/onchain/enable.service.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent, setTelegramChatGroup} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -40,6 +41,7 @@ export async function enablingOnchain(
       await deactivatePrompt(conversation, prompt, cancelled)
       const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
       if (owned) await replyWithChat(ctx, owned)
+      else await replyWithWallet(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') {

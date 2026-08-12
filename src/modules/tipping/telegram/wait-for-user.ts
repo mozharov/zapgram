@@ -15,7 +15,11 @@ import {InlineKeyboard} from 'grammy'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 
-export async function waitForUser(conversation: BotConversation, ctx: ConversationContext) {
+export async function waitForUser(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  opts?: {onCancel?: () => Promise<unknown>},
+) {
   const html = ctx.t('wait-for-user')
   const message = await replyWithWaitForUser(ctx, html)
   const prompt = createActivePrompt(message, {
@@ -32,6 +36,7 @@ export async function waitForUser(conversation: BotConversation, ctx: Conversati
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await opts?.onCancel?.()
       return conversation.halt()
     }
     if (kind === 'interrupt') {

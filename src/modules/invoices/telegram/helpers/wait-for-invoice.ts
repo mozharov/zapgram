@@ -10,7 +10,11 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 
-export async function waitForInvoice(conversation: BotConversation, ctx: ConversationContext) {
+export async function waitForInvoice(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  opts?: {onCancel?: () => Promise<unknown>},
+) {
   const keyboard = new InlineKeyboard().add({
     callback_data: staticCallback.cancel,
     text: ctx.t('button.cancel'),
@@ -31,6 +35,7 @@ export async function waitForInvoice(conversation: BotConversation, ctx: Convers
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await opts?.onCancel?.()
       return conversation.halt()
     }
     if (kind === 'interrupt') {

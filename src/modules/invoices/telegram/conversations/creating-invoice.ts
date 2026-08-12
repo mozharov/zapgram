@@ -28,9 +28,13 @@ import QRCode from 'qrcode'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function creatingInvoice(conversation: BotConversation, ctx: ConversationContext) {
+  const returnToWallet = () => replyWithWallet(ctx)
   await ctx.reply(ctx.t('creating-invoice'))
-  const wallet = await waitForWallet(conversation, ctx, {flow: 'create_invoice'})
-  const sats = await waitForSats(conversation, ctx)
+  const wallet = await waitForWallet(conversation, ctx, {
+    flow: 'create_invoice',
+    onCancel: returnToWallet,
+  })
+  const sats = await waitForSats(conversation, ctx, {onCancel: returnToWallet})
   const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
 
   await ctx.replyWithChatAction('typing')
@@ -66,6 +70,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, qrPrompt, inactive)
+      await returnToWallet()
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -88,6 +93,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       wallet_type: wallet,
     })
     await deactivatePrompt(conversation, qrPrompt, inactive)
+    if (memoResult.status === 'cancelled') await returnToWallet()
     return memoResult.status === 'interrupted'
       ? conversation.halt({next: true})
       : conversation.halt()

@@ -20,7 +20,11 @@ export type WalletSelectFlow = 'pay_invoice' | 'tip' | 'create_invoice'
 export async function waitForWallet(
   conversation: BotConversation,
   ctx: ConversationContext,
-  opts?: {requiredSats?: number; flow?: WalletSelectFlow},
+  opts?: {
+    requiredSats?: number
+    flow?: WalletSelectFlow
+    onCancel?: () => Promise<unknown>
+  },
 ): Promise<'internal' | 'nwc'> {
   const flow = opts?.flow ?? 'create_invoice'
   const requiredSats = opts?.requiredSats
@@ -120,6 +124,7 @@ export async function waitForWallet(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await opts?.onCancel?.()
       return conversation.halt()
     }
     if (kind === 'interrupt') {

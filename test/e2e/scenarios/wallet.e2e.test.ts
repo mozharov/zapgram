@@ -38,20 +38,21 @@ test('/start is one compact English onboarding screen with partner and two actio
   await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
     telegram: [
       {
-        method: 'sendMessage',
+        method: 'sendRichMessage',
         to: USER_A,
-        text: /Bitcoin Lightning wallet in Telegram[\s\S]*How the wallet works[\s\S]*21ideas/,
+        text: /Bitcoin Lightning wallet inside Telegram[\s\S]*How it works[\s\S]*21ideas/,
       },
     ],
   })
 
-  const start = e2e.tg.last('sendMessage')
-  expect(String(start?.text)).toMatch(/zero fees/)
-  expect(String(start?.text)).toMatch(/voluntary 5% donation[\s\S]*for tips[\s\S]*\/donate/)
-  expect(String(start?.text)).not.toMatch(/<b>Balance:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  const start = e2e.tg.last('sendRichMessage')
+  const html = richHtmlOf(start)
+  expect(html).toMatch(/zero fees/)
+  expect(html).toMatch(/voluntary 5% donation[\s\S]*for tips only[\s\S]*\/donate/)
+  expect(html).not.toMatch(/<b>Balance:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(html).toContain('bot-description-en.png')
   expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
   expect(callbackDataOf(start)).not.toContain('create-invoice')
-  expect(start?.link_preview_options).toEqual({is_disabled: true})
   expectNoErrors(e2e.logs)
 })
 
@@ -62,14 +63,14 @@ test('/start renders the compact screen and actions in Russian', async () => {
     }),
   )
 
-  const start = e2e.tg.last('sendMessage')
-  expect(String(start?.text)).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как работает кошелёк/)
-  expect(String(start?.text)).toMatch(/комиссия — 0/)
-  expect(String(start?.text)).toMatch(
-    /добровольный донат 5%[\s\S]*при отправке tips[\s\S]*\/donate/,
-  )
-  expect(String(start?.text)).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
-  expect(String(start?.text)).toContain('21 идея')
+  const start = e2e.tg.last('sendRichMessage')
+  const html = richHtmlOf(start)
+  expect(html).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как это работает/)
+  expect(html).toMatch(/комиссия — 0/)
+  expect(html).toMatch(/добровольный донат 5%[\s\S]*при отправке tips[\s\S]*\/donate/)
+  expect(html).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(html).toContain('21 идея')
+  expect(html).toContain('bot-description-ru.png')
   expect(buttonTextsOf(start)).toEqual(['👛 Открыть кошелёк', 'ℹ️ Как это работает'])
   expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
   expectNoErrors(e2e.logs)
@@ -77,10 +78,10 @@ test('/start renders the compact screen and actions in Russian', async () => {
 
 test('ordinary and landing /start payloads render identical UI', async () => {
   await e2e.send(privateCommand('/start'))
-  const ordinary = startUi(e2e.tg.last('sendMessage'))
+  const ordinary = startUi(e2e.tg.last('sendRichMessage'))
 
   await e2e.send(privateCommand('/start landing'))
-  const landing = startUi(e2e.tg.last('sendMessage'))
+  const landing = startUi(e2e.tg.last('sendRichMessage'))
 
   expect(landing).toEqual(ordinary)
   expectNoErrors(e2e.logs)
@@ -122,13 +123,16 @@ for (const locale of ['en', 'ru'] as const) {
       }),
     )
 
-    const text = String(e2e.tg.last('sendMessage')?.text)
+    const help = e2e.tg.last('sendRichMessage')
+    const text = richHtmlOf(help)
     expect(text).toMatch(/NWC/)
     expect(text).toMatch(locale === 'ru' ? /Внутренний кошелёк/ : /Internal wallet/)
-    expect(text).toMatch(locale === 'ru' ? /Группы и каналы/ : /Groups and channels/)
+    expect(text).toMatch(locale === 'ru' ? /Группы, каналы/ : /Groups, channels/)
     expect(text).toMatch(locale === 'ru' ? /Партнёр/ : /Partner/)
     expect(text).toContain('/donate')
-    expect(text.length).toBeLessThanOrEqual(4096)
+    expect(text).toMatch(/<h1>[\s\S]*<details/)
+    expect(text).toContain(locale === 'ru' ? 'bot-description-ru.png' : 'bot-description-en.png')
+    expect(callbackDataOf(help)).toEqual(['wallet'])
     expectNoErrors(e2e.logs)
   })
 }
@@ -355,10 +359,15 @@ function buttonTextsOf(payload: Record<string, unknown> | undefined): string[] {
 
 function startUi(payload: Record<string, unknown> | undefined) {
   return {
-    text: payload?.text,
+    richMessage: payload?.rich_message,
     replyMarkup: payload?.reply_markup,
-    linkPreviewOptions: payload?.link_preview_options,
   }
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }
 
 function errorMessages(): string[] {

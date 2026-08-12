@@ -125,15 +125,20 @@ error =
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
     .from-bot = <b>⚠️ You can't use {bot-name} from anonymous profile.</b>
 
-start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
-    Send and receive sats in chats and manage paid access to groups and channels.
+start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
+    <h1>⚡ {bot-name}</h1>
+    <p>A Bitcoin Lightning wallet inside Telegram: send and receive sats, tip people in chats, and manage paid access to groups and channels.</p>
 
-    <b>How the wallet works</b>
-    {bot-name} creates an internal wallet for you. Transfers between Telegram users are instant, with zero fees. You can connect your own Lightning wallet through NWC — your sats remain under your control.
+    <h2>How it works</h2>
+    <ol>
+    <li>Open Wallet — your internal wallet is ready immediately.</li>
+    <li>Receive sats or send them to another Telegram user. Transfers inside Telegram are instant and have zero fees.</li>
+    <li>Optionally connect your own Lightning wallet through NWC. Your sats remain under your control.</li>
+    </ol>
 
-    💚 Separately, a voluntary 5% donation to support the bot is enabled by default for tips. Change or disable it in /donate.
+    <details><summary>Voluntary support</summary><p>For new accounts, a voluntary 5% donation is enabled by default for tips only. Invoice payments are excluded. Change or disable it in /donate.</p></details>
 
-    🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.
+    <footer>🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.</footer>
 
 feature =
     .prompt = 💡 <b>What should we build?</b>
@@ -205,44 +210,41 @@ donate =
     .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat{$usdSuffix} donation. Check balance / NWC or /donate.
     .monthly-custom-amount = 🔤 Enter monthly donation amount in sats.
 
-help = <b>ℹ️ Bitcoin</b>
-    Bitcoin is the best form of money in our history that lives on the Internet. A decentralized and permissionless system with no rulers or controlling authorities. Bitcoin is sound money that is faster, more secure, and more accessible than fiat currencies we are coerced into using today.  
-    
-    Bitcoin is the first finitely scarce resource in human history: there will never be more than 21 million bitcoin.  
-    The smallest unit of Bitcoin is satoshi (sat). 1 bitcoin = 100,000,000 sats.
+help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
+    <h1>How {bot-name} works</h1>
+    <p>{bot-name} brings fast Bitcoin payments, tips, and paid communities to Telegram through the Lightning Network.</p>
 
-    If you want to learn more about Bitcoin, I recommend starting with this article:  
-    • <a href="https://21ideas.org/en/start/start/">What is Bitcoin?</a>
+    <details open><summary>Wallets and fees</summary>
+    <ul>
+    <li><b>Internal wallet:</b> custodial storage on {bot-name} servers. Transfers between Telegram users are instant and free.</li>
+    <li><b>External wallet:</b> connect your own wallet through NWC. Your sats stay under your control and {bot-name} acts within the limits you set.</li>
+    <li>Compatible NWC wallets: <a href="https://getalby.com/invited-by/mozharov">Alby</a> (recommended) and <a href="https://coinos.io">Coinos</a>.</li>
+    <li>Sending from the internal {bot-name} wallet to an external wallet costs 1 sat + 1.5% of the transfer amount.</li>
+    </ul>
+    </details>
 
-    <b>ℹ️ Lightning Network</b>
-    The Lightning Network is a payment protocol that enables extremely fast and cheap bitcoin payments. It is open, borderless and efficient. It is available to 650+ million people in the world. It allows you to permissionlessly send and receive nearly instant and nearly free payments anywhere in the world.
-    • <a href="https://21ideas.org/en/what-is-lightning-network/">What is Lightning Network?</a>
+    <details><summary>Payments and tips</summary>
+    <ul>
+    <li>To pay quickly, send a Lightning invoice to this chat.</li>
+    <li>Add {bot-username} to a group or channel so participants can send tips.</li>
+    <li>Transfers between {bot-name} users inside Telegram have zero fees.</li>
+    </ul>
+    </details>
 
-    <b>ℹ️ Wallets in {bot-name}</b>
-    • Internal wallet: custodial storage on {bot-name} servers; transfers inside Telegram are instant and free.
-    • External wallet: connect your own Lightning wallet through NWC. Your sats stay under your control and {bot-name} acts within the limits you set.
+    <details><summary>Groups, channels, and paid access</summary><p>Add {bot-username} to a private group or channel to create access with a one-time payment or a monthly subscription. Manage everything through Chats in the Wallet.</p></details>
 
-    <b>ℹ️ {bot-name} compatible wallets (NWC)</b>
-    • <a href="https://getalby.com/invited-by/mozharov">Alby</a> (recommended)
-    • <a href="https://coinos.io">Coinos</a>
+    <details><summary>Voluntary support</summary><p>New accounts contribute 5% on tips only by default; invoice payments are excluded. Change or disable this in /donate. You can also use <code>zapgram@getalby.com</code>.</p></details>
 
-    <b>ℹ️ {bot-name}</b>
-    • Quick Payment: Simply send a Lightning invoice to the chat.
-    • Groups and channels: add {bot-username} so participants can send tips.
-    • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
-    • Feature requests: /feature — describe an idea; optional sats tip to signal priority.
-    • Optional support: new accounts contribute 5% on tips only by default. Invoice payments are excluded. Change or disable it in /donate; external address: <code>zapgram@getalby.com</code>.
-    • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
+    <details><summary>Learn about Bitcoin and Lightning</summary>
+    <ul>
+    <li><a href="https://21ideas.org/en/start/start/">What is Bitcoin?</a></li>
+    <li><a href="https://21ideas.org/en/what-is-lightning-network/">What is Lightning Network?</a></li>
+    </ul>
+    </details>
 
-    <b>🤝 Partner</b>
-    In the <a href="https://21ideas.org/en/">21ideas</a> community {bot-name} is used for tips in chat and paid access to the community.
-    Channel: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
-    • <a href="https://21ideas.org/en/">21ideas.org</a> — Bitcoin learning materials
-    • <a href="https://21ideas.org/zapgram/">ZapGram guide from 21ideas</a>
+    <details><summary>Partner: 21ideas</summary><p>The <a href="https://21ideas.org/en/">21ideas</a> community uses {bot-name} for tips and paid access. Follow <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a> or read the <a href="https://21ideas.org/zapgram/">ZapGram guide</a>.</p></details>
 
-    <i>When sending funds from {bot-name} to other wallets, a fee of 1 sat + 1.5% of the transfer amount is charged.</i>
-
-    <i>If you need assistance or have any questions about using {bot-name}, feel free to contact me on Telegram: @vmozharov</i>
+    <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature: /feature</footer>
 
 wallet = <b>👛 Wallet</b> ㅤ ㅤ ㅤ ㅤ ㅤ
 

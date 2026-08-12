@@ -361,77 +361,90 @@ const cancelCases: {
   step: string
   reach: () => Promise<void>
   lifecyclePrompt: 'text' | 'caption' | 'memo'
+  parentText: RegExp
 }[] = [
   {
     conversation: creatingInvoice.name,
     step: 'amount',
     reach: enterCreateInvoiceAtAmount,
     lifecyclePrompt: 'text',
+    parentText: /Wallet/,
   },
   {
     conversation: creatingInvoice.name,
     step: 'qr',
     reach: enterCreateInvoiceAtQr,
     lifecyclePrompt: 'caption',
+    parentText: /Wallet/,
   },
   {
     conversation: creatingInvoice.name,
     step: 'memo',
     reach: enterCreateInvoiceAtMemo,
     lifecyclePrompt: 'memo',
+    parentText: /Wallet/,
   },
   {
     conversation: payingInvoice.name,
     step: 'invoice',
     reach: enterPayInvoiceAtInvoice,
     lifecyclePrompt: 'text',
+    parentText: /Send payment/,
   },
   {
     conversation: payingInvoice.name,
     step: 'review',
     reach: enterPayInvoiceAtReview,
     lifecyclePrompt: 'text',
+    // This fixture reaches review by pasting an invoice, so no Send screen was active before it.
+    parentText: /Wallet/,
   },
   {
     conversation: connectingNWC.name,
     step: 'url',
     reach: enterConnectNwcAtUrl,
     lifecyclePrompt: 'text',
+    parentText: /Settings/,
   },
   {
     conversation: sendingToUser.name,
     step: 'username',
     reach: enterSendToUserAtUsername,
     lifecyclePrompt: 'text',
+    parentText: /Send payment/,
   },
   {
     conversation: sendingToUser.name,
     step: 'amount',
     reach: enterSendToUserAtAmount,
     lifecyclePrompt: 'text',
+    parentText: /Send payment/,
   },
   {
     conversation: changingPrice.name,
     step: 'price',
     reach: enterChangePriceAtPrice,
     lifecyclePrompt: 'text',
+    parentText: /E2E paid chat/,
   },
   {
     conversation: editCustomMessage.name,
     step: 'russian',
     reach: enterCustomMessageAtRussian,
     lifecyclePrompt: 'text',
+    parentText: /Join request message/,
   },
   {
     conversation: editCustomMessage.name,
     step: 'english',
     reach: enterCustomMessageAtEnglish,
     lifecyclePrompt: 'text',
+    parentText: /Join request message/,
   },
 ]
 
-for (const {conversation, step, reach, lifecyclePrompt} of cancelCases) {
-  test(`cancel at the ${step} step of ${conversation} leaves nothing behind`, async () => {
+for (const {conversation, step, reach, lifecyclePrompt, parentText} of cancelCases) {
+  test(`cancel at the ${step} step of ${conversation} returns to its parent screen`, async () => {
     await reach()
     const update =
       lifecyclePrompt === 'caption'
@@ -441,19 +454,22 @@ for (const {conversation, step, reach, lifecyclePrompt} of cancelCases) {
         : privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
     const telegram =
       lifecyclePrompt === 'caption'
-        ? [{method: 'answerCallbackQuery'}, {method: 'editMessageCaption', to: USER_A}]
+        ? [
+            {method: 'answerCallbackQuery'},
+            {method: 'editMessageCaption', to: USER_A},
+            {method: 'sendMessage' as const, to: USER_A, text: parentText},
+          ]
         : lifecyclePrompt === 'memo'
           ? [
               {method: 'answerCallbackQuery'},
               {method: 'editMessageText', to: USER_A, text: /Action canceled/},
               {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+              {method: 'sendMessage' as const, to: USER_A, text: parentText},
             ]
           : [
               {method: 'answerCallbackQuery'},
               {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-              ...(conversation === editCustomMessage.name
-                ? [{method: 'sendMessage' as const, to: USER_A, text: /Join request message/}]
-                : []),
+              {method: 'sendMessage' as const, to: USER_A, text: parentText},
             ]
 
     await expectDelta(e2e, () => e2e.send(update), {
@@ -720,7 +736,7 @@ test('/help interrupts a number step and opens Help without a validation error',
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Bitcoin/},
+      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin/},
     ],
   })
 
@@ -829,7 +845,10 @@ test('prompt edit failure does not block Help or leave a conversation row', asyn
   expect(e2e.tg.of('editMessageReplyMarkup')[0]).toMatchObject({message_id: promptMessageId})
   const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
   expect(messages.some(text => /Previous action canceled/.test(text))).toBe(true)
-  expect(messages.some(text => /Bitcoin/.test(text))).toBe(true)
+  const richMessages = e2e.tg
+    .of('sendRichMessage')
+    .map(call => String((call.rich_message as {html?: string} | undefined)?.html))
+  expect(richMessages.some(text => /Bitcoin/.test(text))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 

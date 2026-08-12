@@ -256,11 +256,22 @@ function assertTelegramDelta(
     if (item.to !== undefined && to !== item.to) {
       throw new Error(`Telegram call ${index}: expected recipient ${item.to}, got ${format(call)}`)
     }
-    const text = String(call.payload.text ?? call.payload.caption ?? '')
+    const text = telegramText(call.payload)
     if (item.text && !item.text.test(text)) {
       throw new Error(`Telegram call ${index}: text ${format(text)} does not match ${item.text}`)
     }
   })
+}
+
+function telegramText(payload: Record<string, unknown>): string {
+  if (typeof payload.text === 'string') return payload.text
+  if (typeof payload.caption === 'string') return payload.caption
+  const richMessage = payload.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  const html = Reflect.get(richMessage, 'html')
+  if (typeof html === 'string') return html
+  const markdown = Reflect.get(richMessage, 'markdown')
+  return typeof markdown === 'string' ? markdown : ''
 }
 
 function diffRows(key: DbKey, before: unknown[], after: unknown[]) {

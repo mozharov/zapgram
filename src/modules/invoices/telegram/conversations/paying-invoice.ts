@@ -9,6 +9,7 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
+import {replyWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
@@ -19,16 +20,22 @@ export async function payingInvoice(
   ctx: ConversationContext,
   lnInvoice?: string,
 ) {
+  const returnToParent = () => (lnInvoice ? replyWithWallet(ctx) : replyWithSendMenu(ctx))
   await ctx.reply(ctx.t('paying-invoice'))
-  const invoice = decodeInvoice(lnInvoice ?? (await waitForInvoice(conversation, ctx)))
+  const invoice = decodeInvoice(
+    lnInvoice ?? (await waitForInvoice(conversation, ctx, {onCancel: returnToParent})),
+  )
   ctx.log.debug({invoice}, 'Decoded invoice')
 
   const wallet = await waitForWallet(conversation, ctx, {
     requiredSats: invoice.satoshi,
     flow: 'pay_invoice',
+    onCancel: returnToParent,
   })
   const isInternalWallet = wallet === 'internal'
-  await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet)
+  await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet, {
+    onCancel: returnToParent,
+  })
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 

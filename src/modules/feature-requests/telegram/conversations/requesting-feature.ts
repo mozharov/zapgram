@@ -5,6 +5,7 @@ import {
 } from '@core/money/feature-request.js'
 import type {FeatureRequestSourceMessage} from '@modules/feature-requests/submit.service.js'
 import {buildFeatureFundKeyboard} from '@modules/feature-requests/telegram/keyboards/fund.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -50,6 +51,7 @@ export async function requestingFeature(
 
   const fundChoice = await waitForFundChoice(conversation, ctx, fundPrompt)
   if (fundChoice.kind === 'cancel') {
+    await replyWithWallet(ctx)
     return conversation.halt()
   }
 
@@ -148,6 +150,7 @@ async function waitForFeatureText(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
@@ -237,6 +240,7 @@ async function waitForCustomFundAmount(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)

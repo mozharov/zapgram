@@ -166,6 +166,7 @@ function defaultResult(
     case 'getMe':
       return botInfo
     case 'sendMessage':
+    case 'sendRichMessage':
     case 'sendPhoto':
     case 'copyMessage':
       return message(payload, botInfo, nextMessageId())
@@ -223,6 +224,9 @@ function message(
   }
   if (typeof payload.text === 'string') result.text = payload.text
   if (typeof payload.caption === 'string') result.caption = payload.caption
+  if (payload.rich_message && typeof payload.rich_message === 'object') {
+    result.rich_message = payload.rich_message
+  }
   const media = payload.media
   if (media && typeof media === 'object' && !Array.isArray(media)) {
     const mediaCaption = Reflect.get(media, 'caption')

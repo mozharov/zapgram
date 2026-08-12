@@ -4,6 +4,7 @@ import {
   buildBroadcastConfirmKeyboard,
   buildBroadcastLocaleKeyboard,
 } from '@modules/broadcast/telegram/keyboards/broadcast.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {
   broadcastConfirmRoute,
   broadcastLocaleRoute,
@@ -91,6 +92,7 @@ async function waitForLocale(
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
 
@@ -131,6 +133,7 @@ async function waitForSourceMessage(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
@@ -162,12 +165,14 @@ async function waitForConfirm(
       await next.answerCallbackQuery()
       if (action === 'yes') return
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
 
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
 

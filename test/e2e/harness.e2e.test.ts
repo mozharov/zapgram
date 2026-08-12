@@ -16,7 +16,7 @@ afterEach(async () => {
 test('/start passes through the real container and composer', async () => {
   await e2e.send(privateCommand('/start'))
 
-  const calls = e2e.tg.of('sendMessage')
+  const calls = e2e.tg.of('sendRichMessage')
   expect(calls).toHaveLength(1)
   expect(calls.every(call => Number(call.chat_id) === 100001)).toBe(true)
   expect(await e2e.db.select().from(usersTable)).toHaveLength(1)
@@ -28,7 +28,7 @@ test('a disposed world does not prevent the next world from starting', async () 
   e2e = await createE2E()
 
   await e2e.send(privateCommand('/help'))
-  expect(e2e.tg.of('sendMessage')).toHaveLength(1)
+  expect(e2e.tg.of('sendRichMessage')).toHaveLength(1)
 })
 
 test('restart requires file mode', async () => {

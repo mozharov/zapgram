@@ -4,6 +4,7 @@ import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.
 import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
+import {replyWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -11,10 +12,15 @@ import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
+  const returnToSendMenu = () => replyWithSendMenu(ctx)
   await ctx.reply(ctx.t('sending-to-user'))
-  const toUser = await waitForUser(conversation, ctx)
-  const sats = await waitForSats(conversation, ctx)
-  const wallet = await waitForWallet(conversation, ctx, {requiredSats: sats, flow: 'tip'})
+  const toUser = await waitForUser(conversation, ctx, {onCancel: returnToSendMenu})
+  const sats = await waitForSats(conversation, ctx, {onCancel: returnToSendMenu})
+  const wallet = await waitForWallet(conversation, ctx, {
+    requiredSats: sats,
+    flow: 'tip',
+    onCancel: returnToSendMenu,
+  })
   await ctx.replyWithChatAction('typing')
 
   const usedNwc = wallet !== 'internal'

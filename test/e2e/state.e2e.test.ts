@@ -68,7 +68,7 @@ test('expectDelta accepts an exactly described full-world delta', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/help')), {
     db: {users: {added: 1}},
     lnbits: {balances: {'100001 wallet': 0}},
-    telegram: [{method: 'sendMessage', to: 100001, text: /ZapGram|Lightning|wallet/i}],
+    telegram: [{method: 'sendRichMessage', to: 100001, text: /ZapGram|Lightning|wallet/i}],
   })
 })
 

@@ -1,6 +1,7 @@
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {updateUser} from '@modules/users/repository.js'
+import {replyWithSettings} from '@modules/wallet/telegram/messages/settings.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
@@ -37,6 +38,7 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await replyWithSettings(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') {

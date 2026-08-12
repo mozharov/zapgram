@@ -60,6 +60,23 @@ describe('fake Telegram Bot API server', () => {
     expect(await attachment.text()).toBe('photo')
   })
 
+  test('captures a rich message with its inline keyboard', async () => {
+    const {bot, tg} = await setup()
+
+    const sent = await bot.api.sendRichMessage(
+      777,
+      {html: '<h1>ZapGram</h1><p>Wallet</p>'},
+      {reply_markup: {inline_keyboard: [[{text: 'Open', callback_data: 'wallet'}]]}},
+    )
+
+    expect(tg.last('sendRichMessage')).toEqual({
+      chat_id: 777,
+      rich_message: {html: '<h1>ZapGram</h1><p>Wallet</p>'},
+      reply_markup: {inline_keyboard: [[{text: 'Open', callback_data: 'wallet'}]]},
+    })
+    expect(tg.lastMessageId('sendRichMessage')).toBe(sent.message_id)
+  })
+
   test('records message results and preserves message ids across edits', async () => {
     const {bot, tg} = await setup()
 

@@ -25,6 +25,17 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
+test('canceling a feature request returns to Wallet', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+
+  await e2e.send(privateCommand('/feature'))
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()}))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet|Кошелёк/)
+  expectNoErrors(e2e.logs)
+})
+
 test('/feature with text and skip: meta + copyMessage to admin', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})

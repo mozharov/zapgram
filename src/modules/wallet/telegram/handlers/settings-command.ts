@@ -1,8 +1,4 @@
-import {buildSettingsKeyboard} from '@modules/wallet/telegram/keyboards/settings.js'
+import {replyWithSettings} from '@modules/wallet/telegram/messages/settings.js'
 import type {BotContext} from '@telegram/context.js'
 
-export const settingsCommand = (ctx: BotContext) => {
-  return ctx.reply(ctx.t('settings'), {
-    reply_markup: buildSettingsKeyboard(ctx.t, ctx.user),
-  })
-}
+export const settingsCommand = (ctx: BotContext) => replyWithSettings(ctx)

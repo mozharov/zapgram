@@ -275,6 +275,7 @@ test('wallet selection consumes Cancel from its own prompt', async () => {
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )

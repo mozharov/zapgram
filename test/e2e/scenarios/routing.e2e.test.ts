@@ -48,9 +48,14 @@ afterEach(async () => {
 const commandCases: {command: string; telegram: {method: string; to: number; text?: RegExp}[]}[] = [
   {
     command: '/start',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/}],
+    telegram: [
+      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet inside Telegram/},
+    ],
   },
-  {command: '/help', telegram: [{method: 'sendMessage', to: USER_A, text: /Lightning Network/}]},
+  {
+    command: '/help',
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Lightning Network/}],
+  },
   // /wallet is the one command whose output cannot distinguish routing from the fallback: the
   // terminal on('message') handler IS walletCommand. The fixture test in fixtures/updates.e2e.test.ts
   // proves command recognition itself with /settings, which has a distinct screen.
@@ -599,7 +604,18 @@ test('an update from a bot account is rejected before a user row is created', as
 
 function joinedOutput(): string {
   return e2e.tg.calls
-    .map(call => String(call.payload.text ?? call.payload.caption ?? ''))
+    .map(call => {
+      const richMessage = call.payload.rich_message as
+        | {html?: string; markdown?: string}
+        | undefined
+      return String(
+        call.payload.text ??
+          call.payload.caption ??
+          richMessage?.html ??
+          richMessage?.markdown ??
+          '',
+      )
+    })
     .join('\n')
 }
 

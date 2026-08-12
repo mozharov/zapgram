@@ -42,8 +42,10 @@ export async function startCommand(ctx: BotContext) {
     })
   }
 
-  await ctx.reply(ctx.t('start'), {
-    reply_markup: buildStartKeyboard(ctx.t),
-    link_preview_options: {is_disabled: true},
-  })
+  await ctx.replyWithRichMessage(
+    {html: ctx.t('start')},
+    {
+      reply_markup: buildStartKeyboard(ctx.t),
+    },
+  )
 }

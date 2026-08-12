@@ -1,5 +1,6 @@
 import {getAccessibleChatForOwner, updateChat} from '@modules/chats/repository.js'
 import {replyWithCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
@@ -55,6 +56,7 @@ export async function editCustomMessage(
       await deactivatePrompt(conversation, prompt, cancelled)
       const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
       if (owned) await replyWithCustomMessage(ctx, owned)
+      else await replyWithWallet(ctx)
       return conversation.halt()
     }
     if (kind === 'interrupt') {

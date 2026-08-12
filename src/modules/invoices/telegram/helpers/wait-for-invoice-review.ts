@@ -20,6 +20,7 @@ export async function waitForInvoiceReview(
   ctx: ConversationContext,
   invoice: Invoice,
   isInternalWallet: boolean,
+  opts?: {onCancel?: () => Promise<unknown>},
 ) {
   const timestamp = await conversation.external(() => Date.now())
   const payCallback = `pay:${timestamp}` // avoid pay wrong invoice
@@ -79,6 +80,7 @@ export async function waitForInvoiceReview(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      await opts?.onCancel?.()
       return conversation.halt()
     }
     if (kind === 'interrupt') {
