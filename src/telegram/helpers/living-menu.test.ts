@@ -52,3 +52,19 @@ test('showLivingMenu does not delete the host when the update is a callback', as
   expect(chrome.stripLastOpenMenu).toHaveBeenCalledWith(2)
   expect(chrome.rememberLivingMenu).toHaveBeenCalledWith(2, 8)
 })
+
+test('showLivingMenu still sends when leftover menu cleanup rejects', async () => {
+  const chrome = chromeMock()
+  chrome.deleteLivingMenu = mock(() => Promise.reject(new Error('message to delete not found')))
+  chrome.stripLastOpenMenu = mock(() => Promise.reject(new Error('message to edit not found')))
+  chrome.rememberLivingMenu = mock(() => Promise.reject(new Error('db locked')))
+  const send = mock(() => Promise.resolve({message_id: 99}))
+  const ctx = {
+    user: {id: 1},
+    callbackQuery: {id: 'q'},
+    log: {warn: mock(() => {})},
+  } as unknown as BotContext
+
+  await expect(showLivingMenu(ctx, send, chrome)).resolves.toEqual({message_id: 99})
+  expect(send).toHaveBeenCalledTimes(1)
+})

@@ -53,6 +53,21 @@ test('a second deliver strips the previous open-menu and restores the base keybo
   expect(user?.lastNotificationMessageId).toBe(11)
 })
 
+test('deliver still sends when the previous notification is already gone', async () => {
+  const {users, chrome, editMessageReplyMarkup, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastNotificationMessageId: 9, lastNotificationBaseMarkup: null})
+  editMessageReplyMarkup.mockImplementationOnce(() =>
+    Promise.reject(new Error('message to edit not found')),
+  )
+
+  const sent = await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 20}))
+
+  expect(sent.message_id).toBe(20)
+  expect(warn).toHaveBeenCalled()
+  expect((await users.findById(1))?.lastNotificationMessageId).toBe(20)
+})
+
 test('a failed send does not move last-notification pointers', async () => {
   const {users, chrome} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
@@ -73,4 +88,47 @@ test('deleteLivingMenu removes the stored menu message', async () => {
 
   await chrome.deleteLivingMenu(1)
   expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+})
+
+test('deleteLivingMenu swallows a vanished message and forgets the pointer', async () => {
+  const {users, chrome, deleteMessage, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4})
+  deleteMessage.mockImplementationOnce(() =>
+    Promise.reject(new Error('message to delete not found')),
+  )
+
+  await expect(chrome.deleteLivingMenu(1)).resolves.toBeUndefined()
+  expect(warn).toHaveBeenCalled()
+  expect((await users.findById(1))?.lastMenuMessageId).toBeNull()
+})
+
+test('stripLastOpenMenu swallows a vanished message and forgets the pointer', async () => {
+  const {users, chrome, editMessageReplyMarkup, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastNotificationMessageId: 9, lastNotificationBaseMarkup: null})
+  editMessageReplyMarkup.mockImplementationOnce(() =>
+    Promise.reject(new Error('message to edit not found')),
+  )
+
+  await expect(chrome.stripLastOpenMenu(1)).resolves.toBeUndefined()
+  expect(warn).toHaveBeenCalled()
+  const user = await users.findById(1)
+  expect(user?.lastNotificationMessageId).toBeNull()
+  expect(user?.lastNotificationBaseMarkup).toBeNull()
+})
+
+test('rememberLivingMenu swallows a failed persist', async () => {
+  const updateUser = mock(() => Promise.reject(new Error('db locked')))
+  const users = createUserRepository(createTestDb())
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  const chromeWithFailingUpdate = createNotificationChrome({
+    findUser: id => users.findById(id),
+    updateUser,
+    editMessageReplyMarkup: mock(() => Promise.resolve(true as const)),
+    deleteMessage: mock(() => Promise.resolve(true as const)),
+    log: {warn: mock(() => {})} as never,
+  })
+
+  await expect(chromeWithFailingUpdate.rememberLivingMenu(1, 12)).resolves.toBeUndefined()
 })

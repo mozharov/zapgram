@@ -21,19 +21,35 @@ export type NotificationChromeDeps = {
 }
 
 export function createNotificationChrome(deps: NotificationChromeDeps) {
-  async function stripLastOpenMenu(userId: number): Promise<void> {
-    const user = await deps.findUser(userId)
-    if (!user?.lastNotificationMessageId) return
-    const base = parseBaseMarkup(user.lastNotificationBaseMarkup)
+  async function forgetNotification(userId: number): Promise<void> {
     try {
-      await deps.editMessageReplyMarkup(userId, user.lastNotificationMessageId, {
-        reply_markup: base ?? {inline_keyboard: []},
+      await deps.updateUser(userId, {
+        lastNotificationMessageId: null,
+        lastNotificationBaseMarkup: null,
       })
     } catch (error) {
-      deps.log.warn(
-        {error, userId, messageId: user.lastNotificationMessageId},
-        'Failed to strip open-menu from last notification',
-      )
+      deps.log.warn({error, userId}, 'Failed to clear last notification pointer')
+    }
+  }
+
+  async function stripLastOpenMenu(userId: number): Promise<void> {
+    try {
+      const user = await deps.findUser(userId)
+      if (!user?.lastNotificationMessageId) return
+      const base = parseBaseMarkup(user.lastNotificationBaseMarkup)
+      try {
+        await deps.editMessageReplyMarkup(userId, user.lastNotificationMessageId, {
+          reply_markup: base ?? {inline_keyboard: []},
+        })
+      } catch (error) {
+        deps.log.warn(
+          {error, userId, messageId: user.lastNotificationMessageId},
+          'Failed to strip open-menu from last notification',
+        )
+        await forgetNotification(userId)
+      }
+    } catch (error) {
+      deps.log.warn({error, userId}, 'Failed to strip last notification open-menu')
     }
   }
 
@@ -42,36 +58,58 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     baseMarkup: InlineKeyboardJson | undefined,
     send: (markup: InlineKeyboardJson) => Promise<T>,
   ): Promise<T> {
-    await stripLastOpenMenu(userId)
+    await stripLastOpenMenu(userId).catch((error: unknown) => {
+      deps.log.warn({error, userId}, 'Failed to strip last notification before deliver')
+    })
     const user = await deps.findUser(userId)
     const markup = appendOpenMenu(baseMarkup, user?.languageCode ?? 'en')
     const sent = await send(markup)
-    if (user) {
-      await deps.updateUser(userId, {
-        lastNotificationMessageId: sent.message_id,
-        lastNotificationBaseMarkup: serializeBaseMarkup(baseMarkup),
-      })
+    try {
+      if (user) {
+        await deps.updateUser(userId, {
+          lastNotificationMessageId: sent.message_id,
+          lastNotificationBaseMarkup: serializeBaseMarkup(baseMarkup),
+        })
+      }
+    } catch (error) {
+      deps.log.warn(
+        {error, userId, messageId: sent.message_id},
+        'Failed to remember last notification',
+      )
     }
     return sent
   }
 
   async function deleteLivingMenu(userId: number): Promise<void> {
-    const user = await deps.findUser(userId)
-    if (!user?.lastMenuMessageId) return
     try {
-      await deps.deleteMessage(userId, user.lastMenuMessageId)
+      const user = await deps.findUser(userId)
+      if (!user?.lastMenuMessageId) return
+      try {
+        await deps.deleteMessage(userId, user.lastMenuMessageId)
+      } catch (error) {
+        deps.log.warn(
+          {error, userId, messageId: user.lastMenuMessageId},
+          'Failed to delete living menu',
+        )
+        try {
+          await deps.updateUser(userId, {lastMenuMessageId: null})
+        } catch (clearError) {
+          deps.log.warn({error: clearError, userId}, 'Failed to clear last menu pointer')
+        }
+      }
     } catch (error) {
-      deps.log.warn(
-        {error, userId, messageId: user.lastMenuMessageId},
-        'Failed to delete living menu',
-      )
+      deps.log.warn({error, userId}, 'Failed to delete living menu')
     }
   }
 
   async function rememberLivingMenu(userId: number, messageId: number): Promise<void> {
-    const user = await deps.findUser(userId)
-    if (!user) return
-    await deps.updateUser(userId, {lastMenuMessageId: messageId})
+    try {
+      const user = await deps.findUser(userId)
+      if (!user) return
+      await deps.updateUser(userId, {lastMenuMessageId: messageId})
+    } catch (error) {
+      deps.log.warn({error, userId, messageId}, 'Failed to remember living menu')
+    }
   }
 
   return {stripLastOpenMenu, deliver, deleteLivingMenu, rememberLivingMenu}
