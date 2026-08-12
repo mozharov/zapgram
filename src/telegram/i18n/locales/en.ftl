@@ -245,7 +245,7 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
 
     <h2>Partner: 21ideas</h2>
     <p>The <a href="https://21ideas.org/en/">21ideas</a> community uses {bot-name} for tips and paid access. Follow <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a> or read the <a href="https://21ideas.org/zapgram/">ZapGram guide</a>.</p>
-
+    <hr/>
     <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature: /feature</footer>
 
 wallet = <b>👛 Wallet</b> ㅤ ㅤ ㅤ ㅤ ㅤ
