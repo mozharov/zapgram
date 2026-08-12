@@ -62,10 +62,15 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
     db: {users: {added: 1}},
     lnbits: {balances: {[userWalletName(USER_A)]: 0}},
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /How the wallet works/}],
+  })
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+    staticCallback.wallet,
+    staticCallback.help,
+  ])
+  expect(await e2e.container.users.findById(USER_A)).toMatchObject({
+    donationPercent: 5,
+    donationScope: 'tips',
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {

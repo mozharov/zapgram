@@ -17,7 +17,7 @@ test('/start passes through the real container and composer', async () => {
   await e2e.send(privateCommand('/start'))
 
   const calls = e2e.tg.of('sendMessage')
-  expect(calls).toHaveLength(2)
+  expect(calls).toHaveLength(1)
   expect(calls.every(call => Number(call.chat_id) === 100001)).toBe(true)
   expect(await e2e.db.select().from(usersTable)).toHaveLength(1)
   expect(e2e.logs.filter(log => log.level === 'error')).toEqual([])

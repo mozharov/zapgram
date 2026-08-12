@@ -27,7 +27,7 @@ Machine-readable summary for crawlers and AI agents. Human-facing detail lives o
 
 Users may support the bot author. This is **not** the paid-chat platform fee.
 
-- Voluntary % on top of tips and invoice pays (new accounts default **5%**; change or disable in `/settings`)
+- Voluntary % on top of tips and optionally invoice pays (new accounts default to **5% on tips only**; change scope or disable in `/settings`)
 - One-shot and monthly donations via `/donate`
 - External Lightning address: `zapgram@getalby.com`
 - Auto-% never blocks the main payment

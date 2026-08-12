@@ -5,9 +5,8 @@ import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
-  const nwcBalance = await getNWCBalance(ctx)
-  const balance = await ctx.user.wallet.getBalance()
-  return ctx.reply(await buildWalletText(ctx.t, balance, nwcBalance), {
+  const view = await loadLiveWalletBalanceView(ctx)
+  return ctx.reply(ctx.t('wallet', view), {
     reply_markup: buildWalletKeyboard(ctx.t),
   })
 }
@@ -20,18 +19,21 @@ export async function replyWithWallet(ctx: BotContext) {
 export async function replyWithCachedWallet(ctx: BotContext) {
   const wallet = ctx.user?.wallet
   if (!wallet) return
-  const nwcBalance = await getNWCBalance(ctx)
-  return ctx.reply(await buildWalletText(ctx.t, wallet.balance, nwcBalance), {
+  const view = await buildWalletBalanceView(ctx, wallet.balance)
+  return ctx.reply(ctx.t('wallet', view), {
     reply_markup: buildWalletKeyboard(ctx.t),
   })
 }
 
 export async function editMessageWithWallet(ctx: BotContext) {
-  const nwcBalance = await getNWCBalance(ctx)
-  const balance = ctx.user.wallet.balance
-  return ctx.editMessageText(await buildWalletText(ctx.t, balance, nwcBalance), {
+  const view = await buildWalletBalanceView(ctx, ctx.user.wallet.balance)
+  return ctx.editMessageText(ctx.t('wallet', view), {
     reply_markup: buildWalletKeyboard(ctx.t),
   })
+}
+
+async function loadLiveWalletBalanceView(ctx: BotContext) {
+  return buildWalletBalanceView(ctx, await ctx.user.wallet.getBalance())
 }
 
 async function getNWCBalance(ctx: BotContext) {
@@ -45,22 +47,23 @@ async function getNWCBalance(ctx: BotContext) {
   return null
 }
 
-async function buildWalletText(t: BotContext['t'], balance: number, nwcBalance: number | null) {
+async function buildWalletBalanceView(ctx: BotContext, balance: number) {
+  const nwcBalance = await getNWCBalance(ctx)
   const balanceSats = msatsToSats(balance)
   if (nwcBalance === null) {
-    return t('wallet', {
+    return {
       balance: balanceSats,
       nwcBalance: 'no',
       usdSuffix: await usdSuffixForSats(balanceSats),
       nwcUsdSuffix: '',
-    })
+    }
   }
   const nwcSats = msatsToSats(nwcBalance)
   const [usdSuffix = '', nwcUsdSuffix = ''] = await usdSuffixesForSats([balanceSats, nwcSats])
-  return t('wallet', {
+  return {
     balance: balanceSats,
     nwcBalance: nwcSats,
     usdSuffix,
     nwcUsdSuffix,
-  })
+  }
 }

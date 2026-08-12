@@ -59,7 +59,7 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
      * username, so a stale row makes tips fail — or, once someone else takes the old handle,
      * routes sats to the wrong person.
      *
-     * New inserts get `DONATION_DEFAULT_PERCENT` (and scope `all`); existing users keep their
+     * New inserts get `DONATION_DEFAULT_PERCENT` (and scope `tips`); existing users keep their
      * donation settings on profile refresh.
      */
     async getOrCreate(data: NewUser) {
@@ -68,7 +68,7 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         return createOrUpdate({
           ...data,
           donationPercent: data.donationPercent ?? defaultDonationPercent,
-          donationScope: data.donationScope ?? 'all',
+          donationScope: data.donationScope ?? 'tips',
         })
       }
 

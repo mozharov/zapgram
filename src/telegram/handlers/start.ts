@@ -1,4 +1,4 @@
-import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {buildStartKeyboard} from '@modules/wallet/telegram/keyboards/start.js'
 import {
   mergePersonProperties,
   parseLandingStartPayload,
@@ -42,6 +42,8 @@ export async function startCommand(ctx: BotContext) {
     })
   }
 
-  await ctx.reply(ctx.t('start'))
-  await replyWithWallet(ctx)
+  await ctx.reply(ctx.t('start'), {
+    reply_markup: buildStartKeyboard(ctx.t),
+    link_preview_options: {is_disabled: true},
+  })
 }

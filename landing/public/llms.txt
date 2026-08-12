@@ -34,7 +34,7 @@ Not for: card-only checkout, enterprise KYC invoicing, multi-asset trading, or f
 - ZapGram → ZapGram transfers: free
 - External Lightning: network fees as usual
 - Paid-chat owner payouts on the hosted bot: small platform fee (default 5%)
-- Optional support (not a mandatory fee): voluntary % on tips/invoice pays (new accounts default 5%, configurable in settings); one-shot and monthly via `/donate`; external LN address `zapgram@getalby.com`
+- Optional support (not a mandatory fee): voluntary % on tips and optionally invoice pays (new accounts default to 5% on tips only, configurable in settings); one-shot and monthly via `/donate`; external LN address `zapgram@getalby.com`
 - [Machine-readable pricing](https://zapgram.mozharov.me/pricing.md): structured fee summary for agents
 
 ## Key facts

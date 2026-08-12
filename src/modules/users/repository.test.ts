@@ -10,16 +10,16 @@ test('getOrCreate applies default donation percent only on insert', async () => 
   const users = createUserRepository(createTestDb(), {defaultDonationPercent: 5})
   const created = await users.getOrCreate({id: 10, username: 'new'})
   expect(created.donationPercent).toBe(5)
-  expect(created.donationScope).toBe('all')
+  expect(created.donationScope).toBe('tips')
 
-  await users.update(10, {donationPercent: 0, donationScope: 'tips'})
+  await users.update(10, {donationPercent: 0, donationScope: 'all'})
   const refreshed = await users.getOrCreate({
     id: 10,
     username: 'new2',
     firstName: 'X',
   })
   expect(refreshed.donationPercent).toBe(0)
-  expect(refreshed.donationScope).toBe('tips')
+  expect(refreshed.donationScope).toBe('all')
 })
 
 test('createOrUpdate without percent leaves schema default 0', async () => {

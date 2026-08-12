@@ -34,6 +34,107 @@ afterEach(async () => {
 
 // --- The wallet screen ---
 
+test('/start is one compact English onboarding screen with partner and two actions', async () => {
+  await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: USER_A,
+        text: /Bitcoin Lightning wallet in Telegram[\s\S]*How the wallet works[\s\S]*21ideas/,
+      },
+    ],
+  })
+
+  const start = e2e.tg.last('sendMessage')
+  expect(String(start?.text)).toMatch(/zero fees/)
+  expect(String(start?.text)).toMatch(
+    /voluntary 5% donation[\s\S]*tips only[\s\S]*does not apply to invoice payments[\s\S]*not a fee[\s\S]*\/donate/,
+  )
+  expect(String(start?.text)).not.toMatch(/<b>Balance:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
+  expect(callbackDataOf(start)).not.toContain('create-invoice')
+  expect(start?.link_preview_options).toEqual({is_disabled: true})
+  expectNoErrors(e2e.logs)
+})
+
+test('/start renders the compact screen and actions in Russian', async () => {
+  await e2e.send(
+    privateCommand('/start', {
+      from: {id: USER_A, username: 'user_a', language_code: 'ru'},
+    }),
+  )
+
+  const start = e2e.tg.last('sendMessage')
+  expect(String(start?.text)).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как работает кошелёк/)
+  expect(String(start?.text)).toMatch(/комиссия — 0/)
+  expect(String(start?.text)).toMatch(
+    /добровольный донат 5%[\s\S]*только с tips[\s\S]*оплате счетов он не начисляется[\s\S]*не является комиссией[\s\S]*\/donate/,
+  )
+  expect(String(start?.text)).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(String(start?.text)).toContain('21 идея')
+  expect(buttonTextsOf(start)).toEqual(['👛 Открыть кошелёк', 'ℹ️ Как это работает'])
+  expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
+  expectNoErrors(e2e.logs)
+})
+
+test('ordinary and landing /start payloads render identical UI', async () => {
+  await e2e.send(privateCommand('/start'))
+  const ordinary = startUi(e2e.tg.last('sendMessage'))
+
+  await e2e.send(privateCommand('/start landing'))
+  const landing = startUi(e2e.tg.last('sendMessage'))
+
+  expect(landing).toEqual(ordinary)
+  expectNoErrors(e2e.logs)
+})
+
+test('/start keeps bot_started payload and landing attribution properties', async () => {
+  const captures: Record<string, unknown>[] = []
+  const aliases: Record<string, unknown>[] = []
+  Reflect.set(e2e.container, 'posthog', {
+    alias: (input: Record<string, unknown>) => aliases.push(input),
+    capture: (input: Record<string, unknown>) => captures.push(input),
+    withContext: (_context: unknown, callback: () => unknown) => callback(),
+  })
+
+  await e2e.send(privateCommand('/start'))
+  await e2e.send(privateCommand('/start lp_landing-user'))
+
+  const started = captures.filter(capture => capture.event === 'bot_started')
+  expect(started).toHaveLength(2)
+  expect(started[0]?.properties).toMatchObject({
+    start_param: null,
+    from_landing: false,
+  })
+  expect(started[1]?.properties).toMatchObject({
+    start_param: 'lp_landing-user',
+    from_landing: true,
+    $set: {acquisition_source: 'landing'},
+    $set_once: {initial_acquisition_source: 'landing'},
+  })
+  expect(aliases).toEqual([{distinctId: String(USER_A), alias: 'landing-user'}])
+  expectNoErrors(e2e.logs)
+})
+
+for (const locale of ['en', 'ru'] as const) {
+  test(`/help keeps the moved wallet, community, partner and support details in ${locale}`, async () => {
+    await e2e.send(
+      privateCommand('/help', {
+        from: {id: USER_A, username: 'user_a', language_code: locale},
+      }),
+    )
+
+    const text = String(e2e.tg.last('sendMessage')?.text)
+    expect(text).toMatch(/NWC/)
+    expect(text).toMatch(locale === 'ru' ? /Внутренний кошелёк/ : /Internal wallet/)
+    expect(text).toMatch(locale === 'ru' ? /Группы и каналы/ : /Groups and channels/)
+    expect(text).toMatch(locale === 'ru' ? /Партнёр/ : /Partner/)
+    expect(text).toContain('/donate')
+    expect(text.length).toBeLessThanOrEqual(4096)
+    expectNoErrors(e2e.logs)
+  })
+}
+
 test('/wallet reads the balance from LNbits and shows it', async () => {
   credit(BALANCE_SATS)
   const mark = e2e.ln.requests.length
@@ -236,6 +337,19 @@ function lnPathsSince(mark: number): string[] {
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {
   const markup = payload?.reply_markup as {inline_keyboard?: {callback_data?: string}[][]}
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function buttonTextsOf(payload: Record<string, unknown> | undefined): string[] {
+  const markup = payload?.reply_markup as {inline_keyboard?: {text?: string}[][]}
+  return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.text ?? [])
+}
+
+function startUi(payload: Record<string, unknown> | undefined) {
+  return {
+    text: payload?.text,
+    replyMarkup: payload?.reply_markup,
+    linkPreviewOptions: payload?.link_preview_options,
+  }
 }
 
 function errorMessages(): string[] {

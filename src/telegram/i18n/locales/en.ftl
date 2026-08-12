@@ -39,6 +39,8 @@ button =
     .settings = ⚙️ Settings
     .receive = 📩 Receive
     .send = ✉️ Send
+    .open-wallet = 👛 Open wallet
+    .how-it-works = ℹ️ How it works
     .enable-nwc-tips = ⚡️ Use NWC for tips in groups
     .disable-nwc-tips = 🤖 Use {bot-name} for tips in groups
     .connect-nwc = ⚡ Connect a wallet via NWC
@@ -118,44 +120,14 @@ error =
     .from-bot = <b>⚠️ You can't use {bot-name} from anonymous profile.</b>
 
 start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
+    Send and receive sats in chats and manage paid access to groups and channels.
 
-    With {bot-name}, you can send and receive Bitcoin in Telegram chats, as well as pay and accept payments worldwide through the Lightning Network.
+    <b>How the wallet works</b>
+    {bot-name} creates an internal wallet for you. Transfers between Telegram users are instant, with zero fees. You can connect your own Lightning wallet through NWC — your sats remain under your control.
 
+    💚 Separately, a voluntary 5% donation to support the bot is enabled by default for tips. Сhange or disable it in /donate.
 
-    ℹ️ <b>Two types of wallets in {bot-name}:</b>
-    
-    <b>Internal Wallet.</b>
-    Your Bitcoin is stored on our servers, allowing you to avoid fees for transfers within Telegram. Transfers are free and as instant as messages.
-      
-    <b>External Wallet.</b>
-    You can connect your Lightning wallet via Nostr Wallet Connect (NWC).
-    Your sats remain fully under your control. {bot-name} operates within the limits you set.
-
-
-    👥 <b>Groups and channels:</b>
-    Add {bot-username} to a group chat so participants can easily send and receive tips.
-
-    <i>Learn more about {bot-name} features in groups and channels in /settings.</i>
-
-    👥 <b>Paid access to private chats:</b>
-    Add {bot-username} to a chat with invitation and user blocking permissions to create paid access with one-time payment or monthly subscription.
-    Use /chats to manage paid chats.
-
-    💚 <b>Optional support:</b>
-    New accounts include a <b>5%</b> contribution to the bot author on your payments (tips and invoice pays). Change or turn off in /donate.
-    Outside the bot: <code>zapgram@getalby.com</code>.
-
-    💡 <b>Feature ideas:</b>
-    Send a request with /feature — optionally attach sats so we know what matters most.
-
-    <b>🤝 Partner</b>
-    In the <a href="https://21ideas.org/en/">21ideas</a> community {bot-name} is used for tips in chat and paid access to the community.
-    Channel: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
-    • <a href="https://21ideas.org/en/">21ideas.org</a> — Bitcoin learning materials
-    • <a href="https://21ideas.org/zapgram/">ZapGram guide from 21ideas</a>
-
-    🕊 <b>Welcome to the world of free payments!</b>
-    <i>Find more details about {bot-name}, Bitcoin, Lightning Network, and supported wallets in /help.</i>
+    🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.
 
 feature =
     .prompt = 💡 <b>What should we build?</b>
@@ -240,14 +212,20 @@ help = <b>ℹ️ Bitcoin</b>
     The Lightning Network is a payment protocol that enables extremely fast and cheap bitcoin payments. It is open, borderless and efficient. It is available to 650+ million people in the world. It allows you to permissionlessly send and receive nearly instant and nearly free payments anywhere in the world.
     • <a href="https://21ideas.org/en/what-is-lightning-network/">What is Lightning Network?</a>
 
+    <b>ℹ️ Wallets in {bot-name}</b>
+    • Internal wallet: custodial storage on {bot-name} servers; transfers inside Telegram are instant and free.
+    • External wallet: connect your own Lightning wallet through NWC. Your sats stay under your control and {bot-name} acts within the limits you set.
+
     <b>ℹ️ {bot-name} compatible wallets (NWC)</b>
     • <a href="https://getalby.com/invited-by/mozharov">Alby</a> (recommended)
     • <a href="https://coinos.io">Coinos</a>
 
     <b>ℹ️ {bot-name}</b>
     • Quick Payment: Simply send a Lightning invoice to the chat.
+    • Groups and channels: add {bot-username} so participants can send tips.
     • Paid Chat Access: Add {bot-username} to a private chat to create paid access with one-time payment or monthly subscription. Use /chats to manage chats with paid access.
     • Feature requests: /feature — describe an idea; optional sats tip to signal priority.
+    • Optional support: new accounts contribute 5% on tips only by default. Invoice payments are excluded. Change or disable it in /donate; external address: <code>zapgram@getalby.com</code>.
     • Open Source: {bot-name} is fully open source and available on <a href="https://github.com/mozharov/zapgram">GitHub</a>.
 
     <b>🤝 Partner</b>
