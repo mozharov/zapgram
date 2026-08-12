@@ -32,7 +32,7 @@ test('canceling a feature request returns to Wallet', async () => {
   await e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()}))
 
   await expectNoConversations(e2e.db)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet|Кошелёк/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
   expectNoErrors(e2e.logs)
 })
 
@@ -238,7 +238,7 @@ test('wallet callback from another message interrupts feature flow and still ope
   await expectNoConversations(e2e.db)
   const edits = e2e.tg.of('editMessageText')
   expect(edits.some(call => Number(call.message_id) === promptMessageId)).toBe(true)
-  expect(String(edits.at(-1)?.text)).toMatch(/Wallet|Кошелёк/i)
+  expect(richHtmlOf(edits.at(-1))).toMatch(/Wallet|Кошелёк/i)
   expectNoErrors(e2e.logs)
 })
 
@@ -253,4 +253,10 @@ function requiredPromptMessageId(): number {
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
   return messageId
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }

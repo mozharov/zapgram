@@ -75,7 +75,7 @@ test('the private send conversation transfers sats and closes after the amount',
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
       {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
   )
@@ -109,7 +109,7 @@ test('an invalid private-send amount can be corrected without restarting the flo
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
       {method: 'sendMessage', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
   )

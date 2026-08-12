@@ -118,7 +118,7 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
-      {method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
     ],
   })
 
@@ -129,7 +129,7 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
   expect(after.lnbits.payments).toEqual(before.lnbits.payments)
 
-  const walletText = String(e2e.tg.last('sendMessage')?.text)
+  const walletText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(walletText).toMatch(/<b>NWC:<\/b> 5\D?000 sats/)
   expect(walletText).not.toMatch(/<b>Balance:<\/b>/)
 
@@ -153,7 +153,7 @@ test('an invalid NWC URL keeps the prompt active and can be corrected', async ()
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
-      {method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
     ],
   })
 
@@ -195,12 +195,12 @@ test('disconnecting NWC clears nwc_url and nwc_tips', async () => {
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Wallet disconnected/},
       // Same-request wallet must already be the single-balance copy (ctx.nwc cleared).
-      {method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b>/},
     ],
   })
 
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null, nwcTips: false})
-  const walletText = String(e2e.tg.last('sendMessage')?.text)
+  const walletText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(walletText).not.toMatch(/NWC:/)
   expectNoErrors(e2e.logs)
 })
@@ -210,10 +210,10 @@ test('/wallet with a connected NWC shows both balances', async () => {
   creditInternal(USER_A, 1234)
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 1\D?234 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 1\D?234 sats/}],
   })
 
-  const text = String(e2e.tg.last('sendMessage')?.text)
+  const text = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(text).toMatch(/<b>NWC:<\/b> 5\D?000 sats/)
   expect(text).not.toMatch(/<b>Balance:<\/b>/)
   expect(nwcCalls.some(call => call.method === 'getBalance')).toBe(true)
@@ -275,7 +275,7 @@ test('wallet selection consumes Cancel from its own prompt', async () => {
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -517,6 +517,12 @@ test('an expiring subscription auto-renews via NWC when the internal balance is 
 })
 
 // --- helpers ---
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}
 
 /**
  * Credit an LNbits wallet as if an external NWC payment just settled its unpaid invoice.

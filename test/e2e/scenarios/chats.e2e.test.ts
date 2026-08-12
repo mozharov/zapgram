@@ -433,7 +433,9 @@ test('/wallet interrupts on-chain setup without reopening chat details', async (
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
   const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
   expect(messages.filter(text => text.includes('E2E paid chat'))).toHaveLength(0)
-  expect(messages.some(text => /Wallet|Кошелёк/i.test(text))).toBe(true)
+  expect(e2e.tg.of('sendRichMessage').some(call => /Wallet|Кошелёк/i.test(richHtmlOf(call)))).toBe(
+    true,
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -1028,6 +1030,12 @@ function buttonsOf(payload: Record<string, unknown> | undefined): Record<string,
 
 function expectAddChatButton(payload: Record<string, unknown> | undefined): void {
   expect(urlsOf(payload)).toContain('https://t.me/zap_gram_bot?startgroup=true')
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }
 
 function requiredChat(chats: Chat[], index: number): Chat {

@@ -57,8 +57,14 @@ test('privateCommand uses the full command length and supports a manual update i
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Settings/)
 
   await e2e.send(privateText('/settings'))
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet/)
 })
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}
 
 test('privateCallback can target the message id returned for an outbound prompt', async () => {
   const prompt = await e2e.container.bot.api.sendMessage(USER_A, 'Choose an action')

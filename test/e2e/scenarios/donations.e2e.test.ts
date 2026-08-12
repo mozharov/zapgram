@@ -291,7 +291,9 @@ test('/wallet interrupts custom donation without opening donation hub', async ()
   expect(newMessages.filter(text => /Support ZapGram|Поддержать ZapGram/i.test(text))).toHaveLength(
     0,
   )
-  expect(newMessages.some(text => /Wallet|Кошелёк/i.test(text))).toBe(true)
+  expect(e2e.tg.of('sendRichMessage').some(call => /Wallet|Кошелёк/i.test(richHtmlOf(call)))).toBe(
+    true,
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -335,4 +337,10 @@ function requiredPromptMessageId(): number {
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
   return messageId
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }

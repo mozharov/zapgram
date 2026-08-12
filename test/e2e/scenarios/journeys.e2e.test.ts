@@ -74,7 +74,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:<\/b> 0 sats/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
@@ -110,7 +110,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -124,7 +124,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 1\D?000 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:<\/b> 1\D?000 sats/}],
   })
 
   const beforeTip = await snapshot(e2e)
@@ -613,7 +613,7 @@ test('an invoice conversation survives a container restart on the same database'
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )

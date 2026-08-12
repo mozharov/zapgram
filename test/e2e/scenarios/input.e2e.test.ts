@@ -146,7 +146,7 @@ test('paying the same subscription invoice twice does not debit twice', async ()
   await expectDelta(e2e, () => e2e.send(update), {
     telegram: [
       {method: 'sendMessage', to: USER_A, text: /already been paid/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
     ],
   })
   expect(errorMessages()).toEqual([
@@ -168,7 +168,7 @@ for (const {label, text} of textCases) {
   test(`${label} falls back to the wallet like any other text`, async () => {
     await expectDelta(e2e, () => e2e.send(privateText(text)), {
       ...FIRST_TOUCH,
-      telegram: [{method: 'sendMessage', to: USER_A, text: /Wallet/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
     })
     expectNoErrors(e2e.logs)
   })

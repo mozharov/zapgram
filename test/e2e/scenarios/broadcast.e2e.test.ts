@@ -43,7 +43,7 @@ test('canceling a broadcast returns to Wallet', async () => {
   )
 
   await expectNoConversations(e2e.db)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet|Кошелёк/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
   expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
   expectNoErrors(e2e.logs)
 })
@@ -318,4 +318,10 @@ function requiredPromptMessageId(): number {
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
   return messageId
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }

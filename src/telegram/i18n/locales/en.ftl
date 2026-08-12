@@ -248,12 +248,11 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <hr/>
     <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature: /feature</footer>
 
-wallet = <b>👛 Wallet</b> ㅤ ㅤ ㅤ ㅤ ㅤ
-
-    {$nwcBalance -> 
-    [no] <b>Balance:</b> {$balance} sats{$usdSuffix}
-    *[other]<b>{bot-name}:</b> {$balance} sats{$usdSuffix}
-        <b>NWC:</b> {$nwcBalance} sats{$nwcUsdSuffix}
+wallet = <h1>👛 Wallet</h1>
+    {$nwcBalance ->
+    [no] <p><b>Balance:</b> {$balance} sats{$usdSuffix}</p>
+    *[other] <p><b>{bot-name}:</b> {$balance} sats{$usdSuffix}</p>
+        <p><b>NWC:</b> {$nwcBalance} sats{$nwcUsdSuffix}</p>
     }
 
 nwc = 

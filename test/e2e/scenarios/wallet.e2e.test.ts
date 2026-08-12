@@ -144,7 +144,7 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     telegram: [
       {
-        method: 'sendMessage',
+        method: 'sendRichMessage',
         to: USER_A,
         // Default fake rate 100_000 → 1234 sats ≈ $1.23
         text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/,
@@ -160,7 +160,7 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
     'GET /api/v1/wallet',
     'GET /api/v1/rate/USD',
   ])
-  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('($')
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toContain('($')
   expectNoErrors(e2e.logs)
 })
 
@@ -187,7 +187,7 @@ test('without a connected NWC wallet the screen shows one balance line', async (
   credit(BALANCE_SATS)
   await e2e.send(privateCommand('/wallet'))
 
-  const text = String(e2e.tg.last('sendMessage')?.text)
+  const text = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(text).toMatch(/<b>Balance:<\/b>/)
   expect(text).not.toMatch(/NWC:/)
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null})
@@ -196,7 +196,7 @@ test('without a connected NWC wallet the screen shows one balance line', async (
 test('the wallet screen exposes every private user section without commands', async () => {
   await e2e.send(privateCommand('/wallet'))
 
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('sendRichMessage'))).toEqual([
     'create-invoice',
     'send-menu',
     'subscriptions:1',
@@ -206,7 +206,7 @@ test('the wallet screen exposes every private user section without commands', as
     'donate',
     'feature-request',
   ])
-  expect(buttonTextsOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(buttonTextsOf(e2e.tg.last('sendRichMessage'))).toEqual([
     '📩 Receive',
     '✉️ Send',
     '🔐 My subscriptions',
@@ -304,7 +304,7 @@ test('a transient 500 on the balance endpoint never reaches the user', async () 
   const mark = e2e.ln.requests.length
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
   })
 
   // got retries a failed GET, so the second attempt is what the user's balance came from.
@@ -322,7 +322,7 @@ test('a balance endpoint that stays down leaves the user with an error and the w
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     telegram: [
       {method: 'sendMessage', to: USER_A, text: /Unknown error occurred/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 

@@ -6,9 +6,10 @@ import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
   const view = await loadLiveWalletBalanceView(ctx)
-  return ctx.reply(ctx.t('wallet', view), {
-    reply_markup: buildWalletKeyboard(ctx.t),
-  })
+  return ctx.replyWithRichMessage(
+    {html: ctx.t('wallet', view)},
+    {reply_markup: buildWalletKeyboard(ctx.t)},
+  )
 }
 
 /**
@@ -20,16 +21,18 @@ export async function replyWithCachedWallet(ctx: BotContext) {
   const wallet = ctx.user?.wallet
   if (!wallet) return
   const view = await buildWalletBalanceView(ctx, wallet.balance)
-  return ctx.reply(ctx.t('wallet', view), {
-    reply_markup: buildWalletKeyboard(ctx.t),
-  })
+  return ctx.replyWithRichMessage(
+    {html: ctx.t('wallet', view)},
+    {reply_markup: buildWalletKeyboard(ctx.t)},
+  )
 }
 
 export async function editMessageWithWallet(ctx: BotContext) {
   const view = await buildWalletBalanceView(ctx, ctx.user.wallet.balance)
-  return ctx.editMessageText(ctx.t('wallet', view), {
-    reply_markup: buildWalletKeyboard(ctx.t),
-  })
+  return ctx.editMessageText(
+    {html: ctx.t('wallet', view)},
+    {reply_markup: buildWalletKeyboard(ctx.t)},
+  )
 }
 
 async function loadLiveWalletBalanceView(ctx: BotContext) {

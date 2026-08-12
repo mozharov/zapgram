@@ -124,7 +124,7 @@ test('wallet on the QR step sends a new wallet and drops the invoice keyboard', 
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -177,7 +177,7 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'editMessageMedia', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -206,7 +206,7 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Failed to create the Lightning invoice/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -287,12 +287,14 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received payment for a Lightning invoice/},
       {method: 'sendMessage', to: USER_A, text: /Invoice paid/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
   // An internal transfer costs nothing, so the payer is debited the invoice amount and no more.
-  const receipt = String(e2e.tg.of('sendMessage').at(-2)?.text)
+  const receipt = String(
+    e2e.tg.of('sendMessage').findLast(call => Number(call.chat_id) === USER_A)?.text,
+  )
   expect(receipt).toMatch(
     new RegExp(`Payment amount: <b>${PENDING_SATS} sats(?: \\(\\$[^)]+\\))?</b>`),
   )
@@ -330,7 +332,7 @@ test('insufficient balance refuses payment before the review step', async () => 
     telegram: [
       {method: 'sendMessage', to: USER_A, text: /Paying Lightning invoice/},
       {method: 'sendMessage', to: USER_A, text: /Insufficient funds/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -351,7 +353,7 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /already been paid/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -394,6 +396,7 @@ const cancelCases: {
   reach: () => Promise<void>
   lifecyclePrompt: 'text' | 'memo'
   parentText: RegExp
+  parentMethod?: 'sendMessage' | 'sendRichMessage'
 }[] = [
   {
     conversation: creatingInvoice.name,
@@ -401,6 +404,7 @@ const cancelCases: {
     reach: enterCreateInvoiceAtAmount,
     lifecyclePrompt: 'text',
     parentText: /Wallet/,
+    parentMethod: 'sendRichMessage',
   },
   {
     conversation: creatingInvoice.name,
@@ -408,6 +412,7 @@ const cancelCases: {
     reach: enterCreateInvoiceAtMemo,
     lifecyclePrompt: 'memo',
     parentText: /Wallet/,
+    parentMethod: 'sendRichMessage',
   },
   {
     conversation: payingInvoice.name,
@@ -423,6 +428,7 @@ const cancelCases: {
     lifecyclePrompt: 'text',
     // This fixture reaches review by pasting an invoice, so no Send screen was active before it.
     parentText: /Wallet/,
+    parentMethod: 'sendRichMessage',
   },
   {
     conversation: connectingNWC.name,
@@ -468,22 +474,27 @@ const cancelCases: {
   },
 ]
 
-for (const {conversation, step, reach, lifecyclePrompt, parentText} of cancelCases) {
+for (const {conversation, step, reach, lifecyclePrompt, parentText, parentMethod} of cancelCases) {
   test(`cancel at the ${step} step of ${conversation} returns to its parent screen`, async () => {
     await reach()
     const update = privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})
+    const parent = {
+      method: parentMethod ?? ('sendMessage' as const),
+      to: USER_A,
+      text: parentText,
+    }
     const telegram =
       lifecyclePrompt === 'memo'
         ? [
             {method: 'answerCallbackQuery'},
             {method: 'editMessageText', to: USER_A, text: /Action canceled/},
             {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
-            {method: 'sendMessage' as const, to: USER_A, text: parentText},
+            parent,
           ]
         : [
             {method: 'answerCallbackQuery'},
             {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-            {method: 'sendMessage' as const, to: USER_A, text: parentText},
+            parent,
           ]
 
     await expectDelta(e2e, () => e2e.send(update), {
@@ -534,7 +545,7 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'editMessageMedia', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -597,7 +608,7 @@ test('/wallet during memo input deactivates both memo prompts and keeps the invo
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
       {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -724,7 +735,7 @@ test('/wallet cancels creatingInvoice waiting for an amount', async () => {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
   expectNoErrors(e2e.logs)
@@ -737,7 +748,7 @@ test('/wallet cancels connectingNWC waiting for a URL', async () => {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
   expectNoErrors(e2e.logs)
@@ -836,7 +847,7 @@ test('a stale Cancel interrupts the current flow and terminal Cancel opens Walle
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -881,7 +892,7 @@ test('a persisted text prompt keeps its message ID when interrupted after restar
   await expectNoConversations(e2e.db)
   expect(e2e.tg.last('editMessageText')).toMatchObject({message_id: promptMessageId})
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled/)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet/)
   expectNoErrors(e2e.logs)
 })
 
@@ -909,7 +920,7 @@ test('starting another conversation cancels the one in progress', async () => {
 
 test('cancel outside a conversation just re-renders the wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:/}],
   })
 
   await expectNoConversations(e2e.db)
@@ -1036,6 +1047,12 @@ function payButtonData(): string {
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {
   const markup = payload?.reply_markup as {inline_keyboard?: {callback_data?: string}[][]}
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }
 
 function requiredPromptMessageId(): number {

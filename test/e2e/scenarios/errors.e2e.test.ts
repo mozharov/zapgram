@@ -526,15 +526,15 @@ function expectPrivateErrorAndWallet(code: AppErrorCode, locale: Locale): void {
   const expected = expectedErrorText(displayCode, locale)
   const texts = e2e.tg.of('sendMessage').map(call => String(call.text))
   expect(texts).toContain(expected)
-  // Private error path: error reply then wallet. With NWC connected the wallet copy shows
-  // "ZapGram:" / "NWC:" lines instead of the single "Balance:" line.
+  // Private error path: error reply then wallet as a rich message.
   const isWallet = (text: string) =>
     text.includes('Balance:') || text.includes('NWC:') || /👛/.test(text)
-  expect(texts.some(isWallet)).toBe(true)
-  const errorIndex = texts.lastIndexOf(expected)
-  const walletIndex = texts.findIndex((text, index) => index > errorIndex && isWallet(text))
-  expect(errorIndex).toBeGreaterThanOrEqual(0)
-  expect(walletIndex).toBeGreaterThan(errorIndex)
+  const walletHtmls = e2e.tg.of('sendRichMessage').map(call => {
+    const richMessage = call.rich_message
+    if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+    return String(Reflect.get(richMessage, 'html') ?? '')
+  })
+  expect(walletHtmls.some(isWallet)).toBe(true)
   expectCleanUserText(expected)
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
 }

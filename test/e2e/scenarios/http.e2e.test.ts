@@ -78,7 +78,7 @@ test('POST /bot with the correct secret delivers the update to the bot', async (
       expect(response.status).toBe(200)
     },
     {
-      telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
     },
   )
 
@@ -193,7 +193,7 @@ test('invalid JSON and empty body return 4xx and leave the process usable', asyn
       expect(response.status).toBe(200)
     },
     {
-      telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b>/}],
     },
   )
 })

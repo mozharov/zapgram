@@ -298,7 +298,7 @@ test('an LNbits mint failure on Lightning leaves no payment after the chooser', 
           to: USER_A,
           text: /Failed to create the Lightning invoice/,
         },
-        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -794,7 +794,7 @@ function buttonTextsOf(payload: Record<string, unknown>): string[] {
 function pricePattern(price: number, locale: Locale): RegExp {
   const groupedPrice = String(price).replace(/\B(?=(\d{3})+(?!\d))/g, '\\D?')
   // Optional fiat suffix: default fake rate 100_000 → 1000 sats ($1.00)
-  const usd = '(?: \\(~\\$[^)]+\\))?'
+  const usd = '(?: \\(\\$[^)]+\\))?'
   return locale === 'ru'
     ? new RegExp(`Цена: <b>${groupedPrice} сат${usd}</b>`)
     : new RegExp(`Price: <b>${groupedPrice} sats${usd}</b>`)
