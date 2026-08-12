@@ -214,7 +214,7 @@ test('the wallet screen exposes every private user section without commands', as
     '⚙️ Settings',
     'ℹ️ Help',
     '💚 Support project',
-    '💡 Suggest a feature',
+    '💡 I want a feature',
   ])
 })
 
