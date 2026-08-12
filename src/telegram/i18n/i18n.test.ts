@@ -53,6 +53,26 @@ describe('settlement messages', () => {
 describe('created lightning invoice copy', () => {
   const expiresAt = new Date('2026-05-01T12:00:00.000Z')
 
+  test('english invoice review created label does not stack another at onto the date entity', () => {
+    const message = translate('wait-for-invoice-review', 'en', {
+      amount: 1000,
+      usdSuffix: '',
+      fee: 'no',
+      feeUsdSuffix: '',
+      description: 'Powered by t.me/zap_gram_bot',
+      hasDescription: 'true',
+      createdDate: expiresAt,
+      expiryDate: expiresAt,
+      hasExpired: 'false',
+      invoice: 'lnbc1test',
+    })
+    expect(message).toContain('Created:')
+    expect(message).not.toContain('Created at:')
+    expect(message).toContain('<blockquote expandable>')
+    expect(message).toContain('<code>lnbc1test</code>')
+    expect(message).toContain('Powered by t.me/zap_gram_bot')
+  })
+
   test('english expiry label does not stack another at onto the date entity', () => {
     const message = translate('creating-invoice.created', 'en', {
       amount: 1000,

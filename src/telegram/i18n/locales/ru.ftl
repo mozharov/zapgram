@@ -58,7 +58,9 @@ button =
     .pay-invoice = ⚡️ Оплатить Lightning счёт
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
+    .nwc-wallet-with-balance = ⚡️ NWC · {$balance} сат
     .internal-wallet = 🤖 {bot-name}
+    .internal-wallet-with-balance = 🤖 {bot-name} · {$balance} сат
     .confirm-pay-invoice = 📤 Оплатить счёт
     .skip = ➡️ Пропустить
     .chat-settings = ⚙️ Настройки чата
@@ -326,6 +328,7 @@ wait-for-wallet = <b>👛 Выбери кошелёк</b>
     .internal = <b>🤖 Выбран кошелёк {bot-name}.</b>
     .auto-only-internal = <b>🤖 Баланса достаточно только на кошельке {bot-name}, поэтому он выбран автоматически.</b>
     .auto-only-nwc = <b>⚡️ Баланса достаточно только на NWC-кошельке, поэтому он выбран автоматически.</b>
+    .nwc-unreachable = <b>⚠️ Не удалось подключиться к NWC-кошельку.</b>
 
 sats-received = <b>📩 Тебе пришло {$amount} сат{$usdSuffix}</b>.
     {$username -> 
@@ -360,6 +363,8 @@ wait-for-invoice-review = <b>ℹ️ Проверка счёта</b>
         [true] <b>⚠️ Срок действия счёта истёк.</b>
         *[other] <i></i>
         }
+
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 received-incoming-invoice = 📥 <b>Получен платёж за Lightning-счёт.</b>
         Сумма: <b>{$amount} сат{$usdSuffix}</b>.

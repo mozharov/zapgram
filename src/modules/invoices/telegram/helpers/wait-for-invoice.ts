@@ -9,6 +9,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {InlineKeyboard} from 'grammy'
 
 export async function waitForInvoice(
@@ -57,6 +58,7 @@ export async function waitForInvoice(
     }
 
     await clearPromptControls(conversation, prompt)
+    await deleteMessageSafely(next)
     return invoice
   }
 }

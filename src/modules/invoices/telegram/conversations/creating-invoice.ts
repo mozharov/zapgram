@@ -37,7 +37,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   const host = await ensureHost(ctx, title)
   const restoreWallet = () => editHostWithWallet(ctx, host)
 
-  const wallet = await waitForWallet(conversation, ctx, {
+  const {wallet} = await waitForWallet(conversation, ctx, {
     flow: 'create_invoice',
     host,
     html: joinWizardHtml(title, ctx.t('wait-for-wallet')),

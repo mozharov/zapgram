@@ -6,6 +6,7 @@ import {
   claimPendingInvoiceByPaymentRequest,
   getPendingInvoiceBy,
 } from '@modules/invoices/repository.js'
+import {invoiceReviewHtml} from '@modules/invoices/telegram/helpers/invoice-review.js'
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
@@ -14,10 +15,13 @@ import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/mess
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
+  disabledLinkPreview,
   ensureHost,
   hostFromCallback,
   joinWizardHtml,
 } from '@telegram/helpers/conversation-host.js'
+import {copyableText} from '@telegram/helpers/copy-text.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -46,16 +50,41 @@ export async function payingInvoice(
       onCancel: restoreParent,
     }))
   const invoice = decodeInvoice(paymentRequest)
+  if (lnInvoice) await deleteMessageSafely(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
     'Decoded invoice to pay',
   )
 
-  const wallet = await waitForWallet(conversation, ctx, {
+  const [previewUsdSuffix = ''] = await conversation.external(() =>
+    usdSuffixesForSats([invoice.satoshi]),
+  )
+  const details = invoiceReviewHtml(ctx, invoice, {
+    usdSuffix: previewUsdSuffix,
+    fee: 'no',
+    feeUsdSuffix: '',
+  })
+
+  if (invoice.hasExpired()) {
+    const reviewHost = await waitForInvoiceReview(conversation, ctx, invoice, true, {
+      host,
+      prefixHtml: host ? title : undefined,
+      onCancel: restoreParent,
+    })
+    host = host ?? reviewHost
+    return
+  }
+
+  if (ctx.user.nwc) {
+    host ??= await ensureHost(ctx, joinWizardHtml(title, details))
+  }
+
+  const {wallet, nwcBalanceError} = await waitForWallet(conversation, ctx, {
     requiredSats: invoice.satoshi,
     flow: 'pay_invoice',
     host,
-    html: host ? joinWizardHtml(title, ctx.t('wait-for-wallet')) : undefined,
+    html: host ? joinWizardHtml(title, details, ctx.t('wait-for-wallet')) : undefined,
+    copyText: copyableText(invoice.paymentRequest),
     onCancel: restoreParent,
   })
   const isInternalWallet = wallet === 'internal'
@@ -64,9 +93,10 @@ export async function payingInvoice(
       ? ctx.t('wait-for-wallet.nwc')
       : ctx.t('wait-for-wallet.internal')
     : undefined
+  const nwcNote = nwcBalanceError ? ctx.t('wait-for-wallet.nwc-unreachable') : undefined
   const reviewHost = await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet, {
     host,
-    prefixHtml: joinWizardHtml(title, selectedWallet),
+    prefixHtml: joinWizardHtml(title, selectedWallet, nwcNote),
     onCancel: restoreParent,
   })
   host = host ?? reviewHost
@@ -148,6 +178,7 @@ export async function payingInvoice(
         totalUsdSuffix,
       }),
     ),
+    disabledLinkPreview,
   )
   await replyWithWallet(ctx)
 }

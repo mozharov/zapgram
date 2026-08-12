@@ -12,6 +12,9 @@ export type PromptMessage = {
   message_id: number
 }
 
+/** Wizard messages often include t.me links in invoice memos; never preview them. */
+export const disabledLinkPreview = {link_preview_options: {is_disabled: true}} as const
+
 export function joinWizardHtml(...parts: Array<string | undefined>): string {
   return parts.filter(part => part !== undefined && part.trim().length > 0).join('\n\n')
 }
@@ -31,7 +34,7 @@ export async function replyAsHost(
   html: string,
   replyMarkup?: InlineKeyboard,
 ): Promise<ConversationHost> {
-  const message = await ctx.reply(html, {reply_markup: replyMarkup})
+  const message = await ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview})
   return {chatId: message.chat.id, messageId: message.message_id}
 }
 
@@ -49,7 +52,10 @@ export async function editHost(
   html: string,
   replyMarkup?: InlineKeyboard,
 ): Promise<PromptMessage> {
-  await ctx.api.editMessageText(host.chatId, host.messageId, html, {reply_markup: replyMarkup})
+  await ctx.api.editMessageText(host.chatId, host.messageId, html, {
+    reply_markup: replyMarkup,
+    ...disabledLinkPreview,
+  })
   return promptMessageFromHost(host)
 }
 
@@ -72,7 +78,10 @@ export async function editHostRich(
   rich: InputRichMessage,
   replyMarkup?: InlineKeyboard,
 ): Promise<PromptMessage> {
-  await ctx.api.editMessageText(host.chatId, host.messageId, rich, {reply_markup: replyMarkup})
+  await ctx.api.editMessageText(host.chatId, host.messageId, rich, {
+    reply_markup: replyMarkup,
+    ...disabledLinkPreview,
+  })
   return promptMessageFromHost(host)
 }
 
@@ -83,5 +92,5 @@ export async function showHostOrReply(
   host?: ConversationHost,
 ): Promise<PromptMessage> {
   if (host) return editHost(ctx, host, html, replyMarkup)
-  return ctx.reply(html, {reply_markup: replyMarkup})
+  return ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview})
 }

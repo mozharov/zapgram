@@ -28,7 +28,7 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
     html: joinWizardHtml(title, selectedUser, ctx.t('wait-for-sats')),
     onCancel: restoreSendMenu,
   })
-  const wallet = await waitForWallet(conversation, ctx, {
+  const {wallet} = await waitForWallet(conversation, ctx, {
     requiredSats: sats,
     flow: 'tip',
     host,

@@ -17,8 +17,10 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {copyableText} from '@telegram/helpers/copy-text.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
+import {invoiceReviewHtml} from './invoice-review.js'
 
 export async function waitForInvoiceReview(
   conversation: BotConversation,
@@ -33,15 +35,7 @@ export async function waitForInvoiceReview(
 ): Promise<ConversationHost> {
   const timestamp = await conversation.external(() => Date.now())
   const payCallback = `pay:${timestamp}` // avoid pay wrong invoice
-  const keyboard = new InlineKeyboard()
-    .add({
-      callback_data: payCallback,
-      text: ctx.t('button.confirm-pay-invoice'),
-    })
-    .add({
-      callback_data: staticCallback.cancel,
-      text: ctx.t('button.cancel'),
-    })
+  const keyboard = reviewKeyboard(ctx, invoice, payCallback)
 
   let satsFee: number | 'no' = 'no'
   if (isInternalWallet) {
@@ -54,24 +48,13 @@ export async function waitForInvoiceReview(
   )
   const html = joinWizardHtml(
     opts?.prefixHtml,
-    ctx.t('wait-for-invoice-review', {
-      amount: invoice.satoshi,
+    invoiceReviewHtml(ctx, invoice, {
       usdSuffix,
       fee: satsFee,
       feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
-      description: invoice.description ?? '',
-      hasDescription: (!!invoice.description).toString(),
-      createdDate: invoice.createdDate,
-      expiryDate: invoice.expiryDate ?? 'no',
-      hasExpired: invoice.hasExpired().toString(),
     }),
   )
-  const message = await showHostOrReply(
-    ctx,
-    html,
-    invoice.hasExpired() ? undefined : keyboard,
-    opts?.host,
-  )
+  const message = await showHostOrReply(ctx, html, keyboard, opts?.host)
 
   if (invoice.hasExpired()) return conversation.halt()
 
@@ -104,4 +87,21 @@ export async function waitForInvoiceReview(
 
     await next.reply(next.t('conversation-state.use-buttons'))
   }
+}
+
+function reviewKeyboard(
+  ctx: ConversationContext,
+  invoice: Invoice,
+  payCallback: string,
+): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  if (invoice.hasExpired()) return keyboard
+
+  const copyText = copyableText(invoice.paymentRequest)
+  if (copyText) keyboard.copyText(ctx.t('button.copy-invoice'), copyText)
+  keyboard.row(
+    {callback_data: payCallback, text: ctx.t('button.confirm-pay-invoice')},
+    {callback_data: staticCallback.cancel, text: ctx.t('button.cancel')},
+  )
+  return keyboard
 }

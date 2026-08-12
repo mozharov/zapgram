@@ -225,13 +225,42 @@ test('a message containing a bolt11 opens the review with a pay button', async (
 
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     db: {conversations: {added: 1}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Invoice review/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Invoice review/},
+    ],
   })
 
+  const review = e2e.tg.last('sendMessage')
+  expect(String(review?.text)).toContain('<blockquote expandable>')
+  expect(String(review?.text)).toMatch(/Created:/)
+  expect(String(review?.text)).not.toMatch(/Created at:/)
+  expect(review?.link_preview_options).toEqual({is_disabled: true})
   // The pay button carries a timestamp so a button from an earlier review cannot pay this one.
-  const buttons = keyboardOf(e2e.tg.last('sendMessage'))
+  const buttons = keyboardOf(review)
   expect(buttons[0]).toMatch(/^pay:\d+$/)
   expect(buttons[1]).toBe('cancel')
+  expectNoErrors(e2e.logs)
+})
+
+test('an invoice pasted from Send is deleted and folded into the host review', async () => {
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+  await e2e.send(privateCallback(staticCallback.payInvoice))
+
+  await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
+    db: {conversations: {changed: 1}},
+    telegram: [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'editMessageText', to: USER_A, text: /Invoice review/},
+    ],
+  })
+
+  const review = e2e.tg.last('editMessageText')
+  expect(String(review?.text)).toMatch(/issued elsewhere/)
+  expect(String(review?.text)).toContain('<blockquote expandable>')
+  expect(review?.link_preview_options).toEqual({is_disabled: true})
   expectNoErrors(e2e.logs)
 })
 
@@ -306,10 +335,13 @@ test('an expired invoice is reviewed without a pay button and ends the conversat
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(expired.bolt11)), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Invoice expired/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Invoice expired/},
+    ],
   })
 
-  expect(e2e.tg.last('sendMessage')?.reply_markup).toBeUndefined()
+  expect(keyboardOf(e2e.tg.last('sendMessage'))).toEqual([])
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -319,6 +351,7 @@ test('insufficient balance refuses payment before the review step', async () => 
 
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     telegram: [
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Insufficient funds/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],

@@ -58,7 +58,9 @@ button =
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
+    .nwc-wallet-with-balance = ⚡️ NWC · {$balance} sats
     .internal-wallet = 🤖 {bot-name}
+    .internal-wallet-with-balance = 🤖 {bot-name} · {$balance} sats
     .confirm-pay-invoice = 📤 Pay Invoice
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
@@ -326,6 +328,7 @@ wait-for-wallet = <b>👛 Select Wallet</b>
     .internal = <b>🤖 {bot-name} wallet selected.</b>
     .auto-only-internal = <b>🤖 Only the {bot-name} wallet has enough balance, so it was selected automatically.</b>
     .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
+    .nwc-unreachable = <b>⚠️ Couldn't reach the connected NWC wallet.</b>
 
 sats-received = <b>📩 You received {$amount} sats{$usdSuffix}</b>.
     {$username -> 
@@ -349,7 +352,7 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         [no] <i></i>
         *[other] Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         <i></i>
-        }Created at: <b>{TGTIME($createdDate, format: "Dt")}</b>
+        }Created: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
         [no] <i></i>
         *[other] Expires: <b>{TGTIME($expiryDate, format: "Dt")}</b>
@@ -360,6 +363,8 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         [true] <b>⚠️ Invoice expired.</b>
         *[other] <i></i>
         }
+
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 received-incoming-invoice = 📥 <b>You received payment for a Lightning invoice.</b>
         Amount: <b>{$amount} sats{$usdSuffix}</b>.
