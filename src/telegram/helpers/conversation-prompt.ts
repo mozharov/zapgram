@@ -18,7 +18,7 @@ type CallbackContext = {
 }
 
 export type ActivePrompt = {
-  kind: 'text' | 'caption'
+  kind: 'text' | 'rich' | 'caption'
   chatId: number
   messageId: number
   html: string
@@ -111,13 +111,20 @@ async function deactivatePromptOnce(prompt: ActivePrompt, state: PromptEndState)
   const html = renderPromptEndState(prompt.html, state.statusHtml)
 
   try {
-    if (prompt.kind === 'text') {
-      await bot.api.editMessageText(prompt.chatId, prompt.messageId, html, {
-        reply_markup: {inline_keyboard: []},
-      })
-    } else {
+    if (prompt.kind === 'caption') {
       await bot.api.editMessageCaption(prompt.chatId, prompt.messageId, {
         caption: html,
+        reply_markup: {inline_keyboard: []},
+      })
+    } else if (prompt.kind === 'rich') {
+      await bot.api.editMessageText(
+        prompt.chatId,
+        prompt.messageId,
+        {html},
+        {reply_markup: {inline_keyboard: []}},
+      )
+    } else {
+      await bot.api.editMessageText(prompt.chatId, prompt.messageId, html, {
         reply_markup: {inline_keyboard: []},
       })
     }

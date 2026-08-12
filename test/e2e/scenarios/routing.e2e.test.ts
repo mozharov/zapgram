@@ -48,9 +48,7 @@ afterEach(async () => {
 const commandCases: {command: string; telegram: {method: string; to: number; text?: RegExp}[]}[] = [
   {
     command: '/start',
-    telegram: [
-      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/},
-    ],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/}],
   },
   {
     command: '/help',
@@ -109,13 +107,13 @@ const staticCases: {
   {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
   {
     data: staticCallback.sendToUser,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Enter the username/,
     conversation: true,
   },
   {
     data: staticCallback.createInvoice,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Enter the amount/,
     conversation: true,
   },
@@ -127,7 +125,7 @@ const staticCases: {
   },
   {
     data: staticCallback.payInvoice,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Lightning invoice/,
     conversation: true,
   },
@@ -297,7 +295,7 @@ const parameterizedCases: {
   {
     route: 'chat-change-price',
     data: ({chat}) => `chat:${chat.id}:change-price`,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Changing the price of paid access/,
     db: {conversations: {added: 1}},
   },
@@ -539,9 +537,9 @@ test('plain private text falls back to the wallet', async () => {
 test('pasted bolt11 invoice reaches the invoices module', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('lnbc1pabcdef')), {
     ...FIRST_TOUCH,
-    telegram: ['sendMessage', 'sendMessage', 'sendRichMessage'],
+    telegram: ['sendMessage', 'sendRichMessage'],
   })
-  expect(joinedOutput()).toMatch(/Paying Lightning invoice/)
+  expect(joinedOutput()).toMatch(/Error processing the Lightning invoice/)
   // The invoice is unparseable on purpose: routing is proven by reaching the paying-invoice
   // conversation at all. The single log line is the InvoiceParsingError it then raises.
   expect(e2e.logs).toHaveLength(1)

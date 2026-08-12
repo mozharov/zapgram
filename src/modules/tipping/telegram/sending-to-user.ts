@@ -4,22 +4,36 @@ import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.
 import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
-import {replyWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
+import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {ensureHost, joinWizardHtml} from '@telegram/helpers/conversation-host.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
-  const returnToSendMenu = () => replyWithSendMenu(ctx)
-  await ctx.reply(ctx.t('sending-to-user'))
-  const toUser = await waitForUser(conversation, ctx, {onCancel: returnToSendMenu})
-  const sats = await waitForSats(conversation, ctx, {onCancel: returnToSendMenu})
+  const title = ctx.t('sending-to-user')
+  const host = await ensureHost(ctx, title)
+  const restoreSendMenu = () => editHostWithSendMenu(ctx, host)
+
+  const toUser = await waitForUser(conversation, ctx, {
+    host,
+    html: joinWizardHtml(title, ctx.t('wait-for-user')),
+    onCancel: restoreSendMenu,
+  })
+  const selectedUser = ctx.t('wait-for-user.selected', {username: toUser.username ?? ''})
+  const sats = await waitForSats(conversation, ctx, {
+    host,
+    html: joinWizardHtml(title, selectedUser, ctx.t('wait-for-sats')),
+    onCancel: restoreSendMenu,
+  })
   const wallet = await waitForWallet(conversation, ctx, {
     requiredSats: sats,
     flow: 'tip',
-    onCancel: returnToSendMenu,
+    host,
+    html: joinWizardHtml(title, selectedUser, ctx.t('wait-for-wallet')),
+    onCancel: restoreSendMenu,
   })
   await ctx.replyWithChatAction('typing')
 
@@ -44,12 +58,24 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   })
 
   await notifySatsReceived(toUser.id, sats, ctx.user.username)
-  await ctx.reply(
-    ctx.t('sending-to-user.completed', {
-      amount: sats,
-      usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
-      recipient: toUser.username,
-    }),
+  const selectedWallet = ctx.user.nwc
+    ? wallet === 'nwc'
+      ? ctx.t('wait-for-wallet.nwc')
+      : ctx.t('wait-for-wallet.internal')
+    : undefined
+  await ctx.api.editMessageText(
+    host.chatId,
+    host.messageId,
+    joinWizardHtml(
+      title,
+      selectedUser,
+      selectedWallet,
+      ctx.t('sending-to-user.completed', {
+        amount: sats,
+        usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
+        recipient: toUser.username,
+      }),
+    ),
   )
 
   await replyWithWallet(ctx)

@@ -4,6 +4,11 @@ import {getPendingInvoiceBy} from '@modules/invoices/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
+  type ConversationHost,
+  joinWizardHtml,
+  showHostOrReply,
+} from '@telegram/helpers/conversation-host.js'
+import {
   cancelledPromptState,
   classifyPromptUpdate,
   clearPromptControls,
@@ -20,8 +25,12 @@ export async function waitForInvoiceReview(
   ctx: ConversationContext,
   invoice: Invoice,
   isInternalWallet: boolean,
-  opts?: {onCancel?: () => Promise<unknown>},
-) {
+  opts?: {
+    host?: ConversationHost
+    prefixHtml?: string
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
+): Promise<ConversationHost> {
   const timestamp = await conversation.external(() => Date.now())
   const payCallback = `pay:${timestamp}` // avoid pay wrong invoice
   const keyboard = new InlineKeyboard()
@@ -43,24 +52,30 @@ export async function waitForInvoiceReview(
   const [usdSuffix = '', feeUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi, satsFee === 'no' ? 0 : satsFee]),
   )
-  const html = ctx.t('wait-for-invoice-review', {
-    amount: invoice.satoshi,
-    usdSuffix,
-    fee: satsFee,
-    feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
-    description: invoice.description ?? '',
-    hasDescription: (!!invoice.description).toString(),
-    createdDate: invoice.createdDate,
-    expiryDate: invoice.expiryDate ?? 'no',
-    hasExpired: invoice.hasExpired().toString(),
-  })
-  const message = await ctx.reply(html, {
-    reply_markup: invoice.hasExpired() ? undefined : keyboard,
-    link_preview_options: {is_disabled: true},
-  })
+  const html = joinWizardHtml(
+    opts?.prefixHtml,
+    ctx.t('wait-for-invoice-review', {
+      amount: invoice.satoshi,
+      usdSuffix,
+      fee: satsFee,
+      feeUsdSuffix: satsFee === 'no' ? '' : feeUsdSuffix,
+      description: invoice.description ?? '',
+      hasDescription: (!!invoice.description).toString(),
+      createdDate: invoice.createdDate,
+      expiryDate: invoice.expiryDate ?? 'no',
+      hasExpired: invoice.hasExpired().toString(),
+    }),
+  )
+  const message = await showHostOrReply(
+    ctx,
+    html,
+    invoice.hasExpired() ? undefined : keyboard,
+    opts?.host,
+  )
 
   if (invoice.hasExpired()) return conversation.halt()
 
+  const reviewHost = {chatId: message.chat.id, messageId: message.message_id}
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -73,14 +88,14 @@ export async function waitForInvoiceReview(
     if (next.callbackQuery?.data === payCallback && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       await clearPromptControls(conversation, prompt)
-      return
+      return reviewHost
     }
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await opts?.onCancel?.()
+      if (opts?.onCancel) await opts.onCancel(opts.host ?? reviewHost)
+      else await deactivatePrompt(conversation, prompt, cancelled)
       return conversation.halt()
     }
     if (kind === 'interrupt') {

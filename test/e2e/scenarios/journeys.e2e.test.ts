@@ -27,7 +27,6 @@ import {
   myChatMember,
   privateCallback,
   privateCommand,
-  privatePhotoCaptionCallback,
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
@@ -79,11 +78,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
     db: {conversations: {added: 1}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Creating Lightning invoice/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
@@ -92,7 +87,11 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/},
+      {
+        method: 'editMessageText',
+        to: USER_A,
+        text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
+      },
     ],
   })
 
@@ -101,8 +100,8 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     e2e,
     () =>
       e2e.send(
-        privatePhotoCaptionCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('sendPhoto'),
+        privateCallback(staticCallback.wallet, {
+          messageId: requiredMessageId('editMessageText'),
         }),
       ),
     {
@@ -226,11 +225,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
       ),
     {
       db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: OWNER},
-        {method: 'sendMessage', to: OWNER, text: /Changing the price of paid access/},
-        {method: 'sendMessage', to: OWNER, text: /Enter the amount of sats/},
-      ],
+      telegram: [{method: 'editMessageText', to: OWNER, text: /Changing the price of paid access/}],
     },
   )
 
@@ -238,7 +233,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: OWNER},
-      {method: 'sendMessage', to: OWNER, text: /set to 1\D?000 sats/},
+      {method: 'editMessageText', to: OWNER, text: /set to 1\D?000 sats/},
       {method: 'sendMessage', to: OWNER, text: /Price: <b>1\D?000 sats/},
     ],
   })
@@ -437,24 +432,19 @@ test('private keyboard navigation keeps one world through screens and conversati
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendToUser)), {
     db: {conversations: {added: 1}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Sending sats to a Telegram user/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the username/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Sending sats to a Telegram user/}],
   })
   await expectDelta(
     e2e,
     () =>
       e2e.send(
-        privateCallback(staticCallback.cancel, {messageId: requiredMessageId('sendMessage')}),
+        privateCallback(staticCallback.cancel, {messageId: requiredMessageId('editMessageText')}),
       ),
     {
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-        {method: 'sendMessage', to: USER_A, text: /Send payment/},
+        {method: 'editMessageText', to: USER_A, text: /Send payment/},
       ],
     },
   )
@@ -467,18 +457,14 @@ test('private keyboard navigation keeps one world through screens and conversati
     () => e2e.send(privateCallback(chatChangePriceRoute.build({chatId: CHAT_GROUP}))),
     {
       db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Changing the price/},
-        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-      ],
+      telegram: [{method: 'editMessageText', to: USER_A, text: /Changing the price/}],
     },
   )
   await expectDelta(e2e, () => e2e.send(privateText('1234')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /set to 1\D?234 sats/},
+      {method: 'editMessageText', to: USER_A, text: /set to 1\D?234 sats/},
       {method: 'sendMessage', to: USER_A, text: /Price: <b>1\D?234 sats/},
     ],
   })
@@ -578,11 +564,7 @@ test('an invoice conversation survives a container restart on the same database'
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
     db: {users: {added: 1}, conversations: {added: 1}},
     lnbits: {balances: {[userWalletName(USER_A)]: 0}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Creating Lightning invoice/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
@@ -591,7 +573,11 @@ test('an invoice conversation survives a container restart on the same database'
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/},
+      {
+        method: 'editMessageText',
+        to: USER_A,
+        text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
+      },
     ],
   })
 
@@ -604,8 +590,8 @@ test('an invoice conversation survives a container restart on the same database'
     e2e,
     () =>
       e2e.send(
-        privatePhotoCaptionCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('sendPhoto'),
+        privateCallback(staticCallback.wallet, {
+          messageId: requiredMessageId('editMessageText'),
         }),
       ),
     {
@@ -860,7 +846,7 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
 }
 
-function requiredMessageId(method: 'sendMessage' | 'sendPhoto'): number {
+function requiredMessageId(method: 'sendMessage' | 'sendPhoto' | 'editMessageText'): number {
   const messageId = e2e.tg.lastMessageId(method)
   if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)
   return messageId

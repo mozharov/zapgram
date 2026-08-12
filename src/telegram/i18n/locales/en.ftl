@@ -54,6 +54,7 @@ button =
     .add-chat = 👥 Add chat
     .paid-chats = 🔐 Paid chats
     .add-invoice-memo = 🔡 Add memo
+    .copy-invoice = 📋 Copy invoice
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
@@ -315,6 +316,7 @@ sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>
+    .selected = <b>👤 @{$username}</b>
 
 wait-for-sats = <b>🔢 Enter the amount of sats.</b>
     .invalid = <b>⚠️ Invalid amount of sats. Expected integer between 1 and 100000000.</b>
@@ -350,7 +352,7 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         }Created at: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
         [no] <i></i>
-        *[other] Expires at: <b>{TGTIME($expiryDate, format: "Dt")}</b>
+        *[other] Expires: <b>{TGTIME($expiryDate, format: "Dt")}</b>
         <i></i>
         }
 
@@ -377,14 +379,23 @@ paying-invoice = <b>🧾 Paying Lightning invoice...</b>
 
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
     .created = Amount: <b>{$amount} sats{$usdSuffix}</b>
+        {$wallet ->
+        [nwc] Wallet: <b>NWC</b>
+        *[internal] Wallet: <b>{bot-name}</b>
+        }
+
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
-        }Expires at: <b>{TGTIME($expiresAt, format: "Dt")}</b>
+        }Expires: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
-        Lightning Invoice:
-        <code>{$invoice}</code>
+        <img src="tg://photo?id=invoice-qr"/>
+
+        <details>
+        <summary>Lightning invoice</summary>
+        <pre><code>{$invoice}</code></pre>
+        </details>
 
 wait-for-memo = <b>🔡 Enter a memo for the invoice.</b>
     .invalid = <b>⚠️ Invalid memo. Expected string up to 150 characters.</b>

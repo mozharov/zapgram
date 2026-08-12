@@ -54,6 +54,7 @@ button =
     .add-chat = 👥 Добавить чат
     .paid-chats = 🔐 Платные чаты
     .add-invoice-memo = 🔡 Добавить описание
+    .copy-invoice = 📋 Скопировать счёт
     .pay-invoice = ⚡️ Оплатить Lightning счёт
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
@@ -315,6 +316,7 @@ sending-to-user = <b>✉️ Отправка сат пользователю Tel
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>
+    .selected = <b>👤 @{$username}</b>
 
 wait-for-sats = <b>🔢 Введи сумму в сатах.</b>
     .invalid = <b>⚠️ Неверная сумма. Ожидается целое число от 1 до 100000000.</b>
@@ -376,15 +378,24 @@ paying-invoice = <b>🧾 Оплата счёта Lightning...</b>
         Итого: <b>{$total} сат{$totalUsdSuffix}</b>
 
 creating-invoice = <b>🧾 Создание счёта Lightning...</b>
-     .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>
+    .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>
+        {$wallet ->
+        [nwc] Кошелёк: <b>NWC</b>
+        *[internal] Кошелёк: <b>{bot-name}</b>
+        }
+
         {$hasDescription ->
         [true] Описание: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
         }Срок действия: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
-        Lightning счёт:
-        <code>{$invoice}</code>
+        <img src="tg://photo?id=invoice-qr"/>
+
+        <details>
+        <summary>Lightning-счёт</summary>
+        <pre><code>{$invoice}</code></pre>
+        </details>
 
 wait-for-memo = <b>🔡 Введи описание счёта.</b>
     .invalid = <b>⚠️ Невалидное описание. Ожидается строка до 150 символов.</b>

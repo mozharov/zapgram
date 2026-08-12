@@ -50,6 +50,27 @@ describe('settlement messages', () => {
   })
 })
 
+describe('created lightning invoice copy', () => {
+  const expiresAt = new Date('2026-05-01T12:00:00.000Z')
+
+  test('english expiry label does not stack another at onto the date entity', () => {
+    const message = translate('creating-invoice.created', 'en', {
+      amount: 1000,
+      usdSuffix: '',
+      wallet: 'internal',
+      hasDescription: 'false',
+      description: '',
+      expiresAt,
+      invoice: 'lnbc1test',
+    })
+    expect(message).toContain('Expires:')
+    expect(message).not.toContain('Expires at:')
+    expect(message).toContain('<details>')
+    expect(message).toContain('Wallet: <b>ZapGram</b>')
+    expect(message).toContain('tg://photo?id=invoice-qr')
+  })
+})
+
 describe('subscription invoice remaining time', () => {
   // The countdown is the client's job now: a relative date_time entity keeps ticking after the
   // message is sent, which hand-counted hours and minutes could not.

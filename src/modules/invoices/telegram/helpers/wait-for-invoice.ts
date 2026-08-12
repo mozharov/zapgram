@@ -1,5 +1,6 @@
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
 import {
   cancelledPromptState,
   classifyPromptUpdate,
@@ -13,14 +14,18 @@ import {InlineKeyboard} from 'grammy'
 export async function waitForInvoice(
   conversation: BotConversation,
   ctx: ConversationContext,
-  opts?: {onCancel?: () => Promise<unknown>},
+  opts?: {
+    host?: ConversationHost
+    html?: string
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
 ) {
   const keyboard = new InlineKeyboard().add({
     callback_data: staticCallback.cancel,
     text: ctx.t('button.cancel'),
   })
-  const html = ctx.t('wait-for-invoice')
-  const message = await ctx.reply(html, {reply_markup: keyboard})
+  const html = opts?.html ?? ctx.t('wait-for-invoice')
+  const message = await showHostOrReply(ctx, html, keyboard, opts?.host)
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -34,8 +39,11 @@ export async function waitForInvoice(
 
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await opts?.onCancel?.()
+      if (opts?.host) await opts.onCancel?.(opts.host)
+      else {
+        await deactivatePrompt(conversation, prompt, cancelled)
+        await opts?.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
+      }
       return conversation.halt()
     }
     if (kind === 'interrupt') {

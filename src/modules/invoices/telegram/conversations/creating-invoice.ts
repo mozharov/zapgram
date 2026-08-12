@@ -8,33 +8,50 @@ import {createPendingInvoice} from '@modules/invoices/repository.js'
 import {waitForMemoText} from '@modules/invoices/telegram/helpers/wait-for-memo.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
-import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
+import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {
+  type ConversationHost,
+  editHostRich,
+  ensureHost,
+  joinWizardHtml,
+} from '@telegram/helpers/conversation-host.js'
 import {
   classifyPromptUpdate,
   clearPromptControls,
   createActivePrompt,
-  deactivatePrompt,
   inactivePromptState,
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {copyableText} from '@telegram/helpers/copy-text.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard, InputFile} from 'grammy'
-import type {Message} from 'grammy/types'
+import type {InputRichMessage} from 'grammy/types'
 import QRCode from 'qrcode'
 import {getRuntime} from '../../../../runtime.js'
 
+const QR_MEDIA_ID = 'invoice-qr'
+
 export async function creatingInvoice(conversation: BotConversation, ctx: ConversationContext) {
-  const returnToWallet = () => replyWithWallet(ctx)
-  await ctx.reply(ctx.t('creating-invoice'))
+  const title = ctx.t('creating-invoice')
+  const host = await ensureHost(ctx, title)
+  const restoreWallet = () => editHostWithWallet(ctx, host)
+
   const wallet = await waitForWallet(conversation, ctx, {
     flow: 'create_invoice',
-    onCancel: returnToWallet,
+    host,
+    html: joinWizardHtml(title, ctx.t('wait-for-wallet')),
+    onCancel: restoreWallet,
   })
-  const sats = await waitForSats(conversation, ctx, {onCancel: returnToWallet})
+  const selectedWallet = ctx.user.nwc ? selectedWalletHtml(ctx, wallet) : undefined
+  const sats = await waitForSats(conversation, ctx, {
+    host,
+    html: joinWizardHtml(title, selectedWallet, ctx.t('wait-for-sats')),
+    onCancel: restoreWallet,
+  })
   const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
 
   await ctx.replyWithChatAction('typing')
@@ -43,10 +60,14 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
   captureInvoiceCreated({sats, wallet, hasMemo: false, isReplacement: false})
 
-  const qr = await replyWithQRCode(ctx, paymentRequest, {offerAddMemo: true, usdSuffix})
-  const qrPrompt = createActivePrompt(qr.message, {
-    kind: 'caption',
-    html: qr.caption,
+  const invoiceView = await renderInvoice(ctx, host, paymentRequest, {
+    wallet,
+    usdSuffix,
+    offerAddMemo: true,
+  })
+  const qrPrompt = createActivePrompt(invoiceView.message, {
+    kind: 'rich',
+    html: invoiceView.html,
     actionLabel: ctx.t('conversation-action.invoice-memo-options'),
   })
   const inactive = inactivePromptState(
@@ -70,11 +91,11 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       next.callbackQuery?.data === staticCallback.wallet &&
       isCallbackFromPrompt(next, qrPrompt)
     ) {
-      // Invoice is already live. Open Wallet as a new message and drop the QR buttons.
-      // Do not fall through: the global wallet handler would try to edit this photo.
+      // Invoice is already live. Open Wallet as a new message and drop the invoice buttons.
+      // Do not fall through: the global wallet handler would replace this invoice.
       await next.answerCallbackQuery()
       await clearPromptControls(conversation, qrPrompt)
-      await returnToWallet()
+      await replyWithWallet(ctx)
       return conversation.halt()
     }
 
@@ -91,18 +112,24 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     wallet_type: wallet,
   })
 
-  const memoResult = await waitForMemoText(conversation, ctx)
+  const memoHtml = joinWizardHtml(invoiceView.html, ctx.t('wait-for-memo'))
+  const memoResult = await waitForMemoText(conversation, ctx, {
+    host,
+    html: memoHtml,
+    rich: {html: memoHtml, media: invoiceQrMedia(invoiceView.buffer)},
+  })
   if (memoResult.status !== 'ok') {
     captureBotEvent(getRuntime().posthog, 'invoice_memo_add_cancelled', {
       reason: memoResult.reason,
       amount_sats: sats,
       wallet_type: wallet,
     })
-    await deactivatePrompt(conversation, qrPrompt, inactive)
-    if (memoResult.status === 'cancelled') await returnToWallet()
-    return memoResult.status === 'interrupted'
-      ? conversation.halt({next: true})
-      : conversation.halt()
+    if (memoResult.status === 'cancelled') {
+      await renderInvoice(ctx, host, paymentRequest, {wallet, usdSuffix, offerAddMemo: false})
+      await replyWithWallet(ctx)
+      return conversation.halt()
+    }
+    return conversation.halt({next: true})
   }
 
   await ctx.replyWithChatAction('typing')
@@ -111,7 +138,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
   captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
-  await editQRCode(ctx, qr.message, paymentRequest, usdSuffix)
+  await renderInvoice(ctx, host, paymentRequest, {wallet, usdSuffix, offerAddMemo: false})
   await replyWithWallet(ctx)
 }
 
@@ -190,54 +217,63 @@ async function createInvoice(
   return paymentRequest
 }
 
-async function replyWithQRCode(
-  ctx: BotContext,
-  paymentRequest: string,
-  opts: {offerAddMemo: boolean; usdSuffix: string},
-): Promise<{message: Message.PhotoMessage; caption: string}> {
-  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest, opts.usdSuffix)
-  const keyboard = opts.offerAddMemo
-    ? new InlineKeyboard()
-        .row({
-          callback_data: staticCallback.addInvoiceMemo,
-          text: ctx.t('button.add-invoice-memo'),
-        })
-        .row({callback_data: staticCallback.wallet, text: ctx.t('button.open-wallet')})
-    : undefined
-
-  const message = await ctx.replyWithPhoto(new InputFile(buffer), {
-    caption,
-    reply_markup: keyboard,
-  })
-  return {message, caption}
+function selectedWalletHtml(ctx: ConversationContext, wallet: 'internal' | 'nwc'): string {
+  return wallet === 'nwc' ? ctx.t('wait-for-wallet.nwc') : ctx.t('wait-for-wallet.internal')
 }
 
-async function editQRCode(
-  ctx: BotContext,
-  message: Message,
+async function renderInvoice(
+  ctx: ConversationContext,
+  host: ConversationHost,
   paymentRequest: string,
-  usdSuffix: string,
-): Promise<void> {
-  const {buffer, caption} = await buildQRPayload(ctx, paymentRequest, usdSuffix)
-  await ctx.api.editMessageMedia(message.chat.id, message.message_id, {
-    type: 'photo',
-    media: new InputFile(buffer),
-    caption,
-  })
+  opts: {wallet: 'internal' | 'nwc'; usdSuffix: string; offerAddMemo: boolean},
+): Promise<{message: {chat: {id: number}; message_id: number}; html: string; buffer: Buffer}> {
+  const {html, buffer, rich} = await buildInvoiceRichMessage(ctx, paymentRequest, opts)
+  const keyboard = invoiceKeyboard(ctx, paymentRequest, opts.offerAddMemo)
+  const message = await editHostRich(ctx, host, rich, keyboard)
+  return {message, html, buffer}
 }
 
-async function buildQRPayload(ctx: BotContext, paymentRequest: string, usdSuffix: string) {
+function invoiceKeyboard(
+  ctx: ConversationContext,
+  paymentRequest: string,
+  offerAddMemo: boolean,
+): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  const copyText = copyableText(paymentRequest)
+  if (copyText) {
+    keyboard.copyText(ctx.t('button.copy-invoice'), copyText)
+  }
+  if (offerAddMemo) {
+    keyboard.row({
+      callback_data: staticCallback.addInvoiceMemo,
+      text: ctx.t('button.add-invoice-memo'),
+    })
+  }
+  keyboard.row({callback_data: staticCallback.wallet, text: ctx.t('button.open-wallet')})
+  return keyboard
+}
+
+async function buildInvoiceRichMessage(
+  ctx: ConversationContext,
+  paymentRequest: string,
+  opts: {wallet: 'internal' | 'nwc'; usdSuffix: string},
+): Promise<{html: string; buffer: Buffer; rich: InputRichMessage}> {
   const invoice = decodeInvoice(paymentRequest)
   const expiresAt = invoice.expiryDate ?? 0
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
   const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
-  const caption = ctx.t('creating-invoice.created', {
+  const html = ctx.t('creating-invoice.created', {
     amount: invoice.satoshi,
-    usdSuffix,
+    usdSuffix: opts.usdSuffix,
+    wallet: opts.wallet,
     hasDescription: (!!memo).toString(),
     description: memo,
     expiresAt,
     invoice: paymentRequest,
   })
-  return {buffer, caption}
+  return {html, buffer, rich: {html, media: invoiceQrMedia(buffer)}}
+}
+
+function invoiceQrMedia(buffer: Buffer): InputRichMessage['media'] {
+  return [{id: QR_MEDIA_ID, media: {type: 'photo', media: new InputFile(buffer)}}]
 }

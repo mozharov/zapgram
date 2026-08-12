@@ -1,5 +1,6 @@
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
 import {
   cancelledPromptState,
   classifyPromptUpdate,
@@ -15,10 +16,14 @@ const MAX_AMOUNT = 100000000
 export async function waitForSats(
   conversation: BotConversation,
   ctx: ConversationContext,
-  opts?: {onCancel?: () => Promise<unknown>},
+  opts?: {
+    host?: ConversationHost
+    html?: string
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
 ) {
-  const html = ctx.t('wait-for-sats')
-  const message = await replyWithWaitForSats(ctx, html)
+  const html = opts?.html ?? ctx.t('wait-for-sats')
+  const message = await showHostOrReply(ctx, html, cancelKeyboard(ctx), opts?.host)
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -32,8 +37,11 @@ export async function waitForSats(
 
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await opts?.onCancel?.()
+      if (opts?.host) await opts.onCancel?.(opts.host)
+      else {
+        await deactivatePrompt(conversation, prompt, cancelled)
+        await opts?.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
+      }
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -52,10 +60,8 @@ export async function waitForSats(
   }
 }
 
-function replyWithWaitForSats(ctx: ConversationContext, html: string) {
-  return ctx.reply(html, {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
+function cancelKeyboard(ctx: ConversationContext) {
+  return new InlineKeyboard([
+    [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+  ])
 }

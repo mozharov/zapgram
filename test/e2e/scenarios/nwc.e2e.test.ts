@@ -240,7 +240,7 @@ test('wallet selection ignores text and accepts a button only from its own promp
   await connectNwc()
   await e2e.send(privateCallback(staticCallback.createInvoice))
   const promptMessageId = requiredPromptMessageId()
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['internal', 'nwc', 'cancel'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
 
   await expectDelta(e2e, () => e2e.send(privateText('internal')), {
     db: {conversations: {changed: 1}},
@@ -255,8 +255,7 @@ test('wallet selection ignores text and accepts a button only from its own promp
       telegram: [
         {method: 'answerCallbackQuery'},
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /ZapGram wallet selected/},
-        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
+        {method: 'editMessageText', to: USER_A, text: /ZapGram wallet selected/},
       ],
     },
   )
@@ -274,8 +273,7 @@ test('wallet selection consumes Cancel from its own prompt', async () => {
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+        {method: 'editMessageText', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -588,6 +586,8 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
 }
 
 function requiredPromptMessageId(): number {
+  const edited = e2e.tg.lastMessageId('editMessageText')
+  if (edited !== undefined) return edited
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
   return messageId

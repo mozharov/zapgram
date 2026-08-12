@@ -1,6 +1,11 @@
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
+  type ConversationHost,
+  editHostRich,
+  showHostOrReply,
+} from '@telegram/helpers/conversation-host.js'
+import {
   cancelledPromptState,
   classifyPromptUpdate,
   clearPromptControls,
@@ -8,6 +13,7 @@ import {
   deactivatePrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
+import type {InputRichMessage} from 'grammy/types'
 
 const MAX_MEMO_LENGTH = 150
 
@@ -22,16 +28,23 @@ export type MemoTextResult =
 export async function waitForMemoText(
   conversation: BotConversation,
   ctx: ConversationContext,
+  opts?: {
+    host?: ConversationHost
+    html?: string
+    rich?: InputRichMessage
+  },
 ): Promise<MemoTextResult> {
-  const html = ctx.t('wait-for-memo')
-  const message = await ctx.reply(html, {
-    reply_markup: new InlineKeyboard().row({
-      callback_data: staticCallback.cancel,
-      text: ctx.t('button.cancel'),
-    }),
+  const html = opts?.html ?? ctx.t('wait-for-memo')
+  const keyboard = new InlineKeyboard().row({
+    callback_data: staticCallback.cancel,
+    text: ctx.t('button.cancel'),
   })
+  const message =
+    opts?.host && opts.rich
+      ? await editHostRich(ctx, opts.host, opts.rich, keyboard)
+      : await showHostOrReply(ctx, html, keyboard, opts?.host)
   const prompt = createActivePrompt(message, {
-    kind: 'text',
+    kind: opts?.rich ? 'rich' : 'text',
     html,
     actionLabel: ctx.t('conversation-action.enter-invoice-memo'),
   })
@@ -43,7 +56,7 @@ export async function waitForMemoText(
 
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
+      if (!opts?.host) await deactivatePrompt(conversation, prompt, cancelled)
       return {status: 'cancelled', reason: 'cancel'}
     }
     if (kind === 'interrupt') {

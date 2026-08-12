@@ -3,6 +3,7 @@ import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet
 import {getUserByUsername} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
 import {
   cancelledPromptState,
   classifyPromptUpdate,
@@ -18,10 +19,19 @@ const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 export async function waitForUser(
   conversation: BotConversation,
   ctx: ConversationContext,
-  opts?: {onCancel?: () => Promise<unknown>},
+  opts?: {
+    host?: ConversationHost
+    html?: string
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
 ) {
-  const html = ctx.t('wait-for-user')
-  const message = await replyWithWaitForUser(ctx, html)
+  const html = opts?.html ?? ctx.t('wait-for-user')
+  const message = await showHostOrReply(
+    ctx,
+    html,
+    new InlineKeyboard([[{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}]]),
+    opts?.host,
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -35,8 +45,11 @@ export async function waitForUser(
 
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await opts?.onCancel?.()
+      if (opts?.host) await opts.onCancel?.(opts.host)
+      else {
+        await deactivatePrompt(conversation, prompt, cancelled)
+        await opts?.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
+      }
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -52,14 +65,6 @@ export async function waitForUser(
     await clearPromptControls(conversation, prompt)
     return validateUsername(next, matched.toLowerCase())
   }
-}
-
-function replyWithWaitForUser(ctx: ConversationContext, html: string) {
-  return ctx.reply(html, {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
 }
 
 async function validateUsername(ctx: ConversationContext, username: string) {

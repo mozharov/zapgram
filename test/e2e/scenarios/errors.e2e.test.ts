@@ -150,9 +150,11 @@ test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', 
   await e2e.send(privateText('lnbc1notavalidinvoice00'))
 
   expectPrivateErrorAndWallet('invoice_parsing', 'en')
-  // Conversation enters before decode, so the opening "Paying..." line is also present.
+  // Conversation still enters: decode throws InvoiceParsingError from payingInvoice.
   expect(
-    e2e.tg.of('sendMessage').some(call => String(call.text).includes('Paying Lightning invoice')),
+    e2e.tg
+      .of('sendMessage')
+      .some(call => String(call.text).includes('Error processing the Lightning invoice')),
   ).toBe(true)
   await expectMoneyUnchanged(before)
 })

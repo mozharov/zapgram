@@ -2,6 +2,7 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
 import {
   cancelledPromptState,
   classifyPromptUpdate,
@@ -23,7 +24,9 @@ export async function waitForWallet(
   opts?: {
     requiredSats?: number
     flow?: WalletSelectFlow
-    onCancel?: () => Promise<unknown>
+    host?: ConversationHost
+    html?: string
+    onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ): Promise<'internal' | 'nwc'> {
   const flow = opts?.flow ?? 'create_invoice'
@@ -86,7 +89,7 @@ export async function waitForWallet(
         wallet === 'internal'
           ? 'wait-for-wallet.auto-only-internal'
           : 'wait-for-wallet.auto-only-nwc'
-      await ctx.reply(ctx.t(autoKey))
+      if (!opts?.host) await ctx.reply(ctx.t(autoKey))
       captureBotEvent(posthog, 'wallet_resolved', {
         flow,
         selection: 'auto_only_funded',
@@ -100,8 +103,8 @@ export async function waitForWallet(
     }
   }
 
-  const html = ctx.t('wait-for-wallet')
-  const message = await replyWithWaitForWallet(ctx, html)
+  const html = opts?.html ?? ctx.t('wait-for-wallet')
+  const message = await showHostOrReply(ctx, html, walletKeyboard(ctx), opts?.host)
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -123,8 +126,11 @@ export async function waitForWallet(
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await opts?.onCancel?.()
+      if (opts?.host) await opts.onCancel?.(opts.host)
+      else {
+        await deactivatePrompt(conversation, prompt, cancelled)
+        await opts?.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
+      }
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -134,8 +140,10 @@ export async function waitForWallet(
     await next.reply(next.t('conversation-state.use-buttons'))
   }
 
-  if (wallet === 'nwc') await ctx.reply(ctx.t('wait-for-wallet.nwc'))
-  else await ctx.reply(ctx.t('wait-for-wallet.internal'))
+  if (!opts?.host) {
+    if (wallet === 'nwc') await ctx.reply(ctx.t('wait-for-wallet.nwc'))
+    else await ctx.reply(ctx.t('wait-for-wallet.internal'))
+  }
 
   captureBotEvent(posthog, 'wallet_resolved', {
     flow,
@@ -146,8 +154,8 @@ export async function waitForWallet(
   return wallet
 }
 
-function replyWithWaitForWallet(ctx: ConversationContext, html: string) {
-  const keyboard = new InlineKeyboard()
+function walletKeyboard(ctx: ConversationContext) {
+  return new InlineKeyboard()
     .row({
       callback_data: 'internal',
       text: ctx.t('button.internal-wallet'),
@@ -157,5 +165,4 @@ function replyWithWaitForWallet(ctx: ConversationContext, html: string) {
       text: ctx.t('button.nwc-wallet'),
     })
     .row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
-  return ctx.reply(html, {reply_markup: keyboard})
 }

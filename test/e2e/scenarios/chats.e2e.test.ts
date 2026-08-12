@@ -331,13 +331,12 @@ test('a valid price is stored and the completed conversation sends a fresh card'
     },
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /set to 123 sats/},
+      {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
       {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
     ],
   })
 
   await expectNoConversations(e2e.db)
-  expect(e2e.tg.of('editMessageText')).toHaveLength(0)
   expectNoErrors(e2e.logs)
 })
 
@@ -360,7 +359,7 @@ for (const price of [0, -5]) {
       },
       telegram: [
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /set to 123 sats/},
+        {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
         {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
       ],
     })
@@ -948,9 +947,7 @@ async function enterChangingPrice(): Promise<void> {
     {
       db: {conversations: {added: 1}},
       telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Changing the price of paid access/},
-        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
+        {method: 'editMessageText', to: USER_A, text: /Changing the price of paid access/},
       ],
     },
   )

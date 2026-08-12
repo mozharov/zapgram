@@ -9,9 +9,15 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {replyWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
-import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
+import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {
+  type ConversationHost,
+  ensureHost,
+  hostFromCallback,
+  joinWizardHtml,
+} from '@telegram/helpers/conversation-host.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -20,11 +26,26 @@ export async function payingInvoice(
   ctx: ConversationContext,
   lnInvoice?: string,
 ) {
-  const returnToParent = () => (lnInvoice ? replyWithWallet(ctx) : replyWithSendMenu(ctx))
-  await ctx.reply(ctx.t('paying-invoice'))
-  const invoice = decodeInvoice(
-    lnInvoice ?? (await waitForInvoice(conversation, ctx, {onCancel: returnToParent})),
-  )
+  const title = ctx.t('paying-invoice')
+  let host: ConversationHost | undefined = hostFromCallback(ctx)
+  const restoreParent = async (target?: ConversationHost) => {
+    const dest = target ?? host
+    if (!dest) return
+    if (lnInvoice) await editHostWithWallet(ctx, dest)
+    else await editHostWithSendMenu(ctx, dest)
+  }
+
+  if (!lnInvoice) {
+    host ??= await ensureHost(ctx, joinWizardHtml(title, ctx.t('wait-for-invoice')))
+  }
+  const paymentRequest =
+    lnInvoice ??
+    (await waitForInvoice(conversation, ctx, {
+      host,
+      html: joinWizardHtml(title, ctx.t('wait-for-invoice')),
+      onCancel: restoreParent,
+    }))
+  const invoice = decodeInvoice(paymentRequest)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
     'Decoded invoice to pay',
@@ -33,12 +54,22 @@ export async function payingInvoice(
   const wallet = await waitForWallet(conversation, ctx, {
     requiredSats: invoice.satoshi,
     flow: 'pay_invoice',
-    onCancel: returnToParent,
+    host,
+    html: host ? joinWizardHtml(title, ctx.t('wait-for-wallet')) : undefined,
+    onCancel: restoreParent,
   })
   const isInternalWallet = wallet === 'internal'
-  await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet, {
-    onCancel: returnToParent,
+  const selectedWallet = ctx.user.nwc
+    ? wallet === 'nwc'
+      ? ctx.t('wait-for-wallet.nwc')
+      : ctx.t('wait-for-wallet.internal')
+    : undefined
+  const reviewHost = await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet, {
+    host,
+    prefixHtml: joinWizardHtml(title, selectedWallet),
+    onCancel: restoreParent,
   })
+  host = host ?? reviewHost
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 
@@ -102,15 +133,21 @@ export async function payingInvoice(
   const [usdSuffix = '', feeUsdSuffix = '', totalUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi, fee, total]),
   )
-  await ctx.reply(
-    ctx.t('paying-invoice.paid', {
-      amount: invoice.satoshi,
-      usdSuffix,
-      fee,
-      feeUsdSuffix,
-      total,
-      totalUsdSuffix,
-    }),
+  await ctx.api.editMessageText(
+    host.chatId,
+    host.messageId,
+    joinWizardHtml(
+      title,
+      selectedWallet,
+      ctx.t('paying-invoice.paid', {
+        amount: invoice.satoshi,
+        usdSuffix,
+        fee,
+        feeUsdSuffix,
+        total,
+        totalUsdSuffix,
+      }),
+    ),
   )
   await replyWithWallet(ctx)
 }
