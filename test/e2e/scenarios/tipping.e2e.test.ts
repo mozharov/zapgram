@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {usersTable} from '@infra/db/schema.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -8,6 +9,8 @@ import {
   groupReply,
   groupReplyToChannel,
   groupText,
+  groupTextAsAnonymousAdmin,
+  groupTextAsChannel,
   privateCallback,
   privateText,
   type TestUpdate,
@@ -261,6 +264,51 @@ test('a mixed-case username resolves to the normalized stored username', async (
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
     ],
   )
+})
+
+// --- Non-identifiable senders (cannot debit a real wallet) ---
+
+test('send-as channel tip is refused with a public temp message (no money moves)', async () => {
+  await seedSenderAndRecipient()
+  const beforeUsers = await e2e.db.select().from(usersTable)
+
+  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupTextAsChannel('/tip 21 @user_b')), {
+    telegram: [
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: null,
+        text: /bot, channel, group, or anonymous profile/,
+      },
+      {method: 'deleteMessages', to: CHAT_GROUP},
+    ],
+  })
+
+  // No fake channel-identity user row; existing users unchanged.
+  expect(await e2e.db.select().from(usersTable)).toEqual(beforeUsers)
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
+test('anonymous admin tip is refused with a public temp message (no money moves)', async () => {
+  await seedSenderAndRecipient()
+
+  await expectDelta(
+    e2e,
+    () => sendAndWaitForTempMessage(groupTextAsAnonymousAdmin('/tip 21 @user_b')),
+    {
+      telegram: [
+        {
+          method: 'sendMessage',
+          to: CHAT_GROUP,
+          receiverUserId: null,
+          text: /bot, channel, group, or anonymous profile/,
+        },
+        {method: 'deleteMessages', to: CHAT_GROUP},
+      ],
+    },
+  )
+
+  expect(errorMessages()).toEqual(['Bot error'])
 })
 
 // --- Refused tips ---
@@ -548,6 +596,16 @@ async function expectRefusedTip(
   await expectDelta(e2e, () => e2e.send(update), {telegram})
   expect(e2e.tg.of('sendMessage').some(call => errorText.test(String(call.text)))).toBe(true)
   expect(errorMessages()).toEqual(['Bot error'])
+}
+
+async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
+  const previousDeletes = e2e.tg.of('deleteMessages').length
+  await e2e.send(update)
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (e2e.tg.of('deleteMessages').length > previousDeletes) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary error message was never deleted')
 }
 
 function notificationTo(userId: number): string {

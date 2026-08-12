@@ -123,7 +123,8 @@ error =
         Please try again in a moment. If you requested chat access, send a new one.
     .no-recipient = <b>⚠️ The recipient is not specified.</b>
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
-    .from-bot = <b>⚠️ You can't use {bot-name} from anonymous profile.</b>
+    .from-bot = <b>⚠️ You can't send from a bot, channel, group, or anonymous profile.</b>
+        Use your personal account.
 
 start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <h1>⚡ {bot-name}</h1>

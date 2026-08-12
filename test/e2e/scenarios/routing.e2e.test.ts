@@ -594,7 +594,9 @@ test('/tip in a private chat does not reach the group tipping handler', async ()
 
 test('an update from a bot account is rejected before a user row is created', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('hello', {from: {is_bot: true}})), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /anonymous profile/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /bot, channel, group, or anonymous profile/},
+    ],
   })
 
   expect(await e2e.db.select().from(usersTable)).toEqual([])

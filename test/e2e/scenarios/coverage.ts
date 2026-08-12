@@ -434,7 +434,14 @@ export const scenarioCoverage = {
       'donation_platform_stats.update',
     ],
     jobs: [],
-    errors: ['insufficient_funds', 'no_recipient', 'to_bot', 'to_yourself', 'user_has_no_wallet'],
+    errors: [
+      'from_bot',
+      'insufficient_funds',
+      'no_recipient',
+      'to_bot',
+      'to_yourself',
+      'user_has_no_wallet',
+    ],
   },
   wallet: {
     routes: [

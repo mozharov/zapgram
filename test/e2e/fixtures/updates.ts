@@ -139,6 +139,42 @@ export function groupReplyToChannel(text: string, opts: CommonOptions = {}): Tes
   return update
 }
 
+/**
+ * Group message sent on behalf of a channel (`send_as` / linked channel identity).
+ * Real human id is not available — only `sender_chat` + a fake `from` for Bot API BC.
+ */
+export function groupTextAsChannel(text: string, opts: CommonOptions = {}): TestUpdate {
+  const update = groupText(text, opts)
+  const message = update.message
+  if (!message) throw new Error('groupTextAsChannel did not create a message')
+  const channel = groupChat('channel')
+  message.sender_chat = channel
+  // Fake sender user (Telegram BC): not a bot, but not a debitable human wallet either.
+  message.from = {
+    id: channel.id,
+    is_bot: false,
+    first_name: channel.title ?? 'Channel',
+  }
+  return update
+}
+
+/**
+ * Group message from an anonymous admin (Group Anonymous Bot + sender_chat = this group).
+ */
+export function groupTextAsAnonymousAdmin(text: string, opts: CommonOptions = {}): TestUpdate {
+  const update = groupText(text, opts)
+  const message = update.message
+  if (!message) throw new Error('groupTextAsAnonymousAdmin did not create a message')
+  message.sender_chat = message.chat
+  message.from = {
+    id: 1087968824,
+    is_bot: true,
+    first_name: 'Group',
+    username: 'GroupAnonymousBot',
+  }
+  return update
+}
+
 export function myChatMember(
   chatType: 'supergroup' | 'channel',
   rights: boolean | ChatMember,

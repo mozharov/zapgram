@@ -1,5 +1,6 @@
 import type {AppLogger} from '@infra/logger.js'
 import type {Context} from 'grammy'
+import {ephemeralReceiverUserId} from './identifiable-sender.js'
 import {replyWithTempMessage} from './temp-message.js'
 
 type ContextWithLog = Context & {log: AppLogger}
@@ -12,15 +13,16 @@ type ContextWithLog = Context & {log: AppLogger}
  * Only successful money movements deserve a public message in a group; failures and usage hints go
  * through here.
  *
- * Telegram has no user to deliver to when the update comes from an anonymous admin or a channel
- * post, so the public temp message stays as the fallback for a refused send.
+ * Anonymous admins, send-as channel, and other non-identifiable senders have no deliverable user
+ * id — skip the ephemeral attempt and fall back to a public temp message (auto-deleted on a
+ * timer). The same temp path is used when Telegram refuses the ephemeral send.
  */
 export async function replyOnlyToSender(
   ctx: ContextWithLog,
   text: string,
   options?: Parameters<typeof replyWithTempMessage>[2],
 ): Promise<void> {
-  const receiverUserId = ctx.from?.id
+  const receiverUserId = ephemeralReceiverUserId(ctx)
   if (receiverUserId !== undefined) {
     const sent = await ctx
       .reply(text, {...options?.other, receiver_user_id: receiverUserId})

@@ -14,7 +14,8 @@ function grammyReplyError() {
 }
 
 function ctxWithLog(partial: {
-  from?: {id: number}
+  from?: {id: number; is_bot?: boolean}
+  msg?: {sender_chat?: {id: number; type: string; title: string}}
   reply?: Context['reply']
   deleteMessages?: Context['deleteMessages']
   log?: Pick<AppLogger, 'warn'>
@@ -73,4 +74,46 @@ test('an update with no sender goes straight to the public temp message', async 
   expect(reply).toHaveBeenCalledWith('nope', undefined)
   await Bun.sleep(20)
   expect(deleteMessages).toHaveBeenCalledWith([9])
+})
+
+test('send-as channel skips ephemeral and uses the public temp message', async () => {
+  const reply = mock(() => sentMessage(11)) as unknown as Context['reply']
+  const deleteMessages = mock(() => Promise.resolve(true as const))
+
+  await replyOnlyToSender(
+    ctxWithLog({
+      from: {id: -100123, is_bot: false},
+      msg: {sender_chat: {id: -100123, type: 'channel', title: 'News'}},
+      reply,
+      deleteMessages,
+    }),
+    'nope',
+    {delayMs: 1},
+  )
+
+  // One public reply only — no receiver_user_id attempt for channel identity.
+  expect(reply).toHaveBeenCalledTimes(1)
+  expect(reply).toHaveBeenCalledWith('nope', undefined)
+  await Bun.sleep(20)
+  expect(deleteMessages).toHaveBeenCalledWith([11])
+})
+
+test('a bot from skips ephemeral and uses the public temp message', async () => {
+  const reply = mock(() => sentMessage(13)) as unknown as Context['reply']
+  const deleteMessages = mock(() => Promise.resolve(true as const))
+
+  await replyOnlyToSender(
+    ctxWithLog({
+      from: {id: 1087968824, is_bot: true},
+      reply,
+      deleteMessages,
+    }),
+    'nope',
+    {delayMs: 1},
+  )
+
+  expect(reply).toHaveBeenCalledTimes(1)
+  expect(reply).toHaveBeenCalledWith('nope', undefined)
+  await Bun.sleep(20)
+  expect(deleteMessages).toHaveBeenCalledWith([13])
 })

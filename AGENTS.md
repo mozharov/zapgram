@@ -52,8 +52,12 @@ but no other member sees it. Those updates carry `message_id: 0` + `ephemeral_me
 Only successful money movements are public in a group. Every failure or usage hint goes through
 `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`), which sends a Telegram ephemeral
 message (`receiver_user_id`) that only the acting member sees and Telegram expires on its own — so
-it is never deleted afterwards. `replyWithTempMessage` stays only as the fallback for senders
-Telegram cannot deliver an ephemeral message to (anonymous admins, channel posts).
+it is never deleted afterwards. Anonymous admins, send-as channel, and other non-identifiable
+senders have no deliverable user: skip ephemeral and use `replyWithTempMessage` (timed delete).
+
+`/tip` (and other attachUser money paths) only debit a real human account. Bots, `sender_chat`
+identities (channel / group / anonymous admin), and Group Anonymous Bot raise `FromBotError` with
+user-facing copy; recipients may still be a channel/group owner via `getUserFromChatCreator`.
 
 ## Dates
 
