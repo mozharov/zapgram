@@ -99,7 +99,7 @@ export function groupText(text: string, opts: CommonOptions = {}): TestUpdate {
 
 /**
  * A command declared with `is_ephemeral`: the group never saw it, so Telegram sends `message_id: 0`
- * plus an `ephemeral_message_id` instead of a normal, deletable message.
+ * plus an `ephemeral_message_id`. Deleted via `deleteEphemeralMessage`, not `deleteMessage`.
  */
 export function groupEphemeralCommand(text: string, opts: CommonOptions = {}): TestUpdate {
   const update = groupText(text, opts)

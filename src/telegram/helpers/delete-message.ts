@@ -10,11 +10,24 @@ type ContextWithLog = Context & {log: AppLogger}
  * missing delete rights, etc. Callers use this for UI cleanup (callback boards, /tip noise);
  * failure must not abort the real work or surface as an unknown bot error in PostHog.
  *
- * An ephemeral command (`is_ephemeral` in setMyCommands) never reached the group, so there is no
- * noise to clean up — and its `message_id` is 0, which `deleteMessage` cannot address anyway.
+ * An ephemeral command (`is_ephemeral` in setMyCommands) is visible only to its sender. Telegram
+ * addresses it by `ephemeral_message_id` (the update's `message_id` is 0), so we delete it with
+ * `deleteEphemeralMessage` instead of `deleteMessage`.
  */
 export async function deleteMessageSafely(ctx: ContextWithLog): Promise<void> {
-  if (ctx.msg?.ephemeral_message_id !== undefined) return
+  const msg = ctx.msg
+  if (msg && msg.ephemeral_message_id !== undefined) {
+    const receiverUserId = msg.receiver_user?.id ?? ctx.from?.id
+    const chatId = ctx.chat?.id ?? msg.chat.id
+    const ephemeralId = msg.ephemeral_message_id
+    if (receiverUserId === undefined || chatId === undefined) return
+    await ctx.api
+      .deleteEphemeralMessage(chatId, receiverUserId, ephemeralId)
+      .catch((error: unknown) => {
+        ctx.log.warn({error}, 'Failed to delete message')
+      })
+    return
+  }
   await ctx.deleteMessage().catch((error: unknown) => {
     ctx.log.warn({error}, 'Failed to delete message')
   })

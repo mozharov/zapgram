@@ -1,15 +1,18 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
 import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
   const view = await loadLiveWalletBalanceView(ctx)
-  return ctx.replyWithRichMessage(
-    {html: ctx.t('wallet', view)},
-    {reply_markup: buildWalletKeyboard(ctx.t)},
+  return showLivingMenu(ctx, () =>
+    ctx.replyWithRichMessage(
+      {html: ctx.t('wallet', view)},
+      {reply_markup: buildWalletKeyboard(ctx.t)},
+    ),
   )
 }
 

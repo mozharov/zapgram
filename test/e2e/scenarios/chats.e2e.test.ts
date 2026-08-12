@@ -109,7 +109,10 @@ for (const type of ['supergroup', 'channel'] as const) {
     })
 
     expect(e2e.tg.last('getChatAdministrators')?.chat_id).toBe(chatId)
-    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([chatRoute.build({chatId})])
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+      chatRoute.build({chatId}),
+      staticCallback.openMenu,
+    ])
     expectNoErrors(e2e.logs)
   })
 }

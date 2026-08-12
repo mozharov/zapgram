@@ -48,28 +48,55 @@ afterEach(async () => {
 const commandCases: {command: string; telegram: {method: string; to: number; text?: RegExp}[]}[] = [
   {
     command: '/start',
-    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/},
+    ],
   },
   {
     command: '/help',
-    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Lightning Network/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Lightning Network/},
+    ],
   },
   // /wallet is the one command whose output cannot distinguish routing from the fallback: the
   // terminal on('message') handler IS walletCommand. The fixture test in fixtures/updates.e2e.test.ts
   // proves command recognition itself with /settings, which has a distinct screen.
-  {command: '/wallet', telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}]},
-  {command: '/settings', telegram: [{method: 'sendMessage', to: USER_A, text: /Settings/}]},
+  {
+    command: '/wallet',
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
+  },
+  {
+    command: '/settings',
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Settings/},
+    ],
+  },
   {
     command: '/chats',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /don't have any chats/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /don't have any chats/},
+    ],
   },
   {
     command: '/subscriptions',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /don't have any subscriptions/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /don't have any subscriptions/},
+    ],
   },
   {
     command: '/donate',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/},
+    ],
   },
 ]
 
@@ -101,6 +128,11 @@ const staticCases: {
   conversation?: boolean
 }[] = [
   {data: staticCallback.wallet, methods: ['editMessageText'], text: /Wallet/},
+  {
+    data: staticCallback.openMenu,
+    methods: ['answerCallbackQuery', 'sendRichMessage'],
+    text: /Wallet/,
+  },
   {data: staticCallback.settings, methods: ['editMessageText'], text: /Settings/},
   {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
   {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
@@ -495,7 +527,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(50)
+  expect(registry).toHaveLength(51)
   expect(covered).toEqual(registry)
 })
 

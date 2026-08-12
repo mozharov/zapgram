@@ -21,6 +21,8 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {markupFromReplyMarkup, serializeBaseMarkup} from '@telegram/helpers/notification-chrome.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -37,9 +39,11 @@ export async function broadcasting(conversation: BotConversation, ctx: Conversat
   )
 
   const confirmHtml = formatBroadcastConfirm(locale, totalCount)
-  const confirmMessage = await ctx.reply(confirmHtml, {
-    reply_markup: buildBroadcastConfirmKeyboard(ctx.t),
-  })
+  const confirmMessage = await showLivingMenu(ctx, () =>
+    ctx.reply(confirmHtml, {
+      reply_markup: buildBroadcastConfirmKeyboard(ctx.t),
+    }),
+  )
   const confirmPrompt = createActivePrompt(confirmMessage, {
     kind: 'text',
     html: confirmHtml,
@@ -55,10 +59,11 @@ export async function broadcasting(conversation: BotConversation, ctx: Conversat
       locale,
       sourceChatId: source.chatId,
       sourceMessageId: source.messageId,
+      sourceReplyMarkup: source.replyMarkup,
     }),
   )
 
-  await ctx.reply(formatBroadcastStarted(locale, n))
+  await showLivingMenu(ctx, () => ctx.reply(formatBroadcastStarted(locale, n)))
   // Kick the queue without blocking the conversation (cron is backup).
   void conversation
     .external(() => broadcastService.processQueue())
@@ -75,9 +80,11 @@ async function waitForLocale(
   ctx: ConversationContext,
 ): Promise<AppLocale> {
   const html = ctx.t('broadcast.pick-locale')
-  const message = await ctx.reply(html, {
-    reply_markup: buildBroadcastLocaleKeyboard(ctx.t),
-  })
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: buildBroadcastLocaleKeyboard(ctx.t),
+    }),
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -112,13 +119,15 @@ async function waitForLocale(
 async function waitForSourceMessage(
   conversation: BotConversation,
   ctx: ConversationContext,
-): Promise<{chatId: number; messageId: number}> {
+): Promise<{chatId: number; messageId: number; replyMarkup: string | null}> {
   const html = ctx.t('broadcast.send-message')
-  const message = await ctx.reply(html, {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+      ]),
+    }),
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -145,7 +154,11 @@ async function waitForSourceMessage(
     }
 
     await clearPromptControls(conversation, prompt)
-    return {chatId: next.chat.id, messageId: source.message_id}
+    return {
+      chatId: next.chat.id,
+      messageId: source.message_id,
+      replyMarkup: serializeBaseMarkup(markupFromReplyMarkup(source.reply_markup)),
+    }
   }
 }
 

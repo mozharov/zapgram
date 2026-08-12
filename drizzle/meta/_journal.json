@@ -113,6 +113,13 @@
       "when": 1786800000000,
       "tag": "0015_admin_broadcast",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1786568212680,
+      "tag": "0016_private_chat_declutter",
+      "breakpoints": true
     }
   ]
 }

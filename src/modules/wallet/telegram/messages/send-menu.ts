@@ -1,6 +1,7 @@
 import {buildSendMenuKeyboard} from '@modules/wallet/telegram/keyboards/send-menu.js'
 import type {BotContext} from '@telegram/context.js'
 import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 
 export function editMessageWithSendMenu(ctx: BotContext) {
   return ctx.editMessageText(ctx.t('send-menu'), {
@@ -17,8 +18,10 @@ export function editHostWithSendMenu(ctx: BotContext, host: ConversationHost) {
 }
 
 export function replyWithSendMenu(ctx: BotContext) {
-  return ctx.reply(ctx.t('send-menu'), {
-    reply_markup: buildSendMenuKeyboard(ctx.t),
-    ...disabledLinkPreview,
-  })
+  return showLivingMenu(ctx, () =>
+    ctx.reply(ctx.t('send-menu'), {
+      reply_markup: buildSendMenuKeyboard(ctx.t),
+      ...disabledLinkPreview,
+    }),
+  )
 }

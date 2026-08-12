@@ -2,6 +2,7 @@ import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '@modules/cha
 import {buildChatsKeyboard} from '@modules/chats/telegram/keyboards/chats.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -18,10 +19,12 @@ export const chatsCommand = async (ctx: BotContext) => {
         callback_data: staticCallback.wallet,
         text: ctx.t('button.back'),
       })
-    return ctx.reply(ctx.t('chats.empty'), {reply_markup: keyboard})
+    return showLivingMenu(ctx, () => ctx.reply(ctx.t('chats.empty'), {reply_markup: keyboard}))
   }
   const chats = await getPaginatedAccessibleChats(ctx.user.id, 1, limit)
-  return ctx.reply(ctx.t('chats'), {
-    reply_markup: buildChatsKeyboard(ctx.t, chats, 1, totalChats > limit),
-  })
+  return showLivingMenu(ctx, () =>
+    ctx.reply(ctx.t('chats'), {
+      reply_markup: buildChatsKeyboard(ctx.t, chats, 1, totalChats > limit),
+    }),
+  )
 }

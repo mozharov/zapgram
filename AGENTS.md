@@ -46,8 +46,8 @@ Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` +
 ## Group messages
 
 `/tip` is registered for group chats with `is_ephemeral: true`: the typed command reaches the bot
-but no other member sees it. Those updates carry `message_id: 0` + `ephemeral_message_id`, so
-`deleteMessageSafely` skips them — never call `deleteMessage` for an ephemeral command.
+but no other member sees it. Those updates carry `message_id: 0` + `ephemeral_message_id`.
+`deleteMessageSafely` deletes them with `deleteEphemeralMessage` (never `deleteMessage` on id 0).
 
 Only successful money movements are public in a group. Every failure or usage hint goes through
 `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`), which sends a Telegram ephemeral

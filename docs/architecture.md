@@ -84,9 +84,9 @@ ignored silently; a bare `@this_bot` mention is the same trigger as `/tip`.
 
 `/tip` is registered for `all_group_chats` with `is_ephemeral: true`, so the command a member types
 is delivered to the bot but stays invisible to the rest of the group and to other bots. Such an
-update arrives with `message_id: 0` and an `ephemeral_message_id`, and there is nothing to clean up
-— `deleteMessageSafely` returns early for it instead of calling `deleteMessage` on id 0. The
-`@zap_gram_bot 21` spelling is not a registered command, so it stays public and is still deleted.
+update arrives with `message_id: 0` and an `ephemeral_message_id`. `deleteMessageSafely` deletes it
+with `deleteEphemeralMessage` (never `deleteMessage` on id 0). The `@zap_gram_bot 21` spelling is
+not a registered command, so it stays public and is still deleted via `deleteMessage`.
 
 Only a successful money movement earns a public message in a group (`notifyGroupTip`). Every
 failure and usage hint goes through `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`),

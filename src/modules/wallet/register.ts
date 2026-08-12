@@ -5,6 +5,7 @@ import {connectNwcCallback} from './telegram/handlers/connect-nwc.js'
 import {disconnectNwcCallback} from './telegram/handlers/disconnect-nwc.js'
 import {groupSettingsCallback} from './telegram/handlers/group-settings-callback.js'
 import {nwcTipsCallback} from './telegram/handlers/nwc-tips.js'
+import {openMenuCallback} from './telegram/handlers/open-menu.js'
 import {sendMenuCallback} from './telegram/handlers/send-menu.js'
 import {settingsCallback} from './telegram/handlers/settings-callback.js'
 import {settingsCommand} from './telegram/handlers/settings-command.js'
@@ -19,6 +20,7 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.command(walletCommands[0], walletCommand)
   privateChat.command(walletCommands[1], settingsCommand)
   privateChat.callbackQuery(staticCallback.wallet, walletCallback)
+  privateChat.callbackQuery(staticCallback.openMenu, openMenuCallback)
   privateChat.callbackQuery(staticCallback.settings, settingsCallback)
   privateChat.callbackQuery(staticCallback.groupSettings, groupSettingsCallback)
   privateChat.callbackQuery(staticCallback.disconnectNwc, disconnectNwcCallback)

@@ -110,8 +110,8 @@ async function notifyOwner(ctx: Context, user: User, type: 'added' | 'removed') 
       text: ctx.t('button.chat-settings'),
     })
   }
-  await ctx.api
-    .sendMessage(
+  await getRuntime()
+    .notifier.send(
       user.id,
       translate(`paid-chat.bot-${type}`, user.languageCode, {
         title: ctx.chat.title,
@@ -119,7 +119,7 @@ async function notifyOwner(ctx: Context, user: User, type: 'added' | 'removed') 
       }),
       {reply_markup: keyboard},
     )
-    .catch((error: unknown) => {
-      ctx.log.error({error}, 'Error sending message to chat owner')
+    .then(sent => {
+      if (!sent) ctx.log.error('Error sending message to chat owner')
     })
 }

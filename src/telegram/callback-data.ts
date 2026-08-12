@@ -315,6 +315,7 @@ export const parameterizedRoutes = [
 /** Static callback_data strings (no parse params). */
 export const staticCallback = {
   wallet: 'wallet',
+  openMenu: 'open-menu',
   settings: 'settings',
   help: 'help',
   cancel: 'cancel',

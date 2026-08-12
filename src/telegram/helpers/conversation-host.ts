@@ -1,4 +1,5 @@
 import type {BotContext, ConversationContext} from '@telegram/context.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import type {InlineKeyboard} from 'grammy'
 import type {InputRichMessage} from 'grammy/types'
 
@@ -34,7 +35,9 @@ export async function replyAsHost(
   html: string,
   replyMarkup?: InlineKeyboard,
 ): Promise<ConversationHost> {
-  const message = await ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview})
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview}),
+  )
   return {chatId: message.chat.id, messageId: message.message_id}
 }
 
@@ -92,5 +95,7 @@ export async function showHostOrReply(
   host?: ConversationHost,
 ): Promise<PromptMessage> {
   if (host) return editHost(ctx, host, html, replyMarkup)
-  return ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview})
+  return showLivingMenu(ctx, () =>
+    ctx.reply(html, {reply_markup: replyMarkup, ...disabledLinkPreview}),
+  )
 }

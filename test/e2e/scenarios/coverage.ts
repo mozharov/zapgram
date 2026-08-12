@@ -446,6 +446,7 @@ export const scenarioCoverage = {
   wallet: {
     routes: [
       'wallet',
+      'open-menu',
       'settings',
       'group-settings',
       'toggle-nwc-tips',

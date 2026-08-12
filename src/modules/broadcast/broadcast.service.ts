@@ -25,6 +25,7 @@ export type BroadcastServiceDeps = {
     toUserId: number,
     fromChatId: number,
     messageId: number,
+    sourceReplyMarkup?: string | null,
   ) => Promise<CopyMessageOutcome>
   notifyAdmin: (adminUserId: number, text: string) => Promise<boolean>
   formatStarted: (locale: AppLocale, totalCount: number) => string
@@ -55,6 +56,7 @@ export function createBroadcastService(deps: BroadcastServiceDeps) {
     locale: AppLocale
     sourceChatId: number
     sourceMessageId: number
+    sourceReplyMarkup?: string | null
   }): Promise<{broadcast: Broadcast; totalCount: number}> {
     const recipientUserIds = await deps.users.listBroadcastRecipientIds({
       locale: input.locale,
@@ -66,6 +68,7 @@ export function createBroadcastService(deps: BroadcastServiceDeps) {
       locale: input.locale,
       sourceChatId: input.sourceChatId,
       sourceMessageId: input.sourceMessageId,
+      sourceReplyMarkup: input.sourceReplyMarkup,
       recipientUserIds,
       now: now(),
     })
@@ -86,7 +89,12 @@ export function createBroadcastService(deps: BroadcastServiceDeps) {
   async function deliverOne(broadcast: Broadcast, userId: number): Promise<void> {
     let outcome: CopyMessageOutcome
     try {
-      outcome = await deps.copyMessage(userId, broadcast.sourceChatId, broadcast.sourceMessageId)
+      outcome = await deps.copyMessage(
+        userId,
+        broadcast.sourceChatId,
+        broadcast.sourceMessageId,
+        broadcast.sourceReplyMarkup,
+      )
     } catch (error) {
       // copyMessage dep should not throw; defensive
       outcome = isTelegramUserUnreachableError(error) ? 'blocked' : 'failed'

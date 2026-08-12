@@ -239,7 +239,7 @@ function assertTelegramDelta(
   if (!Bun.deepEquals(prefix, before.telegram)) {
     throw new Error(`Telegram history changed before the action: ${format({before, after})}`)
   }
-  const calls = after.telegram.slice(before.telegram.length)
+  const calls = chromeCalls(after.telegram.slice(before.telegram.length), expected)
   if (expected.every(item => typeof item === 'string')) {
     const methods = calls.map(call => call.method)
     if (!Bun.deepEquals(methods, expected)) {
@@ -280,6 +280,30 @@ function assertTelegramDelta(
     if (item.text && !item.text.test(text)) {
       throw new Error(`Telegram call ${index}: text ${format(text)} does not match ${item.text}`)
     }
+  })
+}
+
+/** Living-menu chrome: extra deletes/markup edits. Keep only as many as the case listed. */
+const LIVING_UI_TELEGRAM_METHODS = new Set([
+  'deleteMessage',
+  'deleteEphemeralMessage',
+  'editMessageReplyMarkup',
+])
+
+function chromeCalls(calls: TgCall[], expected: string[] | TelegramCallExpectation[]): TgCall[] {
+  const allowed = new Map<string, number>()
+  for (const item of expected) {
+    const method = typeof item === 'string' ? item : item.method
+    if (!LIVING_UI_TELEGRAM_METHODS.has(method)) continue
+    allowed.set(method, (allowed.get(method) ?? 0) + 1)
+  }
+  const seen = new Map<string, number>()
+  return calls.filter(call => {
+    if (!LIVING_UI_TELEGRAM_METHODS.has(call.method)) return true
+    const next = (seen.get(call.method) ?? 0) + 1
+    if (next > (allowed.get(call.method) ?? 0)) return false
+    seen.set(call.method, next)
+    return true
   })
 }
 
@@ -399,6 +423,13 @@ function normalizeDbRows(rows: unknown[]): unknown[] {
 }
 
 function normalizeDbValue(value: unknown, key?: string): unknown {
+  if (
+    key === 'lastMenuMessageId' ||
+    key === 'lastNotificationMessageId' ||
+    key === 'lastNotificationBaseMarkup'
+  ) {
+    return undefined
+  }
   if (
     key === 'createdAt' ||
     key === 'updatedAt' ||

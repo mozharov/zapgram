@@ -4,7 +4,7 @@ import type {Context} from 'grammy'
 import {GrammyError} from 'grammy'
 import {deleteMessageSafely, deleteMessagesSafely} from './delete-message.js'
 
-function grammyDeleteError(method: 'deleteMessage' | 'deleteMessages') {
+function grammyDeleteError(method: 'deleteMessage' | 'deleteMessages' | 'deleteEphemeralMessage') {
   return new GrammyError(
     `Call to '${method}' failed! (400: Bad Request: message can't be deleted for everyone)`,
     {
@@ -18,10 +18,17 @@ function grammyDeleteError(method: 'deleteMessage' | 'deleteMessages') {
 }
 
 function ctxWithLog(
-  partial: Omit<Partial<Context>, 'msg'> & {
+  partial: {
     deleteMessage?: Context['deleteMessage']
     deleteMessages?: Context['deleteMessages']
-    msg?: {ephemeral_message_id?: number}
+    api?: {deleteEphemeralMessage?: Context['api']['deleteEphemeralMessage']}
+    chat?: {id: number}
+    from?: {id: number}
+    msg?: {
+      ephemeral_message_id?: number
+      receiver_user?: {id: number}
+      chat?: {id: number}
+    }
   },
   log: Pick<AppLogger, 'warn'>,
 ) {
@@ -44,14 +51,74 @@ test('deleteMessageSafely resolves without logging when delete succeeds', async 
   expect(warn).not.toHaveBeenCalled()
 })
 
-test('deleteMessageSafely leaves an ephemeral command alone', async () => {
+test('deleteMessageSafely deletes an ephemeral command via deleteEphemeralMessage', async () => {
+  const deleteMessage = mock(() => Promise.resolve(true as const))
+  const deleteEphemeralMessage = mock(() => Promise.resolve(true as const))
+  const warn = mock(() => {})
+
+  await deleteMessageSafely(
+    ctxWithLog(
+      {
+        deleteMessage,
+        api: {deleteEphemeralMessage},
+        chat: {id: -100},
+        from: {id: 42},
+        msg: {ephemeral_message_id: 5, receiver_user: {id: 42}},
+      },
+      {warn},
+    ),
+  )
+
+  expect(deleteEphemeralMessage).toHaveBeenCalledWith(-100, 42, 5)
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect(warn).not.toHaveBeenCalled()
+})
+
+test('deleteMessageSafely no-ops an ephemeral command when no receiver id is available', async () => {
+  const deleteMessage = mock(() => Promise.resolve(true as const))
+  const deleteEphemeralMessage = mock(() => Promise.resolve(true as const))
+  const warn = mock(() => {})
+
+  await deleteMessageSafely(
+    ctxWithLog(
+      {
+        deleteMessage,
+        api: {deleteEphemeralMessage},
+        chat: {id: -100},
+        msg: {ephemeral_message_id: 5},
+      },
+      {warn},
+    ),
+  )
+
+  expect(deleteEphemeralMessage).not.toHaveBeenCalled()
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect(warn).not.toHaveBeenCalled()
+})
+
+test('deleteMessageSafely swallows Telegram 400 from deleteEphemeralMessage', async () => {
+  const error = grammyDeleteError('deleteEphemeralMessage')
+  const deleteEphemeralMessage = mock(() => Promise.reject(error))
   const deleteMessage = mock(() => Promise.resolve(true as const))
   const warn = mock(() => {})
 
-  await deleteMessageSafely(ctxWithLog({deleteMessage, msg: {ephemeral_message_id: 5}}, {warn}))
-
+  await expect(
+    deleteMessageSafely(
+      ctxWithLog(
+        {
+          deleteMessage,
+          api: {deleteEphemeralMessage},
+          chat: {id: -100},
+          from: {id: 42},
+          msg: {ephemeral_message_id: 5},
+        },
+        {warn},
+      ),
+    ),
+  ).resolves.toBeUndefined()
+  expect(deleteEphemeralMessage).toHaveBeenCalledWith(-100, 42, 5)
   expect(deleteMessage).not.toHaveBeenCalled()
-  expect(warn).not.toHaveBeenCalled()
+  expect(warn).toHaveBeenCalledWith({error}, 'Failed to delete message')
 })
 
 test('deleteMessagesSafely swallows Telegram 400 and logs a warning', async () => {

@@ -7,6 +7,7 @@ import {
   telegramUserDistinctId,
 } from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../runtime.js'
 
 export async function startCommand(ctx: BotContext) {
@@ -42,10 +43,12 @@ export async function startCommand(ctx: BotContext) {
     })
   }
 
-  await ctx.replyWithRichMessage(
-    {html: ctx.t('start')},
-    {
-      reply_markup: buildStartKeyboard(ctx.t),
-    },
+  await showLivingMenu(ctx, () =>
+    ctx.replyWithRichMessage(
+      {html: ctx.t('start')},
+      {
+        reply_markup: buildStartKeyboard(ctx.t),
+      },
+    ),
   )
 }

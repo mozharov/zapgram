@@ -403,6 +403,7 @@ test('a wallet callback from another review message cannot pay the current invoi
     {
       db: {conversations: {removed: 1}},
       telegram: [
+        {method: 'deleteMessage', to: USER_A},
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
         {method: 'deleteMessage', to: USER_A},
         {method: 'answerCallbackQuery', text: /Unknown button/},

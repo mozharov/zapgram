@@ -487,7 +487,7 @@ test('an insufficient balance is refused before an invoice is created', async ()
 
 // --- Ephemeral /tip command ---
 
-test('an ephemeral /tip has nothing to delete and still confirms publicly', async () => {
+test('an ephemeral /tip deletes the command and still confirms publicly', async () => {
   await seedSenderAndRecipient()
 
   await expectInternalTransfer(
@@ -495,6 +495,7 @@ test('an ephemeral /tip has nothing to delete and still confirms publicly', asyn
     USER_B,
     '100002 wallet',
     [
+      {method: 'deleteEphemeralMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},
       {
         method: 'sendMessage',
@@ -507,10 +508,11 @@ test('an ephemeral /tip has nothing to delete and still confirms publicly', asyn
   )
 })
 
-test('an ephemeral /tip that fails answers its sender and deletes nothing', async () => {
+test('an ephemeral /tip that fails deletes the command and answers its sender', async () => {
   await seedSenderAndRecipient({senderBalanceSats: TIP_SATS - 1})
 
   await expectRefusedTip(groupEphemeralCommand('/tip 21 @user_b'), /Insufficient funds/, [
+    {method: 'deleteEphemeralMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
     {method: 'sendMessage', to: CHAT_GROUP, receiverUserId: USER_A, text: /Insufficient funds/},
   ])
