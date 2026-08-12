@@ -39,6 +39,9 @@ button =
     .settings = ⚙️ Settings
     .receive = 📩 Receive
     .send = ✉️ Send
+    .subscriptions = 🔐 My subscriptions
+    .chats = 👥 Chats
+    .feature-request = 💡 Suggest a feature
     .open-wallet = 👛 Open wallet
     .how-it-works = ℹ️ How it works
     .enable-nwc-tips = ⚡️ Use NWC for tips in groups
@@ -266,7 +269,7 @@ settings = <b>⚙️ Settings</b>
     If the connected wallet is unavailable during a payment, the transaction will fail. Use {bot-name} Wallet if keeping the connected wallet online is inconvenient for you.
 
     <i>Use /help to learn more.</i>
-    .groups = <b>👥 Groups and channels</b>
+    .groups = <b>👥 Chats</b>
         You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
         <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below (or <code>/chats</code>). Adding the bot alone does not enable paid access.

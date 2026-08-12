@@ -1,5 +1,5 @@
 import type {Chat, Subscription} from '@infra/db/types.js'
-import {subscriptionRoute, subscriptionsPageRoute} from '@telegram/callback-data.js'
+import {staticCallback, subscriptionRoute, subscriptionsPageRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -31,5 +31,8 @@ export function buildSubscriptionsKeyboard(
       text: t('button.next'),
     })
   }
-  return keyboard
+  return keyboard.row({
+    callback_data: staticCallback.wallet,
+    text: t('button.back'),
+  })
 }

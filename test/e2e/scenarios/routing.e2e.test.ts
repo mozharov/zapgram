@@ -100,7 +100,7 @@ const staticCases: {
   {data: staticCallback.wallet, methods: ['editMessageText'], text: /Wallet/},
   {data: staticCallback.settings, methods: ['editMessageText'], text: /Settings/},
   {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
-  {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Groups and channels/},
+  {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
   {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
   {
     data: staticCallback.sendToUser,
@@ -163,6 +163,12 @@ const staticCases: {
     data: staticCallback.donationCustomPercent,
     methods: ['answerCallbackQuery', 'sendMessage'],
     text: /auto-donation percent|percent \(0/,
+    conversation: true,
+  },
+  {
+    data: staticCallback.featureRequest,
+    methods: ['answerCallbackQuery', 'sendMessage'],
+    text: /What should we build/,
     conversation: true,
   },
   // Conversation-only feature-request fund buttons.
@@ -486,7 +492,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(49)
+  expect(registry).toHaveLength(50)
   expect(covered).toEqual(registry)
 })
 

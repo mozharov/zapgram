@@ -16,7 +16,7 @@ export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
         text: ctx.t('button.add-chat'),
       })
       .row({
-        callback_data: staticCallback.groupSettings,
+        callback_data: staticCallback.wallet,
         text: ctx.t('button.back'),
       })
     return ctx.editMessageText(ctx.t('chats.empty'), {reply_markup: keyboard})

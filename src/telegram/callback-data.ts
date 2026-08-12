@@ -334,6 +334,7 @@ export const staticCallback = {
   donateMonthlyMenu: 'donate-monthly-menu',
   donateMonthlyDisable: 'donate-monthly-disable',
   donateMonthlyCustom: 'donate-monthly-custom',
+  featureRequest: 'feature-request',
   featureFundSkip: 'feature-fund-skip',
   featureFundCustom: 'feature-fund-custom',
 } as const

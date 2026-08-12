@@ -3,14 +3,20 @@ import {
   getUserActiveSubscriptionsCount,
 } from '@modules/subscriptions/repository.js'
 import {buildSubscriptionsKeyboard} from '@modules/subscriptions/telegram/keyboards/subscriptions.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export const subscriptionsCommand = async (ctx: BotContext) => {
   const limit = getRuntime().config.chatsPerPage
   const totalSubscriptions = await getUserActiveSubscriptionsCount(ctx.user.id)
 
-  if (totalSubscriptions === 0) return ctx.reply(ctx.t('subscriptions.empty'))
+  if (totalSubscriptions === 0) {
+    return ctx.reply(ctx.t('subscriptions.empty'), {
+      reply_markup: new InlineKeyboard().text(ctx.t('button.back'), staticCallback.wallet),
+    })
+  }
 
   const subscriptions = await getUserActiveSubscriptions(ctx.user.id, 1, limit)
   return ctx.reply(ctx.t('subscriptions'), {

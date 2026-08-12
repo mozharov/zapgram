@@ -189,15 +189,28 @@ test('without a connected NWC wallet the screen shows one balance line', async (
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null})
 })
 
-test('the wallet screen offers receive, send, settings, help and support', async () => {
+test('the wallet screen exposes every private user section without commands', async () => {
   await e2e.send(privateCommand('/wallet'))
 
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
     'create-invoice',
     'send-menu',
+    'subscriptions:1',
+    'group-settings',
     'settings',
     'help',
     'donate',
+    'feature-request',
+  ])
+  expect(buttonTextsOf(e2e.tg.last('sendMessage'))).toEqual([
+    '📩 Receive',
+    '✉️ Send',
+    '🔐 My subscriptions',
+    '👥 Chats',
+    '⚙️ Settings',
+    'ℹ️ Help',
+    '💚 Support project',
+    '💡 Suggest a feature',
   ])
 })
 
@@ -212,7 +225,6 @@ test('/settings offers connecting a wallet and nothing that needs one', async ()
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
     'connect-nwc',
     'group-settings',
-    'donate',
     'wallet',
   ])
   expectNoErrors(e2e.logs)
@@ -225,7 +237,6 @@ test('the settings button renders the same screen in place', async () => {
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     'connect-nwc',
     'group-settings',
-    'donate',
     'wallet',
   ])
   expectNoErrors(e2e.logs)
@@ -261,11 +272,11 @@ test('toggling NWC tips twice puts the column back', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('group settings opens the groups screen with paid chats and a way back', async () => {
+test('chats opens the common chat screen with paid chats and a way back to wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('group-settings')), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Groups and channels/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Chats/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'settings'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 

@@ -13,7 +13,7 @@ export async function groupSettingsCallback(ctx: BotContext) {
       text: ctx.t('button.paid-chats'),
     })
     .row({
-      callback_data: staticCallback.settings,
+      callback_data: staticCallback.wallet,
       text: ctx.t('button.back'),
     })
 
