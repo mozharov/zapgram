@@ -1,5 +1,4 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
-import {msatsToSats} from '@core/money/sats.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -19,18 +18,14 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
-import {
-  type FundedWallets,
-  fundedWalletsForAmount,
-  readWalletBalances,
-  type WalletBalances,
-} from './funded-wallets.js'
+import {type FundedWallets, fundedWalletsForAmount, readWalletBalances} from './funded-wallets.js'
 
 export type WalletSelectFlow = 'pay_invoice' | 'tip' | 'create_invoice'
 
 export type WalletSelection = {
   wallet: 'internal' | 'nwc'
   nwcBalanceError: boolean
+  host?: ConversationHost
 }
 
 export async function waitForWallet(
@@ -66,6 +61,19 @@ export async function waitForWallet(
         })
         throw new InsufficientFundsError()
       }
+    }
+    if (flow === 'pay_invoice') {
+      return pickWallet(conversation, ctx, {
+        ...opts,
+        flow,
+        requiredSats,
+        nwcBalanceError: false,
+        html: opts?.html ?? ctx.t('wait-for-wallet.pay-invoice'),
+        keyboard: walletKeyboard(ctx, {
+          copyText: opts?.copyText,
+          funded: {internal: true, nwc: false, nwcBalanceError: false},
+        }),
+      })
     }
     captureBotEvent(posthog, 'wallet_resolved', {
       flow,
@@ -132,7 +140,6 @@ export async function waitForWallet(
       keyboard: walletKeyboard(ctx, {
         copyText: opts?.copyText,
         funded,
-        balances,
       }),
     })
   }
@@ -161,6 +168,7 @@ async function pickWallet(
   },
 ): Promise<WalletSelection> {
   const message = await showHostOrReply(ctx, opts.html, opts.keyboard, opts.host)
+  const pickedHost = {chatId: message.chat.id, messageId: message.message_id}
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html: opts.html,
@@ -182,11 +190,8 @@ async function pickWallet(
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      if (opts.host) await opts.onCancel?.(opts.host)
-      else {
-        await deactivatePrompt(conversation, prompt, cancelled)
-        await opts.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
-      }
+      if (opts.onCancel) await opts.onCancel(opts.host ?? pickedHost)
+      else await deactivatePrompt(conversation, prompt, cancelled)
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -196,11 +201,6 @@ async function pickWallet(
     await next.reply(next.t('conversation-state.use-buttons'))
   }
 
-  if (!opts.host) {
-    if (wallet === 'nwc') await ctx.reply(ctx.t('wait-for-wallet.nwc'))
-    else await ctx.reply(ctx.t('wait-for-wallet.internal'))
-  }
-
   captureBotEvent(getRuntime().posthog, 'wallet_resolved', {
     flow: opts.flow,
     selection: 'manual',
@@ -208,7 +208,7 @@ async function pickWallet(
     required_sats: opts.requiredSats,
     nwc_balance_error: opts.nwcBalanceError,
   })
-  return {wallet, nwcBalanceError: opts.nwcBalanceError}
+  return {wallet, nwcBalanceError: opts.nwcBalanceError, host: pickedHost}
 }
 
 function walletKeyboard(
@@ -216,7 +216,6 @@ function walletKeyboard(
   opts?: {
     copyText?: string
     funded?: FundedWallets
-    balances?: WalletBalances
   },
 ) {
   const keyboard = new InlineKeyboard()
@@ -224,16 +223,8 @@ function walletKeyboard(
 
   const offerInternal = opts?.funded?.internal ?? true
   const offerNwc = opts?.funded?.nwc ?? true
-  const internalText =
-    opts?.balances && offerInternal
-      ? ctx.t('button.internal-wallet-with-balance', {
-          balance: msatsToSats(opts.balances.internalMsats),
-        })
-      : ctx.t('button.internal-wallet')
-  const nwcText =
-    opts?.balances && offerNwc && opts.balances.nwcMsats !== null
-      ? ctx.t('button.nwc-wallet-with-balance', {balance: msatsToSats(opts.balances.nwcMsats)})
-      : ctx.t('button.nwc-wallet')
+  const internalText = ctx.t('button.internal-wallet')
+  const nwcText = ctx.t('button.nwc-wallet')
 
   if (offerInternal && offerNwc) {
     keyboard.row(

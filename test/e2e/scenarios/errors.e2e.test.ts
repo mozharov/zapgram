@@ -620,7 +620,7 @@ function payButton(): string {
       return markup?.inline_keyboard?.flat() ?? []
     })
     .map(button => button.callback_data)
-    .filter((data): data is string => typeof data === 'string' && data.startsWith('pay:'))
+    .filter((data): data is string => data === 'internal' || Boolean(data?.startsWith('pay:')))
   const button = buttons.at(-1)
   if (!button) throw new Error('Pay button not found')
   return button

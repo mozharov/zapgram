@@ -1,5 +1,6 @@
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {getRuntime} from '../../runtime.js'
+import {disabledLinkPreview} from './conversation-host.js'
 import {removeInlineKeyboardById} from './keyboard.js'
 
 type PromptMessage = {
@@ -121,11 +122,12 @@ async function deactivatePromptOnce(prompt: ActivePrompt, state: PromptEndState)
         prompt.chatId,
         prompt.messageId,
         {html},
-        {reply_markup: {inline_keyboard: []}},
+        {reply_markup: {inline_keyboard: []}, ...disabledLinkPreview},
       )
     } else {
       await bot.api.editMessageText(prompt.chatId, prompt.messageId, html, {
         reply_markup: {inline_keyboard: []},
+        ...disabledLinkPreview,
       })
     }
     return

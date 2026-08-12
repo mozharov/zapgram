@@ -1,6 +1,6 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
-import type {ConversationHost} from '@telegram/helpers/conversation-host.js'
+import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
 import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
@@ -32,7 +32,7 @@ export async function editMessageWithWallet(ctx: BotContext) {
   const view = await buildWalletBalanceView(ctx, ctx.user.wallet.balance)
   return ctx.editMessageText(
     {html: ctx.t('wallet', view)},
-    {reply_markup: buildWalletKeyboard(ctx.t)},
+    {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
   )
 }
 
@@ -42,7 +42,7 @@ export async function editHostWithWallet(ctx: BotContext, host: ConversationHost
     host.chatId,
     host.messageId,
     {html: ctx.t('wallet', view)},
-    {reply_markup: buildWalletKeyboard(ctx.t)},
+    {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
   )
 }
 

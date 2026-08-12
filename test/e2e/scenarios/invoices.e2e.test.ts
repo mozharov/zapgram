@@ -39,7 +39,7 @@ export const COVERS = scenarioCoverage.invoices
  * - a conversation writes exactly one `conversations` row, keyed by chat. It appears when the
  *   conversation is entered and is gone the moment it ends, however it ends.
  *
- * NWC is never connected here, so `waitForWallet` resolves to the internal wallet without asking.
+ * NWC is never connected here, so paying an invoice offers only the internal wallet button.
  */
 
 const AMOUNT = 1000
@@ -48,8 +48,6 @@ const MEMO = 'coffee'
 const MEMO_FOOTER = 'Powered by t.me/zap_gram_bot'
 const PENDING_SATS = 21
 const FOREIGN_SATS = 100
-/** LNbits reserves max(2000 msat, 1%) on a foreign invoice; 100 sats hits the floor. */
-const FOREIGN_FEE_SATS = 2
 
 let e2e: E2E
 
@@ -217,9 +215,9 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
 
 // --- Paying an invoice ---
 
-test('a message containing a bolt11 opens the review with a pay button', async () => {
+test('a message containing a bolt11 opens invoice details and the wallet picker', async () => {
   // Minted before the window: issuing it is an LNbits event, and the point here is what the
-  // *message* does. Balance is checked before review so the payer must be able to cover amount.
+  // *message* does. Balance is checked before a wallet can be offered.
   credit(USER_A, 1000)
   const invoice = foreignInvoice()
 
@@ -235,11 +233,10 @@ test('a message containing a bolt11 opens the review with a pay button', async (
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(String(review?.text)).toMatch(/Created:/)
   expect(String(review?.text)).not.toMatch(/Created at:/)
+  expect(String(review?.text)).toMatch(/Select a wallet to pay this invoice/)
+  expect(String(review?.text)).not.toMatch(/Expires:[\s\S]*?<\/b>\n{3,}<blockquote/)
   expect(review?.link_preview_options).toEqual({is_disabled: true})
-  // The pay button carries a timestamp so a button from an earlier review cannot pay this one.
-  const buttons = keyboardOf(review)
-  expect(buttons[0]).toMatch(/^pay:\d+$/)
-  expect(buttons[1]).toBe('cancel')
+  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
@@ -259,33 +256,35 @@ test('an invoice pasted from Send is deleted and folded into the host review', a
 
   const review = e2e.tg.last('editMessageText')
   expect(String(review?.text)).toMatch(/issued elsewhere/)
+  expect(String(review?.text)).toMatch(/Select a wallet to pay this invoice/)
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(review?.link_preview_options).toEqual({is_disabled: true})
+  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
-test('an invoice the bot issued itself is reviewed with no fee and no fee-reserve lookup', async () => {
+test('an invoice the bot issued itself is paid without a fee-reserve lookup', async () => {
   const pending = await seedRecipientInvoice()
   credit(USER_A, 1000)
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(pending.paymentRequest))
+  await e2e.send(confirmWallet())
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
+  const receipt = String(e2e.tg.last('editMessageText')?.text)
+  expect(receipt).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
   expect(lnPathsSince(mark)).not.toContain('GET /api/v1/payments/fee-reserve')
   expectNoErrors(e2e.logs)
 })
 
-test('a foreign invoice is reviewed with the fee reserve LNbits quotes for it', async () => {
+test('paying a foreign invoice reports the fee on the receipt', async () => {
   credit(USER_A, 1000)
-  const mark = e2e.ln.requests.length
-
   await e2e.send(privateText(foreignInvoice().bolt11))
+  await e2e.send(confirmWallet())
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
-    new RegExp(`Fee: <b>${FOREIGN_FEE_SATS} sats(?: \\(\\$[^)]+\\))?</b>`),
-  )
-  expect(lnPathsSince(mark)).toContain('GET /api/v1/payments/fee-reserve')
+  const receipt = String(e2e.tg.last('editMessageText')?.text)
+  expect(receipt).toMatch(/Fee: <b>\d+ sats(?: \(\$[^)]+\))?<\/b>/)
+  expect(receipt).toContain('Wallet: <b>ZapGram</b>')
   expectNoErrors(e2e.logs)
 })
 
@@ -295,7 +294,7 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
   await e2e.send(privateText(pending.paymentRequest))
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => e2e.send(payButton()), {
+  await expectDelta(e2e, () => e2e.send(confirmWallet()), {
     db: {pendingInvoices: {removed: 1}, conversations: {removed: 1}},
     lnbits: {
       balances: {'100001 wallet': -PENDING_SATS, '100002 wallet': PENDING_SATS},
@@ -321,6 +320,11 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
   )
   expect(receipt).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
   expect(receipt).toMatch(new RegExp(`Total: <b>${PENDING_SATS} sats(?: \\(\\$[^)]+\\))?</b>`))
+  expect(receipt).toContain('Wallet: <b>ZapGram</b>')
+  expect(receipt).toContain('Description: <b>E2E pending invoice</b>')
+  expect(receipt).toContain('<blockquote expandable>')
+  expect(receipt).not.toContain('Paying Lightning invoice')
+  expect(e2e.tg.last('editMessageText')?.link_preview_options).toEqual({is_disabled: true})
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })
@@ -367,7 +371,7 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
   e2e.ln.state.payInvoice({payerWallet: walletOf(USER_A), bolt11: pending.paymentRequest})
   await e2e.send(privateText(pending.paymentRequest))
 
-  await expectDelta(e2e, () => e2e.send(payButton()), {
+  await expectDelta(e2e, () => e2e.send(confirmWallet()), {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'answerCallbackQuery'},
@@ -388,14 +392,14 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
   ])
 })
 
-test('a pay callback from another review message cannot pay the current invoice', async () => {
+test('a wallet callback from another review message cannot pay the current invoice', async () => {
   credit(USER_A, 1000)
   await e2e.send(privateText(foreignInvoice().bolt11))
   const currentReviewId = requiredPromptMessageId()
 
   await expectDelta(
     e2e,
-    () => e2e.send(privateCallback(payButtonData(), {messageId: currentReviewId + 1000})),
+    () => e2e.send(privateCallback('internal', {messageId: currentReviewId + 1000})),
     {
       db: {conversations: {removed: 1}},
       telegram: [
@@ -444,7 +448,7 @@ const cancelCases: {
   },
   {
     conversation: payingInvoice.name,
-    step: 'review',
+    step: 'wallet',
     reach: enterPayInvoiceAtReview,
     lifecyclePrompt: 'host',
     // This fixture reaches review by pasting an invoice, so no Send screen was active before it.
@@ -1047,15 +1051,9 @@ function credit(userId: number, sats: number): void {
   e2e.ln.state.credit(walletOf(userId).id, sats * 1000)
 }
 
-/** The review keyboard's pay button, whose data carries a timestamp and cannot be constructed. */
-function payButton(): Update {
-  return privateCallback(payButtonData(), {messageId: requiredPromptMessageId()})
-}
-
-function payButtonData(): string {
-  const data = keyboardOf(e2e.tg.last('sendMessage'))[0]
-  if (!data?.startsWith('pay:')) throw new Error(`Expected a pay button, got ${String(data)}`)
-  return data
+/** The wallet picker button that now both chooses the rail and pays. */
+function confirmWallet(): Update {
+  return privateCallback('internal', {messageId: requiredPromptMessageId()})
 }
 
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {

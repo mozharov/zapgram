@@ -6,7 +6,10 @@ import {
   claimPendingInvoiceByPaymentRequest,
   getPendingInvoiceBy,
 } from '@modules/invoices/repository.js'
-import {invoiceReviewHtml} from '@modules/invoices/telegram/helpers/invoice-review.js'
+import {
+  invoiceReviewHtml,
+  visibleInvoiceDescription,
+} from '@modules/invoices/telegram/helpers/invoice-review.js'
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
@@ -23,6 +26,7 @@ import {
 import {copyableText} from '@telegram/helpers/copy-text.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
+import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function payingInvoice(
@@ -66,40 +70,25 @@ export async function payingInvoice(
   })
 
   if (invoice.hasExpired()) {
-    const reviewHost = await waitForInvoiceReview(conversation, ctx, invoice, true, {
+    await waitForInvoiceReview(conversation, ctx, invoice, true, {
       host,
       prefixHtml: host ? title : undefined,
       onCancel: restoreParent,
     })
-    host = host ?? reviewHost
     return
   }
 
-  if (ctx.user.nwc) {
-    host ??= await ensureHost(ctx, joinWizardHtml(title, details))
-  }
-
-  const {wallet, nwcBalanceError} = await waitForWallet(conversation, ctx, {
+  const selection = await waitForWallet(conversation, ctx, {
     requiredSats: invoice.satoshi,
     flow: 'pay_invoice',
     host,
-    html: host ? joinWizardHtml(title, details, ctx.t('wait-for-wallet')) : undefined,
+    html: joinWizardHtml(details, ctx.t('wait-for-wallet.pay-invoice')),
     copyText: copyableText(invoice.paymentRequest),
     onCancel: restoreParent,
   })
+  const {wallet} = selection
+  host = host ?? selection.host
   const isInternalWallet = wallet === 'internal'
-  const selectedWallet = ctx.user.nwc
-    ? wallet === 'nwc'
-      ? ctx.t('wait-for-wallet.nwc')
-      : ctx.t('wait-for-wallet.internal')
-    : undefined
-  const nwcNote = nwcBalanceError ? ctx.t('wait-for-wallet.nwc-unreachable') : undefined
-  const reviewHost = await waitForInvoiceReview(conversation, ctx, invoice, isInternalWallet, {
-    host,
-    prefixHtml: joinWizardHtml(title, selectedWallet, nwcNote),
-    onCancel: restoreParent,
-  })
-  host = host ?? reviewHost
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 
@@ -158,27 +147,36 @@ export async function payingInvoice(
     user: ctx.user,
   })
 
+  if (!host) throw new Error('Paying invoice finished without a host message')
+
   const fee = msatsToSats(feesPaid)
   const total = msatsToSats(invoice.millisatoshi + feesPaid)
+  const description = visibleInvoiceDescription(invoice.description)
   const [usdSuffix = '', feeUsdSuffix = '', totalUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi, fee, total]),
   )
-  await ctx.api.editMessageText(
-    host.chatId,
-    host.messageId,
-    joinWizardHtml(
-      title,
-      selectedWallet,
-      ctx.t('paying-invoice.paid', {
-        amount: invoice.satoshi,
-        usdSuffix,
-        fee,
-        feeUsdSuffix,
-        total,
-        totalUsdSuffix,
-      }),
-    ),
-    disabledLinkPreview,
-  )
+  const paidHtml = ctx.t('paying-invoice.paid', {
+    amount: invoice.satoshi,
+    usdSuffix,
+    fee,
+    feeUsdSuffix,
+    total,
+    totalUsdSuffix,
+    wallet,
+    description,
+    hasDescription: (!!description).toString(),
+    invoice: invoice.paymentRequest,
+  })
+  await ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
+    reply_markup: paidKeyboard(ctx, invoice.paymentRequest),
+    ...disabledLinkPreview,
+  })
   await replyWithWallet(ctx)
+}
+
+function paidKeyboard(ctx: ConversationContext, paymentRequest: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard()
+  const copyText = copyableText(paymentRequest)
+  if (copyText) keyboard.copyText(ctx.t('button.copy-invoice'), copyText)
+  return keyboard
 }

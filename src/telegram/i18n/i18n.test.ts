@@ -59,8 +59,8 @@ describe('created lightning invoice copy', () => {
       usdSuffix: '',
       fee: 'no',
       feeUsdSuffix: '',
-      description: 'Powered by t.me/zap_gram_bot',
-      hasDescription: 'true',
+      description: '',
+      hasDescription: 'false',
       createdDate: expiresAt,
       expiryDate: expiresAt,
       hasExpired: 'false',
@@ -70,7 +70,27 @@ describe('created lightning invoice copy', () => {
     expect(message).not.toContain('Created at:')
     expect(message).toContain('<blockquote expandable>')
     expect(message).toContain('<code>lnbc1test</code>')
-    expect(message).toContain('Powered by t.me/zap_gram_bot')
+    expect(message).not.toMatch(/Expires:[\s\S]*?<\/b>\n{3,}<blockquote/)
+  })
+
+  test('paid invoice copy names the wallet and does not keep the paying title', () => {
+    const message = translate('paying-invoice.paid', 'en', {
+      amount: 1000,
+      usdSuffix: '',
+      fee: 0,
+      feeUsdSuffix: '',
+      total: 1000,
+      totalUsdSuffix: '',
+      wallet: 'internal',
+      description: 'coffee',
+      hasDescription: 'true',
+      invoice: 'lnbc1test',
+    })
+    expect(message).toContain('✅ Invoice paid.')
+    expect(message).not.toContain('Paying Lightning invoice')
+    expect(message).toContain('Wallet: <b>ZapGram</b>')
+    expect(message).toContain('Description: <b>coffee</b>')
+    expect(message).toContain('<blockquote expandable>')
   })
 
   test('english expiry label does not stack another at onto the date entity', () => {

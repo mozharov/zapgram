@@ -58,9 +58,7 @@ button =
     .pay-invoice = ⚡️ Оплатить Lightning счёт
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
-    .nwc-wallet-with-balance = ⚡️ NWC · {$balance} сат
     .internal-wallet = 🤖 {bot-name}
-    .internal-wallet-with-balance = 🤖 {bot-name} · {$balance} сат
     .confirm-pay-invoice = 📤 Оплатить счёт
     .skip = ➡️ Пропустить
     .chat-settings = ⚙️ Настройки чата
@@ -329,6 +327,7 @@ wait-for-wallet = <b>👛 Выбери кошелёк</b>
     .auto-only-internal = <b>🤖 Баланса достаточно только на кошельке {bot-name}, поэтому он выбран автоматически.</b>
     .auto-only-nwc = <b>⚡️ Баланса достаточно только на NWC-кошельке, поэтому он выбран автоматически.</b>
     .nwc-unreachable = <b>⚠️ Не удалось подключиться к NWC-кошельку.</b>
+    .pay-invoice = <b>👛 Выбери кошелёк для оплаты счёта</b>
 
 sats-received = <b>📩 Тебе пришло {$amount} сат{$usdSuffix}</b>.
     {$username -> 
@@ -347,21 +346,19 @@ wait-for-invoice-review = <b>ℹ️ Проверка счёта</b>
         {$hasDescription ->
         [true] Описание: <b>{$description}</b>
         <i></i>
-        *[other] <i></i>
-        }{$fee -> 
-        [no] <i></i>
+        *[other]{""}
+        }{$fee ->
+        [no]{""}
         *[other] Комиссия: <b>{$fee} сат{$feeUsdSuffix}</b>
         <i></i>
         }Дата создания: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
-        [no] <i></i>
+        [no]{""}
         *[other] Срок действия: <b>{TGTIME($expiryDate, format: "Dt")}</b>
-        <i></i>
-        }
-
-        {$hasExpired ->
-        [true] <b>⚠️ Срок действия счёта истёк.</b>
-        *[other] <i></i>
+        }{$hasExpired ->
+        [true]
+        <b>⚠️ Срок действия счёта истёк.</b>
+        *[other]{""}
         }
 
         <blockquote expandable><code>{$invoice}</code></blockquote>
@@ -381,6 +378,16 @@ paying-invoice = <b>🧾 Оплата счёта Lightning...</b>
         Сумма платежа: <b>{$amount} сат{$usdSuffix}</b>
         Комиссия: <b>{$fee} сат{$feeUsdSuffix}</b>
         Итого: <b>{$total} сат{$totalUsdSuffix}</b>
+        {$wallet ->
+        [nwc] Кошелёк: <b>NWC</b>
+        *[internal] Кошелёк: <b>{bot-name}</b>
+        }
+        {$hasDescription ->
+        [true] Описание: <b>{$description}</b>
+        <i></i>
+        *[other]{""}
+        }
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 creating-invoice = <b>🧾 Создание счёта Lightning...</b>
     .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>

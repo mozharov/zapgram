@@ -58,9 +58,7 @@ button =
     .pay-invoice = ⚡️ Pay Lightning Invoice
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
-    .nwc-wallet-with-balance = ⚡️ NWC · {$balance} sats
     .internal-wallet = 🤖 {bot-name}
-    .internal-wallet-with-balance = 🤖 {bot-name} · {$balance} sats
     .confirm-pay-invoice = 📤 Pay Invoice
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
@@ -329,6 +327,7 @@ wait-for-wallet = <b>👛 Select Wallet</b>
     .auto-only-internal = <b>🤖 Only the {bot-name} wallet has enough balance, so it was selected automatically.</b>
     .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
     .nwc-unreachable = <b>⚠️ Couldn't reach the connected NWC wallet.</b>
+    .pay-invoice = <b>👛 Select a wallet to pay this invoice</b>
 
 sats-received = <b>📩 You received {$amount} sats{$usdSuffix}</b>.
     {$username -> 
@@ -347,21 +346,19 @@ wait-for-invoice-review = <b>ℹ️ Invoice review</b>
         {$hasDescription ->
         [true] Description: <b>{$description}</b>
         <i></i>
-        *[other] <i></i>
-        }{$fee -> 
-        [no] <i></i>
+        *[other]{""}
+        }{$fee ->
+        [no]{""}
         *[other] Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         <i></i>
         }Created: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
-        [no] <i></i>
+        [no]{""}
         *[other] Expires: <b>{TGTIME($expiryDate, format: "Dt")}</b>
-        <i></i>
-        }
-
-        {$hasExpired ->
-        [true] <b>⚠️ Invoice expired.</b>
-        *[other] <i></i>
+        }{$hasExpired ->
+        [true]
+        <b>⚠️ Invoice expired.</b>
+        *[other]{""}
         }
 
         <blockquote expandable><code>{$invoice}</code></blockquote>
@@ -381,6 +378,16 @@ paying-invoice = <b>🧾 Paying Lightning invoice...</b>
         Payment amount: <b>{$amount} sats{$usdSuffix}</b>
         Fee: <b>{$fee} sats{$feeUsdSuffix}</b>
         Total: <b>{$total} sats{$totalUsdSuffix}</b>
+        {$wallet ->
+        [nwc] Wallet: <b>NWC</b>
+        *[internal] Wallet: <b>{bot-name}</b>
+        }
+        {$hasDescription ->
+        [true] Description: <b>{$description}</b>
+        <i></i>
+        *[other]{""}
+        }
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
     .created = Amount: <b>{$amount} sats{$usdSuffix}</b>

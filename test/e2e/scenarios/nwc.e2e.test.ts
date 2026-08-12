@@ -262,7 +262,7 @@ test('wallet selection ignores text and accepts a button only from its own promp
   expectNoErrors(e2e.logs)
 })
 
-test('paying an invoice shows decoded details and funded wallet balances before the picker', async () => {
+test('paying an invoice shows decoded details before the wallet picker', async () => {
   await connectNwc()
   creditInternal(USER_A, 2000)
   const invoice = foreignInvoice(100)
@@ -272,13 +272,13 @@ test('paying an invoice shows decoded details and funded wallet balances before 
 
   const prompt = e2e.tg.last('editMessageText')
   expect(String(prompt?.text)).toMatch(/Amount: <b>100 sats/)
-  expect(String(prompt?.text)).toMatch(/Select Wallet/)
+  expect(String(prompt?.text)).toMatch(/Select a wallet to pay this invoice/)
   expect(String(prompt?.text)).toContain('<blockquote expandable>')
-  expect(String(prompt?.text)).toMatch(/Powered by t\.me\/zap_gram_bot/)
+  expect(String(prompt?.text)).not.toMatch(/Powered by t\.me\/zap_gram_bot/)
+  expect(String(prompt?.text)).not.toMatch(/Description:/)
   expect(prompt?.link_preview_options).toEqual({is_disabled: true})
   expect(callbackDataOf(prompt)).toEqual(['internal', 'nwc', 'cancel'])
-  expect(buttonTextsOf(prompt).join('\n')).toMatch(/ZapGram · 2\D?000 sats/)
-  expect(buttonTextsOf(prompt).join('\n')).toMatch(/NWC · 5\D?000 sats/)
+  expect(buttonTextsOf(prompt)).toEqual(expect.arrayContaining(['🤖 ZapGram', '⚡️ NWC']))
   expectNoErrors(e2e.logs)
 })
 
@@ -291,7 +291,7 @@ test('paying an invoice does not offer a wallet that cannot cover it', async () 
 
   const prompt = e2e.tg.last('editMessageText')
   expect(callbackDataOf(prompt)).toEqual(['nwc', 'cancel'])
-  expect(buttonTextsOf(prompt).join('\n')).toMatch(/NWC · 5\D?000 sats/)
+  expect(buttonTextsOf(prompt)).toContain('⚡️ NWC')
   expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/ZapGram/)
   expectNoErrors(e2e.logs)
 })
@@ -308,8 +308,8 @@ test('paying an invoice hides NWC and notes it when the balance cannot be read',
   const prompt = e2e.tg.last('editMessageText')
   expect(String(prompt?.text)).toMatch(/Couldn't reach the connected NWC wallet/)
   expect(callbackDataOf(prompt)).toEqual(['internal', 'cancel'])
-  expect(buttonTextsOf(prompt).join('\n')).toMatch(/ZapGram · 2\D?000 sats/)
-  expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/NWC ·/)
+  expect(buttonTextsOf(prompt)).toContain('🤖 ZapGram')
+  expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/NWC/)
   expectNoErrors(e2e.logs)
 })
 
@@ -637,7 +637,7 @@ function foreignInvoice(sats: number) {
   return e2e.ln.state.createInvoice({
     wallet: master,
     sats,
-    memo: 'Powered by t.me/zap_gram_bot',
+    memo: e2e.container.config.memoFooter,
     expirySec: 3600,
   })
 }
