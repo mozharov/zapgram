@@ -111,6 +111,36 @@ export const chatRemoveCustomMessageRoute = defineCallback(
   ({chatId}) => `chat:${chatId}:remove-custom-message`,
 )
 
+export const chatCustomMessageEditRoute = defineCallback(
+  'chat-custom-message-edit',
+  /^chat:(-?\d+):custom-message:edit:(ru|en)$/,
+  match => ({
+    chatId: parseInt(requireGroup(match, 1, 'chat-custom-message-edit'), 10),
+    locale: requireGroup(match, 2, 'chat-custom-message-edit') as 'ru' | 'en',
+  }),
+  ({chatId, locale}) => `chat:${chatId}:custom-message:edit:${locale}`,
+)
+
+export const chatCustomMessagePreviewRoute = defineCallback(
+  'chat-custom-message-preview',
+  /^chat:(-?\d+):custom-message:preview:(ru|en)$/,
+  match => ({
+    chatId: parseInt(requireGroup(match, 1, 'chat-custom-message-preview'), 10),
+    locale: requireGroup(match, 2, 'chat-custom-message-preview') as 'ru' | 'en',
+  }),
+  ({chatId, locale}) => `chat:${chatId}:custom-message:preview:${locale}`,
+)
+
+export const chatCustomMessageResetRoute = defineCallback(
+  'chat-custom-message-reset',
+  /^chat:(-?\d+):custom-message:reset:(ru|en)$/,
+  match => ({
+    chatId: parseInt(requireGroup(match, 1, 'chat-custom-message-reset'), 10),
+    locale: requireGroup(match, 2, 'chat-custom-message-reset') as 'ru' | 'en',
+  }),
+  ({chatId, locale}) => `chat:${chatId}:custom-message:reset:${locale}`,
+)
+
 export const chatOnchainEnableRoute = defineCallback(
   'chat-onchain-enable',
   /^chat:(-?\d+):onchain-enable$/,
@@ -261,6 +291,9 @@ export const parameterizedRoutes = [
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
   chatRemoveCustomMessageRoute,
+  chatCustomMessageEditRoute,
+  chatCustomMessagePreviewRoute,
+  chatCustomMessageResetRoute,
   chatOnchainEnableRoute,
   chatOnchainDisableRoute,
   subscriptionsPageRoute,

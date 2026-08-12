@@ -6,7 +6,11 @@ import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
 import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
-import {donationPercentRoute, staticCallback} from '@telegram/callback-data.js'
+import {
+  chatCustomMessageEditRoute,
+  donationPercentRoute,
+  staticCallback,
+} from '@telegram/callback-data.js'
 import {registeredConversations} from '@telegram/composition.js'
 import type {Update} from 'grammy/types'
 import {expectNoConversations, expectNoErrors} from '../asserts.js'
@@ -447,6 +451,9 @@ for (const {conversation, step, reach, lifecyclePrompt} of cancelCases) {
           : [
               {method: 'answerCallbackQuery'},
               {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+              ...(conversation === editCustomMessage.name
+                ? [{method: 'sendMessage' as const, to: USER_A, text: /Join request message/}]
+                : []),
             ]
 
     await expectDelta(e2e, () => e2e.send(update), {
@@ -629,13 +636,6 @@ const invalidCases: {
       await e2e.send(privateText('@user_b'))
     },
   },
-  {
-    label: 'a photo where a custom message belongs',
-    reach: enterCustomMessageAtRussian,
-    input: privatePhoto,
-    error: /valid text message/,
-    correct: () => e2e.send(privateText('Привет')),
-  },
 ]
 
 for (const {label, reach, input, error, correct} of invalidCases) {
@@ -669,20 +669,16 @@ test('a custom message can be corrected after invalid media and excessive length
   await e2e.send(privateText('x'.repeat(1001)))
 
   await expectDelta(e2e, () => e2e.send(privateText('Привет')), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
-    ],
-  })
-
-  await expectDelta(e2e, () => e2e.send(privateText('Hello')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Custom message has been updated/},
-      {method: 'sendMessage', to: USER_A, text: /Price:/},
+      {method: 'sendMessage', to: USER_A, text: /RU custom message has been updated/},
+      {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
+  })
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Привет',
+    customMessageEn: 'Keep English',
   })
   expectNoErrors(e2e.logs)
 })
@@ -946,13 +942,21 @@ async function enterChangePriceAtPrice(): Promise<void> {
 }
 
 async function enterCustomMessageAtRussian(): Promise<void> {
-  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
-  await e2e.send(privateCallback(`chat:${CHAT_GROUP}:edit-custom-message`))
+  await enterCustomMessage('ru')
 }
 
 async function enterCustomMessageAtEnglish(): Promise<void> {
-  await enterCustomMessageAtRussian()
-  await e2e.send(privateText('Привет'))
+  await enterCustomMessage('en')
+}
+
+async function enterCustomMessage(locale: 'ru' | 'en'): Promise<void> {
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: USER_A,
+    status: 'active',
+    customMessageEn: 'Keep English',
+  })
+  await e2e.send(privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale})))
 }
 
 // --- Reading the world ---

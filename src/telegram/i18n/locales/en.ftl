@@ -72,6 +72,9 @@ button =
     .custom-message = 💬 Custom message
     .edit-custom-message = 💬 Edit message
     .remove-custom-message = ❌ Reset to default message
+    .edit-custom-message-locale = ✏️ Edit {$locale}
+    .preview-custom-message = 👁 Preview {$locale}
+    .reset-custom-message = ♻️ Reset {$locale}
     .enable-onchain = ⛓ Enable on-chain pay
     .disable-onchain = 🚫 Disable on-chain pay
     .pay-onchain = ⛓ Bitcoin
@@ -125,7 +128,7 @@ start = ⚡ <b>{bot-name} — Bitcoin Lightning wallet in Telegram.</b>
     <b>How the wallet works</b>
     {bot-name} creates an internal wallet for you. Transfers between Telegram users are instant, with zero fees. You can connect your own Lightning wallet through NWC — your sats remain under your control.
 
-    💚 Separately, a voluntary 5% donation to support the bot is enabled by default for tips. Сhange or disable it in /donate.
+    💚 Separately, a voluntary 5% donation to support the bot is enabled by default for tips. Change or disable it in /donate.
 
     🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.
 
@@ -428,15 +431,16 @@ chat = <b>👥 {$title}</b>
     <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request). Then the bot can message applicants with an invoice and approve them after payment.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
-    .custom-message = You can change the part of the message that users see when they request to join the chat.
+    .custom-message = <b>💬 Join request message</b>
+        Configure Russian and English independently. Each language falls back to its default text until you customize it.
 
-        <b>Current message:</b>
-        
-        <b>Ru:</b>
-        {$ruMessage}
+        RU: <b>{$ruStatus}</b>
+        EN: <b>{$enStatus}</b>
+    .custom-message-status-custom = custom
+    .custom-message-status-default = default
+    .custom-message-preview = <b>👁 Preview · {$locale}</b>
 
-        <b>En:</b>
-        {$enMessage}
+        {$message}
 
 changing-price = <b>₿ Changing the price of paid access...</b>
     .completed = <b>✅ The price of paid access has been set to {$price} sats{$usdSuffix}.</b>
@@ -617,4 +621,4 @@ edit-custom-message =
         This text will be displayed to users requesting to join the chat.
     .invalid = ❌ Please send a valid text message.
     .too-long = ❌ The message is too long. Maximum allowed length is 1000 characters.
-    .completed = ✅ Custom message has been updated successfully.
+    .completed = ✅ {$locale} custom message has been updated.

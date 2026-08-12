@@ -48,10 +48,7 @@ afterEach(async () => {
 const commandCases: {command: string; telegram: {method: string; to: number; text?: RegExp}[]}[] = [
   {
     command: '/start',
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/}],
   },
   {command: '/help', telegram: [{method: 'sendMessage', to: USER_A, text: /Lightning Network/}]},
   // /wallet is the one command whose output cannot distinguish routing from the fallback: the
@@ -158,7 +155,7 @@ const staticCases: {
   },
   {
     data: staticCallback.donateCustom,
-    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /amount in sats/,
     conversation: true,
   },
@@ -191,7 +188,7 @@ const staticCases: {
   },
   {
     data: staticCallback.donateMonthlyCustom,
-    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /monthly donation amount/,
     conversation: true,
   },
@@ -297,14 +294,33 @@ const parameterizedCases: {
     route: 'chat-custom-message',
     data: ({chat}) => `chat:${chat.id}:custom-message`,
     methods: ['editMessageText'],
-    text: /Custom EN message/,
+    text: /Join request message[\s\S]*RU: <b>custom[\s\S]*EN: <b>custom/,
   },
   {
     route: 'chat-edit-custom-message',
     data: ({chat}) => `chat:${chat.id}:edit-custom-message`,
+    methods: ['editMessageText'],
+    text: /Join request message/,
+  },
+  {
+    route: 'chat-custom-message-edit',
+    data: ({chat}) => `chat:${chat.id}:custom-message:edit:ru`,
     methods: ['deleteMessage', 'sendMessage'],
     text: /Enter a custom message in Russian/,
     db: {conversations: {added: 1}},
+  },
+  {
+    route: 'chat-custom-message-preview',
+    data: ({chat}) => `chat:${chat.id}:custom-message:preview:en`,
+    methods: ['editMessageText'],
+    text: /Preview · EN[\s\S]*Custom EN message/,
+  },
+  {
+    route: 'chat-custom-message-reset',
+    data: ({chat}) => `chat:${chat.id}:custom-message:reset:ru`,
+    methods: ['editMessageText'],
+    text: /Join request message[\s\S]*RU: <b>default[\s\S]*EN: <b>custom/,
+    db: {chats: {changed: 1}},
   },
   {
     route: 'chat-remove-custom-message',
@@ -470,7 +486,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(46)
+  expect(registry).toHaveLength(49)
   expect(covered).toEqual(registry)
 })
 

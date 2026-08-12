@@ -1,7 +1,11 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import type {Chat} from '@infra/db/types.js'
+import {effectiveCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {
   chatChangePriceRoute,
+  chatCustomMessageEditRoute,
+  chatCustomMessagePreviewRoute,
+  chatCustomMessageResetRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
   chatOnchainEnableRoute,
@@ -437,22 +441,44 @@ test('/wallet interrupts on-chain setup without reopening chat details', async (
 
 const customScreenCases = [
   {
-    label: 'without a custom message',
+    label: 'with both defaults',
     customMessages: {},
+    status: /RU: <b>default<\/b>[\s\S]*EN: <b>default<\/b>/,
     expectedCallbacks: [
-      chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
       chatRoute.build({chatId: CHAT_GROUP}),
     ],
   },
   {
-    label: 'with a custom message',
+    label: 'with only Russian customized',
+    customMessages: {customMessageRu: 'Особое приветствие'},
+    status: /RU: <b>custom<\/b>[\s\S]*EN: <b>default<\/b>/,
+    expectedCallbacks: [
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatRoute.build({chatId: CHAT_GROUP}),
+    ],
+  },
+  {
+    label: 'with both languages customized',
     customMessages: {
       customMessageRu: 'Особое приветствие',
       customMessageEn: 'A special welcome',
     },
+    status: /RU: <b>custom<\/b>[\s\S]*EN: <b>custom<\/b>/,
     expectedCallbacks: [
-      chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}),
-      chatRemoveCustomMessageRoute.build({chatId: CHAT_GROUP}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
       chatRoute.build({chatId: CHAT_GROUP}),
     ],
   },
@@ -471,63 +497,248 @@ for (const screenCase of customScreenCases) {
     await expectDelta(
       e2e,
       () => e2e.send(privateCallback(chatCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-      {telegram: [{method: 'editMessageText', to: USER_A, text: /Current message/}]},
+      {telegram: [{method: 'editMessageText', to: USER_A, text: screenCase.status}]},
     )
 
     expectEditedNotSent(e2e.tg)
     expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
       ...screenCase.expectedCallbacks,
     ])
+    expect(String(e2e.tg.last('editMessageText')?.text)).not.toMatch(
+      /Особое приветствие|A special welcome/,
+    )
     expectNoErrors(e2e.logs)
   })
 }
 
-test('the custom-message conversation stores both language variants', async () => {
+for (const editCase of [
+  {
+    locale: 'ru' as const,
+    prompt: /Enter a custom message in Russian/,
+    input: 'Новое русское сообщение',
+    initial: {customMessageRu: 'Старое русское', customMessageEn: 'Keep English'},
+    change: {customMessageRu: 'Новое русское сообщение'},
+  },
+  {
+    locale: 'en' as const,
+    prompt: /Enter a custom message in English/,
+    input: 'New English message',
+    initial: {customMessageRu: 'Сохрани русский', customMessageEn: 'Old English'},
+    change: {customMessageEn: 'New English message'},
+  },
+] as const) {
+  test(`editing ${editCase.locale.toUpperCase()} changes only that language`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      ...editCase.initial,
+    })
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(
+          privateCallback(
+            chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: editCase.locale}),
+          ),
+        ),
+      {
+        db: {conversations: {added: 1}},
+        telegram: [
+          {method: 'deleteMessage', to: USER_A},
+          {method: 'sendMessage', to: USER_A, text: editCase.prompt},
+        ],
+      },
+    )
+    e2e.tg.reset()
+
+    await expectDelta(e2e, () => e2e.send(privateText(editCase.input)), {
+      db: {
+        chats: {
+          changed: 1,
+          match: rows => expectOnlyChatChanges(rows, editCase.change),
+        },
+        conversations: {removed: 1},
+      },
+      telegram: [
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {
+          method: 'sendMessage',
+          to: USER_A,
+          text: new RegExp(`${editCase.locale.toUpperCase()} custom message has been updated`),
+        },
+        {method: 'sendMessage', to: USER_A, text: /Join request message/},
+      ],
+    })
+
+    expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+      ...editCase.initial,
+      ...editCase.change,
+    })
+    await expectNoConversations(e2e.db)
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('invalid and too-long input keep the selected one-language flow active', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: USER_A,
+    status: 'active',
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Old English',
+  })
+  await e2e.send(
+    privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'})),
+  )
+
+  await e2e.send(privateText(' '))
+  await e2e.send(privateText('x'.repeat(1001)))
+
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Old English',
+  })
+  expect(
+    e2e.tg
+      .of('sendMessage')
+      .map(call => String(call.text))
+      .join('\n'),
+  ).toMatch(/valid text message[\s\S]*too long/)
+
+  await e2e.send(privateText('Correct English'))
+
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Correct English',
+  })
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('canceling one language returns to custom-message management without changing either text', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: USER_A,
+    status: 'active',
+    customMessageRu: 'Сохранить RU',
+    customMessageEn: 'Keep EN',
+  })
+  await e2e.send(
+    privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'})),
+  )
+  const promptMessageId = requiredPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /Join request message/},
+      ],
+    },
+  )
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Сохранить RU',
+    customMessageEn: 'Keep EN',
+  })
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+for (const previewCase of [
+  {locale: 'ru' as const, custom: 'Особое приветствие'},
+  {locale: 'en' as const, custom: null},
+] as const) {
+  test(`preview ${previewCase.locale.toUpperCase()} uses its effective custom/default text`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    const chat = await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      customMessageRu: previewCase.locale === 'ru' ? previewCase.custom : null,
+      customMessageEn: previewCase.locale === 'en' ? previewCase.custom : null,
+    })
+    const expected = effectiveCustomMessage(chat, previewCase.locale)
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(
+          privateCallback(
+            chatCustomMessagePreviewRoute.build({
+              chatId: CHAT_GROUP,
+              locale: previewCase.locale,
+            }),
+          ),
+        ),
+      {telegram: [{method: 'editMessageText', to: USER_A, text: new RegExp(expected)}]},
+    )
+
+    expect(String(e2e.tg.last('editMessageText')?.text)).toContain(expected)
+    expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
+      chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    ])
+    expectNoErrors(e2e.logs)
+  })
+}
+
+for (const locale of ['ru', 'en'] as const) {
+  test(`reset ${locale.toUpperCase()} preserves the other language`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      customMessageRu: 'Сохранённый RU',
+      customMessageEn: 'Saved EN',
+    })
+    const changes = locale === 'ru' ? {customMessageRu: null} : {customMessageEn: null}
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(privateCallback(chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale}))),
+      {
+        db: {
+          chats: {changed: 1, match: rows => expectOnlyChatChanges(rows, changes)},
+        },
+        telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}],
+      },
+    )
+
+    const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
+    expect(chat.customMessageRu).toBe(locale === 'ru' ? null : 'Сохранённый RU')
+    expect(chat.customMessageEn).toBe(locale === 'en' ? null : 'Saved EN')
+    expect(callbackDataOf(e2e.tg.last('editMessageText'))).not.toContain(
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale}),
+    )
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('legacy edit callback opens the new language selector without starting a conversation', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
 
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-    {
-      db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Enter a custom message in Russian/},
-      ],
-    },
+    {telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}]},
   )
-  e2e.tg.reset()
-
-  await expectDelta(e2e, () => e2e.send(privateText('Особое приветствие')), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
-    ],
-  })
-  e2e.tg.reset()
-
-  await expectDelta(e2e, () => e2e.send(privateText('A special welcome')), {
-    db: {
-      chats: {
-        changed: 1,
-        match: rows =>
-          expectOnlyChatChanges(rows, {
-            customMessageRu: 'Особое приветствие',
-            customMessageEn: 'A special welcome',
-          }),
-      },
-      conversations: {removed: 1},
-    },
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Custom message has been updated/},
-      {method: 'sendMessage', to: USER_A, text: /E2E paid chat/},
-    ],
-  })
 
   await expectNoConversations(e2e.db)
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(
+    chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+  )
   expectNoErrors(e2e.logs)
 })
 

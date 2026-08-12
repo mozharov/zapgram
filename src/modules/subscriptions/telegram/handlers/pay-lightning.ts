@@ -1,4 +1,5 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
+import {effectiveCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
@@ -51,7 +52,6 @@ export const payLightningCallback = async (
   })
 
   const locale = await ctx.i18n.getLocale()
-  const customMessage = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
   const remainingHours = Math.floor(invoice.remainingMinutes / 60)
   const remainingMinutes = invoice.remainingMinutes % 60
   const remaining = ctx.t('subscription-invoice.remaining-time', {
@@ -60,7 +60,7 @@ export const payLightningCallback = async (
   })
 
   const text = ctx.t('subscription-invoice.created', {
-    message: customMessage ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
+    message: effectiveCustomMessage(chat, locale),
     invoice: invoice.attempt.paymentRequest,
     type: chat.paymentType,
     price: chat.price,

@@ -1,5 +1,5 @@
 import {getAccessibleChatForOwner, updateChat} from '@modules/chats/repository.js'
-import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {replyWithCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
@@ -18,7 +18,7 @@ const MAX_MESSAGE_LENGTH = 1000
 export async function editCustomMessage(
   conversation: BotConversation,
   ctx: ConversationContext,
-  {chatId}: {chatId: number},
+  {chatId, locale}: {chatId: number; locale: 'ru' | 'en'},
 ) {
   const chat = await getAccessibleChatForOwner(chatId, ctx.user.id)
   if (!chat) {
@@ -26,31 +26,9 @@ export async function editCustomMessage(
     return conversation.halt()
   }
 
-  const ruHtmlMessage = await waitForCustomMessage(conversation, ctx, {
-    promptKey: 'edit-custom-message.enter-russian',
-    actionKey: 'conversation-action.edit-message-ru',
-  })
-  const enHtmlMessage = await waitForCustomMessage(conversation, ctx, {
-    promptKey: 'edit-custom-message.enter-english',
-    actionKey: 'conversation-action.edit-message-en',
-  })
-
-  // Update chat with new custom messages
-  const updatedChat = await updateChat(chatId, {
-    customMessageRu: ruHtmlMessage,
-    customMessageEn: enHtmlMessage,
-  })
-
-  await ctx.reply(ctx.t('edit-custom-message.completed'))
-  await replyWithChat(ctx, updatedChat)
-}
-
-async function waitForCustomMessage(
-  conversation: BotConversation,
-  ctx: ConversationContext,
-  keys: {promptKey: string; actionKey: string},
-): Promise<string> {
-  const html = ctx.t(keys.promptKey)
+  const html = ctx.t(
+    locale === 'ru' ? 'edit-custom-message.enter-russian' : 'edit-custom-message.enter-english',
+  )
   const message = await ctx.reply(html, {
     reply_markup: new InlineKeyboard().add({
       callback_data: staticCallback.cancel,
@@ -60,7 +38,11 @@ async function waitForCustomMessage(
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
-    actionLabel: ctx.t(keys.actionKey),
+    actionLabel: ctx.t(
+      locale === 'ru'
+        ? 'conversation-action.edit-message-ru'
+        : 'conversation-action.edit-message-en',
+    ),
   })
   const cancelled = cancelledPromptState(ctx, prompt)
 
@@ -71,6 +53,8 @@ async function waitForCustomMessage(
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
+      const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
+      if (owned) await replyWithCustomMessage(ctx, owned)
       return conversation.halt()
     }
     if (kind === 'interrupt') {
@@ -90,8 +74,22 @@ async function waitForCustomMessage(
       continue
     }
 
+    // Ownership can change while the conversation waits for input.
+    const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
+    if (!owned) {
+      await clearPromptControls(conversation, prompt)
+      await next.reply(next.t('chat.not-found'))
+      return
+    }
+
     await clearPromptControls(conversation, prompt)
-    return htmlMessage
+    const updatedChat = await updateChat(
+      chatId,
+      locale === 'ru' ? {customMessageRu: htmlMessage} : {customMessageEn: htmlMessage},
+    )
+    await next.reply(next.t('edit-custom-message.completed', {locale: locale.toUpperCase()}))
+    await replyWithCustomMessage(next, updatedChat)
+    return
   }
 }
 

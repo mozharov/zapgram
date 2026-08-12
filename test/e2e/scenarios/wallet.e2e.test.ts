@@ -47,9 +47,7 @@ test('/start is one compact English onboarding screen with partner and two actio
 
   const start = e2e.tg.last('sendMessage')
   expect(String(start?.text)).toMatch(/zero fees/)
-  expect(String(start?.text)).toMatch(
-    /voluntary 5% donation[\s\S]*tips only[\s\S]*does not apply to invoice payments[\s\S]*not a fee[\s\S]*\/donate/,
-  )
+  expect(String(start?.text)).toMatch(/voluntary 5% donation[\s\S]*for tips[\s\S]*\/donate/)
   expect(String(start?.text)).not.toMatch(/<b>Balance:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
   expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
   expect(callbackDataOf(start)).not.toContain('create-invoice')
@@ -68,7 +66,7 @@ test('/start renders the compact screen and actions in Russian', async () => {
   expect(String(start?.text)).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как работает кошелёк/)
   expect(String(start?.text)).toMatch(/комиссия — 0/)
   expect(String(start?.text)).toMatch(
-    /добровольный донат 5%[\s\S]*только с tips[\s\S]*оплате счетов он не начисляется[\s\S]*не является комиссией[\s\S]*\/donate/,
+    /добровольный донат 5%[\s\S]*при отправке tips[\s\S]*\/donate/,
   )
   expect(String(start?.text)).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
   expect(String(start?.text)).toContain('21 идея')

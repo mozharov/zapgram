@@ -1,5 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
+import {effectiveCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
@@ -71,13 +72,12 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
   })
 
   const locale = await ctx.i18n.getLocale()
-  const message = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
   try {
     await ctx.api.sendMessage(
       ctx.chatJoinRequest.user_chat_id,
       ctx.t('subscription-invoice.choose-method', {
-        message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
+        message: effectiveCustomMessage(chat, locale),
         type: chat.paymentType,
         price: chat.price,
         usdSuffix: await usdSuffixForSats(chat.price),

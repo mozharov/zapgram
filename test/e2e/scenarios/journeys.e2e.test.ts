@@ -3,8 +3,8 @@ import {ONE_MONTH_IN_MS} from '@core/subscriptions/policy.js'
 import type {Subscription, SubscriptionPayment} from '@infra/db/types.js'
 import {
   chatChangePriceRoute,
+  chatCustomMessageEditRoute,
   chatCustomMessageRoute,
-  chatEditCustomMessageRoute,
   chatPaidAccessRoute,
   chatPaymentTypeRoute,
   chatRemoveCustomMessageRoute,
@@ -481,10 +481,16 @@ test('private keyboard navigation keeps one world through screens and conversati
     ],
   })
 
-  await expectEditedScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Current message/)
+  await expectEditedScreen(
+    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    /Join request message/,
+  )
   await expectDelta(
     e2e,
-    () => e2e.send(privateCallback(chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}))),
+    () =>
+      e2e.send(
+        privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'})),
+      ),
     {
       db: {conversations: {added: 1}},
       telegram: [
@@ -494,21 +500,39 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
   await expectDelta(e2e, () => e2e.send(privateText('Особое приветствие')), {
-    db: {conversations: {changed: 1}},
+    db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
+      {method: 'sendMessage', to: USER_A, text: /RU custom message has been updated/},
+      {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'})),
+      ),
+    {
+      db: {conversations: {added: 1}},
+      telegram: [
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
+      ],
+    },
+  )
   await expectDelta(e2e, () => e2e.send(privateText('A special welcome')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Custom message has been updated/},
-      {method: 'sendMessage', to: USER_A, text: /E2E paid chat/},
+      {method: 'sendMessage', to: USER_A, text: /EN custom message has been updated/},
+      {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
-  await expectEditedScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Current message/)
+  await expectEditedScreen(
+    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    /Join request message/,
+  )
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatRemoveCustomMessageRoute.build({chatId: CHAT_GROUP}))),
