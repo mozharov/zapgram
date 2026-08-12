@@ -22,6 +22,16 @@ conversation-action =
     .confirm-invoice-payment = confirming an invoice payment
     .invoice-memo-options = adding an invoice description
     .enter-invoice-memo = entering an invoice description
+    .enable-onchain = enabling on-chain payments
+    .donate-one-shot = entering a support amount
+    .donation-percent = entering an auto-donation percent
+    .donate-monthly = entering a monthly support amount
+    .feature-text = entering a feature request
+    .feature-fund = choosing feature funding
+    .feature-fund-amount = entering a feature funding amount
+    .broadcast-locale = selecting a broadcast language
+    .broadcast-source = selecting a broadcast message
+    .broadcast-confirm = confirming a broadcast
 
 button = 
     .back = ⬅️ Back

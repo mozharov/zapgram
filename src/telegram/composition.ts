@@ -39,6 +39,22 @@ import type {Bot} from 'grammy'
 
 export const shellCommands = ['start', 'help'] as const
 
+/** Single source of truth for every persisted grammY conversation installed by the bot. */
+export const registeredConversations = [
+  connectingNWC,
+  sendingToUser,
+  payingInvoice,
+  creatingInvoice,
+  changingPrice,
+  editCustomMessage,
+  enablingOnchain,
+  customDonateAmount,
+  customDonationPercent,
+  customMonthlyAmount,
+  requestingFeature,
+  broadcasting,
+] as const
+
 /**
  * Registers all grammY middleware and feature modules.
  * Order is load-bearing: errorBoundary → logger → posthog → conversations → i18n,
@@ -59,18 +75,9 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   // Every conversation sits above every command and callback so an active conversation
   // always sees the next update and cancels on unrelated input. Module registers only
   // install their own command/callback handlers — not createConversation.
-  privateChat.use(createConversation(connectingNWC))
-  privateChat.use(createConversation(sendingToUser))
-  privateChat.use(createConversation(payingInvoice))
-  privateChat.use(createConversation(creatingInvoice))
-  privateChat.use(createConversation(changingPrice))
-  privateChat.use(createConversation(editCustomMessage))
-  privateChat.use(createConversation(enablingOnchain))
-  privateChat.use(createConversation(customDonateAmount))
-  privateChat.use(createConversation(customDonationPercent))
-  privateChat.use(createConversation(customMonthlyAmount))
-  privateChat.use(createConversation(requestingFeature))
-  privateChat.use(createConversation(broadcasting))
+  for (const conversation of registeredConversations) {
+    privateChat.use(createConversation(conversation))
+  }
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)

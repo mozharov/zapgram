@@ -10,6 +10,7 @@ import {
   chatRemoveCustomMessageRoute,
   chatRoute,
   chatsPageRoute,
+  staticCallback,
 } from '@telegram/callback-data.js'
 import {expectEditedNotSent, expectNoConversations, expectNoErrors} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -38,6 +39,8 @@ export const COVERS = scenarioCoverage.chats
 
 const CHAT_PRICE = 1000
 const CHANGED_PRICE = 123
+const MASTERPUB =
+  'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz'
 const OWNER_PROFILE = {
   id: OWNER,
   is_bot: false,
@@ -372,6 +375,61 @@ test('a nonnumeric price keeps the conversation active', async () => {
   })
 
   expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+// --- On-chain setup conversation ---
+
+test('invalid masterpub keeps on-chain setup active and a corrected key enables it', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  const beforeInvalid = await snapshot(e2e)
+  await e2e.send(privateText('not-an-xpub'))
+
+  const afterInvalid = await snapshot(e2e)
+  expect(afterInvalid.db.chats).toEqual(beforeInvalid.db.chats)
+  expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
+  expect(afterInvalid.db.conversations).toHaveLength(1)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Paste a zpub|Вставь zpub/i)
+
+  await e2e.send(privateText(MASTERPUB))
+
+  const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
+  expect(chat).toMatchObject({onchainEnabled: true, onchainMasterpub: MASTERPUB})
+  expect(chat.watchonlyWalletId).toBeTruthy()
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('canceling on-chain setup marks its prompt and returns to chat details', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  const promptMessageId = requiredPromptMessageId()
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId}))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('E2E paid chat')
+  expect((await e2e.container.chats.getOrThrow(CHAT_GROUP)).onchainEnabled).toBe(false)
+  expectNoErrors(e2e.logs)
+})
+
+test('/wallet interrupts on-chain setup without reopening chat details', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  await e2e.send(privateCommand('/wallet'))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
+  const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(messages.filter(text => text.includes('E2E paid chat'))).toHaveLength(0)
+  expect(messages.some(text => /Wallet|Кошелёк/i.test(text))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 
@@ -765,6 +823,12 @@ function requiredChat(chats: Chat[], index: number): Chat {
   const chat = chats[index]
   if (!chat) throw new Error(`Expected chat fixture at index ${index}`)
   return chat
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

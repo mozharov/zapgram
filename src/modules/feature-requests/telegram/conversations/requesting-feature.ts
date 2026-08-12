@@ -8,7 +8,16 @@ import {buildFeatureFundKeyboard} from '@modules/feature-requests/telegram/keybo
 import {captureBotEvent} from '@telegram/analytics.js'
 import {featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  type ActivePrompt,
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+  isCallbackFromPrompt,
+} from '@telegram/helpers/conversation-prompt.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -29,18 +38,22 @@ export async function requestingFeature(
   const source = await resolveSourceMessage(conversation, ctx, initialText)
   if (!source) return
 
-  const fundMessage = await ctx.reply(ctx.t('feature.fund-prompt'), {
+  const fundHtml = ctx.t('feature.fund-prompt')
+  const fundMessage = await ctx.reply(fundHtml, {
     reply_markup: buildFeatureFundKeyboard(ctx.t),
   })
+  const fundPrompt = createActivePrompt(fundMessage, {
+    kind: 'text',
+    html: fundHtml,
+    actionLabel: ctx.t('conversation-action.feature-fund'),
+  })
 
-  const fundChoice = await waitForFundChoice(conversation, ctx)
+  const fundChoice = await waitForFundChoice(conversation, ctx, fundPrompt)
   if (fundChoice.kind === 'cancel') {
-    await conversation.external(() => removeInlineKeyboard(fundMessage))
-    await ctx.reply(ctx.t('canceled'))
-    return
+    return conversation.halt()
   }
 
-  await conversation.external(() => removeInlineKeyboard(fundMessage))
+  await clearPromptControls(conversation, fundPrompt)
 
   let amountSats = 0
   if (fundChoice.kind === 'amount') {
@@ -115,37 +128,39 @@ async function waitForFeatureText(
   conversation: BotConversation,
   ctx: ConversationContext,
 ): Promise<FeatureRequestSourceMessage | null> {
-  const prompt = await ctx.reply(ctx.t('feature.prompt'), {
+  const html = ctx.t('feature.prompt')
+  const message = await ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),
   })
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.feature-text'),
+  })
+  const cancelled = cancelledPromptState(ctx, prompt)
 
   while (true) {
-    const next = await conversation.waitFor(['message:text', 'callback_query:data'], {
-      otherwise: async otherwiseCtx => {
-        await conversation.external(() => removeInlineKeyboard(prompt))
-        await otherwiseCtx.reply(ctx.t('canceled'))
-        return conversation.halt({next: true})
-      },
-    })
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
-    if (next.callbackQuery?.data === staticCallback.cancel) {
+    if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await conversation.external(() => removeInlineKeyboard(prompt))
-      await ctx.reply(ctx.t('canceled'))
+      await deactivatePrompt(conversation, prompt, cancelled)
       return conversation.halt()
     }
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
 
     const message = next.message
     const raw = message?.text ?? ''
     const text = normalizeFeatureRequestText(raw)
     if (!message || !isValidFeatureRequestText(text)) {
-      await ctx.reply(ctx.t('feature.invalid-text'))
+      await next.reply(next.t('feature.invalid-text'))
       continue
     }
 
-    await conversation.external(() => removeInlineKeyboard(prompt))
+    await clearPromptControls(conversation, prompt)
     return {
       chatId: message.chat.id,
       messageId: message.message_id,
@@ -163,43 +178,39 @@ type FundChoice =
 async function waitForFundChoice(
   conversation: BotConversation,
   ctx: ConversationContext,
+  prompt: ActivePrompt,
 ): Promise<FundChoice> {
+  const cancelled = cancelledPromptState(ctx, prompt)
   while (true) {
-    const next = await conversation.waitFor('callback_query:data', {
-      otherwise: async otherwiseCtx => {
-        await otherwiseCtx.reply(ctx.t('canceled'))
-        return conversation.halt({next: true})
-      },
-    })
+    const next = await conversation.wait()
 
     const data = next.callbackQuery?.data
-    if (!data) continue
-
-    if (data === staticCallback.cancel) {
+    if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
       return {kind: 'cancel'}
     }
-    if (data === staticCallback.featureFundSkip) {
+    if (data === staticCallback.featureFundSkip && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       return {kind: 'skip'}
     }
-    if (data === staticCallback.featureFundCustom) {
+    if (data === staticCallback.featureFundCustom && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       return {kind: 'custom'}
     }
-    if (featureFundAmountRoute.pattern.test(data)) {
+    if (data && featureFundAmountRoute.pattern.test(data) && isCallbackFromPrompt(next, prompt)) {
       const {amountSats} = featureFundAmountRoute.parse(data)
       await next.answerCallbackQuery()
       if (!isValidDonationAmountSats(amountSats)) {
-        await ctx.reply(ctx.t('feature.invalid-amount'))
+        await next.reply(next.t('feature.invalid-amount'))
         continue
       }
       return {kind: 'amount', amountSats}
     }
 
-    await next.answerCallbackQuery()
-    await ctx.reply(ctx.t('canceled'))
-    return {kind: 'cancel'}
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
+    await next.reply(next.t('conversation-state.use-buttons'))
   }
 }
 
@@ -207,27 +218,36 @@ async function waitForCustomFundAmount(
   conversation: BotConversation,
   ctx: ConversationContext,
 ): Promise<number> {
-  const message = await ctx.reply(ctx.t('feature.custom-amount'), {
+  const html = ctx.t('feature.custom-amount')
+  const message = await ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),
   })
-
-  const sats = await conversation.form.int({
-    otherwise: async otherwiseCtx => {
-      await removeInlineKeyboard(message)
-      if (otherwiseCtx.update.message?.text)
-        await otherwiseCtx.reply(ctx.t('feature.invalid-amount'))
-      await otherwiseCtx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.feature-fund-amount'),
   })
-  await conversation.external(() => removeInlineKeyboard(message))
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-  if (!isValidDonationAmountSats(sats)) {
-    await ctx.reply(ctx.t('feature.invalid-amount'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
+
+    const text = next.message?.text?.trim()
+    const sats = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
+    if (!Number.isSafeInteger(sats) || !isValidDonationAmountSats(sats)) {
+      await next.reply(next.t('feature.invalid-amount'))
+      continue
+    }
+    await clearPromptControls(conversation, prompt)
+    return sats
   }
-  return sats
 }

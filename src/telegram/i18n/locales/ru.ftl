@@ -22,6 +22,16 @@ conversation-action =
     .confirm-invoice-payment = подтверждение оплаты счёта
     .invoice-memo-options = добавление описания счёта
     .enter-invoice-memo = ввод описания счёта
+    .enable-onchain = включение on-chain оплаты
+    .donate-one-shot = ввод суммы поддержки
+    .donation-percent = ввод процента авто-доната
+    .donate-monthly = ввод суммы ежемесячной поддержки
+    .feature-text = ввод предложения функции
+    .feature-fund = выбор поддержки функции
+    .feature-fund-amount = ввод суммы поддержки функции
+    .broadcast-locale = выбор языка рассылки
+    .broadcast-source = выбор сообщения рассылки
+    .broadcast-confirm = подтверждение рассылки
 
 button = 
     .back = ⬅️ Назад

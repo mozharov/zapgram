@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
-import {expectNoErrors} from '../asserts.js'
+import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {OWNER, USER_A} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
@@ -36,7 +36,9 @@ test('/feature with text and skip: meta + copyMessage to admin', async () => {
     .some(c => /attach sats|прикрепить/i.test(String(c.text)))
   expect(fundPrompt).toBe(true)
 
-  await e2e.send(privateCallback(staticCallback.featureFundSkip))
+  await e2e.send(
+    privateCallback(staticCallback.featureFundSkip, {messageId: requiredPromptMessageId()}),
+  )
 
   const adminMeta = e2e.tg
     .of('sendMessage')
@@ -68,7 +70,12 @@ test('/feature fund 1000: donation + meta + copyMessage', async () => {
 
   await expectDelta(
     e2e,
-    () => e2e.send(privateCallback(featureFundAmountRoute.build({amountSats: 1000}))),
+    () =>
+      e2e.send(
+        privateCallback(featureFundAmountRoute.build({amountSats: 1000}), {
+          messageId: requiredPromptMessageId(),
+        }),
+      ),
     {
       db: {
         donations: {added: 1},
@@ -116,7 +123,9 @@ test('/feature without args: free-text message is copyMessage source', async () 
     true,
   )
 
-  await e2e.send(privateCallback(staticCallback.featureFundSkip))
+  await e2e.send(
+    privateCallback(staticCallback.featureFundSkip, {messageId: requiredPromptMessageId()}),
+  )
 
   const adminMeta = e2e.tg
     .of('sendMessage')
@@ -131,9 +140,106 @@ test('/feature without args: free-text message is copyMessage source', async () 
   expectNoErrors(e2e.logs)
 })
 
+test('blank feature text retries without submission and accepts the next message', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+
+  await e2e.send(privateCommand('/feature'))
+  const textPromptMessageId = requiredPromptMessageId()
+  await e2e.send(privateText('   '))
+
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expect(e2e.tg.of('copyMessage')).toHaveLength(0)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/non-empty text|непустое текстовое/i)
+
+  await e2e.send(privateText('Retry feature text'))
+
+  expect(
+    e2e.tg
+      .of('editMessageReplyMarkup')
+      .some(call => Number(call.message_id) === textPromptMessageId),
+  ).toBe(true)
+  await e2e.send(
+    privateCallback(staticCallback.featureFundSkip, {messageId: requiredPromptMessageId()}),
+  )
+  await expectNoConversations(e2e.db)
+  expect(e2e.tg.of('copyMessage').some(call => Number(call.chat_id) === OWNER)).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('fund choice ignores ordinary text, keeps prompt active, then accepts its own button', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+
+  await e2e.send(privateCommand('/feature Keep fund step active'))
+  const promptMessageId = requiredPromptMessageId()
+  await e2e.send(privateText('this is not a button'))
+
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/buttons|кнопк/i)
+
+  await e2e.send(privateCallback(staticCallback.featureFundSkip, {messageId: promptMessageId}))
+
+  await expectNoConversations(e2e.db)
+  expect(e2e.tg.of('copyMessage').some(call => Number(call.chat_id) === OWNER)).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('custom feature fund retries invalid amount without payment, then submits funded request', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+  credit(USER_A, STARTING)
+
+  await e2e.send(privateCommand('/feature Custom funding'))
+  await e2e.send(
+    privateCallback(staticCallback.featureFundCustom, {messageId: requiredPromptMessageId()}),
+  )
+  const customPromptMessageId = requiredPromptMessageId()
+  const beforeInvalid = await snapshot(e2e)
+
+  await e2e.send(privateText('0 sats'))
+
+  const afterInvalid = await snapshot(e2e)
+  expect(afterInvalid.db.donations).toEqual(beforeInvalid.db.donations)
+  expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
+  expect(afterInvalid.db.conversations).toHaveLength(1)
+  expect(e2e.tg.lastMessageId('sendMessage')).not.toBe(customPromptMessageId)
+
+  await e2e.send(privateText('25'))
+
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(25)
+  await expectNoConversations(e2e.db)
+  expect(e2e.tg.of('copyMessage').some(call => Number(call.chat_id) === OWNER)).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('wallet callback from another message interrupts feature flow and still opens wallet', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+
+  await e2e.send(privateCommand('/feature Interrupted request'))
+  const promptMessageId = requiredPromptMessageId()
+  await e2e.send(
+    privateCallback(staticCallback.wallet, {
+      messageId: promptMessageId + 1000,
+    }),
+  )
+
+  await expectNoConversations(e2e.db)
+  const edits = e2e.tg.of('editMessageText')
+  expect(edits.some(call => Number(call.message_id) === promptMessageId)).toBe(true)
+  expect(String(edits.at(-1)?.text)).toMatch(/Wallet|Кошелёк/i)
+  expectNoErrors(e2e.logs)
+})
+
 function credit(userId: number, sats: number): void {
   const lnUser = e2e.ln.state.ensureUser(String(userId))
   const wallet = e2e.ln.state.walletsOfUser(lnUser.id)[0]
   if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
   e2e.ln.state.credit(wallet.id, sats * 1000)
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }

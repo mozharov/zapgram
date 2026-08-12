@@ -6,10 +6,10 @@ import {
   donationPercentRoute,
   staticCallback,
 } from '@telegram/callback-data.js'
-import {expectNoErrors} from '../asserts.js'
+import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {USER_A, USER_B} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
-import {groupText, privateCallback, privateCommand} from '../fixtures/updates.js'
+import {groupText, privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -208,6 +208,93 @@ test('monthly enable charges immediately and advances nextAt', async () => {
   expectNoErrors(e2e.logs)
 })
 
+test('custom one-shot retries invalid amount without paying, then accepts valid input', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+  credit(USER_A, STARTING)
+
+  await e2e.send(privateCallback(staticCallback.donateCustom))
+  const promptMessageId = requiredPromptMessageId()
+  const beforeInvalid = await snapshot(e2e)
+
+  await e2e.send(privateText('not sats'))
+
+  const afterInvalid = await snapshot(e2e)
+  expect(afterInvalid.db.donations).toEqual(beforeInvalid.db.donations)
+  expect(afterInvalid.db.donationPlatformStats).toEqual(beforeInvalid.db.donationPlatformStats)
+  expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
+  expect(afterInvalid.db.conversations).toHaveLength(1)
+  expect(e2e.tg.lastMessageId('sendMessage')).not.toBe(promptMessageId)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/whole number|целое число/i)
+
+  await e2e.send(privateText('125'))
+
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(125)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('custom donation percent retries invalid value before updating settings', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 5,
+  })
+
+  await e2e.send(privateCallback(staticCallback.donationCustomPercent))
+  await e2e.send(privateText('101'))
+
+  expect((await e2e.container.users.findById(USER_A))?.donationPercent).toBe(5)
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/between 0 and 100|от 0 до 100/i)
+
+  await e2e.send(privateText('7'))
+
+  expect((await e2e.container.users.findById(USER_A))?.donationPercent).toBe(7)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('custom monthly amount stays active after invalid input and cancel returns to donation hub', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+
+  await e2e.send(privateCallback(staticCallback.donateMonthlyCustom))
+  const promptMessageId = requiredPromptMessageId()
+  const beforeInvalid = await snapshot(e2e)
+  await e2e.send(privateText('0'))
+
+  const afterInvalid = await snapshot(e2e)
+  expect(afterInvalid.db.donations).toEqual(beforeInvalid.db.donations)
+  expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
+  expect(afterInvalid.db.conversations).toHaveLength(1)
+
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId}))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Support ZapGram|Поддержать ZapGram/i)
+  expect((await e2e.container.users.findById(USER_A))?.monthlyDonationSats).toBe(0)
+  expectNoErrors(e2e.logs)
+})
+
+test('/wallet interrupts custom donation without opening donation hub', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+
+  await e2e.send(privateCallback(staticCallback.donateCustom))
+  await e2e.send(privateCommand('/wallet'))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.of('editMessageText').at(-1)?.text)).toMatch(
+    /Action canceled|Действие отменено/i,
+  )
+  const newMessages = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(newMessages.filter(text => /Support ZapGram|Поддержать ZapGram/i.test(text))).toHaveLength(
+    0,
+  )
+  expect(newMessages.some(text => /Wallet|Кошелёк/i.test(text))).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
 test('monthly job charges when nextAt is due', async () => {
   await seedUser(e2e, {
     id: USER_A,
@@ -242,4 +329,10 @@ function credit(userId: number, sats: number): void {
   const wallet = e2e.ln.state.walletsOfUser(lnUser.id)[0]
   if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
   e2e.ln.state.credit(wallet.id, sats * 1000)
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }

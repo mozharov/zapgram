@@ -3,48 +3,62 @@ import {replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function customDonateAmount(conversation: BotConversation, ctx: ConversationContext) {
-  // Clear the hub that launched this conversation so it does not stay stale.
-  await conversation.external(async () => {
-    try {
-      await ctx.editMessageReplyMarkup({reply_markup: {inline_keyboard: []}})
-    } catch {
-      // may already be a plain message
-    }
-  })
-
-  const message = await ctx.reply(ctx.t('donate.custom-amount'), {
+  const html = ctx.t('donate.custom-amount')
+  const message = await ctx.reply(html, {
     reply_markup: new InlineKeyboard([
       [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
     ]),
   })
-  const sats = await conversation.form.int({
-    otherwise: async c => {
-      await removeInlineKeyboard(message)
-      if (c.update.message?.text) await c.reply(c.t('donate.invalid-amount'))
-      await c.reply(c.t('canceled'))
-      return conversation.halt({next: true})
-    },
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.donate-one-shot'),
   })
-  await conversation.external(() => removeInlineKeyboard(message))
-  if (!isValidDonationAmountSats(sats)) {
-    await conversation.external(() =>
-      captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
-        feature: 'donations',
-        flow: 'one_shot',
-        source: 'custom',
-        amount_sats: sats,
-      }),
-    )
-    await ctx.reply(ctx.t('donate.invalid-amount'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+  const cancelled = cancelledPromptState(ctx, prompt)
+
+  let sats: number
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      await replyDonateHub(ctx)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
+
+    const text = next.message?.text?.trim()
+    const parsed = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
+    if (!Number.isSafeInteger(parsed) || !isValidDonationAmountSats(parsed)) {
+      await conversation.external(() =>
+        captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
+          feature: 'donations',
+          flow: 'one_shot',
+          source: 'custom',
+          amount_sats: Number.isFinite(parsed) ? parsed : null,
+        }),
+      )
+      await next.reply(next.t('donate.invalid-amount'))
+      continue
+    }
+    sats = parsed
+    break
   }
+  await clearPromptControls(conversation, prompt)
 
   await conversation.external(() =>
     captureBotEvent(getRuntime().posthog, 'donate_one_shot_requested', {

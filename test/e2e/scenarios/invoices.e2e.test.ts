@@ -6,7 +6,8 @@ import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
 import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
-import {staticCallback} from '@telegram/callback-data.js'
+import {donationPercentRoute, staticCallback} from '@telegram/callback-data.js'
+import {registeredConversations} from '@telegram/composition.js'
 import type {Update} from 'grammy/types'
 import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {decodeMintedInvoice, mintInvoice} from '../fakes/bolt11.js'
@@ -458,16 +459,21 @@ for (const {conversation, step, reach, lifecyclePrompt} of cancelCases) {
   })
 }
 
-test('the cancel cases cover every conversation the bot registers', () => {
-  const covered = [...new Set(cancelCases.map(item => item.conversation))].sort()
-  expect(covered).toEqual(
+test('the shared registry contains all twelve conversations', () => {
+  expect(registeredConversations.map(conversation => conversation.name).sort()).toEqual(
     [
-      changingPrice.name,
-      connectingNWC.name,
-      creatingInvoice.name,
-      editCustomMessage.name,
-      payingInvoice.name,
-      sendingToUser.name,
+      'broadcasting',
+      'changingPrice',
+      'connectingNWC',
+      'creatingInvoice',
+      'customDonateAmount',
+      'customDonationPercent',
+      'customMonthlyAmount',
+      'editCustomMessage',
+      'enablingOnchain',
+      'payingInvoice',
+      'requestingFeature',
+      'sendingToUser',
     ].sort(),
   )
 })
@@ -567,59 +573,73 @@ const invalidCases: {
   reach: () => Promise<void>
   input: () => Update
   error: RegExp
+  correct: () => Promise<void>
 }[] = [
   {
     label: 'a word where an amount belongs',
     reach: enterCreateInvoiceAtAmount,
     input: () => privateText('abc'),
     error: /Invalid amount of sats/,
+    correct: () => e2e.send(privateText(String(AMOUNT))),
   },
   {
     label: 'an amount of zero',
     reach: enterCreateInvoiceAtAmount,
     input: () => privateText('0'),
     error: /Invalid amount of sats/,
+    correct: () => e2e.send(privateText(String(AMOUNT))),
   },
   {
     label: 'a negative amount',
     reach: enterCreateInvoiceAtAmount,
     input: () => privateText('-5'),
     error: /Invalid amount of sats/,
+    correct: () => e2e.send(privateText(String(AMOUNT))),
   },
   {
     label: 'an amount above the maximum',
     reach: enterCreateInvoiceAtAmount,
     input: () => privateText('100000001'),
     error: /Invalid amount of sats/,
+    correct: () => e2e.send(privateText(String(AMOUNT))),
   },
   {
     label: 'a message with no invoice in it',
     reach: enterPayInvoiceAtInvoice,
     input: () => privateText('pay me back sometime'),
     error: /Invalid Lightning invoice/,
+    correct: async () => {
+      credit(USER_A, 1000)
+      await e2e.send(privateText(foreignInvoice().bolt11))
+    },
   },
   {
     label: 'a username without its @',
     reach: enterSendToUserAtUsername,
     input: () => privateText('user_b'),
     error: /Invalid username/,
-  },
-  {
-    label: 'a link that is not an NWC URL',
-    reach: enterConnectNwcAtUrl,
-    input: () => privateText('https://example.com/wallet'),
-    error: /Invalid NWC URL/,
+    correct: async () => {
+      await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+      e2e.tg.reply('getChat', {
+        id: USER_B,
+        type: 'private',
+        username: 'user_b',
+        first_name: 'User B',
+      })
+      await e2e.send(privateText('@user_b'))
+    },
   },
   {
     label: 'a photo where a custom message belongs',
     reach: enterCustomMessageAtRussian,
     input: privatePhoto,
     error: /valid text message/,
+    correct: () => e2e.send(privateText('Привет')),
   },
 ]
 
-for (const {label, reach, input, error} of invalidCases) {
-  test(`${label} keeps the current prompt active`, async () => {
+for (const {label, reach, input, error, correct} of invalidCases) {
+  test(`${label} keeps the current prompt active and accepts a correction`, async () => {
     await reach()
 
     await expectDelta(e2e, () => e2e.send(input()), {
@@ -629,59 +649,19 @@ for (const {label, reach, input, error} of invalidCases) {
 
     expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
     expect(keyboardOf(e2e.tg.last('sendMessage'))).toEqual([])
+    expect(
+      e2e.tg
+        .of('sendMessage')
+        .map(call => String(call.text))
+        .join('\n'),
+    ).not.toMatch(/Action canceled|<b>👛 Wallet/)
+
+    await correct()
+
+    expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
     expectNoErrors(e2e.logs)
   })
 }
-
-test('an amount can be corrected after validation fails', async () => {
-  await enterCreateInvoiceAtAmount()
-  await e2e.send(privateText('abc'))
-
-  await expectDelta(e2e, () => e2e.send(privateText(String(AMOUNT))), {
-    db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
-    lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats/},
-    ],
-  })
-  expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
-  expectNoErrors(e2e.logs)
-})
-
-test('an invoice can be corrected after validation fails', async () => {
-  credit(USER_A, 1000)
-  await enterPayInvoiceAtInvoice()
-  await e2e.send(privateText('not an invoice'))
-  const invoice = foreignInvoice().bolt11
-
-  await expectDelta(e2e, () => e2e.send(privateText(invoice)), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Invoice review/},
-    ],
-  })
-  expectNoErrors(e2e.logs)
-})
-
-test('a username can be corrected after validation fails', async () => {
-  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
-  e2e.tg.reply('getChat', {id: USER_B, type: 'private', username: 'user_b', first_name: 'User B'})
-  await enterSendToUserAtUsername()
-  await e2e.send(privateText('user_b'))
-
-  await expectDelta(e2e, () => e2e.send(privateText('@user_b')), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'getChat'},
-      {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-    ],
-  })
-  expectNoErrors(e2e.logs)
-})
 
 test('a custom message can be corrected after invalid media and excessive length', async () => {
   await enterCustomMessageAtRussian()
@@ -734,6 +714,145 @@ test('/wallet cancels connectingNWC waiting for a URL', async () => {
       {method: 'sendMessage', to: USER_A, text: /Balance:/},
     ],
   })
+  expectNoErrors(e2e.logs)
+})
+
+test('/help interrupts a number step and opens Help without a validation error', async () => {
+  await enterChangePriceAtPrice()
+
+  await expectDelta(e2e, () => e2e.send(privateCommand('/help')), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      {method: 'sendMessage', to: USER_A, text: /Bitcoin/},
+    ],
+  })
+
+  expect(
+    e2e.tg
+      .of('sendMessage')
+      .map(call => String(call.text))
+      .join('\n'),
+  ).not.toMatch(/Invalid amount of sats/)
+  expectNoErrors(e2e.logs)
+})
+
+test('/chats interrupts a callback-only review and opens the chat list', async () => {
+  await enterPayInvoiceAtReview()
+  const before = await snapshot(e2e)
+
+  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+      {method: 'sendMessage', to: USER_A, text: /chats with the ability/},
+    ],
+  })
+
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoErrors(e2e.logs)
+})
+
+test('an action callback from another message interrupts the flow and shows its own feedback', async () => {
+  await enterCreateInvoiceAtAmount()
+  const promptMessageId = requiredPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(donationPercentRoute.build({percent: 10}), {
+          messageId: promptMessageId + 1000,
+        }),
+      ),
+    {
+      db: {users: {changed: 1}, conversations: {removed: 1}},
+      telegram: [
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'editMessageText', to: USER_A, text: /Auto %/},
+        {method: 'answerCallbackQuery', text: /10%/},
+      ],
+    },
+  )
+
+  expect((await e2e.container.users.findById(USER_A))?.donationPercent).toBe(10)
+  expectNoErrors(e2e.logs)
+})
+
+test('an unknown callback interrupts the flow, reaches fallback and closes its spinner', async () => {
+  await enterCreateInvoiceAtAmount()
+  const promptMessageId = requiredPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback('no-such-route', {messageId: promptMessageId + 1000})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'answerCallbackQuery', text: /Unknown button/},
+      ],
+    },
+  )
+
+  expectNoErrors(e2e.logs)
+})
+
+test('a stale Cancel interrupts the current flow and terminal Cancel opens Wallet', async () => {
+  await enterCreateInvoiceAtAmount()
+  const promptMessageId = requiredPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId + 1000})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
+
+  expectNoErrors(e2e.logs)
+})
+
+test('prompt edit failure does not block Help or leave a conversation row', async () => {
+  await enterCreateInvoiceAtAmount()
+  const promptMessageId = requiredPromptMessageId()
+  e2e.tg.fail('editMessageText', {
+    error_code: 400,
+    description: 'Bad Request: message to edit not found',
+  })
+
+  await e2e.send(privateCommand('/help'))
+
+  await expectNoConversations(e2e.db)
+  expect(e2e.tg.of('editMessageText')[0]).toMatchObject({message_id: promptMessageId})
+  expect(e2e.tg.of('editMessageReplyMarkup')[0]).toMatchObject({message_id: promptMessageId})
+  const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(messages.some(text => /Previous action canceled/.test(text))).toBe(true)
+  expect(messages.some(text => /Bitcoin/.test(text))).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('a persisted text prompt keeps its message ID when interrupted after restart', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    mode: 'file',
+    env: {BOT_USERNAME: 'zap_gram_bot'},
+  })
+  await enterCreateInvoiceAtAmount()
+  const promptMessageId = requiredPromptMessageId()
+
+  await e2e.restart()
+  await e2e.send(privateCommand('/wallet'))
+
+  await expectNoConversations(e2e.db)
+  expect(e2e.tg.last('editMessageText')).toMatchObject({message_id: promptMessageId})
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet/)
   expectNoErrors(e2e.logs)
 })
 

@@ -2,8 +2,16 @@ import {getAccessibleChatForOwner} from '@modules/chats/repository.js'
 import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
 import type {EnableOnchainResult} from '@modules/onchain/enable.service.js'
 import {captureBotEvent, setTelegramChatGroup} from '@telegram/analytics.js'
+import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -12,31 +20,42 @@ export async function enablingOnchain(
   ctx: ConversationContext,
   chatId: number,
 ) {
-  const prompt = await ctx.reply(ctx.t('enabling-onchain'), {
-    reply_markup: new InlineKeyboard().text(ctx.t('button.cancel'), 'cancel'),
+  const html = ctx.t('enabling-onchain')
+  const message = await ctx.reply(html, {
+    reply_markup: new InlineKeyboard().text(ctx.t('button.cancel'), staticCallback.cancel),
   })
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.enable-onchain'),
+  })
+  const cancelled = cancelledPromptState(ctx, prompt)
 
   while (true) {
-    const next = await conversation.waitFor(['message:text', 'callback_query:data'])
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
-    if (next.callbackQuery?.data === 'cancel') {
+    if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await next.editMessageText(ctx.t('canceled'))
+      await deactivatePrompt(conversation, prompt, cancelled)
       const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
       if (owned) await replyWithChat(ctx, owned)
-      return
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
     }
 
     const masterpub = next.message?.text?.trim()
     if (!masterpub) {
-      await ctx.reply(ctx.t('enabling-onchain.invalid'))
+      await next.reply(next.t('enabling-onchain.invalid'))
       continue
     }
 
     const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
     if (!owned) {
-      await conversation.external(() => removeInlineKeyboard(prompt))
-      await ctx.reply(ctx.t('chat.not-found'))
+      await clearPromptControls(conversation, prompt)
+      await next.reply(next.t('chat.not-found'))
       return
     }
 
@@ -49,7 +68,7 @@ export async function enablingOnchain(
       continue
     }
 
-    await conversation.external(() => removeInlineKeyboard(prompt))
+    await clearPromptControls(conversation, prompt)
 
     if (posthog) setTelegramChatGroup(posthog, result.chat, String(ctx.user.id))
     captureBotEvent(
