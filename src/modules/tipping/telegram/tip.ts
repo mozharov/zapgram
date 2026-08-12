@@ -3,9 +3,10 @@ import {NoRecipientError} from '@core/errors/no-recipient.js'
 import {ToBotError} from '@core/errors/to-bot.js'
 import {ToYourselfError} from '@core/errors/to-yourself.js'
 import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet.js'
-import type {HearsContext} from '@grammyjs/conversations/out/deps.node.js'
+import type {Filter} from '@grammyjs/conversations/out/deps.node.js'
 import type {User} from '@infra/db/types.js'
 import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
+import {matchTipRequest, type TipRequest} from '@modules/tipping/telegram/tip-match.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {getOrCreateUser, getUserByUsername} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
@@ -13,11 +14,16 @@ import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getUserFromChatCreator} from '@telegram/helpers/chat-creator.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {replyWithTempMessage} from '@telegram/helpers/temp-message.js'
+import {replyOnlyToSender} from '@telegram/helpers/ephemeral-message.js'
 import type {ChatTypeContext} from 'grammy'
 import {getRuntime} from '../../../runtime.js'
 
-type Context = ChatTypeContext<HearsContext<BotContext>, 'group' | 'supergroup'>
+type Context = ChatTypeContext<Filter<BotContext, ':text' | ':caption'>, 'group' | 'supergroup'>
+
+/** The text the trigger was matched against — same source grammY's own `hears` reads. */
+export function tipText(ctx: Filter<BotContext, ':text' | ':caption'>): string {
+  return ctx.msg.text ?? ctx.msg.caption ?? ''
+}
 
 type ResolvedTipRecipient = {
   user: User
@@ -29,11 +35,11 @@ type ResolvedTipRecipient = {
 
 export const tipInvalidCommand = async (ctx: Context) => {
   await deleteMessageSafely(ctx)
-  return replyWithTempMessage(ctx, ctx.t('tip.invalid-command'))
+  return replyOnlyToSender(ctx, ctx.t('tip.invalid-command'))
 }
 
 export const tipCommand = async (ctx: Context) => {
-  const {sats, username} = parseMatch(ctx.match)
+  const {sats, username} = requestOf(ctx)
   await deleteMessageSafely(ctx)
   if (sats === 0) return
   await ctx.replyWithChatAction('typing').catch(() => null)
@@ -149,13 +155,13 @@ function recipientAnalytics(resolved: ResolvedTipRecipient) {
   }
 }
 
-function parseMatch(match: string | RegExpMatchArray): {
-  sats: number
-  username: string | undefined
-} {
-  const [, amount, username] = match
-  const sats = amount ? Number(amount) : 21
-  return {sats, username: username?.toLowerCase()}
+/** The composer only routes accepted triggers here, so re-matching cannot come back empty. */
+function requestOf(ctx: Context): TipRequest {
+  const request = matchTipRequest(tipText(ctx), ctx.me.username)
+  if (request === null || request === 'invalid') {
+    throw new Error(`tipCommand received an unmatched trigger: ${request}`)
+  }
+  return request
 }
 
 async function getToUser(ctx: Context, username?: string): Promise<ResolvedTipRecipient | null> {

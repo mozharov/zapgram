@@ -4,6 +4,7 @@ import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
 import {
+  groupEphemeralCommand,
   groupReply,
   groupReplyToChannel,
   groupText,
@@ -12,7 +13,12 @@ import {
   type TestUpdate,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
-import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
+import {
+  expectDelta,
+  expectLedgerBalanced,
+  snapshot,
+  type TelegramCallExpectation,
+} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
 export const COVERS = scenarioCoverage.tipping
@@ -31,7 +37,7 @@ const TIP_SATS = 21
 const STARTING_BALANCE_SATS = 1000
 const CHAT_OWNER = 777
 
-type TelegramExpectation = {method: string; to?: number; text?: RegExp}
+type TelegramExpectation = TelegramCallExpectation
 
 let e2e: E2E
 
@@ -126,6 +132,48 @@ test('/tip with an amount and username pays that stored user', async () => {
 
   expect(notificationTo(USER_B)).toContain('Sender: @user_a')
   expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(~\$[^)]+\))?<\/b>/)
+})
+
+// Clients append the bot username as soon as a group holds more than one bot.
+test('/tip@this_bot pays exactly like a bare /tip', async () => {
+  await seedSenderAndRecipient()
+
+  await expectInternalTransfer(
+    () => e2e.send(groupText('/tip@zap_gram_bot 21 @user_b')),
+    USER_B,
+    '100002 wallet',
+    [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, text: /sent 21 sats to @user_b/},
+      {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
+    ],
+  )
+})
+
+test('a mention of this bot pays like /tip, an unrelated mention is ignored', async () => {
+  await seedSenderAndRecipient()
+
+  await expectInternalTransfer(
+    () => e2e.send(groupText('@zap_gram_bot 21 @user_b')),
+    USER_B,
+    '100002 wallet',
+    [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, text: /sent 21 sats to @user_b/},
+      {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
+    ],
+  )
+
+  await expectDelta(e2e, () => e2e.send(groupText('@user_b 21 @user_a')), {telegram: []})
+})
+
+test('/tip addressed to another bot is left to that bot', async () => {
+  await seedSenderAndRecipient()
+
+  await expectDelta(e2e, () => e2e.send(groupText('/tip@other_bot 21 @user_b')), {telegram: []})
+  expectNoErrors(e2e.logs)
 })
 
 test('replying to a user provisions their wallet and pays them', async () => {
@@ -223,8 +271,12 @@ test('a tip to the sender is refused without moving money', async () => {
   await expectRefusedTip(groupText('/tip 21 @user_a'), /can't send sats to yourself/, [
     {method: 'deleteMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
-    {method: 'sendMessage', to: CHAT_GROUP, text: /can't send sats to yourself/},
-    {method: 'deleteMessages', to: CHAT_GROUP},
+    {
+      method: 'sendMessage',
+      to: CHAT_GROUP,
+      receiverUserId: USER_A,
+      text: /can't send sats to yourself/,
+    },
   ])
 })
 
@@ -253,8 +305,12 @@ for (const recipient of botRecipients) {
     await expectRefusedTip(update, /can't send sats to bots/, [
       {method: 'deleteMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},
-      {method: 'sendMessage', to: CHAT_GROUP, text: /can't send sats to bots/},
-      {method: 'deleteMessages', to: CHAT_GROUP},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: USER_A,
+        text: /can't send sats to bots/,
+      },
     ])
   })
 }
@@ -330,8 +386,12 @@ test('replying to this bot without ADMIN_TELEGRAM_IDS is refused', async () => {
   await expectRefusedTip(update, /can't send sats to bots/, [
     {method: 'deleteMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
-    {method: 'sendMessage', to: CHAT_GROUP, text: /can't send sats to bots/},
-    {method: 'deleteMessages', to: CHAT_GROUP},
+    {
+      method: 'sendMessage',
+      to: CHAT_GROUP,
+      receiverUserId: USER_A,
+      text: /can't send sats to bots/,
+    },
   ])
 })
 
@@ -341,8 +401,12 @@ test('an unknown username is refused without creating a wallet', async () => {
   await expectRefusedTip(groupText('/tip 21 @missing_user'), /doesn't have a ZapGram wallet/, [
     {method: 'deleteMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
-    {method: 'sendMessage', to: CHAT_GROUP, text: /doesn't have a ZapGram wallet/},
-    {method: 'deleteMessages', to: CHAT_GROUP},
+    {
+      method: 'sendMessage',
+      to: CHAT_GROUP,
+      receiverUserId: USER_A,
+      text: /doesn't have a ZapGram wallet/,
+    },
   ])
 })
 
@@ -354,8 +418,12 @@ test('a group with no discoverable creator reports that no recipient was specifi
     {method: 'deleteMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
     {method: 'getChatAdministrators'},
-    {method: 'sendMessage', to: CHAT_GROUP, text: /recipient is not specified/},
-    {method: 'deleteMessages', to: CHAT_GROUP},
+    {
+      method: 'sendMessage',
+      to: CHAT_GROUP,
+      receiverUserId: USER_A,
+      text: /recipient is not specified/,
+    },
   ])
 })
 
@@ -365,19 +433,53 @@ test('an insufficient balance is refused before an invoice is created', async ()
   await expectRefusedTip(groupText('/tip 21 @user_b'), /Insufficient funds/, [
     {method: 'deleteMessage', to: CHAT_GROUP},
     {method: 'sendChatAction', to: CHAT_GROUP},
-    {method: 'sendMessage', to: CHAT_GROUP, text: /Insufficient funds/},
-    {method: 'deleteMessages', to: CHAT_GROUP},
+    {method: 'sendMessage', to: CHAT_GROUP, receiverUserId: USER_A, text: /Insufficient funds/},
   ])
 })
 
-test('an invalid /tip command is deleted and replaced with a temporary usage hint', async () => {
+// --- Ephemeral /tip command ---
+
+test('an ephemeral /tip has nothing to delete and still confirms publicly', async () => {
+  await seedSenderAndRecipient()
+
+  await expectInternalTransfer(
+    () => e2e.send(groupEphemeralCommand('/tip 21 @user_b')),
+    USER_B,
+    '100002 wallet',
+    [
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: null,
+        text: /sent 21 sats to @user_b/,
+      },
+      {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
+    ],
+  )
+})
+
+test('an ephemeral /tip that fails answers its sender and deletes nothing', async () => {
+  await seedSenderAndRecipient({senderBalanceSats: TIP_SATS - 1})
+
+  await expectRefusedTip(groupEphemeralCommand('/tip 21 @user_b'), /Insufficient funds/, [
+    {method: 'sendChatAction', to: CHAT_GROUP},
+    {method: 'sendMessage', to: CHAT_GROUP, receiverUserId: USER_A, text: /Insufficient funds/},
+  ])
+})
+
+test('an invalid /tip command is deleted and answered only to its sender', async () => {
   await seedSender()
 
-  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip twenty @user_b')), {
+  await expectDelta(e2e, () => e2e.send(groupText('/tip twenty @user_b')), {
     telegram: [
       {method: 'deleteMessage', to: CHAT_GROUP},
-      {method: 'sendMessage', to: CHAT_GROUP, text: /Invalid command usage/},
-      {method: 'deleteMessages', to: CHAT_GROUP},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: USER_A,
+        text: /Invalid command usage/,
+      },
     ],
   })
 
@@ -443,19 +545,9 @@ async function expectRefusedTip(
   errorText: RegExp,
   telegram: TelegramExpectation[],
 ): Promise<void> {
-  await expectDelta(e2e, () => sendAndWaitForTempMessage(update), {telegram})
+  await expectDelta(e2e, () => e2e.send(update), {telegram})
   expect(e2e.tg.of('sendMessage').some(call => errorText.test(String(call.text)))).toBe(true)
   expect(errorMessages()).toEqual(['Bot error'])
-}
-
-async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
-  const previousDeletes = e2e.tg.of('deleteMessages').length
-  await e2e.send(update)
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (e2e.tg.of('deleteMessages').length > previousDeletes) return
-    await Bun.sleep(5)
-  }
-  throw new Error('The temporary tip message was never deleted')
 }
 
 function notificationTo(userId: number): string {

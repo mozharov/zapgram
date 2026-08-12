@@ -18,9 +18,10 @@ function grammyDeleteError(method: 'deleteMessage' | 'deleteMessages') {
 }
 
 function ctxWithLog(
-  partial: Partial<Context> & {
+  partial: Omit<Partial<Context>, 'msg'> & {
     deleteMessage?: Context['deleteMessage']
     deleteMessages?: Context['deleteMessages']
+    msg?: {ephemeral_message_id?: number}
   },
   log: Pick<AppLogger, 'warn'>,
 ) {
@@ -40,6 +41,16 @@ test('deleteMessageSafely resolves without logging when delete succeeds', async 
   const deleteMessage = mock(() => Promise.resolve(true as const))
   const warn = mock(() => {})
   await expect(deleteMessageSafely(ctxWithLog({deleteMessage}, {warn}))).resolves.toBeUndefined()
+  expect(warn).not.toHaveBeenCalled()
+})
+
+test('deleteMessageSafely leaves an ephemeral command alone', async () => {
+  const deleteMessage = mock(() => Promise.resolve(true as const))
+  const warn = mock(() => {})
+
+  await deleteMessageSafely(ctxWithLog({deleteMessage, msg: {ephemeral_message_id: 5}}, {warn}))
+
+  expect(deleteMessage).not.toHaveBeenCalled()
   expect(warn).not.toHaveBeenCalled()
 })
 

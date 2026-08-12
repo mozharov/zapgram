@@ -48,6 +48,14 @@ export type WorldState = {
   telegram: TgCall[]
 }
 
+/** `receiverUserId` is the ephemeral recipient: a user id to require one, `null` to forbid one. */
+export type TelegramCallExpectation = {
+  method: string
+  to?: number
+  receiverUserId?: number | null
+  text?: RegExp
+}
+
 type DbKey = keyof WorldState['db']
 type RowDelta = {before?: unknown; after?: unknown}
 type DbExpectation = {
@@ -100,7 +108,7 @@ export async function expectDelta(
       balances?: Record<string, number>
       payments?: {out: boolean; sats: number; times: number}[]
     }
-    telegram?: string[] | {method: string; to?: number; text?: RegExp}[]
+    telegram?: string[] | TelegramCallExpectation[]
   },
 ): Promise<void> {
   const before = await snapshot(e2e)
@@ -225,7 +233,7 @@ function assertPaymentDelta(
 function assertTelegramDelta(
   before: WorldState,
   after: WorldState,
-  expected: string[] | {method: string; to?: number; text?: RegExp}[],
+  expected: string[] | TelegramCallExpectation[],
 ): void {
   const prefix = after.telegram.slice(0, before.telegram.length)
   if (!Bun.deepEquals(prefix, before.telegram)) {
@@ -255,6 +263,18 @@ function assertTelegramDelta(
     const to = Number(call.payload.chat_id ?? call.payload.user_id)
     if (item.to !== undefined && to !== item.to) {
       throw new Error(`Telegram call ${index}: expected recipient ${item.to}, got ${format(call)}`)
+    }
+    // `receiverUserId: null` pins a group message as public — an ephemeral one would carry an id.
+    if (item.receiverUserId !== undefined) {
+      const receiver = call.payload.receiver_user_id
+      const expectedReceiver = item.receiverUserId
+      const matches =
+        expectedReceiver === null ? receiver === undefined : Number(receiver) === expectedReceiver
+      if (!matches) {
+        throw new Error(
+          `Telegram call ${index}: expected receiver_user_id ${expectedReceiver}, got ${format(call)}`,
+        )
+      }
     }
     const text = telegramText(call.payload)
     if (item.text && !item.text.test(text)) {

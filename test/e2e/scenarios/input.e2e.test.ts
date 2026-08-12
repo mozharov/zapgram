@@ -250,16 +250,17 @@ test('a handle the recipient no longer owns stops resolving', async () => {
 
   await expectDelta(
     e2e,
-    async () => {
-      await e2e.send(groupText('/tip 21 @old_handle', {from: {id: USER_A, username: 'user_a'}}))
-      await waitForTempMessageDeletion()
-    },
+    () => e2e.send(groupText('/tip 21 @old_handle', {from: {id: USER_A, username: 'user_a'}})),
     {
       telegram: [
         {method: 'deleteMessage'},
         {method: 'sendChatAction'},
-        {method: 'sendMessage', to: CHAT_GROUP, text: /doesn't have a ZapGram wallet/},
-        {method: 'deleteMessages'},
+        {
+          method: 'sendMessage',
+          to: CHAT_GROUP,
+          receiverUserId: USER_A,
+          text: /doesn't have a ZapGram wallet/,
+        },
       ],
     },
   )
@@ -323,19 +324,6 @@ function credit(userId: number, sats: number): void {
   const wallet = e2e.ln.state.walletsOfUser(lnUser.id)[0]
   if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
   e2e.ln.state.credit(wallet.id, sats * 1000)
-}
-
-/**
- * An error reply in a group is a temp message: the handler returns immediately and deletes it a
- * few milliseconds later. Waiting for that delete keeps it inside the assertion window that
- * expects it, instead of leaking into whatever the test does next.
- */
-async function waitForTempMessageDeletion(): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (e2e.tg.of('deleteMessages').length > 0) return
-    await Bun.sleep(5)
-  }
-  throw new Error('The temp error message was never deleted')
 }
 
 function errorMessages(): string[] {

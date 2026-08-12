@@ -43,6 +43,18 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Group messages
+
+`/tip` is registered for group chats with `is_ephemeral: true`: the typed command reaches the bot
+but no other member sees it. Those updates carry `message_id: 0` + `ephemeral_message_id`, so
+`deleteMessageSafely` skips them — never call `deleteMessage` for an ephemeral command.
+
+Only successful money movements are public in a group. Every failure or usage hint goes through
+`replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`), which sends a Telegram ephemeral
+message (`receiver_user_id`) that only the acting member sees and Telegram expires on its own — so
+it is never deleted afterwards. `replyWithTempMessage` stays only as the fallback for senders
+Telegram cannot deliver an ephemeral message to (anonymous admins, channel posts).
+
 ## Dates
 
 Every timestamp a user sees goes through `TGTIME($var, format: "Dt")` in the `.ftl` files

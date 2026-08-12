@@ -74,6 +74,27 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 2. Paid → claim row (delete returning) then notify. Claim is shared by LNbits webhook, internal bot pay (`paying-invoice`), and `check-pending-invoices` cron so internal→internal cannot double-notify.
 3. Tips/transfers mint invoices without a pending row; they notify via their own path (`notifySatsReceived`). A webhook for those hashes is a no-op.
 
+## Group messages
+
+The group tip trigger is matched per update by `matchTipRequest`
+(`src/modules/tipping/telegram/tip-match.ts`), not by a `hears` regex: clients send
+`/tip@this_bot` in every chat that holds more than one bot, and the addressee has to be compared
+against `ctx.me.username` rather than a baked-in name. `/tip@other_bot` belongs to that bot and is
+ignored silently; a bare `@this_bot` mention is the same trigger as `/tip`.
+
+`/tip` is registered for `all_group_chats` with `is_ephemeral: true`, so the command a member types
+is delivered to the bot but stays invisible to the rest of the group and to other bots. Such an
+update arrives with `message_id: 0` and an `ephemeral_message_id`, and there is nothing to clean up
+— `deleteMessageSafely` returns early for it instead of calling `deleteMessage` on id 0. The
+`@zap_gram_bot 21` spelling is not a registered command, so it stays public and is still deleted.
+
+Only a successful money movement earns a public message in a group (`notifyGroupTip`). Every
+failure and usage hint goes through `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`),
+which sends a Telegram ephemeral message (`receiver_user_id`): the rest of the group never sees it
+and Telegram expires it, so no delete follows. Anonymous admins and channel-post senders have no
+user to deliver to, so a refused send falls back to `replyWithTempMessage` — the public notice that
+`TEMP_MESSAGE_DELAY_MS` later deletes itself.
+
 ## Callback data
 
 All parameterized `callback_data` strings go through `src/telegram/callback-data.ts` (`defineCallback` → `build` / `parse` / `pattern`) so keyboards and handlers cannot drift.

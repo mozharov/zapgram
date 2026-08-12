@@ -9,8 +9,12 @@ type ContextWithLog = Context & {log: AppLogger}
  * Telegram often refuses: message too old ("can't be deleted for everyone"), already gone,
  * missing delete rights, etc. Callers use this for UI cleanup (callback boards, /tip noise);
  * failure must not abort the real work or surface as an unknown bot error in PostHog.
+ *
+ * An ephemeral command (`is_ephemeral` in setMyCommands) never reached the group, so there is no
+ * noise to clean up — and its `message_id` is 0, which `deleteMessage` cannot address anyway.
  */
 export async function deleteMessageSafely(ctx: ContextWithLog): Promise<void> {
+  if (ctx.msg?.ephemeral_message_id !== undefined) return
   await ctx.deleteMessage().catch((error: unknown) => {
     ctx.log.warn({error}, 'Failed to delete message')
   })

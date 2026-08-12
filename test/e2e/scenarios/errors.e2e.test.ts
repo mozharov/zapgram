@@ -39,8 +39,8 @@ import {scenarioCoverage} from './coverage.js'
 
 /**
  * Domain errors as the user sees them: every AppErrorCode reaches the right Fluent copy, private
- * chats get error + wallet, groups get a temporary message, channels stay silent, and copy is free
- * of Fluent isolation marks and raw translation keys.
+ * chats get error + wallet, group failures reach only their sender, channels stay silent, and copy
+ * is free of Fluent isolation marks and raw translation keys.
  *
  * `not_found` intentionally maps to `error.unknown`. NWC payment failures are forced through the
  * real pay-subscription route by stubbing `NostrWallet.prototype.payInvoice` — the live NWC
@@ -112,7 +112,7 @@ test('error-copy maps every AppErrorCode, with not_found falling back to unknown
   }
 })
 
-test('insufficient_funds is shown in a group as a temporary message', async () => {
+test('insufficient_funds is shown in a group only to the sender', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
   await expectGroupError(groupText('/tip 21 @user_b'), 'insufficient_funds', 'en')
 })
@@ -324,26 +324,49 @@ test('unknown surfaces for a non-AppError failure', async () => {
 
 // --- Delivery modes ---
 
-test('a group error is a temporary message that is deleted', async () => {
+test('a group error is an ephemeral message that needs no cleanup', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+  await expectDelta(e2e, () => e2e.send(groupText('/tip 21 @user_b')), {
     telegram: [
       {method: 'deleteMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},
       {
         method: 'sendMessage',
         to: CHAT_GROUP,
+        receiverUserId: USER_A,
         text: expectedErrorPattern('insufficient_funds', 'en'),
       },
-      {method: 'deleteMessages', to: CHAT_GROUP},
     ],
   })
 
   const after = await snapshot(e2e)
   expect(after.db).toEqual(before.db)
   expect(after.lnbits).toEqual(before.lnbits)
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
+test('a group error Telegram refuses to keep private falls back to a public temporary message', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  // Only the ephemeral attempt fails; the public fallback takes the next queued (default) response.
+  e2e.tg.fail('sendMessage', {error_code: 400, description: 'Bad Request: user not found'})
+
+  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+    telegram: [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, receiverUserId: USER_A},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: null,
+        text: expectedErrorPattern('insufficient_funds', 'en'),
+      },
+      {method: 'deleteMessages', to: CHAT_GROUP},
+    ],
+  })
+
   expect(errorMessages()).toEqual(['Bot error'])
 })
 
@@ -461,7 +484,7 @@ test('job notifications normalize each stored language_code independently', asyn
 
 test('error replies are sent with HTML parse mode and no raw keys', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
-  await sendAndWaitForTempMessage(groupText('/tip 21 @user_b'))
+  await e2e.send(groupText('/tip 21 @user_b'))
 
   const errorCall = e2e.tg
     .of('sendMessage')
@@ -524,8 +547,10 @@ async function expectGroupError(
   const before = await snapshot(e2e)
   const displayCode = code === 'not_found' ? 'unknown' : code
   const expected = expectedErrorText(displayCode, locale)
+  const sender = update.message?.from?.id
+  if (sender === undefined) throw new Error('A group error scenario needs a sending user')
 
-  await sendAndWaitForTempMessage(update)
+  await e2e.send(update)
 
   const after = await snapshot(e2e)
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
@@ -533,7 +558,9 @@ async function expectGroupError(
   expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
   expect(errorTextTo(CHAT_GROUP)).toBe(expected)
   expectCleanUserText(expected)
-  expect(e2e.tg.of('deleteMessages').length).toBeGreaterThan(0)
+  // Group failures are ephemeral: addressed to the sender alone, so nothing is deleted afterwards.
+  expect(Number(errorCallTo(CHAT_GROUP).receiver_user_id)).toBe(sender)
+  expect(e2e.tg.of('deleteMessages')).toEqual([])
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
 }
 
@@ -564,11 +591,15 @@ function expectedErrorPattern(code: AppErrorCode, locale: Locale): RegExp {
 }
 
 function errorTextTo(chatId: number): string {
+  return String(errorCallTo(chatId).text)
+}
+
+function errorCallTo(chatId: number): Record<string, unknown> {
   const call = e2e.tg
     .of('sendMessage')
     .find(payload => Number(payload.chat_id) === chatId && String(payload.text).includes('⚠️'))
   if (!call) throw new Error(`No error sendMessage to ${chatId}`)
-  return String(call.text)
+  return call
 }
 
 function expectCleanUserText(text: string): void {

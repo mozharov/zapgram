@@ -103,11 +103,14 @@ export async function configureBot(deps: {
       language_code: 'ru',
     })
   }
+  // `is_ephemeral`: the /tip message itself stays invisible to the rest of the group (and to other
+  // bots) — only the public confirmation of a successful tip is seen by everyone.
   await bot.api.setMyCommands(
     [
       {
         command: 'tip',
         description: 'Send sats: /tip [amount] [username]',
+        is_ephemeral: true,
       },
     ],
     {scope: {type: 'all_group_chats'}},
@@ -117,6 +120,7 @@ export async function configureBot(deps: {
       {
         command: 'tip',
         description: 'Отправить саты: /tip [amount] [username]',
+        is_ephemeral: true,
       },
     ],
     {scope: {type: 'all_group_chats'}, language_code: 'ru'},
