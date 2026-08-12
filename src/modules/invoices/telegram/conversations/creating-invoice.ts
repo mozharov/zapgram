@@ -169,10 +169,17 @@ async function createInvoice(
       expiresAt: invoice.expiry ?? undefined,
     })
     paymentRequest = invoice.bolt11
+    // Called through `mintInvoiceOnce` → `conversation.external`, so this logs once per mint
+    // instead of once per conversation replay.
+    ctx.log.info(
+      {sats, source: wallet, paymentHash: invoice.payment_hash, hasMemo: Boolean(memo)},
+      'Invoice created',
+    )
   } else {
     if (!ctx.user.nwc) throw new NWCConnectionError()
     const invoice = await ctx.user.nwc.createInvoice(msats, memo)
     paymentRequest = invoice.invoice
+    ctx.log.info({sats, source: wallet, hasMemo: Boolean(memo)}, 'Invoice created')
   }
   return paymentRequest
 }

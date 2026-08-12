@@ -66,6 +66,11 @@ export const tipCommand = async (ctx: Context) => {
       await ctx.user.nwc.payInvoice(invoice.bolt11)
     } else await internalTransfer(ctx.user.id, toUser.id, sats)
 
+    ctx.log.info(
+      {toUserId: toUser.id, sats, source: usedNwc ? 'nwc' : 'internal', viaPlatformBot},
+      'Tip sent',
+    )
+
     const replyTo = ctx.message.reply_to_message
     const toChatCreator = (!username && !replyTo) || !!replyTo?.sender_chat
     const toMessageId = replyTo?.message_id

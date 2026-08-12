@@ -43,6 +43,21 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Logging
+
+Full rules: `docs/architecture.md` → Logging.
+
+- Log the interaction, not the transport. `src/telegram/middlewares/logger.ts` writes one
+  `Update handled` / `Update failed` line per update; ignored updates stay at `debug`. Do not add
+  per-request info logging at the HTTP layer.
+- In handlers/conversations use `ctx.log`; it already carries `reqId`, `action`, `userId`, `chatId`,
+  so log only what is new (ids, amounts, outcome). Services take `log` through `deps`; leaf
+  jobs/services use `getRuntime().log`.
+- Add an info line for every state change and money movement; skip it for read-only screens.
+- Never log message text, NWC URLs, LNbits keys, or whole `ctx.user` / wallet objects.
+- Inside conversations, log after the last `wait()` or inside `conversation.external` — anything
+  else re-runs on every replay.
+
 ## Tests
 
 Choose the narrowest test level that still crosses the boundary under test:

@@ -5,16 +5,20 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
+import type {AppLogger} from '@infra/logger.js'
 import {and, eq, isNotNull, lte, ne, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserRepositoryOptions = {
   /** Applied only on first insert via getOrCreate — not on profile refresh. */
   defaultDonationPercent?: number
+  /** Optional: signup / profile-refresh logging. Repository tests construct without it. */
+  log?: AppLogger
 }
 
 export function createUserRepository(database: AppDatabase, options: UserRepositoryOptions = {}) {
   const defaultDonationPercent = options.defaultDonationPercent ?? 0
+  const log = options.log
 
   async function findById(id: User['id']) {
     return database.query.usersTable.findFirst({where: eq(usersTable.id, id)})
@@ -65,11 +69,16 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
     async getOrCreate(data: NewUser) {
       const existing = await findById(data.id)
       if (!existing) {
-        return createOrUpdate({
+        const created = await createOrUpdate({
           ...data,
           donationPercent: data.donationPercent ?? defaultDonationPercent,
           donationScope: data.donationScope ?? 'tips',
         })
+        log?.info(
+          {userId: created.id, languageCode: created.languageCode},
+          'User created on first interaction',
+        )
+        return created
       }
 
       const username = data.username?.toLowerCase()
@@ -78,7 +87,10 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         (data.firstName === undefined || existing.firstName === data.firstName) &&
         (data.languageCode === undefined || existing.languageCode === data.languageCode)
 
-      return isCurrent ? existing : createOrUpdate(data)
+      if (isCurrent) return existing
+      const refreshed = await createOrUpdate(data)
+      log?.debug({userId: refreshed.id}, 'User profile refreshed from Telegram')
+      return refreshed
     },
 
     createOrUpdate,

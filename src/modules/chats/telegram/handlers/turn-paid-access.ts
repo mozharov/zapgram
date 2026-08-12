@@ -11,6 +11,7 @@ export const turnPaidAccessCallback = async (ctx: CallbackQueryContext<BotContex
   let chat = await getAccessibleChatForOwner(id, ctx.user.id)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
   chat = await updateChat(id, {status})
+  ctx.log.info({chatId: id, status, price: chat.price}, 'Chat paid access updated')
   const {posthog} = getRuntime()
   if (posthog) setTelegramChatGroup(posthog, chat, String(ctx.user.id))
   captureBotEvent(

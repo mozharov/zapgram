@@ -9,7 +9,7 @@ import {
 import {expectNoErrors, expectWorldUnchanged} from '../asserts.js'
 import {USER_A, USER_B} from '../fixtures/ids.js'
 import {seedPendingInvoice, seedUser} from '../fixtures/seed.js'
-import {privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
+import {groupText, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -103,10 +103,11 @@ test('POST /bot with a wrong or missing secret leaves the world unchanged', asyn
 
 // --- Request id ---
 
-test('POST /bot stamps reqId on the update and the handler log carries it', async () => {
+test('POST /bot stamps reqId on the update and every log line of it carries it', async () => {
   // Undecodable bolt11 trips the error boundary, which logs through ctx.log — the child logger
-  // that middleware builds from `update.reqId`. Matching that id with the HTTP request log is
-  // proof the router wrote the same reqId onto the body before grammY ran the update.
+  // the update middleware builds from `update.reqId`. The 8-char id shape is only ever produced
+  // by the HTTP request logger, so finding it here proves the router wrote it onto the body
+  // before grammY ran the update.
   e2e.logs.length = 0
   const update = privateText('lnbc1invalid', {from: {id: USER_A}})
 
@@ -116,17 +117,50 @@ test('POST /bot stamps reqId on the update and the handler log carries it', asyn
   const botError = e2e.logs.find(
     log => (log.level === 'error' || log.level === 50) && log.msg === 'Bot error',
   )
-  const requestLog = e2e.logs.find(
-    log => typeof log.msg === 'string' && String(log.msg).startsWith('POST /bot'),
-  )
+  const outcome = e2e.logs.find(log => log.msg === 'Update failed')
 
   expect(botError, 'expected Bot error log with reqId').toBeDefined()
-  expect(requestLog, 'expected HTTP request log with reqId').toBeDefined()
+  expect(outcome, 'expected an update outcome log line').toBeDefined()
   expect(typeof botError?.reqId).toBe('string')
   expect(botError?.reqId).toMatch(/^[a-z0-9]{8}$/)
-  expect(requestLog?.reqId).toBe(botError?.reqId)
+  expect(outcome?.reqId).toBe(botError?.reqId)
   // Fixture reqIds look like `e2e-N`; the router must overwrite them with its own.
   expect(String(botError?.reqId)).not.toMatch(/^e2e-/)
+  // The failing update is identifiable without reading any other line.
+  expect(botError?.action).toBe('ln_invoice_pasted')
+  expect(botError?.userId).toBe(USER_A)
+})
+
+test('a handled update logs one identifiable line, and no bare "POST /bot" noise', async () => {
+  e2e.logs.length = 0
+
+  const response = await postBot(privateCommand('/wallet', {from: {id: USER_A}}))
+  expect(response.status).toBe(200)
+
+  const handled = e2e.logs.filter(log => log.msg === 'Update handled')
+  expect(handled).toHaveLength(1)
+  expect(handled[0]).toMatchObject({
+    action: 'command_wallet',
+    command: 'wallet',
+    chatType: 'private',
+    userId: USER_A,
+  })
+  expect(typeof handled[0]?.ms).toBe('number')
+  // The whole point of the change: the transport line said nothing, so it is no longer at info.
+  expect(e2e.logs.filter(log => String(log.msg).startsWith('POST /bot'))).toEqual([])
+  expect(e2e.logs.filter(log => log.msg === 'HTTP request')).toEqual([])
+})
+
+test('updates the bot ignores are not logged at info', async () => {
+  e2e.logs.length = 0
+
+  // Group chatter the bot has no handler for: Telegram still delivers it with privacy off.
+  const response = await postBot(groupText('just talking to my friends'))
+  expect(response.status).toBe(200)
+
+  expect(e2e.logs.filter(log => log.msg === 'Update handled')).toEqual([])
+  expect(e2e.logs.filter(log => log.msg === 'Update failed')).toEqual([])
+  expectNoErrors(e2e.logs)
 })
 
 // --- Malformed bodies ---

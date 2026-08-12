@@ -13,9 +13,11 @@ export function createUserWalletFactory(deps: {
   paymentWebhookUrl?: string
 }) {
   return async function getUserWallet(userId: User['id']) {
-    const user =
-      (await deps.masterWallet.getUserByUsername(userId.toString())) ||
-      (await deps.masterWallet.createUser(userId.toString()))
+    const existing = await deps.masterWallet.getUserByUsername(userId.toString())
+    const user = existing || (await deps.masterWallet.createUser(userId.toString()))
+    if (!existing) {
+      deps.log?.info({userId, lnbitsUserId: user.id}, 'LNbits wallet provisioned for user')
+    }
 
     if (!user.id) {
       throw new Error('User ID is missing from LNbits response')

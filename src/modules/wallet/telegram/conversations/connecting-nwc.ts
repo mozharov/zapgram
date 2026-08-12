@@ -64,6 +64,8 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
     throw new NWCConnectionError()
   })
   await updateUser(ctx.user.id, {nwcUrl})
+  // The NWC URL itself is a wallet credential — never log it.
+  ctx.log.info('NWC wallet connected')
   const {posthog} = getRuntime()
   // Merge with Telegram person fields so a local $set does not drop name / $name.
   posthog?.capture({

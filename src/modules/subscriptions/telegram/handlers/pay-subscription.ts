@@ -16,6 +16,17 @@ export const paySubscriptionCallback = async (ctx: CallbackQueryContext<BotConte
   else if (!ctx.user.nwc) throw new NWCConnectionError()
   else await ctx.user.nwc.payInvoice(subscriptionPayment.paymentRequest)
 
+  ctx.log.info(
+    {
+      paymentId: subscriptionPayment.id,
+      paymentHash: subscriptionPayment.paymentHash,
+      chatId: subscriptionPayment.chatId,
+      sats: subscriptionPayment.price,
+      source: from,
+    },
+    'Subscription invoice paid from balance',
+  )
+
   captureBotEvent(
     getRuntime().posthog,
     'subscription_paid',

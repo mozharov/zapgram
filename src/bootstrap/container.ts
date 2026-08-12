@@ -135,7 +135,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
-  await masterWallet.checkStatus()
+  const health = await masterWallet.checkStatus()
+  log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
 
   const rates = createRateService({
     fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
@@ -151,6 +152,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const users = createUserRepository(db, {
     defaultDonationPercent: config.DONATION_DEFAULT_PERCENT,
+    log,
   })
   const donations = createDonationRepository(db)
   const chats = createChatRepository(db)
@@ -165,6 +167,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       subscriptionIntents.releaseAttemptReservation(intentId, reservationId),
     createInvoice: (sats, expirySeconds) => masterWallet.createInvoice(sats, expirySeconds),
     invoiceExpirySeconds: INVOICE_EXPIRY,
+    log,
   })
   const payments = createSubscriptionPaymentRepository(db)
   const invoices = createInvoiceRepository(db)

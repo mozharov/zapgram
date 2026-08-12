@@ -28,6 +28,7 @@ export async function changingPrice(
     return
   }
   const chat = await updateChat(chatId, {price: sats})
+  ctx.log.info({chatId, price: sats, paymentType: chat.paymentType}, 'Chat price updated')
   const {posthog} = getRuntime()
   if (posthog) setTelegramChatGroup(posthog, chat, String(ctx.user.id))
   captureBotEvent(

@@ -77,3 +77,29 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 ## Callback data
 
 All parameterized `callback_data` strings go through `src/telegram/callback-data.ts` (`defineCallback` → `build` / `parse` / `pattern`) so keyboards and handlers cannot drift.
+
+## Logging
+
+The unit of logging is the **interaction**, not the HTTP request. `POST /bot - 4ms` repeated per
+update says nothing, so the transport line lives at `debug`
+(`src/http/middlewares/request-logger.ts`) and the meaningful record is written one layer down.
+
+- **Correlation.** The HTTP layer mints `reqId`, stamps it on the Telegram update body, and
+  `src/telegram/middlewares/logger.ts` builds `ctx.log` as a child logger carrying
+  `reqId` + `describeUpdate(ctx)` (`action`, `updateId`, `chatId`, `chatType`, `userId`,
+  `callbackData`, `command`). Every line written while handling that update inherits them, so no
+  handler has to repeat who/what it is working on.
+- **One outcome line per update.** `Update handled` (info, with `ms`) or `Update failed` (warn,
+  with `ms`; the error itself comes from the error boundary). Updates the bot ignores — group
+  chatter, other bots' commands — stop at `debug` and never reach info.
+- **`action` matches the PostHog event name** (`command_wallet`, `callback_pay_onchain`, …) so a
+  log line and the analytics event for the same interaction are searchable under one name.
+- **What else gets an info line:** state changes (chat price / paid access / payment type /
+  on-chain enable-disable, NWC connect-disconnect, donation settings), money movements (invoice
+  minted and paid, tip sent, join invoice minted / reused / paid, settle and payout), and every
+  webhook outcome. Read-only screens rely on the per-update line alone.
+- **Levels.** `error` = we are broken. `warn` = someone else is broken or a request was rejected
+  (bad webhook secret, unhandled callback, unreachable user). `info` = a fact worth reconstructing
+  later. `debug` = transport and timing detail.
+- **Never log:** raw message text, NWC URLs, admin keys, or whole `ctx.user` / wallet objects —
+  the user's NWC secret lives on that row. Log ids, amounts, and lengths instead.

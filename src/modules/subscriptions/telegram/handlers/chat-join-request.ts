@@ -18,15 +18,20 @@ type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
 
 export const chatJoinRequestHandler = async (ctx: Context) => {
   const {chat: tgChat} = ctx.chatJoinRequest
-  ctx.log.debug({tgChat, user: ctx.user})
+  // Never spread `ctx.user` into a log record: it carries the user's NWC connection secret.
+  ctx.log.debug({chatTitle: tgChat.title, chatType: tgChat.type}, 'Chat join request received')
 
   const chat = await getChat({id: tgChat.id})
-  if (chat?.status !== 'active') return
+  if (chat?.status !== 'active') {
+    ctx.log.info({paidAccess: chat?.status ?? 'unknown_chat'}, 'Chat join request left to admins')
+    return
+  }
 
   const {posthog} = getRuntime()
 
   const subscription = await getSubscriptionByUserAndChat(ctx.user.id, chat.id)
   if (subscription) {
+    ctx.log.info({subscriptionId: subscription.id}, 'Chat join request auto-approved')
     captureBotEvent(
       posthog,
       'chat_join_request_auto_approved',
@@ -89,6 +94,16 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
     return
   }
 
+  ctx.log.info(
+    {
+      price: chat.price,
+      paymentType: chat.paymentType,
+      onchainOffered: showOnchain,
+      walletCovers: balanceAvailability.walletCovers,
+      nwcCovers: balanceAvailability.nwcCovers,
+    },
+    'Join payment method chooser sent',
+  )
   captureBotEvent(
     posthog,
     'subscription_join_method_chooser_sent',

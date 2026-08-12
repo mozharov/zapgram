@@ -7,6 +7,7 @@ import {getRuntime} from '../../../../runtime.js'
 export const nwcTipsCallback = async (ctx: BotContext) => {
   const user = await updateUser(ctx.user.id, {nwcTips: !ctx.user.nwcTips})
   ctx.user.nwcTips = user.nwcTips
+  ctx.log.info({nwcTips: user.nwcTips}, 'NWC tips setting toggled')
   // Merge with Telegram person fields so a local $set does not drop name / $name.
   getRuntime().posthog?.capture({
     event: 'nwc_tips_toggled',

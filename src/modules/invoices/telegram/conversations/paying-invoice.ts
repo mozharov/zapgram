@@ -25,7 +25,10 @@ export async function payingInvoice(
   const invoice = decodeInvoice(
     lnInvoice ?? (await waitForInvoice(conversation, ctx, {onCancel: returnToParent})),
   )
-  ctx.log.debug({invoice}, 'Decoded invoice')
+  ctx.log.debug(
+    {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
+    'Decoded invoice to pay',
+  )
 
   const wallet = await waitForWallet(conversation, ctx, {
     requiredSats: invoice.satoshi,
@@ -54,6 +57,18 @@ export async function payingInvoice(
     const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
     feesPaid = lookupResponse.fees_paid
   }
+
+  // Past the last `conversation.wait()`, so this line is written once and not on every replay.
+  ctx.log.info(
+    {
+      paymentHash: invoice.paymentHash,
+      sats: invoice.satoshi,
+      feeMsats: feesPaid,
+      source: wallet,
+      internalRecipient: isInternalRecipient,
+    },
+    'Lightning invoice paid',
+  )
 
   // Claim-or-skip: webhook / cron may already have notified the recipient.
   await claimAndNotifyPaidInvoice(

@@ -28,6 +28,7 @@ export async function donationPercentCallback(ctx: BotContext) {
   const clamped = clampDonationPercent(percent)
   const previous = ctx.user.donationPercent
   const user = await getRuntime().users.update(ctx.user.id, {donationPercent: clamped})
+  ctx.log.info({donationPercent: clamped, previous}, 'Donation percent updated')
   captureBotEvent(getRuntime().posthog, 'donation_percent_set', {
     feature: 'donations',
     donation_percent: clamped,
@@ -53,6 +54,7 @@ export async function donationScopeCallback(ctx: BotContext) {
   const {scope} = donationScopeRoute.parse(data)
   const previous = ctx.user.donationScope
   const user = await getRuntime().users.update(ctx.user.id, {donationScope: scope})
+  ctx.log.info({donationScope: scope, previous}, 'Donation scope updated')
   captureBotEvent(getRuntime().posthog, 'donation_scope_set', {
     feature: 'donations',
     donation_scope: scope,

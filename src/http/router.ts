@@ -46,45 +46,55 @@ export function createRouter(deps: {
     })
     .post('/lnbits/webhook/:secret', async ctx => {
       if (!deps.lnbitsPaymentWebhook) {
+        ctx.log.warn('LNbits payment webhook is not configured; payment push dropped')
         ctx.set.status = 503
         return {ok: false, error: 'webhook_unconfigured'}
       }
       if (!secretsMatch(ctx.params.secret, deps.config.BOT_WEBHOOK_SECRET)) {
+        ctx.log.warn('LNbits payment webhook rejected: wrong secret')
         ctx.set.status = 401
         return {ok: false, error: 'unauthorized'}
       }
 
       const paymentHash = deps.lnbitsPaymentWebhook.extractPaymentHash(ctx.body)
       if (!paymentHash) {
+        ctx.log.warn('LNbits payment webhook rejected: no payment hash in body')
         ctx.set.status = 400
         return {ok: false, error: 'missing_payment_hash'}
       }
 
       try {
         const result = await deps.lnbitsPaymentWebhook.handle(paymentHash)
+        ctx.log.info({paymentHash, result}, 'LNbits payment webhook handled')
         return {ok: true, result}
       } catch (error) {
         // 200 so LNbits does not hammer retries on our business failures — cron is the safety net.
-        deps.log.error({error, paymentHash}, 'LNbits payment webhook handler failed')
+        ctx.log.error({error, paymentHash}, 'LNbits payment webhook handler failed')
         return {ok: false, error: 'handler_failed'}
       }
     })
     .post('/satspay/webhook/:secret', async ctx => {
       if (!deps.satsPayWebhook) {
+        ctx.log.warn('SatsPay webhook is not configured; charge push dropped')
         ctx.set.status = 503
         return {ok: false, error: 'webhook_unconfigured'}
       }
       if (!secretsMatch(ctx.params.secret, deps.config.BOT_WEBHOOK_SECRET)) {
+        ctx.log.warn('SatsPay webhook rejected: wrong secret')
         ctx.set.status = 401
         return {ok: false, error: 'unauthorized'}
       }
 
       try {
         const result = await deps.satsPayWebhook.handle(ctx.body)
+        // Unpaid charge pushes are the common case (cron re-fires the webhook while a charge is
+        // still open), so a handled-but-ignored push stays at debug.
+        if (result === 'ignored') ctx.log.debug({result}, 'SatsPay webhook ignored')
+        else ctx.log.info({result}, 'SatsPay webhook handled')
         return {ok: true, result}
       } catch (error) {
         // 200 so SatsPay does not hammer retries — check-onchain-charges cron is the safety net.
-        deps.log.error({error}, 'SatsPay webhook handler failed')
+        ctx.log.error({error}, 'SatsPay webhook handler failed')
         return {ok: false, error: 'handler_failed'}
       }
     })

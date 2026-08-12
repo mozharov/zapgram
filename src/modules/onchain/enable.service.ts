@@ -31,7 +31,13 @@ export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
     async enable(chat: Chat, rawMasterpub: string): Promise<EnableOnchainResult> {
       // Shape only (empty / not a key). Depth, network, checksum → LNbits Watch-Only.
       const parsed = validateMasterpub(rawMasterpub)
-      if (!parsed.ok) return {status: 'invalid_masterpub', reason: parsed.reason}
+      if (!parsed.ok) {
+        deps.log.info(
+          {chatId: chat.id, reason: parsed.reason},
+          'On-chain enable rejected: invalid masterpub',
+        )
+        return {status: 'invalid_masterpub', reason: parsed.reason}
+      }
 
       const previousWalletId = chat.watchonlyWalletId
 
@@ -66,6 +72,15 @@ export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
           }
         }
 
+        deps.log.info(
+          {
+            chatId: chat.id,
+            watchonlyWalletId: wallet.id,
+            fingerprint: wallet.fingerprint,
+            reusedWallet: Boolean(existing),
+          },
+          'On-chain payments enabled for chat',
+        )
         return {
           status: 'enabled',
           chat: updated,
@@ -94,6 +109,10 @@ export function createOnchainEnableService(deps: OnchainEnableServiceDeps) {
         }
       }
 
+      deps.log.info(
+        {chatId: chat.id, walletId, walletDeleted: Boolean(opts?.deleteWallet && walletId)},
+        'On-chain payments disabled for chat',
+      )
       return {status: 'disabled', chat: updated}
     },
   }
