@@ -226,9 +226,11 @@ test('custom one-shot retries invalid amount without paying, then accepts valid 
   expect(e2e.tg.lastMessageId('sendMessage')).not.toBe(promptMessageId)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/whole number|целое число/i)
 
-  await e2e.send(privateText('125'))
+  const input = privateText('125')
+  await e2e.send(input)
 
   expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(125)
+  expectDeletedMessage(input.message?.message_id)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -248,9 +250,25 @@ test('custom donation percent retries invalid value before updating settings', a
   expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/between 0 and 100|от 0 до 100/i)
 
-  await e2e.send(privateText('7'))
+  const input = privateText('7')
+  await e2e.send(input)
 
   expect((await e2e.container.users.findById(USER_A))?.donationPercent).toBe(7)
+  expectDeletedMessage(input.message?.message_id)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('custom monthly amount charges and deletes the entered amount after success', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+  credit(USER_A, STARTING)
+
+  await e2e.send(privateCallback(staticCallback.donateMonthlyCustom))
+  const input = privateText('100')
+  await e2e.send(input)
+
+  expect((await e2e.container.users.findById(USER_A))?.monthlyDonationSats).toBe(100)
+  expectDeletedMessage(input.message?.message_id)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -337,6 +355,11 @@ function requiredPromptMessageId(): number {
   const messageId = e2e.tg.lastMessageId('sendMessage')
   if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
   return messageId
+}
+
+function expectDeletedMessage(messageId: number | undefined): void {
+  if (messageId === undefined) throw new Error('Expected an input message ID')
+  expect(e2e.tg.of('deleteMessage').some(call => Number(call.message_id) === messageId)).toBe(true)
 }
 
 function richHtmlOf(payload: Record<string, unknown> | undefined): string {

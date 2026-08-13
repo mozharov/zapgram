@@ -11,6 +11,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
@@ -34,6 +35,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
   const cancelled = cancelledPromptState(ctx, prompt)
 
   let sats: number
+  let input: ConversationContext | undefined
   for (;;) {
     const next = await conversation.wait()
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
@@ -60,6 +62,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
       continue
     }
     sats = parsed
+    input = next
     break
   }
   await clearPromptControls(conversation, prompt)
@@ -105,4 +108,5 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
 
   await ctx.reply(ctx.t('donate.success', {sats, usdSuffix}))
   await replyDonateHub(ctx)
+  if (input?.message) await deleteMessageSafely(input)
 }

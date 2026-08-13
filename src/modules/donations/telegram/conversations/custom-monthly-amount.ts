@@ -11,6 +11,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
@@ -34,6 +35,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   const cancelled = cancelledPromptState(ctx, prompt)
 
   let sats: number
+  let input: ConversationContext | undefined
   for (;;) {
     const next = await conversation.wait()
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
@@ -60,6 +62,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       continue
     }
     sats = parsed
+    input = next
     break
   }
   await clearPromptControls(conversation, prompt)
@@ -87,6 +90,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     )
     await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats, usdSuffix}))
     await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
     return
   }
 
@@ -157,4 +161,5 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   }
 
   await replyDonateHub(ctx)
+  if (result.status === 'paid' && input?.message) await deleteMessageSafely(input)
 }
