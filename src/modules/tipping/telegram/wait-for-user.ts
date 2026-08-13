@@ -1,5 +1,3 @@
-import {ToYourselfError} from '@core/errors/to-yourself.js'
-import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet.js'
 import {getUserByUsername} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -12,6 +10,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
@@ -58,20 +57,29 @@ export async function waitForUser(
 
     const matched = USERNAME_REGEX.exec(next.message?.text?.trim() ?? '')?.[1]
     if (!matched) {
-      await next.reply(next.t('wait-for-user.invalid'))
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-user.invalid'))
+      continue
+    }
+
+    const result = await validateUsername(next, matched.toLowerCase())
+    if (result.status === 'invalid') {
+      await replyWithConversationTempMessage(conversation, next, next.t(result.translationKey))
       continue
     }
 
     await clearPromptControls(conversation, prompt)
-    return validateUsername(next, matched.toLowerCase())
+    return result.user
   }
 }
 
 async function validateUsername(ctx: ConversationContext, username: string) {
-  if (username === ctx.user.username) throw new ToYourselfError()
+  if (username === ctx.user.username)
+    return {status: 'invalid' as const, translationKey: 'error.to-yourself'}
   const user = await getUserByUsername(username)
-  if (!user) throw new UserDoesNotHaveWalletError()
+  if (!user) return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
   const tgUser = await ctx.api.getChat(user.id)
-  if (tgUser.username?.toLowerCase() !== username) throw new UserDoesNotHaveWalletError()
-  return user
+  if (tgUser.username?.toLowerCase() !== username) {
+    return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
+  }
+  return {status: 'ok' as const, user}
 }

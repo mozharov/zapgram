@@ -12,6 +12,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import type {MessageEntity} from 'grammy/types'
 
@@ -68,14 +69,22 @@ export async function editCustomMessage(
 
     const text = next.message?.text?.trim()
     if (!text) {
-      await next.reply(next.t('edit-custom-message.invalid'))
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('edit-custom-message.invalid'),
+      )
       continue
     }
 
     const entities = next.message?.entities ?? []
     const htmlMessage = entities.length > 0 ? convertToHtml(text, entities) : text
     if (htmlMessage.length > MAX_MESSAGE_LENGTH) {
-      await next.reply(next.t('edit-custom-message.too-long'))
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('edit-custom-message.too-long'),
+      )
       continue
     }
 
@@ -83,7 +92,7 @@ export async function editCustomMessage(
     const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
     if (!owned) {
       await clearPromptControls(conversation, prompt)
-      await next.reply(next.t('chat.not-found'))
+      await replyWithConversationTempMessage(conversation, next, next.t('chat.not-found'))
       return
     }
 

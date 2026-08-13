@@ -13,6 +13,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -62,7 +63,11 @@ export async function customDonationPercent(
           raw_percent: Number.isFinite(parsed) ? parsed : null,
         }),
       )
-      await next.reply(next.t('settings-donation.invalid-percent'))
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('settings-donation.invalid-percent'),
+      )
       continue
     }
     raw = parsed

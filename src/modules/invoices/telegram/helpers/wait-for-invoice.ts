@@ -1,3 +1,4 @@
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
@@ -10,6 +11,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 export async function waitForInvoice(
@@ -53,7 +55,14 @@ export async function waitForInvoice(
 
     const invoice = /(lnbc[a-z0-9]+)/.exec(next.message?.text ?? '')?.[1]
     if (!invoice) {
-      await next.reply(next.t('wait-for-invoice.invalid'))
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-invoice.invalid'))
+      continue
+    }
+
+    try {
+      decodeInvoice(invoice)
+    } catch {
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-invoice.invalid'))
       continue
     }
 

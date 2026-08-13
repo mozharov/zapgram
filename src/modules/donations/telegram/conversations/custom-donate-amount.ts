@@ -12,6 +12,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -55,7 +56,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
           amount_sats: Number.isFinite(parsed) ? parsed : null,
         }),
       )
-      await next.reply(next.t('donate.invalid-amount'))
+      await replyWithConversationTempMessage(conversation, next, next.t('donate.invalid-amount'))
       continue
     }
     sats = parsed

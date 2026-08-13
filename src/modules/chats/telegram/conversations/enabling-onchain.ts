@@ -14,6 +14,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -53,14 +54,14 @@ export async function enablingOnchain(
 
     const masterpub = next.message?.text?.trim()
     if (!masterpub) {
-      await next.reply(next.t('enabling-onchain.invalid'))
+      await replyWithConversationTempMessage(conversation, next, next.t('enabling-onchain.invalid'))
       continue
     }
 
     const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
     if (!owned) {
       await clearPromptControls(conversation, prompt)
-      await next.reply(next.t('chat.not-found'))
+      await replyWithConversationTempMessage(conversation, next, next.t('chat.not-found'))
       return
     }
 
@@ -69,7 +70,7 @@ export async function enablingOnchain(
 
     if (result.status === 'invalid_masterpub' || result.status === 'watchonly_error') {
       // Keep the original prompt + Cancel; user can paste another key or cancel.
-      await ctx.reply(errorText(ctx, result))
+      await replyWithConversationTempMessage(conversation, next, errorText(next, result))
       continue
     }
 

@@ -25,6 +25,7 @@ import {
 } from '@telegram/helpers/conversation-host.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -53,7 +54,14 @@ export async function payingInvoice(
       html: joinWizardHtml(title, ctx.t('wait-for-invoice')),
       onCancel: restoreParent,
     }))
-  const invoice = decodeInvoice(paymentRequest)
+  let invoice: ReturnType<typeof decodeInvoice>
+  try {
+    invoice = decodeInvoice(paymentRequest)
+  } catch {
+    if (!lnInvoice) throw new Error('Validated invoice could not be decoded')
+    await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
+    return conversation.halt()
+  }
   if (lnInvoice) await deleteMessageSafely(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},

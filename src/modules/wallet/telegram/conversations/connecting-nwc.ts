@@ -16,6 +16,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -48,7 +49,7 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
 
     const match = /^(nostr\+walletconnect:.*)$/.exec(next.message?.text?.trim() ?? '')
     if (!match?.[1]) {
-      await next.reply(next.t('nwc.invalid-url'))
+      await replyWithConversationTempMessage(conversation, next, next.t('nwc.invalid-url'))
       continue
     }
 

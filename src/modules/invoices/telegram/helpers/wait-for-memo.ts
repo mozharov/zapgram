@@ -12,6 +12,7 @@ import {
   createActivePrompt,
   deactivatePrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 const MAX_MEMO_LENGTH = 150
@@ -65,7 +66,7 @@ export async function waitForMemoText(
 
     const memo = next.message?.text?.trim()
     if (!memo || memo.length > MAX_MEMO_LENGTH) {
-      await next.reply(next.t('wait-for-memo.invalid'))
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-memo.invalid'))
       continue
     }
 

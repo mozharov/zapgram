@@ -23,6 +23,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {markupFromReplyMarkup, serializeBaseMarkup} from '@telegram/helpers/notification-chrome.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -112,7 +113,11 @@ async function waitForLocale(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await next.reply(next.t('conversation-state.use-buttons'))
+    await replyWithConversationTempMessage(
+      conversation,
+      next,
+      next.t('conversation-state.use-buttons'),
+    )
   }
 }
 
@@ -149,7 +154,11 @@ async function waitForSourceMessage(
 
     const source = next.message
     if (!source || !next.chat) {
-      await next.reply(next.t('broadcast.invalid-message'))
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('broadcast.invalid-message'),
+      )
       continue
     }
 
@@ -191,6 +200,10 @@ async function waitForConfirm(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await next.reply(next.t('conversation-state.use-buttons'))
+    await replyWithConversationTempMessage(
+      conversation,
+      next,
+      next.t('conversation-state.use-buttons'),
+    )
   }
 }

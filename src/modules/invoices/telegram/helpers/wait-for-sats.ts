@@ -10,6 +10,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 const MAX_AMOUNT = 100000000
@@ -53,7 +54,7 @@ export async function waitForSats(
     const text = next.message?.text?.trim()
     const sats = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
     if (!Number.isSafeInteger(sats) || sats <= 0 || sats > MAX_AMOUNT) {
-      await next.reply(next.t('wait-for-sats.invalid'))
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-sats.invalid'))
       continue
     }
 

@@ -232,7 +232,7 @@ test('a typed amount at the fund step is accepted without any extra prompt', asy
   expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
   expect(afterInvalid.db.conversations).toHaveLength(1)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/whole number of sats/i)
-  expect(deletedIdsSince(invalidMark)).toContain(invalidAmountUpdate.message?.message_id)
+  expect(deletedIdsSince(invalidMark)).not.toContain(invalidAmountUpdate.message?.message_id)
 
   const mark = e2e.tg.calls.length
   const amountUpdate = privateText('25')
@@ -349,7 +349,7 @@ test('wallet callback from another message interrupts feature flow and still ope
  * `bot.api` directly, so unlike `ctx.api` calls those side effects are NOT replayed from the log —
  * they re-execute for real and delete the very prompt they are standing on.
  */
-test('invalid fund amount deletes the input, keeps the prompt, and adds a temporary hint', async () => {
+test('invalid fund amount keeps the input and prompt briefly, then removes both with the hint', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
   await e2e.send(privateCommand('/feature Built-in on-chain wallet'))
@@ -360,12 +360,14 @@ test('invalid fund amount deletes the input, keeps the prompt, and adds a tempor
   await e2e.send(invalidAmountUpdate)
 
   const deleted = deletedIdsSince(mark)
-  expect(deleted).toContain(invalidAmountUpdate.message?.message_id)
+  expect(deleted).not.toContain(invalidAmountUpdate.message?.message_id)
   expect(deleted).not.toContain(fundPromptId)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/whole number of sats/i)
   const hintMessageId = e2e.tg.lastMessageId('sendMessage')
   if (hintMessageId === undefined) throw new Error('Expected temporary invalid amount hint')
-  await expectTempMessageDeleted(mark, hintMessageId)
+  const inputMessageId = invalidAmountUpdate.message?.message_id
+  if (inputMessageId === undefined) throw new Error('Expected invalid amount input')
+  await expectTempMessagesDeleted(mark, [inputMessageId, hintMessageId])
   expectNoErrors(e2e.logs)
 })
 
@@ -388,16 +390,16 @@ function deletedIdsSince(mark: number): unknown[] {
     .map(call => call.payload.message_id)
 }
 
-async function expectTempMessageDeleted(mark: number, messageId: number): Promise<void> {
+async function expectTempMessagesDeleted(mark: number, messageIds: number[]): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
     const deleted = e2e.tg.calls
       .slice(mark)
       .filter(call => call.method === 'deleteMessages')
       .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
-    if (deleted.includes(messageId)) return
+    if (messageIds.every(messageId => deleted.includes(messageId))) return
     await Bun.sleep(5)
   }
-  throw new Error('The temporary invalid amount hint was never deleted')
+  throw new Error('The temporary invalid amount input and hint were never deleted')
 }
 
 function requiredPromptMessageId(): number {

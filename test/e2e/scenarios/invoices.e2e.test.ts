@@ -571,6 +571,7 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
     db: {conversations: {removed: 1}, pendingInvoices: {added: 1}},
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
+      {method: 'deleteMessages', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'editMessageMedia', to: USER_A, text: /Description:/},
@@ -720,10 +721,36 @@ const invalidCases: {
     },
   },
   {
+    label: 'a malformed bolt11 invoice',
+    reach: enterPayInvoiceAtInvoice,
+    input: () => privateText('lnbcnotavalidinvoice'),
+    error: /Invalid Lightning invoice/,
+    correct: async () => {
+      credit(USER_A, 1000)
+      await e2e.send(privateText(foreignInvoice().bolt11))
+    },
+  },
+  {
     label: 'a username without its @',
     reach: enterSendToUserAtUsername,
     input: () => privateText('user_b'),
     error: /Invalid username/,
+    correct: async () => {
+      await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+      e2e.tg.reply('getChat', {
+        id: USER_B,
+        type: 'private',
+        username: 'user_b',
+        first_name: 'User B',
+      })
+      await e2e.send(privateText('@user_b'))
+    },
+  },
+  {
+    label: 'a username without a ZapGram wallet',
+    reach: enterSendToUserAtUsername,
+    input: () => privateText('@missing_user'),
+    error: /doesn't have a ZapGram wallet/,
     correct: async () => {
       await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
       e2e.tg.reply('getChat', {
@@ -740,8 +767,11 @@ const invalidCases: {
 for (const {label, reach, input, error, correct} of invalidCases) {
   test(`${label} keeps the current prompt active and accepts a correction`, async () => {
     await reach()
+    const promptMessageId = requiredPromptMessageId()
+    const invalidInput = input()
+    const mark = e2e.tg.calls.length
 
-    await expectDelta(e2e, () => e2e.send(input()), {
+    await expectDelta(e2e, () => e2e.send(invalidInput), {
       db: {conversations: {changed: 1}},
       telegram: [{method: 'sendMessage', to: USER_A, text: error}],
     })
@@ -754,12 +784,35 @@ for (const {label, reach, input, error, correct} of invalidCases) {
         .map(call => String(call.text))
         .join('\n'),
     ).not.toMatch(/Action canceled|<b>👛 Wallet/)
+    const hintMessageId = e2e.tg.lastMessageId('sendMessage')
+    const inputMessageId = invalidInput.message?.message_id
+    if (hintMessageId === undefined || inputMessageId === undefined) {
+      throw new Error('Expected an invalid input and its temporary hint')
+    }
+    await expectTempMessagesDeleted(mark, [inputMessageId, hintMessageId])
+    expect(tempDeletedIdsSince(mark)).not.toContain(promptMessageId)
 
     await correct()
 
     expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
     expectNoErrors(e2e.logs)
   })
+}
+
+async function expectTempMessagesDeleted(mark: number, messageIds: number[]): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const deleted = tempDeletedIdsSince(mark)
+    if (messageIds.every(messageId => deleted.includes(messageId))) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary input and hint were never deleted')
+}
+
+function tempDeletedIdsSince(mark: number): unknown[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
 }
 
 test('a custom message can be corrected after invalid media and excessive length', async () => {
@@ -770,6 +823,7 @@ test('a custom message can be corrected after invalid media and excessive length
   await expectDelta(e2e, () => e2e.send(privateText('Привет')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
+      {method: 'deleteMessages', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /RU custom message has been updated/},
       {method: 'sendMessage', to: USER_A, text: /Join request message/},
