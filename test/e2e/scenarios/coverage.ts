@@ -276,6 +276,14 @@ export const scenarioCoverage = {
     jobs: [],
     errors: [],
   },
+  'living-menu': {
+    routes: ['wallet', 'settings', 'open-menu', 'chat'],
+    commands: ['/wallet'],
+    updates: ['message', 'callback_query', 'hears'],
+    writes: ['users.insert', 'users.update', 'chats.insert', 'conversations.insert'],
+    jobs: [],
+    errors: ['invoice_parsing'],
+  },
   nwc: {
     routes: [
       'connect-nwc',

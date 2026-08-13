@@ -291,14 +291,13 @@ test('an LNbits mint failure on Lightning leaves no payment after the chooser', 
       ),
     {
       db: {subscriptionIntents: {added: 1}},
-      // Error handler DMs the failure and re-renders the wallet.
+      // Error handler DMs the failure; its open-menu button is the only way back to the wallet.
       telegram: [
         {
           method: 'sendMessage',
           to: USER_A,
           text: /Failed to create the Lightning invoice/,
         },
-        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     },
   )

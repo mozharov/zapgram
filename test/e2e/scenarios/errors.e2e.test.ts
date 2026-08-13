@@ -9,6 +9,7 @@ import {NostrWallet} from '@infra/nostr/wallet.js'
 import {
   payLightningRoute,
   paySubscriptionRoute,
+  staticCallback,
   subscriptionRoute,
 } from '@telegram/callback-data.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
@@ -39,8 +40,8 @@ import {scenarioCoverage} from './coverage.js'
 
 /**
  * Domain errors as the user sees them: every AppErrorCode reaches the right Fluent copy, private
- * chats get error + wallet, group failures reach only their sender, channels stay silent, and copy
- * is free of Fluent isolation marks and raw translation keys.
+ * errors carry the open-menu button and nothing else follows them, group failures reach only their
+ * sender, channels stay silent, and copy is free of Fluent isolation marks and raw translation keys.
  *
  * `not_found` intentionally maps to `error.unknown`. NWC payment failures are forced through the
  * real pay-subscription route by stubbing `NostrWallet.prototype.payInvoice` — the live NWC
@@ -117,14 +118,14 @@ test('insufficient_funds is shown in a group only to the sender', async () => {
   await expectGroupError(groupText('/tip 21 @user_b'), 'insufficient_funds', 'en')
 })
 
-test('insufficient_funds in private chat is error text plus the wallet screen', async () => {
+test('insufficient_funds in private chat is error text carrying the open-menu button', async () => {
   const invoice = mintInvoice({sats: 100, description: 'too expensive'})
   const before = await snapshot(e2e)
 
   // Balance is checked when choosing a wallet, before the review / pay button.
   await e2e.send(privateText(invoice.bolt11))
 
-  expectPrivateErrorAndWallet('insufficient_funds', 'en')
+  expectPrivateError('insufficient_funds', 'en')
   await expectMoneyUnchanged(before)
 })
 
@@ -138,7 +139,7 @@ test('invoice_already_paid keeps the payee pending row and shows the dedicated c
 
   await e2e.send(privateCallback(payButton(), {messageId: requiredPromptMessageId()}))
 
-  expectPrivateErrorAndWallet('invoice_already_paid', 'en')
+  expectPrivateError('invoice_already_paid', 'en')
   const after = await snapshot(e2e)
   expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
@@ -149,7 +150,7 @@ test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', 
 
   await e2e.send(privateText('lnbc1notavalidinvoice00'))
 
-  expectPrivateErrorAndWallet('invoice_parsing', 'en')
+  expectPrivateError('invoice_parsing', 'en')
   // Conversation still enters: decode throws InvoiceParsingError from payingInvoice.
   expect(
     e2e.tg
@@ -202,7 +203,7 @@ test('nwc_connection is raised when paying a subscription invoice via NWC withou
 
   await e2e.send(privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})))
 
-  expectPrivateErrorAndWallet('nwc_connection', 'en')
+  expectPrivateError('nwc_connection', 'en')
   await expectMoneyUnchanged(before)
 })
 
@@ -238,7 +239,7 @@ for (const scenario of [
       privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})),
     )
 
-    expectPrivateErrorAndWallet(scenario.code, 'en')
+    expectPrivateError(scenario.code, 'en')
     await expectMoneyUnchanged(before)
   })
 }
@@ -299,7 +300,7 @@ test('not_found is intentionally shown as the unknown error copy', async () => {
 
   await e2e.send(privateCallback(subscriptionRoute.build({subscriptionId: subscription.id})))
 
-  expectPrivateErrorAndWallet('not_found', 'en')
+  expectPrivateError('not_found', 'en')
   expect(errorTextTo(USER_A)).toBe(expectedErrorText('unknown', 'en'))
   await expectMoneyUnchanged(before)
 })
@@ -523,20 +524,24 @@ async function seedOwnerAndChat(): Promise<void> {
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active'})
 }
 
-function expectPrivateErrorAndWallet(code: AppErrorCode, locale: Locale): void {
+/**
+ * Private error path: the error joins the open-menu chain, so it carries the "Open wallet" row and
+ * nothing follows it. The button *is* the recovery path — the handler no longer renders a wallet of
+ * its own, which used to leave an untracked second menu in the chat on every error.
+ */
+function expectPrivateError(code: AppErrorCode, locale: Locale): void {
   const displayCode = code === 'not_found' ? 'unknown' : code
   const expected = expectedErrorText(displayCode, locale)
-  const texts = e2e.tg.of('sendMessage').map(call => String(call.text))
-  expect(texts).toContain(expected)
-  // Private error path: error reply then wallet as a rich message.
-  const isWallet = (text: string) =>
-    text.includes('Balance:') || text.includes('NWC:') || /👛/.test(text)
-  const walletHtmls = e2e.tg.of('sendRichMessage').map(call => {
-    const richMessage = call.rich_message
-    if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
-    return String(Reflect.get(richMessage, 'html') ?? '')
+  const index = e2e.tg.calls.findIndex(
+    call => call.method === 'sendMessage' && String(call.payload.text) === expected,
+  )
+  expect(index).toBeGreaterThanOrEqual(0)
+  expect(e2e.tg.calls[index]?.payload.reply_markup).toEqual({
+    inline_keyboard: [
+      [{text: translate('button.open-wallet', locale), callback_data: staticCallback.openMenu}],
+    ],
   })
-  expect(walletHtmls.some(isWallet)).toBe(true)
+  expect(e2e.tg.calls.slice(index + 1).map(call => call.method)).not.toContain('sendRichMessage')
   expectCleanUserText(expected)
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
 }

@@ -201,7 +201,6 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Failed to create the Lightning invoice/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -357,7 +356,6 @@ test('insufficient balance refuses payment before the review step', async () => 
     telegram: [
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Insufficient funds/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -378,7 +376,6 @@ test('a 520 for an already paid invoice leaves the pending row alone', async () 
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /already been paid/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 

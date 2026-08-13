@@ -1,10 +1,10 @@
 import {AppError} from '@core/errors/app-error.js'
-import {replyWithCachedWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotContext} from '@telegram/context.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
 import {replyOnlyToSender} from '@telegram/helpers/ephemeral-message.js'
 import type {ErrorHandler} from 'grammy'
+import {getRuntime} from '../../runtime.js'
 
 export const errorHandler: ErrorHandler = async err => {
   const {error} = err
@@ -22,11 +22,8 @@ export const errorHandler: ErrorHandler = async err => {
 
   // Join requests have no group reply target for the applicant — DM the private peer.
   if (ctx.chatJoinRequest) {
-    await ctx.api
-      .sendMessage(ctx.chatJoinRequest.user_chat_id, errorResponse)
-      .catch((sendError: unknown) => {
-        ctx.log.error({error: sendError}, 'Failed to reply about error on chat join request')
-      })
+    const sent = await getRuntime().notifier.send(ctx.chatJoinRequest.user_chat_id, errorResponse)
+    if (!sent) ctx.log.error('Failed to reply about error on chat join request')
     return
   }
 
@@ -37,15 +34,12 @@ export const errorHandler: ErrorHandler = async err => {
       ctx.log.error({error}, 'Failed to reply about error in group')
     })
   }
-  await ctx.reply(errorResponse).catch((error: unknown) => {
-    ctx.log.error({error}, 'Failed to reply about error in private chat')
-  })
-  // Use the middleware-loaded balance — never re-fetch. A live GET that just failed would
-  // be repeated here with got retries and only add latency; missing wallet (middleware itself
-  // failed) is a quiet no-op.
-  if (ctx.chat?.type === 'private') {
-    await replyWithCachedWallet(ctx).catch((error: unknown) => {
-      ctx.log.error({error}, 'Failed to reply with wallet in error handler')
-    })
-  }
+  // Through the notifier so the error joins the open-menu chain: it carries the "Open wallet"
+  // button and strips it off the previous notification. That button *is* the recovery path — the
+  // handler deliberately does not render a wallet menu of its own, which used to leave an
+  // untracked second menu behind on every error.
+  const chatId = ctx.chat?.id
+  if (chatId === undefined) return
+  const sent = await getRuntime().notifier.send(chatId, errorResponse)
+  if (!sent) ctx.log.error('Failed to reply about error in private chat')
 }

@@ -148,11 +148,11 @@ async function deactivatePromptOnce(prompt: ActivePrompt, state: PromptEndState)
     )
   }
 
-  try {
-    await bot.api.sendMessage(prompt.chatId, state.fallbackText)
-  } catch (error) {
+  // Notifier, not bot.api: the fallback joins the open-menu chain like every other private push.
+  const sent = await getRuntime().notifier.send(prompt.chatId, state.fallbackText)
+  if (!sent) {
     log.warn(
-      {error, chatId: prompt.chatId, messageId: prompt.messageId},
+      {chatId: prompt.chatId, messageId: prompt.messageId},
       'Failed to send conversation interruption fallback',
     )
   }

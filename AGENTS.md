@@ -43,6 +43,35 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Living menu (private chat)
+
+Exactly one message in the private chat is a live menu, and exactly one message carries the
+"Open wallet" button. `users.last_menu_message_id` and `users.last_notification_message_id` /
+`last_notification_base_markup` are the pointers; `notificationChrome`
+(`src/telegram/helpers/notification-chrome.ts`) owns all three. Design:
+`docs/superpowers/specs/2026-08-12-private-chat-declutter-design.md`.
+
+Two helpers in `src/telegram/helpers/living-menu.ts`, and every menu render must use one of them:
+
+- `showLivingMenu(ctx, send)` — a **new** menu message. Deletes the user's triggering message, the
+  previously tracked menu, and the open-menu row on the last notification, then records the new one.
+  Commands, the private text fallback, `open-menu`, `cancel`, and a conversation's first prompt.
+- `editLivingMenu(ctx, edit)` — an **in-place** repaint of a menu screen. Edits first (a vanished
+  message must not cost us the tracked menu), then adopts the clicked message: the previously
+  tracked menu is deleted and the pointer moves here. That adoption is what stops a click on an
+  orphaned menu from leaving two live menus. When the clicked message was the last notification, its
+  notification pointers are cleared — the receipt is a menu now, so nothing may restore its keyboard.
+
+Flow surfaces stay outside **both**: invoice/QR and payment routes (`pay-lightning`, `pay-onchain`,
+`pay-subscription`, `pay-join-balance`, `subscription-renew`), every `editHost*` path in
+`conversation-host.ts`, `onchain/telegram/edit-status-message.ts`, and the join-request payment
+chooser (`chat-join-request.ts`). Adopting them would let the next `/wallet` delete a payment screen
+the user is working in.
+
+Every private push goes through `notifier.*` (wrapped by `createChromeNotifier` in the container),
+never `bot.api.sendMessage` — that includes bot error messages. The error handler deliberately sends
+no wallet screen of its own: the open-menu button on the error message *is* the recovery path.
+
 ## Group messages
 
 `/tip` is registered for group chats with `is_ephemeral: true`: the typed command reaches the bot

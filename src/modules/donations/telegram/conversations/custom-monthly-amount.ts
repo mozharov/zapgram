@@ -11,17 +11,20 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function customMonthlyAmount(conversation: BotConversation, ctx: ConversationContext) {
   const html = ctx.t('donate.monthly-custom-amount')
-  const message = await ctx.reply(html, {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+      ]),
+    }),
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,

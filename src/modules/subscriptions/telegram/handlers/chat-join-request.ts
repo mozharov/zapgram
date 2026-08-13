@@ -78,6 +78,8 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
 
   const locale = await ctx.i18n.getLocale()
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
+  // Deliberately raw `sendMessage`, not the notifier: the chooser is a flow screen with its own
+  // payment buttons, so it stays out of the open-menu chain and never carries "Open wallet".
   try {
     await ctx.api.sendMessage(
       ctx.chatJoinRequest.user_chat_id,

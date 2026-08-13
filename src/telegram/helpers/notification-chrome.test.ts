@@ -118,6 +118,81 @@ test('stripLastOpenMenu swallows a vanished message and forgets the pointer', as
   expect(user?.lastNotificationBaseMarkup).toBeNull()
 })
 
+test('adoptLivingMenu is a no-op when the clicked message is already the living menu', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4})
+
+  await chrome.adoptLivingMenu(1, 4)
+
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(4)
+})
+
+test('adoptLivingMenu deletes the tracked menu and re-points at the clicked message', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4})
+
+  await chrome.adoptLivingMenu(1, 9)
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+})
+
+test('adoptLivingMenu records the clicked message when no menu is tracked', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+
+  await chrome.adoptLivingMenu(1, 9)
+
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+})
+
+test('adoptLivingMenu forgets the notification when the receipt becomes the menu', async () => {
+  const {users, chrome} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.deliver(1, {inline_keyboard: [[{text: 'Chat', callback_data: 'chat:-1'}]]}, () =>
+    Promise.resolve({message_id: 10}),
+  )
+
+  await chrome.adoptLivingMenu(1, 10)
+
+  const user = await users.findById(1)
+  expect(user?.lastMenuMessageId).toBe(10)
+  expect(user?.lastNotificationMessageId).toBeNull()
+  expect(user?.lastNotificationBaseMarkup).toBeNull()
+})
+
+test('adoptLivingMenu still re-points when deleting the tracked menu fails', async () => {
+  const {users, chrome, deleteMessage, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4})
+  deleteMessage.mockImplementationOnce(() =>
+    Promise.reject(new Error('message to delete not found')),
+  )
+
+  await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+
+  expect(warn).toHaveBeenCalled()
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+})
+
+test('adoptLivingMenu swallows a failed persist', async () => {
+  const users = createUserRepository(createTestDb())
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  const chromeWithFailingUpdate = createNotificationChrome({
+    findUser: id => users.findById(id),
+    updateUser: mock(() => Promise.reject(new Error('db locked'))),
+    editMessageReplyMarkup: mock(() => Promise.resolve(true as const)),
+    deleteMessage: mock(() => Promise.resolve(true as const)),
+    log: {warn: mock(() => {})} as never,
+  })
+
+  await expect(chromeWithFailingUpdate.adoptLivingMenu(1, 12)).resolves.toBeUndefined()
+})
+
 test('rememberLivingMenu swallows a failed persist', async () => {
   const updateUser = mock(() => Promise.reject(new Error('db locked')))
   const users = createUserRepository(createTestDb())

@@ -102,6 +102,36 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
+  /**
+   * A callback repainted `messageId` in place, so that message *is* the menu now. Drop whatever
+   * the pointer still names and aim it here. Same id is the common case and costs no API call.
+   */
+  async function adoptLivingMenu(userId: number, messageId: number): Promise<void> {
+    try {
+      const user = await deps.findUser(userId)
+      if (!user || user.lastMenuMessageId === messageId) return
+      if (user.lastMenuMessageId) {
+        try {
+          await deps.deleteMessage(userId, user.lastMenuMessageId)
+        } catch (error) {
+          deps.log.warn(
+            {error, userId, messageId: user.lastMenuMessageId},
+            'Failed to delete superseded living menu',
+          )
+        }
+      }
+      const data: Partial<User> = {lastMenuMessageId: messageId}
+      // A receipt edited into a menu: a later notification must not restore its base keyboard.
+      if (user.lastNotificationMessageId === messageId) {
+        data.lastNotificationMessageId = null
+        data.lastNotificationBaseMarkup = null
+      }
+      await deps.updateUser(userId, data)
+    } catch (error) {
+      deps.log.warn({error, userId, messageId}, 'Failed to adopt living menu')
+    }
+  }
+
   async function rememberLivingMenu(userId: number, messageId: number): Promise<void> {
     try {
       const user = await deps.findUser(userId)
@@ -112,7 +142,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
-  return {stripLastOpenMenu, deliver, deleteLivingMenu, rememberLivingMenu}
+  return {stripLastOpenMenu, deliver, deleteLivingMenu, rememberLivingMenu, adoptLivingMenu}
 }
 
 export type NotificationChrome = ReturnType<typeof createNotificationChrome>

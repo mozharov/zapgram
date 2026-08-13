@@ -144,10 +144,7 @@ test('paying the same subscription invoice twice does not debit twice', async ()
   // The payment row outlives the click — only the settle cron deletes it — so the second click
   // reaches the same invoice. LNbits is what refuses it, and the refusal is what the user sees.
   await expectDelta(e2e, () => e2e.send(update), {
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /already been paid/},
-      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /already been paid/}],
   })
   expect(errorMessages()).toEqual([
     'POST /api/v1/payments: HTTP error',

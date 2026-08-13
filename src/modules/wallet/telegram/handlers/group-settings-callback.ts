@@ -1,5 +1,6 @@
 import {chatsPageRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {editLivingMenu} from '@telegram/helpers/living-menu.js'
 import {InlineKeyboard} from 'grammy'
 
 export async function groupSettingsCallback(ctx: BotContext) {
@@ -17,5 +18,7 @@ export async function groupSettingsCallback(ctx: BotContext) {
       text: ctx.t('button.back'),
     })
 
-  await ctx.editMessageText(ctx.t('settings.groups'), {reply_markup: keyboard})
+  await editLivingMenu(ctx, () =>
+    ctx.editMessageText(ctx.t('settings.groups'), {reply_markup: keyboard}),
+  )
 }

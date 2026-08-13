@@ -569,7 +569,7 @@ test('plain private text falls back to the wallet', async () => {
 test('pasted bolt11 invoice reaches the invoices module', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('lnbc1pabcdef')), {
     ...FIRST_TOUCH,
-    telegram: ['sendMessage', 'sendRichMessage'],
+    telegram: ['sendMessage'],
   })
   expect(joinedOutput()).toMatch(/Error processing the Lightning invoice/)
   // The invoice is unparseable on purpose: routing is proven by reaching the paying-invoice

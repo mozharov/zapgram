@@ -1,7 +1,7 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
 import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {editLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
@@ -16,26 +16,13 @@ export async function replyWithWallet(ctx: BotContext) {
   )
 }
 
-/**
- * Renders from `ctx.user.wallet.balance` already loaded by `lnbitsWallet` middleware.
- * Used by the error handler so a failed live balance read is not immediately repeated.
- * No-ops when the middleware never attached a wallet (failure was earlier in the chain).
- */
-export async function replyWithCachedWallet(ctx: BotContext) {
-  const wallet = ctx.user?.wallet
-  if (!wallet) return
-  const view = await buildWalletBalanceView(ctx, wallet.balance)
-  return ctx.replyWithRichMessage(
-    {html: ctx.t('wallet', view)},
-    {reply_markup: buildWalletKeyboard(ctx.t)},
-  )
-}
-
 export async function editMessageWithWallet(ctx: BotContext) {
   const view = await buildWalletBalanceView(ctx, ctx.user.wallet.balance)
-  return ctx.editMessageText(
-    {html: ctx.t('wallet', view)},
-    {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
+  return editLivingMenu(ctx, () =>
+    ctx.editMessageText(
+      {html: ctx.t('wallet', view)},
+      {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
+    ),
   )
 }
 

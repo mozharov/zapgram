@@ -13,6 +13,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -22,9 +23,11 @@ export async function enablingOnchain(
   chatId: number,
 ) {
   const html = ctx.t('enabling-onchain')
-  const message = await ctx.reply(html, {
-    reply_markup: new InlineKeyboard().text(ctx.t('button.cancel'), staticCallback.cancel),
-  })
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard().text(ctx.t('button.cancel'), staticCallback.cancel),
+    }),
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,

@@ -309,13 +309,10 @@ test('a balance endpoint that stays down leaves the user with an error and the w
   e2e.ln.state.failAlways({method: 'GET', path: '/api/v1/wallet'}, {status: 500, body: {}})
   const mark = e2e.ln.requests.length
 
-  // Command fails the live balance read; the error handler appends the wallet screen from the
-  // middleware-cached balance without a second GET (which would only add got retries).
+  // Command fails the live balance read; the error reply carries the open-menu button as the only
+  // recovery path, so no wallet screen (and no further balance GET) follows it.
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Unknown error occurred/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Unknown error occurred/}],
   })
 
   expect(lnPathsSince(mark).filter(path => path === 'GET /api/v1/wallet')).toHaveLength(3)
