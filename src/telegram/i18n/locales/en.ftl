@@ -143,7 +143,6 @@ start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
 feature =
     .prompt = 💡 <b>What should we build?</b>
         Send one text message with your idea.
-        Or use <code>/feature your idea here</code>.
     .invalid-text = ⚠️ Send a non-empty text message with your idea.
     .fund-prompt = 💰 Optionally attach sats to this idea (tip, not a promise we ship it).
         Pick an amount below, send any other number, or skip to send for free.
