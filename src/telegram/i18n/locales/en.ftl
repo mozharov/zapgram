@@ -28,7 +28,6 @@ conversation-action =
     .donate-monthly = entering a monthly support amount
     .feature-text = entering a feature request
     .feature-fund = choosing feature funding
-    .feature-fund-amount = entering a feature funding amount
     .broadcast-locale = selecting a broadcast language
     .broadcast-source = selecting a broadcast message
     .broadcast-confirm = confirming a broadcast
@@ -98,7 +97,6 @@ button =
     .donation-scope-all = Tips + invoices
     .back-to-support = ⬅️ Support
     .feature-fund-skip = Skip
-    .feature-fund-custom-short = ✏️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
@@ -148,8 +146,7 @@ feature =
         Or use <code>/feature your idea here</code>.
     .invalid-text = ⚠️ Send a non-empty text message with your idea.
     .fund-prompt = 💰 Optionally attach sats to this idea (tip, not a promise we ship it).
-        Or skip to send for free.
-    .custom-amount = 🔤 Enter how many sats to attach (1–100000000).
+        Pick an amount below, send any other number, or skip to send for free.
     .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
     .submitted = ✅ Thanks! Your feature request was sent.
     .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.

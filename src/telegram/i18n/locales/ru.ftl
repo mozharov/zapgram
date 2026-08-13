@@ -28,7 +28,6 @@ conversation-action =
     .donate-monthly = ввод суммы ежемесячной поддержки
     .feature-text = ввод предложения функции
     .feature-fund = выбор поддержки функции
-    .feature-fund-amount = ввод суммы поддержки функции
     .broadcast-locale = выбор языка рассылки
     .broadcast-source = выбор сообщения рассылки
     .broadcast-confirm = подтверждение рассылки
@@ -98,7 +97,6 @@ button =
     .donation-scope-all = Tips + счета
     .back-to-support = ⬅️ Поддержка
     .feature-fund-skip = Без сат
-    .feature-fund-custom-short = ✏️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
@@ -148,8 +146,7 @@ feature =
         Или так: <code>/feature твоя идея</code>.
     .invalid-text = ⚠️ Пришли непустое текстовое сообщение с идеей.
     .fund-prompt = 💰 Можно прикрепить сатоши к этой идее (тип, не обещание, что сделаем).
-        Или отправь бесплатно.
-    .custom-amount = 🔤 Сколько сат прикрепить (1–100000000).
+        Выбери сумму ниже, пришли любую другую числом или отправь бесплатно.
     .invalid-amount = ⚠️ Введи целое число сат от 1 до 100000000.
     .submitted = ✅ Спасибо! Запрос фичи отправлен.
     .submitted-funded = ✅ Спасибо! Запрос отправлен с <b>{$sats}</b> сат{$usdSuffix}.

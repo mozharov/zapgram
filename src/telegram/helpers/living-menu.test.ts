@@ -7,16 +7,27 @@ function chromeMock(): NotificationChrome {
   return {
     stripLastOpenMenu: mock(() => Promise.resolve()),
     deliver: mock(() => Promise.reject(new Error('unused'))),
-    deleteLivingMenu: mock(() => Promise.resolve()),
-    rememberLivingMenu: mock(() => Promise.resolve()),
     adoptLivingMenu: mock(() => Promise.resolve()),
+    retireMenuAsNotification: mock(() => Promise.reject(new Error('unused'))),
   }
 }
 
-test('showLivingMenu deletes the user message, previous menu, strips the notification, then sends', async () => {
+test('showLivingMenu deletes the user message, strips the notification, sends, then adopts', async () => {
   const chrome = chromeMock()
+  const calls: string[] = []
+  chrome.stripLastOpenMenu = mock(() => {
+    calls.push('strip')
+    return Promise.resolve()
+  })
+  chrome.adoptLivingMenu = mock(() => {
+    calls.push('adopt')
+    return Promise.resolve()
+  })
   const deleteMessage = mock(() => Promise.resolve(true as const))
-  const send = mock(() => Promise.resolve({message_id: 99}))
+  const send = mock(() => {
+    calls.push('send')
+    return Promise.resolve({message_id: 99})
+  })
   const ctx = {
     user: {id: 1},
     msg: {message_id: 3},
@@ -27,10 +38,10 @@ test('showLivingMenu deletes the user message, previous menu, strips the notific
   const sent = await showLivingMenu(ctx, send, chrome)
 
   expect(deleteMessage).toHaveBeenCalledTimes(1)
-  expect(chrome.deleteLivingMenu).toHaveBeenCalledWith(1)
+  // Sending before adopting is what makes a conversation replay a no-op instead of a lost prompt.
+  expect(calls).toEqual(['strip', 'send', 'adopt'])
   expect(chrome.stripLastOpenMenu).toHaveBeenCalledWith(1)
-  expect(send).toHaveBeenCalledTimes(1)
-  expect(chrome.rememberLivingMenu).toHaveBeenCalledWith(1, 99)
+  expect(chrome.adoptLivingMenu).toHaveBeenCalledWith(1, 99)
   expect(sent.message_id).toBe(99)
 })
 
@@ -49,9 +60,8 @@ test('showLivingMenu does not delete the host when the update is a callback', as
   await showLivingMenu(ctx, send, chrome)
 
   expect(deleteMessage).not.toHaveBeenCalled()
-  expect(chrome.deleteLivingMenu).toHaveBeenCalledWith(2)
   expect(chrome.stripLastOpenMenu).toHaveBeenCalledWith(2)
-  expect(chrome.rememberLivingMenu).toHaveBeenCalledWith(2, 8)
+  expect(chrome.adoptLivingMenu).toHaveBeenCalledWith(2, 8)
 })
 
 test('editLivingMenu edits first, then adopts the clicked message as the living menu', async () => {
@@ -117,9 +127,8 @@ test('editLivingMenu still resolves when adoption rejects', async () => {
 
 test('showLivingMenu still sends when leftover menu cleanup rejects', async () => {
   const chrome = chromeMock()
-  chrome.deleteLivingMenu = mock(() => Promise.reject(new Error('message to delete not found')))
   chrome.stripLastOpenMenu = mock(() => Promise.reject(new Error('message to edit not found')))
-  chrome.rememberLivingMenu = mock(() => Promise.reject(new Error('db locked')))
+  chrome.adoptLivingMenu = mock(() => Promise.reject(new Error('db locked')))
   const send = mock(() => Promise.resolve({message_id: 99}))
   const ctx = {
     user: {id: 1},

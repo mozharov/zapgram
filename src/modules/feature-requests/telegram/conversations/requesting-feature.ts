@@ -9,6 +9,7 @@ import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
+import {disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
 import {
   type ActivePrompt,
   cancelledPromptState,
@@ -19,7 +20,8 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {deleteMessageSafely, deleteMessagesSafely} from '@telegram/helpers/delete-message.js'
+import {closeLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -54,18 +56,16 @@ export async function requestingFeature(
 
   const fundChoice = await waitForFundChoice(conversation, ctx, fundPrompt)
   if (fundChoice.kind === 'cancel') {
+    // Nothing is submitted, so the idea message has no reader left — drop it with the prompt and
+    // leave the user on a plain wallet menu.
+    await deleteMessagesSafely(ctx, [source.messageId])
     await replyWithWallet(ctx)
     return conversation.halt()
   }
 
   await clearPromptControls(conversation, fundPrompt)
 
-  let amountSats = 0
-  if (fundChoice.kind === 'amount') {
-    amountSats = fundChoice.amountSats
-  } else if (fundChoice.kind === 'custom') {
-    amountSats = await waitForCustomFundAmount(conversation, ctx)
-  }
+  const amountSats = fundChoice.kind === 'amount' ? fundChoice.amountSats : 0
 
   if (amountSats > 0) {
     await ctx.replyWithChatAction('typing').catch(() => null)
@@ -89,22 +89,28 @@ export async function requestingFeature(
       ? await conversation.external(() => usdSuffixForSats(result.amountPaidSats))
       : ''
 
-  if (result.fundStatus === 'paid') {
-    await ctx.reply(
-      ctx.t('feature.submitted-funded', {
-        sats: result.amountPaidSats,
-        usdSuffix,
-      }),
-    )
-  } else if (result.fundStatus === 'pay_failed') {
+  if (result.fundStatus === 'pay_failed') {
     captureBotEvent(posthog, 'feature_request_fund_failed_ui', {
       feature: 'feature_requests',
       amount_requested_sats: amountSats,
     })
-    await ctx.reply(ctx.t('feature.fund-failed-submitted'))
-  } else {
-    await ctx.reply(ctx.t('feature.submitted'))
   }
+
+  const reportHtml =
+    result.fundStatus === 'paid'
+      ? ctx.t('feature.submitted-funded', {sats: result.amountPaidSats, usdSuffix})
+      : result.fundStatus === 'pay_failed'
+        ? ctx.t('feature.fund-failed-submitted')
+        : ctx.t('feature.submitted')
+
+  // The wizard's own screen becomes the report, so no extra message is sent. It keeps the open-menu
+  // button and stays put; the user's feature message stays too — it is the `copyMessage` source.
+  await closeLivingMenu(ctx, fundMessage.message_id, markup =>
+    ctx.api.editMessageText(fundMessage.chat.id, fundMessage.message_id, reportHtml, {
+      reply_markup: markup,
+      ...disabledLinkPreview,
+    }),
+  )
 }
 
 /**
@@ -177,12 +183,12 @@ async function waitForFeatureText(
   }
 }
 
-type FundChoice =
-  | {kind: 'skip'}
-  | {kind: 'amount'; amountSats: number}
-  | {kind: 'custom'}
-  | {kind: 'cancel'}
+type FundChoice = {kind: 'skip'} | {kind: 'amount'; amountSats: number} | {kind: 'cancel'}
 
+/**
+ * Presets and Skip come from the board; any other amount is simply typed into the chat. Accepting it
+ * here rather than in a follow-up prompt is what keeps the whole wizard inside one message.
+ */
 async function waitForFundChoice(
   conversation: BotConversation,
   ctx: ConversationContext,
@@ -202,10 +208,6 @@ async function waitForFundChoice(
       await next.answerCallbackQuery()
       return {kind: 'skip'}
     }
-    if (data === staticCallback.featureFundCustom && isCallbackFromPrompt(next, prompt)) {
-      await next.answerCallbackQuery()
-      return {kind: 'custom'}
-    }
     if (data && featureFundAmountRoute.pattern.test(data) && isCallbackFromPrompt(next, prompt)) {
       const {amountSats} = featureFundAmountRoute.parse(data)
       await next.answerCallbackQuery()
@@ -218,39 +220,6 @@ async function waitForFundChoice(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await next.reply(next.t('conversation-state.use-buttons'))
-  }
-}
-
-async function waitForCustomFundAmount(
-  conversation: BotConversation,
-  ctx: ConversationContext,
-): Promise<number> {
-  const html = ctx.t('feature.custom-amount')
-  const message = await showLivingMenu(ctx, () =>
-    ctx.reply(html, {
-      reply_markup: new InlineKeyboard([
-        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-      ]),
-    }),
-  )
-  const prompt = createActivePrompt(message, {
-    kind: 'text',
-    html,
-    actionLabel: ctx.t('conversation-action.feature-fund-amount'),
-  })
-  const cancelled = cancelledPromptState(ctx, prompt)
-
-  for (;;) {
-    const next = await conversation.wait()
-    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
-    if (kind === 'cancel') {
-      await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await replyWithWallet(ctx)
-      return conversation.halt()
-    }
-    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
 
     const text = next.message?.text?.trim()
     const sats = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
@@ -258,7 +227,8 @@ async function waitForCustomFundAmount(
       await next.reply(next.t('feature.invalid-amount'))
       continue
     }
-    await clearPromptControls(conversation, prompt)
-    return sats
+    // The report echoes the accepted amount, so the typed number itself is noise.
+    await deleteMessageSafely(next)
+    return {kind: 'amount', amountSats: sats}
   }
 }

@@ -81,26 +81,17 @@ test('a failed send does not move last-notification pointers', async () => {
   expect(user?.lastNotificationMessageId).toBe(7)
 })
 
-test('deleteLivingMenu removes the stored menu message', async () => {
-  const {users, chrome, deleteMessage} = setup()
+test('stripLastOpenMenu forgets the pointer on success, so a replay does not re-edit', async () => {
+  const {users, chrome, editMessageReplyMarkup} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
-  await users.update(1, {lastMenuMessageId: 4})
+  await users.update(1, {lastNotificationMessageId: 9, lastNotificationBaseMarkup: null})
 
-  await chrome.deleteLivingMenu(1)
-  expect(deleteMessage).toHaveBeenCalledWith(1, 4)
-})
+  await chrome.stripLastOpenMenu(1)
+  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+  expect((await users.findById(1))?.lastNotificationMessageId).toBeNull()
 
-test('deleteLivingMenu swallows a vanished message and forgets the pointer', async () => {
-  const {users, chrome, deleteMessage, warn} = setup()
-  await users.getOrCreate({id: 1, languageCode: 'en'})
-  await users.update(1, {lastMenuMessageId: 4})
-  deleteMessage.mockImplementationOnce(() =>
-    Promise.reject(new Error('message to delete not found')),
-  )
-
-  await expect(chrome.deleteLivingMenu(1)).resolves.toBeUndefined()
-  expect(warn).toHaveBeenCalled()
-  expect((await users.findById(1))?.lastMenuMessageId).toBeNull()
+  await chrome.stripLastOpenMenu(1)
+  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
 })
 
 test('stripLastOpenMenu swallows a vanished message and forgets the pointer', async () => {
@@ -193,17 +184,17 @@ test('adoptLivingMenu swallows a failed persist', async () => {
   await expect(chromeWithFailingUpdate.adoptLivingMenu(1, 12)).resolves.toBeUndefined()
 })
 
-test('rememberLivingMenu swallows a failed persist', async () => {
-  const updateUser = mock(() => Promise.reject(new Error('db locked')))
-  const users = createUserRepository(createTestDb())
+test('adoptLivingMenu is idempotent, so a replayed send does not delete the message it tracks', async () => {
+  const {users, chrome, deleteMessage} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
-  const chromeWithFailingUpdate = createNotificationChrome({
-    findUser: id => users.findById(id),
-    updateUser,
-    editMessageReplyMarkup: mock(() => Promise.resolve(true as const)),
-    deleteMessage: mock(() => Promise.resolve(true as const)),
-    log: {warn: mock(() => {})} as never,
-  })
+  await users.update(1, {lastMenuMessageId: 4})
 
-  await expect(chromeWithFailingUpdate.rememberLivingMenu(1, 12)).resolves.toBeUndefined()
+  // First pass: a new menu 9 supersedes menu 4.
+  await chrome.adoptLivingMenu(1, 9)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+
+  // Conversation replay: the same send() returns 9 again. Nothing may be deleted this time.
+  await chrome.adoptLivingMenu(1, 9)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
 })

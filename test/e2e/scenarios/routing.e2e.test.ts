@@ -213,11 +213,6 @@ const staticCases: {
     text: /Unknown button/,
   },
   {
-    data: staticCallback.featureFundCustom,
-    methods: ['deleteMessage', 'answerCallbackQuery'],
-    text: /Unknown button/,
-  },
-  {
     data: staticCallback.donateMonthlyMenu,
     methods: ['editMessageText', 'answerCallbackQuery'],
     text: /Monthly donation/,
@@ -527,7 +522,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(51)
+  expect(registry).toHaveLength(50)
   expect(covered).toEqual(registry)
 })
 

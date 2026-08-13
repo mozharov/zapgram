@@ -180,13 +180,7 @@ export const scenarioCoverage = {
     errors: ['insufficient_funds'],
   },
   'feature-requests': {
-    routes: [
-      'feature-request',
-      'feature-fund-amount',
-      'feature-fund-skip',
-      'feature-fund-custom',
-      'cancel',
-    ],
+    routes: ['feature-request', 'feature-fund-amount', 'feature-fund-skip', 'cancel'],
     commands: ['/feature'],
     updates: ['message', 'callback_query'],
     writes: [

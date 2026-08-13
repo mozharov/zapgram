@@ -32,6 +32,11 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
+  /**
+   * Clears the pointer on success as well as on failure: once stripped, that message no longer
+   * carries an open-menu row, so it is no longer "the notification holding the button". That also
+   * makes a second call a cheap no-op, which is what keeps a conversation replay from re-editing it.
+   */
   async function stripLastOpenMenu(userId: number): Promise<void> {
     try {
       const user = await deps.findUser(userId)
@@ -46,8 +51,8 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
           {error, userId, messageId: user.lastNotificationMessageId},
           'Failed to strip open-menu from last notification',
         )
-        await forgetNotification(userId)
       }
+      await forgetNotification(userId)
     } catch (error) {
       deps.log.warn({error, userId}, 'Failed to strip last notification open-menu')
     }
@@ -58,12 +63,14 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     baseMarkup: InlineKeyboardJson | undefined,
     send: (markup: InlineKeyboardJson) => Promise<T>,
   ): Promise<T> {
-    await stripLastOpenMenu(userId).catch((error: unknown) => {
-      deps.log.warn({error, userId}, 'Failed to strip last notification before deliver')
-    })
     const user = await deps.findUser(userId)
     const markup = appendOpenMenu(baseMarkup, user?.languageCode ?? 'en')
+    // Send before stripping: a refused send must leave the previous receipt's button intact rather
+    // than strand the user with no way back to the menu.
     const sent = await send(markup)
+    await stripLastOpenMenu(userId).catch((error: unknown) => {
+      deps.log.warn({error, userId}, 'Failed to strip previous notification after deliver')
+    })
     try {
       if (user) {
         await deps.updateUser(userId, {
@@ -80,31 +87,52 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     return sent
   }
 
-  async function deleteLivingMenu(userId: number): Promise<void> {
+  /**
+   * A wizard's terminal screen: `edit` repaints `messageId` with the open-menu row appended, and the
+   * pointers swap — that message stops being a menu and becomes the notification holding the button.
+   *
+   * So it behaves like every other receipt: the next `/wallet` leaves it alone instead of deleting it
+   * with the menu it used to be, and pressing its button strips the row and sends a fresh menu. Use
+   * it to close a conversation in place rather than sending a separate result message.
+   */
+  async function retireMenuAsNotification<T>(
+    userId: number,
+    messageId: number,
+    edit: (markup: InlineKeyboardJson) => Promise<T>,
+  ): Promise<T> {
+    const user = await deps.findUser(userId)
+    const result = await edit(appendOpenMenu(undefined, user?.languageCode ?? 'en'))
+    // Skip when this message already is the tracked notification: stripping would pull off the row
+    // the edit just added.
+    if (user?.lastNotificationMessageId !== messageId) {
+      await stripLastOpenMenu(userId).catch((error: unknown) => {
+        deps.log.warn({error, userId}, 'Failed to strip previous notification while retiring menu')
+      })
+    }
     try {
-      const user = await deps.findUser(userId)
-      if (!user?.lastMenuMessageId) return
-      try {
-        await deps.deleteMessage(userId, user.lastMenuMessageId)
-      } catch (error) {
-        deps.log.warn(
-          {error, userId, messageId: user.lastMenuMessageId},
-          'Failed to delete living menu',
-        )
-        try {
-          await deps.updateUser(userId, {lastMenuMessageId: null})
-        } catch (clearError) {
-          deps.log.warn({error: clearError, userId}, 'Failed to clear last menu pointer')
+      if (user) {
+        const data: Partial<User> = {
+          lastNotificationMessageId: messageId,
+          lastNotificationBaseMarkup: null,
         }
+        if (user.lastMenuMessageId === messageId) data.lastMenuMessageId = null
+        await deps.updateUser(userId, data)
       }
     } catch (error) {
-      deps.log.warn({error, userId}, 'Failed to delete living menu')
+      deps.log.warn({error, userId, messageId}, 'Failed to retire living menu as notification')
     }
+    return result
   }
 
   /**
-   * A callback repainted `messageId` in place, so that message *is* the menu now. Drop whatever
-   * the pointer still names and aim it here. Same id is the common case and costs no API call.
+   * `messageId` *is* the living menu now — either a callback repainted it in place, or it is a
+   * freshly sent menu. Drop whatever the pointer still names and aim it here.
+   *
+   * The equal-id early return is what makes this the single entry point for both cases: it costs no
+   * API call in the common callback path, and it is what makes a conversation replay harmless, since
+   * a replayed `send()` returns the id already tracked. There is deliberately no "delete the tracked
+   * menu" primitive next to this one — deleting before the replacement exists is what let a replay
+   * destroy the prompt it was standing on.
    */
   async function adoptLivingMenu(userId: number, messageId: number): Promise<void> {
     try {
@@ -132,17 +160,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
-  async function rememberLivingMenu(userId: number, messageId: number): Promise<void> {
-    try {
-      const user = await deps.findUser(userId)
-      if (!user) return
-      await deps.updateUser(userId, {lastMenuMessageId: messageId})
-    } catch (error) {
-      deps.log.warn({error, userId, messageId}, 'Failed to remember living menu')
-    }
-  }
-
-  return {stripLastOpenMenu, deliver, deleteLivingMenu, rememberLivingMenu, adoptLivingMenu}
+  return {stripLastOpenMenu, deliver, adoptLivingMenu, retireMenuAsNotification}
 }
 
 export type NotificationChrome = ReturnType<typeof createNotificationChrome>

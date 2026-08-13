@@ -399,8 +399,10 @@ test('a wallet callback from another review message cannot pay the current invoi
     () => e2e.send(privateCallback('internal', {messageId: currentReviewId + 1000})),
     {
       db: {conversations: {removed: 1}},
+      // The interrupt replays the conversation, and the replay must not touch the review message
+      // it is standing on: only the deactivating edit, then `unknownCallback` removing the stale
+      // board the click came from. A third delete here would be the living menu deleting itself.
       telegram: [
-        {method: 'deleteMessage', to: USER_A},
         {method: 'editMessageText', to: USER_A, text: /Action canceled/},
         {method: 'deleteMessage', to: USER_A},
         {method: 'answerCallbackQuery', text: /Unknown button/},

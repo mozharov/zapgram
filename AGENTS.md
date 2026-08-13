@@ -53,13 +53,25 @@ Exactly one message in the private chat is a live menu, and exactly one message 
 
 Two helpers in `src/telegram/helpers/living-menu.ts`, and every menu render must use one of them:
 
-- `showLivingMenu(ctx, send)` — a **new** menu message. Deletes the user's triggering message, the
-  previously tracked menu, and the open-menu row on the last notification, then records the new one.
-  Commands, the private text fallback, `open-menu`, `cancel`, and a conversation's first prompt.
+- `showLivingMenu(ctx, send)` — a **new** menu message. Deletes the user's triggering message, strips
+  the open-menu row off the last notification, **sends**, and only then adopts the new message —
+  which is what deletes the menu it replaces. Commands, the private text fallback, `open-menu`,
+  `cancel`, and a conversation's first prompt.
 - `editLivingMenu(ctx, edit)` — an **in-place** repaint of a menu screen. Edits first (a vanished
-  message must not cost us the tracked menu), then adopts the clicked message: the previously
-  tracked menu is deleted and the pointer moves here. That adoption is what stops a click on an
-  orphaned menu from leaving two live menus. When the clicked message was the last notification, its
+  message must not cost us the tracked menu), then adopts the clicked message.
+
+Both end in `chrome.adoptLivingMenu(userId, messageId)`: same id → no-op, different id → delete the
+tracked menu and move the pointer. That is what stops a click on an orphaned menu from leaving two
+live menus, and it is why there is no "delete the tracked menu" primitive to call on its own.
+
+**Send before deleting — this order is load-bearing.** Every `conversation.wait()` re-runs the
+conversation body from the top. grammY replays `ctx.api` calls from its log, but the chrome reaches
+the database and `bot.api` directly, so those steps re-execute for real on each replay. Because the
+replayed `send()` returns the id it returned the first time, `adoptLivingMenu` recognises it as the
+tracked menu and skips the delete. Deleting first destroyed the prompt the conversation was standing
+on — that was the `/feature` invalid-amount bug. `stripLastOpenMenu` clears its pointer on success
+for the same reason, and `deliver` likewise sends before stripping so a refused send leaves the
+previous receipt's button intact. When the clicked message was the last notification, its
   notification pointers are cleared — the receipt is a menu now, so nothing may restore its keyboard.
 
 Flow surfaces stay outside **both**: invoice/QR and payment routes (`pay-lightning`, `pay-onchain`,
