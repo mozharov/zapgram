@@ -36,9 +36,9 @@ export const COVERS = scenarioCoverage.chats
 /**
  * Paid-chat administration from Telegram updates all the way through the real repositories.
  *
- * The assertions deliberately distinguish edits from new messages. A settings button belongs to
- * an existing card and must edit it, while the two conversations delete that card and later send
- * a fresh one after the user has supplied the requested text.
+ * The assertions deliberately distinguish menus from conversation prompts. Navigation menus
+ * replace the active menu with a new message, while conversation prompts continue editing their
+ * host message until the conversation completes.
  */
 
 const CHAT_PRICE = 1000
@@ -252,7 +252,7 @@ const cardCases: CardCase[] = [
 ]
 
 for (const cardCase of cardCases) {
-  test(`${cardCase.label} edits the existing card instead of sending a new one`, async () => {
+  test(`${cardCase.label} replaces the active menu`, async () => {
     await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
     const chat = await seedChat(e2e, {
       id: CHAT_GROUP,
@@ -269,12 +269,11 @@ for (const cardCase of cardCases) {
             },
           }
         : undefined,
-      telegram: [{method: 'editMessageText', to: USER_A, text: cardCase.text}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: cardCase.text}],
     })
 
-    expectEditedNotSent(e2e.tg)
     const finalChat = {...chat, ...cardCase.changes}
-    expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
       chatPaidAccessRoute.build({
         chatId: CHAT_GROUP,
         status: finalChat.status === 'active' ? 'inactive' : 'active',
@@ -501,14 +500,11 @@ for (const screenCase of customScreenCases) {
     await expectDelta(
       e2e,
       () => e2e.send(privateCallback(chatCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-      {telegram: [{method: 'editMessageText', to: USER_A, text: screenCase.status}]},
+      {telegram: [{method: 'sendMessage', to: USER_A, text: screenCase.status}]},
     )
 
-    expectEditedNotSent(e2e.tg)
-    expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
-      ...screenCase.expectedCallbacks,
-    ])
-    expect(String(e2e.tg.last('editMessageText')?.text)).not.toMatch(
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([...screenCase.expectedCallbacks])
+    expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(
       /Особое приветствие|A special welcome/,
     )
     expectNoErrors(e2e.logs)
@@ -684,11 +680,11 @@ for (const previewCase of [
             }),
           ),
         ),
-      {telegram: [{method: 'editMessageText', to: USER_A, text: new RegExp(expected)}]},
+      {telegram: [{method: 'sendMessage', to: USER_A, text: new RegExp(expected)}]},
     )
 
-    expect(String(e2e.tg.last('editMessageText')?.text)).toContain(expected)
-    expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
+    expect(String(e2e.tg.last('sendMessage')?.text)).toContain(expected)
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
       chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
     ])
     expectNoErrors(e2e.logs)
@@ -715,14 +711,14 @@ for (const locale of ['ru', 'en'] as const) {
         db: {
           chats: {changed: 1, match: rows => expectOnlyChatChanges(rows, changes)},
         },
-        telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}],
+        telegram: [{method: 'sendMessage', to: USER_A, text: /Join request message/}],
       },
     )
 
     const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
     expect(chat.customMessageRu).toBe(locale === 'ru' ? null : 'Сохранённый RU')
     expect(chat.customMessageEn).toBe(locale === 'en' ? null : 'Saved EN')
-    expect(callbackDataOf(e2e.tg.last('editMessageText'))).not.toContain(
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).not.toContain(
       chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale}),
     )
     expectNoErrors(e2e.logs)
@@ -736,11 +732,11 @@ test('legacy edit callback opens the new language selector without starting a co
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-    {telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}]},
+    {telegram: [{method: 'sendMessage', to: USER_A, text: /Join request message/}]},
   )
 
   await expectNoConversations(e2e.db)
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toContain(
     chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
   )
   expectNoErrors(e2e.logs)
@@ -824,10 +820,9 @@ test('removing a custom message restores the default join copy', async () => {
             expectOnlyChatChanges(rows, {customMessageRu: null, customMessageEn: null}),
         },
       },
-      telegram: [{method: 'editMessageText', to: USER_A, text: /E2E paid chat/}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: /E2E paid chat/}],
     },
   )
-  expectEditedNotSent(e2e.tg)
   e2e.tg.reset()
 
   const beforeJoin = await snapshot(e2e)
@@ -903,19 +898,18 @@ test('/chats with eleven accessible chats exposes a second page after ten rows',
   expectNoErrors(e2e.logs)
 })
 
-test('the last page edits the list with one row and a previous-page button', async () => {
+test('the last page replaces the list with one row and a previous-page button', async () => {
   const chats = await seedOwnedChats(11)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 2}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
   })
 
-  expectEditedNotSent(e2e.tg)
-  expect(chatCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([
+  expect(chatCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([
     chatRoute.build({chatId: requiredChat(chats, 10).id}),
   ])
-  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([chatsPageRoute.build({page: 1})])
-  expectAddChatButton(e2e.tg.last('editMessageText'))
+  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([chatsPageRoute.build({page: 1})])
+  expectAddChatButton(e2e.tg.last('sendMessage'))
   expectNoErrors(e2e.logs)
 })
 

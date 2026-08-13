@@ -214,7 +214,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     {
       db: {chats: {changed: 1}},
       lnbits: {balances: {[userWalletName(OWNER)]: 0}},
-      telegram: [{method: 'editMessageText', to: OWNER, text: /Paid access: <b>enabled/}],
+      telegram: [{method: 'sendMessage', to: OWNER, text: /Paid access: <b>enabled/}],
     },
   )
 
@@ -281,7 +281,7 @@ test('a monthly subscription renews, expires and can begin again in one world', 
       ),
     {
       db: {chats: {changed: 1}},
-      telegram: [{method: 'editMessageText', to: OWNER, text: /Payment type: <b>monthly/}],
+      telegram: [{method: 'sendMessage', to: OWNER, text: /Payment type: <b>monthly/}],
     },
   )
 
@@ -332,7 +332,7 @@ test('a monthly subscription renews, expires and can begin again in one world', 
       ),
     {
       db: {subscriptions: {changed: 1}},
-      telegram: [{method: 'editMessageText', to: USER_A, text: /Auto-renewal: <b>disabled/}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: /Auto-renewal: <b>disabled/}],
     },
   )
 
@@ -424,12 +424,12 @@ test('private keyboard navigation keeps one world through screens and conversati
     endsAt: new Date(Date.now() + ONE_MONTH_IN_MS),
   })
 
-  await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.settings, /Settings/)
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.connectNwc)
-  await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.sendMenu, /Send payment/)
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.sendToUser)
+  await expectMenuScreen(staticCallback.wallet, /Wallet/, 'sendRichMessage', false)
+  await expectMenuScreen(staticCallback.settings, /Settings/)
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toContain(staticCallback.connectNwc)
+  await expectMenuScreen(staticCallback.wallet, /Wallet/, 'sendRichMessage')
+  await expectMenuScreen(staticCallback.sendMenu, /Send payment/)
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toContain(staticCallback.sendToUser)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendToUser)), {
     db: {conversations: {added: 1}},
@@ -450,8 +450,8 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
 
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
-  await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
+  await expectMenuScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectMenuScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
 
   await expectDelta(
     e2e,
@@ -470,10 +470,7 @@ test('private keyboard navigation keeps one world through screens and conversati
     ],
   })
 
-  await expectEditedScreen(
-    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
-    /Join request message/,
-  )
+  await expectMenuScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Join request message/)
   await expectDelta(
     e2e,
     () =>
@@ -518,23 +515,20 @@ test('private keyboard navigation keeps one world through screens and conversati
       {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
-  await expectEditedScreen(
-    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
-    /Join request message/,
-  )
+  await expectMenuScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Join request message/)
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatRemoveCustomMessageRoute.build({chatId: CHAT_GROUP}))),
     {
       db: {chats: {changed: 1}},
-      telegram: [{method: 'editMessageText', to: USER_A, text: /E2E paid chat/}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: /E2E paid chat/}],
     },
   )
-  await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectMenuScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
+  await expectMenuScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
 
-  await expectEditedScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
-  await expectEditedScreen(
+  await expectMenuScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
+  await expectMenuScreen(
     subscriptionRoute.build({subscriptionId: subscription.id}),
     /E2E paid chat/,
   )
@@ -544,12 +538,12 @@ test('private keyboard navigation keeps one world through screens and conversati
       e2e.send(privateCallback(subscriptionRenewRoute.build({subscriptionId: subscription.id}))),
     {
       db: {subscriptions: {changed: 1}},
-      telegram: [{method: 'editMessageText', to: USER_A, text: /Auto-renewal: <b>disabled/}],
+      telegram: [{method: 'sendMessage', to: USER_A, text: /Auto-renewal: <b>disabled/}],
     },
   )
-  await expectEditedScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
-  await expectEditedScreen(staticCallback.help, /Lightning Network/)
-  await expectEditedScreen(staticCallback.wallet, /Wallet/)
+  await expectMenuScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
+  await expectMenuScreen(staticCallback.help, /Lightning Network/, 'sendRichMessage')
+  await expectMenuScreen(staticCallback.wallet, /Wallet/, 'sendRichMessage')
 
   const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
   expect(chat).toMatchObject({price: 1234, customMessageRu: null, customMessageEn: null})
@@ -734,9 +728,17 @@ async function settleJoin(
   expectPayouts(payoutTimes)
 }
 
-async function expectEditedScreen(data: string, text: RegExp): Promise<void> {
+async function expectMenuScreen(
+  data: string,
+  text: RegExp,
+  method: 'sendMessage' | 'sendRichMessage' = 'sendMessage',
+  replace = true,
+): Promise<void> {
   await expectDelta(e2e, () => e2e.send(privateCallback(data)), {
-    telegram: [{method: 'editMessageText', to: USER_A, text}],
+    telegram: [
+      ...(replace ? [{method: 'deleteMessage', to: USER_A} as const] : []),
+      {method, to: USER_A, text},
+    ],
   })
 }
 

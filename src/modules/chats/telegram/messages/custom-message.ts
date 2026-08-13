@@ -8,6 +8,7 @@ import {
   chatRoute,
 } from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {replaceLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -25,17 +26,21 @@ export function effectiveCustomMessage(chat: CustomMessageChat, locale: string):
 }
 
 export function editMessageWithCustomMessage(ctx: BotContext, chat: CustomMessageChat) {
-  return ctx.editMessageText(customMessageScreenText(ctx, chat), {
-    link_preview_options: {is_disabled: true},
-    reply_markup: buildCustomMessageKeyboard(ctx.t, chat),
-  })
+  return showLivingMenu(ctx, () =>
+    ctx.reply(customMessageScreenText(ctx, chat), {
+      link_preview_options: {is_disabled: true},
+      reply_markup: buildCustomMessageKeyboard(ctx.t, chat),
+    }),
+  )
 }
 
 export function replyWithCustomMessage(ctx: BotContext, chat: CustomMessageChat) {
-  return ctx.reply(customMessageScreenText(ctx, chat), {
-    link_preview_options: {is_disabled: true},
-    reply_markup: buildCustomMessageKeyboard(ctx.t, chat),
-  })
+  return replaceLivingMenu(ctx, () =>
+    ctx.reply(customMessageScreenText(ctx, chat), {
+      link_preview_options: {is_disabled: true},
+      reply_markup: buildCustomMessageKeyboard(ctx.t, chat),
+    }),
+  )
 }
 
 export function editMessageWithCustomMessagePreview(
@@ -43,18 +48,20 @@ export function editMessageWithCustomMessagePreview(
   chat: CustomMessageChat,
   locale: AppLocale,
 ) {
-  return ctx.editMessageText(
-    ctx.t('chat.custom-message-preview', {
-      locale: locale.toUpperCase(),
-      message: effectiveCustomMessage(chat, locale),
-    }),
-    {
-      link_preview_options: {is_disabled: true},
-      reply_markup: new InlineKeyboard().text(
-        ctx.t('button.back'),
-        chatCustomMessageRoute.build({chatId: chat.id}),
-      ),
-    },
+  return showLivingMenu(ctx, () =>
+    ctx.reply(
+      ctx.t('chat.custom-message-preview', {
+        locale: locale.toUpperCase(),
+        message: effectiveCustomMessage(chat, locale),
+      }),
+      {
+        link_preview_options: {is_disabled: true},
+        reply_markup: new InlineKeyboard().text(
+          ctx.t('button.back'),
+          chatCustomMessageRoute.build({chatId: chat.id}),
+        ),
+      },
+    ),
   )
 }
 

@@ -85,11 +85,15 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
 }
 
 async function replyWithWaitForUrl(ctx: BotContext, html: string) {
-  return showLivingMenu(ctx, () =>
-    ctx.reply(html, {
-      reply_markup: new InlineKeyboard([
-        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-      ]),
-    }),
+  return showLivingMenu(
+    ctx,
+    () =>
+      ctx.reply(html, {
+        reply_markup: new InlineKeyboard([
+          [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+        ]),
+      }),
+    getRuntime().notificationChrome,
+    {deleteCallbackMessage: true},
   )
 }

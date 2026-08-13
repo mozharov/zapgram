@@ -12,6 +12,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {replaceLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -20,11 +21,17 @@ export async function customDonationPercent(
   ctx: ConversationContext,
 ) {
   const html = ctx.t('settings-donation.custom-percent-prompt')
-  const message = await ctx.reply(html, {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
+  const message = await showLivingMenu(
+    ctx,
+    () =>
+      ctx.reply(html, {
+        reply_markup: new InlineKeyboard([
+          [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+        ]),
+      }),
+    getRuntime().notificationChrome,
+    {deleteCallbackMessage: true},
+  )
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -40,9 +47,11 @@ export async function customDonationPercent(
       await next.answerCallbackQuery()
       await deactivatePrompt(conversation, prompt, cancelled)
       const user = await conversation.external(() => getRuntime().users.getOrThrow(ctx.user.id))
-      await ctx.reply(formatDonationSettingsText(ctx.t, user), {
-        reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-      })
+      await replaceLivingMenu(ctx, () =>
+        ctx.reply(formatDonationSettingsText(ctx.t, user), {
+          reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+        }),
+      )
       return conversation.halt()
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
@@ -85,7 +94,9 @@ export async function customDonationPercent(
   )
   await ctx.reply(ctx.t('settings-donation.percent-set', {percent}))
   // Return to auto-% screen (still under the support hub via Back).
-  await ctx.reply(formatDonationSettingsText(ctx.t, user), {
-    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-  })
+  await replaceLivingMenu(ctx, () =>
+    ctx.reply(formatDonationSettingsText(ctx.t, user), {
+      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+    }),
+  )
 }

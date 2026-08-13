@@ -8,6 +8,7 @@ import {
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donateMonthlyAmountRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -19,14 +20,16 @@ export async function donateMonthlyMenuCallback(ctx: BotContext) {
     monthly_donation_sats: user.monthlyDonationSats,
     monthly_donation_next_at: user.monthlyDonationNextAt?.toISOString() ?? null,
   })
-  await ctx.editMessageText(
-    ctx.t('donate.monthly-menu', {
-      sats: user.monthlyDonationSats,
-      usdSuffix: await usdSuffixForSats(user.monthlyDonationSats),
-    }),
-    {
-      reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
-    },
+  await showLivingMenu(ctx, async () =>
+    ctx.reply(
+      ctx.t('donate.monthly-menu', {
+        sats: user.monthlyDonationSats,
+        usdSuffix: await usdSuffixForSats(user.monthlyDonationSats),
+      }),
+      {
+        reply_markup: buildDonateMonthlyKeyboard(ctx.t, user),
+      },
+    ),
   )
   await ctx.answerCallbackQuery()
 }

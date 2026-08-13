@@ -127,16 +127,16 @@ const staticCases: {
   text: RegExp
   conversation?: boolean
 }[] = [
-  {data: staticCallback.wallet, methods: ['editMessageText'], text: /Wallet/},
+  {data: staticCallback.wallet, methods: ['sendRichMessage'], text: /Wallet/},
   {
     data: staticCallback.openMenu,
     methods: ['answerCallbackQuery', 'sendRichMessage'],
     text: /Wallet/,
   },
-  {data: staticCallback.settings, methods: ['editMessageText'], text: /Settings/},
-  {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
-  {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
-  {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
+  {data: staticCallback.settings, methods: ['sendMessage'], text: /Settings/},
+  {data: staticCallback.help, methods: ['sendRichMessage'], text: /Lightning Network/},
+  {data: staticCallback.groupSettings, methods: ['sendMessage'], text: /Chats/},
+  {data: staticCallback.sendMenu, methods: ['sendMessage'], text: /Send payment/},
   {
     data: staticCallback.sendToUser,
     methods: ['editMessageText'],
@@ -163,29 +163,29 @@ const staticCases: {
   },
   {
     data: staticCallback.connectNwc,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['sendMessage', 'deleteMessage', 'sendMessage'],
     text: /NWC URL/,
     conversation: true,
   },
   {
     data: staticCallback.disconnectNwc,
-    methods: ['deleteMessage', 'sendMessage', 'sendRichMessage'],
+    methods: ['sendMessage', 'deleteMessage', 'sendRichMessage'],
     text: /Wallet disconnected/,
   },
   {
     data: staticCallback.toggleNwcTips,
-    methods: ['answerCallbackQuery', 'editMessageText'],
+    methods: ['answerCallbackQuery', 'sendMessage'],
     text: /Settings/,
   },
   {data: staticCallback.cancel, methods: ['sendRichMessage'], text: /Wallet/},
   {
     data: staticCallback.donationSettings,
-    methods: ['editMessageText', 'answerCallbackQuery'],
+    methods: ['sendMessage', 'answerCallbackQuery'],
     text: /Auto % on payments/,
   },
   {
     data: staticCallback.donate,
-    methods: ['editMessageText', 'answerCallbackQuery'],
+    methods: ['sendMessage', 'answerCallbackQuery'],
     text: /zapgram@getalby.com/,
   },
   {
@@ -196,13 +196,13 @@ const staticCases: {
   },
   {
     data: staticCallback.donationCustomPercent,
-    methods: ['answerCallbackQuery', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /auto-donation percent|percent \(0/,
     conversation: true,
   },
   {
     data: staticCallback.featureRequest,
-    methods: ['answerCallbackQuery', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /What should we build/,
     conversation: true,
   },
@@ -219,12 +219,12 @@ const staticCases: {
   },
   {
     data: staticCallback.donateMonthlyMenu,
-    methods: ['editMessageText', 'answerCallbackQuery'],
+    methods: ['sendMessage', 'answerCallbackQuery'],
     text: /Monthly donation/,
   },
   {
     data: staticCallback.donateMonthlyDisable,
-    methods: ['answerCallbackQuery', 'editMessageText'],
+    methods: ['answerCallbackQuery', 'sendMessage'],
     text: /zapgram@getalby.com|Support ZapGram/,
   },
   {
@@ -289,39 +289,39 @@ const parameterizedCases: {
   {
     route: 'chats-page',
     data: () => 'chats:1',
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Your chats with the ability/,
   },
   {
     route: 'chat',
     data: ({chat}) => `chat:${chat.id}`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /E2E paid chat/,
   },
   {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:off-paid`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Paid access: <b>disabled/,
     db: {chats: {changed: 1}},
   },
   {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:on-paid`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Paid access: <b>enabled/,
   },
   {
     route: 'chat-payment-type',
     data: ({chat}) => `chat:${chat.id}:turn-one_time`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Payment type: <b>one-time/,
     db: {chats: {changed: 1}},
   },
   {
     route: 'chat-payment-type',
     data: ({chat}) => `chat:${chat.id}:turn-monthly`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Payment type: <b>monthly/,
   },
   {
@@ -334,13 +334,13 @@ const parameterizedCases: {
   {
     route: 'chat-custom-message',
     data: ({chat}) => `chat:${chat.id}:custom-message`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Join request message[\s\S]*RU: <b>custom[\s\S]*EN: <b>custom/,
   },
   {
     route: 'chat-edit-custom-message',
     data: ({chat}) => `chat:${chat.id}:edit-custom-message`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Join request message/,
   },
   {
@@ -353,20 +353,20 @@ const parameterizedCases: {
   {
     route: 'chat-custom-message-preview',
     data: ({chat}) => `chat:${chat.id}:custom-message:preview:en`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Preview · EN[\s\S]*Custom EN message/,
   },
   {
     route: 'chat-custom-message-reset',
     data: ({chat}) => `chat:${chat.id}:custom-message:reset:ru`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Join request message[\s\S]*RU: <b>default[\s\S]*EN: <b>custom/,
     db: {chats: {changed: 1}},
   },
   {
     route: 'chat-remove-custom-message',
     data: ({chat}) => `chat:${chat.id}:remove-custom-message`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /E2E paid chat/,
     db: {chats: {changed: 1}},
   },
@@ -380,7 +380,7 @@ const parameterizedCases: {
   {
     route: 'chat-onchain-disable',
     data: ({chat}) => `chat:${chat.id}:onchain-disable`,
-    methods: ['answerCallbackQuery', 'editMessageText'],
+    methods: ['answerCallbackQuery', 'sendMessage'],
     text: /On-chain pay: <b>disabled/,
   },
   {
@@ -411,19 +411,19 @@ const parameterizedCases: {
   {
     route: 'subscriptions-page',
     data: () => 'subscriptions:1',
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Your subscriptions to private chats/,
   },
   {
     route: 'subscription',
     data: ({subscription}) => `subscription:${subscription.id}`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Subscription to chat "E2E paid chat"/,
   },
   {
     route: 'subscription-renew',
     data: ({subscription}) => `subscription:${subscription.id}:renew`,
-    methods: ['editMessageText'],
+    methods: ['sendMessage'],
     text: /Auto-renewal: <b>disabled/,
     db: {subscriptions: {changed: 1}},
   },
@@ -442,14 +442,14 @@ const parameterizedCases: {
   {
     route: 'donation-percent',
     data: () => 'donation:percent:5',
-    methods: ['editMessageText', 'answerCallbackQuery'],
+    methods: ['sendMessage', 'answerCallbackQuery'],
     text: /Auto % on payments/,
     db: {users: {changed: 1}},
   },
   {
     route: 'donation-scope',
     data: () => 'donation:scope:tips',
-    methods: ['editMessageText', 'answerCallbackQuery'],
+    methods: ['sendMessage', 'answerCallbackQuery'],
     text: /Auto % on payments/,
     db: {users: {changed: 1}},
   },

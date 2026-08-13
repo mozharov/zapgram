@@ -88,6 +88,7 @@ test('deleteLivingMenu removes the stored menu message', async () => {
 
   await chrome.deleteLivingMenu(1)
   expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+  expect((await users.findById(1))?.lastMenuMessageId).toBeNull()
 })
 
 test('deleteLivingMenu swallows a vanished message and forgets the pointer', async () => {
