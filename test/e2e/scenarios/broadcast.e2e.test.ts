@@ -16,7 +16,6 @@ import {
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
-import {snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
 export const COVERS = scenarioCoverage.broadcast
@@ -114,40 +113,25 @@ test('non-admin /broadcast is silent', async () => {
   expect(e2e.tg.of('copyMessage').length).toBe(0)
 })
 
-test('callback-only broadcast steps keep waiting after text and accept the original prompt buttons', async () => {
+test('text on broadcast confirmation cancels the action and returns to Wallet', async () => {
   await seedUser(e2e, {id: OWNER, username: 'owner', languageCode: 'en'})
   await seedUser(e2e, {id: USER_A, username: 'user_a', languageCode: 'en'})
   const from = {id: OWNER, username: 'owner'}
 
   await e2e.send(privateCommand('/broadcast', {from}))
-  const localePromptMessageId = requiredPromptMessageId()
-  await e2e.send(privateText('English', {from}))
-
-  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/buttons|кнопк/i)
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from,
-      messageId: localePromptMessageId,
+      messageId: requiredPromptMessageId(),
     }),
   )
 
   await e2e.send(privateText('Broadcast after retries', {from}))
-  const confirmPromptMessageId = requiredPromptMessageId()
   await e2e.send(privateText('yes', {from}))
-  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/buttons|кнопк/i)
-
-  await e2e.send(
-    privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
-      from,
-      messageId: confirmPromptMessageId,
-    }),
-  )
-  await e2e.jobs.processBroadcasts()
 
   await expectNoConversations(e2e.db)
-  expect(await e2e.db.select().from(broadcastsTable)).toHaveLength(1)
+  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
   expectNoErrors(e2e.logs)
 })
 

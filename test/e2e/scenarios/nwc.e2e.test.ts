@@ -235,29 +235,16 @@ test('the NWC menu with a connected wallet offers disconnect and tips toggle', a
   expectNoErrors(e2e.logs)
 })
 
-test('wallet selection ignores text and accepts a button only from its own prompt', async () => {
+test('text during wallet selection cancels the action and returns to Wallet', async () => {
   await connectNwc()
   await e2e.send(privateCallback(staticCallback.createInvoice))
-  const promptMessageId = requiredPromptMessageId()
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
 
   await expectDelta(e2e, () => e2e.send(privateText('internal')), {
-    db: {conversations: {changed: 1}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+    db: {conversations: {removed: 1}},
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Wallet/}],
   })
 
-  await expectDelta(
-    e2e,
-    () => e2e.send(privateCallback('internal', {messageId: promptMessageId})),
-    {
-      db: {conversations: {changed: 1}},
-      telegram: [
-        {method: 'answerCallbackQuery'},
-        {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'editMessageText', to: USER_A, text: /ZapGram wallet selected/},
-      ],
-    },
-  )
   expectNoErrors(e2e.logs)
 })
 

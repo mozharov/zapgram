@@ -628,13 +628,13 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
   expectNoErrors(e2e.logs)
 })
 
-test('ordinary text on invoice review does not confirm payment', async () => {
+test('ordinary text on invoice review cancels payment and returns to Wallet', async () => {
   await enterPayInvoiceAtReview()
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(privateText('pay')), {
-    db: {conversations: {changed: 1}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /buttons on the active message/}],
+    db: {conversations: {removed: 1}},
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Wallet/}],
   })
 
   expectLedgerBalanced(before, await snapshot(e2e))

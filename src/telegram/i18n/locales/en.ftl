@@ -8,7 +8,6 @@ conversation-state =
     .inactive = <i>This step is no longer active.</i>
     .inactive-fallback = ℹ️ Previous step is no longer active: {$action}.
     .invoice-memo-inactive = <i>Adding a description is no longer active.</i>
-    .use-buttons = Use the buttons on the active message.
 
 conversation-action =
     .enter-sats = entering an amount

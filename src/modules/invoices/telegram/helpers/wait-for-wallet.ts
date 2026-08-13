@@ -16,7 +16,6 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
-import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 import {type FundedWallets, fundedWalletsForAmount, readWalletBalances} from './funded-wallets.js'
@@ -199,11 +198,9 @@ async function pickWallet(
       return interruptConversation(conversation, prompt, cancelled)
     }
 
-    await replyWithConversationTempMessage(
-      conversation,
-      next,
-      next.t('conversation-state.use-buttons'),
-    )
+    if (opts.onCancel) await opts.onCancel(opts.host ?? pickedHost)
+    else await deactivatePrompt(conversation, prompt, cancelled)
+    return conversation.halt()
   }
 
   captureBotEvent(getRuntime().posthog, 'wallet_resolved', {

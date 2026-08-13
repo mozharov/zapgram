@@ -113,11 +113,9 @@ async function waitForLocale(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await replyWithConversationTempMessage(
-      conversation,
-      next,
-      next.t('conversation-state.use-buttons'),
-    )
+    await deactivatePrompt(conversation, prompt, cancelled)
+    await replyWithWallet(ctx)
+    return conversation.halt()
   }
 }
 
@@ -200,10 +198,8 @@ async function waitForConfirm(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await replyWithConversationTempMessage(
-      conversation,
-      next,
-      next.t('conversation-state.use-buttons'),
-    )
+    await deactivatePrompt(conversation, prompt, cancelled)
+    await replyWithWallet(ctx)
+    return conversation.halt()
   }
 }

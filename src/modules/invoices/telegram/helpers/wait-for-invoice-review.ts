@@ -18,7 +18,6 @@ import {
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
-import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {invoiceReviewHtml} from './invoice-review.js'
@@ -86,11 +85,9 @@ export async function waitForInvoiceReview(
       return interruptConversation(conversation, prompt, cancelled)
     }
 
-    await replyWithConversationTempMessage(
-      conversation,
-      next,
-      next.t('conversation-state.use-buttons'),
-    )
+    if (opts?.onCancel) await opts.onCancel(opts.host ?? reviewHost)
+    else await deactivatePrompt(conversation, prompt, cancelled)
+    return conversation.halt()
   }
 }
 

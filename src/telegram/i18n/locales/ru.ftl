@@ -8,7 +8,6 @@ conversation-state =
     .inactive = <i>Этот шаг больше не активен.</i>
     .inactive-fallback = ℹ️ Предыдущий шаг больше не активен: {$action}.
     .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
-    .use-buttons = Используй кнопки в активном сообщении.
 
 conversation-action =
     .enter-sats = ввод суммы
