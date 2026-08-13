@@ -425,7 +425,7 @@ test('private keyboard navigation keeps one world through screens and conversati
   })
 
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.settings, /Settings/)
+  await expectEditedScreen(staticCallback.settings, /NWC/)
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.connectNwc)
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
   await expectEditedScreen(staticCallback.sendMenu, /Send payment/)

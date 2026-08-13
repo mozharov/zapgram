@@ -35,7 +35,7 @@ conversation-action =
 button = 
     .back = ⬅️ Back
     .help = ℹ️ Help
-    .settings = ⚙️ Settings
+    .settings = ⚙️ NWC
     .receive = 📩 Receive
     .send = ✉️ Send
     .subscriptions = 🔐 My subscriptions
@@ -243,7 +243,7 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <h2>Partner: 21ideas</h2>
     <p>The <a href="https://21ideas.org/en/">21ideas</a> community uses {bot-name} for tips and paid access. Follow <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a> or read the <a href="https://21ideas.org/zapgram/">ZapGram guide</a>.</p>
     <hr/>
-    <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature: /feature</footer>
+    <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature from the main menu</footer>
 
 wallet = <h1>👛 Wallet</h1>
     {$nwcBalance ->
@@ -260,7 +260,7 @@ nwc =
     .invalid-url = <b>⚠️ Invalid NWC URL.</b>
     .connected = <b>✅ Wallet connected with NWC.</b>
 
-settings = <b>⚙️ Settings</b>
+settings = <b>⚙️ NWC</b>
 
     <b>⚡️ Connecting an external wallet</b>
     Connect your Lightning wallet to {bot-name} via Nostr Wallet Connect (NWC) so that you can make payments directly from the connected wallet.
@@ -272,7 +272,7 @@ settings = <b>⚙️ Settings</b>
     .groups = <b>👥 Chats</b>
         You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
 
-        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below (or <code>/chats</code>). Adding the bot alone does not enable paid access.
+        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below. Adding the bot alone does not enable paid access.
 
         <b>Examples of Uses:</b>
         • <code>/tip</code> — send 21 sats to the chat owner
@@ -429,7 +429,7 @@ chats = <b>👥 Your chats with the ability to enable paid access.</b>
     This list is for configuring paid access on chats where the bot is already an admin.
     Add {bot-username} to a chat with invite and ban permissions to make it appear here.
     .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
-        Add {bot-username} to a chat with invite and ban permissions (button below), then open /chats again to configure paid access.
+        Add {bot-username} to a chat with invite and ban permissions (button below), then choose <b>Paid chats</b> from the main menu to configure paid access.
 
 chat = <b>👥 {$title}</b>
     
@@ -572,7 +572,7 @@ subscription-invoice =
     {$type ->
     [one_time] <i></i>
     *[other] <i>The subscription amount will be automatically debited from your {bot-name} wallet every month.</i>
-        <i>To get expiry reminders and manage auto-renew, open the bot (/start) and use /subscriptions.</i>
+        <i>To get expiry reminders and manage auto-renew, open the main menu and choose My subscriptions.</i>
     }
     .paid-from-balance = <b>✅ Payment completed.</b>
         Access to the community will be granted within 5 minutes.

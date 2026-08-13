@@ -220,14 +220,14 @@ test('/wallet with a connected NWC shows both balances', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('/settings with a connected NWC offers disconnect and tips toggle', async () => {
+test('the NWC menu with a connected wallet offers disconnect and tips toggle', async () => {
   await connectNwc()
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/settings')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.settings)), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
 
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     staticCallback.toggleNwcTips,
     staticCallback.disconnectNwc,
     staticCallback.wallet,

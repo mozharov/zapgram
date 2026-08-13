@@ -856,50 +856,50 @@ test('removing a custom message restores the default join copy', async () => {
 
 // --- Pagination ---
 
-test('/chats with one accessible chat has no page controls', async () => {
+test('the paid-chats menu with one accessible chat has no page controls', async () => {
   const chats = await seedOwnedChats(1)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
   })
 
-  expect(chatCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(chatCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([
     chatRoute.build({chatId: requiredChat(chats, 0).id}),
   ])
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 
-test('/chats with exactly ten accessible chats has no next page', async () => {
+test('the paid-chats menu with exactly ten accessible chats has no next page', async () => {
   const chats = await seedOwnedChats(10)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
   })
 
-  const callbacks = chatCallbacksOf(e2e.tg.last('sendMessage'))
+  const callbacks = chatCallbacksOf(e2e.tg.last('editMessageText'))
   expect(callbacks).toHaveLength(10)
   expect(new Set(callbacks)).toEqual(new Set(chats.map(chat => chatRoute.build({chatId: chat.id}))))
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 
-test('/chats with eleven accessible chats exposes a second page after ten rows', async () => {
+test('the paid-chats menu with eleven accessible chats exposes a second page after ten rows', async () => {
   const chats = await seedOwnedChats(11)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
   })
 
-  const firstPageChats = chatCallbacksOf(e2e.tg.last('sendMessage'))
+  const firstPageChats = chatCallbacksOf(e2e.tg.last('editMessageText'))
   expect(firstPageChats).toHaveLength(10)
   expect(new Set(firstPageChats)).toEqual(
     new Set(chats.slice(0, 10).map(chat => chatRoute.build({chatId: chat.id}))),
   )
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([chatsPageRoute.build({page: 2})])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([chatsPageRoute.build({page: 2})])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 

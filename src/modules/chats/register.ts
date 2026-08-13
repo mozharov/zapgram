@@ -18,7 +18,6 @@ import type {Composer} from 'grammy'
 import {changePriceCallback} from './telegram/handlers/change-price.js'
 import {chatCallback} from './telegram/handlers/chat-callback.js'
 import {chatsCallback} from './telegram/handlers/chats-callback.js'
-import {chatsCommand} from './telegram/handlers/chats-command.js'
 import {customMessageCallback} from './telegram/handlers/custom-message.js'
 import {disableOnchainCallback} from './telegram/handlers/disable-onchain.js'
 import {
@@ -34,8 +33,6 @@ import {resetCustomMessageCallback} from './telegram/handlers/reset-custom-messa
 import {turnPaidAccessCallback} from './telegram/handlers/turn-paid-access.js'
 import {turnPaymentTypeCallback} from './telegram/handlers/turn-payment-type.js'
 
-export const chatsCommands = ['chats'] as const
-
 export function register(composer: Composer<BotContext>): void {
   const paidChat = composer.chatType(['supergroup', 'channel'])
   paidChat.on('my_chat_member', myChatMemberHandler)
@@ -43,7 +40,6 @@ export function register(composer: Composer<BotContext>): void {
 
   const privateChat = composer.chatType('private')
   // createConversation(changingPrice / editCustomMessage) live in telegram/composition.ts.
-  privateChat.command(chatsCommands[0], chatsCommand)
   privateChat.callbackQuery(chatsPageRoute.pattern, chatsCallback)
   privateChat.callbackQuery(chatRoute.pattern, chatCallback)
   privateChat.callbackQuery(chatPaidAccessRoute.pattern, turnPaidAccessCallback)

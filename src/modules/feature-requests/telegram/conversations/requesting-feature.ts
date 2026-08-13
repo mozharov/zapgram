@@ -27,20 +27,13 @@ import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
-/**
- * /feature [text] → optional fund sats → admin meta DM + copyMessage + PostHog.
- */
-export async function requestingFeature(
-  conversation: BotConversation,
-  ctx: ConversationContext,
-  initialText = '',
-) {
+/** Main-menu feature request → optional fund sats → admin meta DM + copyMessage + PostHog. */
+export async function requestingFeature(conversation: BotConversation, ctx: ConversationContext) {
   captureBotEvent(getRuntime().posthog, 'feature_request_started', {
     feature: 'feature_requests',
-    has_initial_text: initialText.trim().length > 0,
   })
 
-  const source = await resolveSourceMessage(conversation, ctx, initialText)
+  const source = await waitForFeatureText(conversation, ctx)
   if (!source) return
 
   const fundHtml = ctx.t('feature.fund-prompt')
@@ -112,28 +105,6 @@ export async function requestingFeature(
       ...disabledLinkPreview,
     }),
   )
-}
-
-/**
- * Prefer the command message when `/feature …` already has body text.
- * Otherwise wait for one plain text message (Telegram length limit applies).
- */
-async function resolveSourceMessage(
-  conversation: BotConversation,
-  ctx: ConversationContext,
-  initialText: string,
-): Promise<FeatureRequestSourceMessage | null> {
-  const fromCommand = normalizeFeatureRequestText(initialText)
-  if (fromCommand && ctx.message && ctx.chat) {
-    return {
-      chatId: ctx.chat.id,
-      messageId: ctx.message.message_id,
-      // Analytics: body after /feature; admin still gets a full copy of the command message.
-      text: fromCommand,
-    }
-  }
-
-  return waitForFeatureText(conversation, ctx)
 }
 
 async function waitForFeatureText(

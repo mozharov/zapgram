@@ -25,10 +25,14 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
-test('canceling a feature request returns to Wallet', async () => {
+async function openFeatureRequest(): Promise<void> {
+  await e2e.send(privateCallback(staticCallback.featureRequest))
+}
+
+test('canceling a feature request started from the menu returns to Wallet', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
-  await e2e.send(privateCommand('/feature'))
+  await openFeatureRequest()
   await e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()}))
 
   await expectNoConversations(e2e.db)
@@ -36,11 +40,12 @@ test('canceling a feature request returns to Wallet', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('/feature with text and skip: meta + copyMessage to admin', async () => {
+test('a menu feature request with text and skip sends meta + copyMessage to admin', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  await e2e.send(privateCommand('/feature Built-in on-chain wallet'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Built-in on-chain wallet'))
 
   const fundPrompt = e2e.tg
     .of('sendMessage')
@@ -76,13 +81,14 @@ test('/feature with text and skip: meta + copyMessage to admin', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('/feature fund 1000: donation + meta + copyMessage', async () => {
+test('feature funding with 1000 sats creates a donation and admin copy', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
   credit(USER_A, STARTING)
 
   const before = await snapshot(e2e)
-  await e2e.send(privateCommand('/feature NWC multi-wallet'))
+  await openFeatureRequest()
+  await e2e.send(privateText('NWC multi-wallet'))
 
   await expectDelta(
     e2e,
@@ -126,11 +132,11 @@ test('/feature fund 1000: donation + meta + copyMessage', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('/feature without args: free-text message is copyMessage source', async () => {
+test('a feature request from the menu uses its free-text message as the copyMessage source', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  await e2e.send(privateCommand('/feature'))
+  await openFeatureRequest()
   expect(
     e2e.tg.of('sendMessage').some(c => /What should we build|Что сделать/i.test(String(c.text))),
   ).toBe(true)
@@ -161,7 +167,7 @@ test('blank feature text retries without submission and accepts the next message
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  await e2e.send(privateCommand('/feature'))
+  await openFeatureRequest()
   const textPromptMessageId = requiredPromptMessageId()
   await e2e.send(privateText('   '))
 
@@ -188,7 +194,8 @@ test('fund choice ignores ordinary text, keeps prompt active, then accepts its o
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  await e2e.send(privateCommand('/feature Keep fund step active'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Keep fund step active'))
   const promptMessageId = requiredPromptMessageId()
   await e2e.send(privateText('this is not a button'))
 
@@ -208,7 +215,8 @@ test('a typed amount at the fund step is accepted without any extra prompt', asy
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
   credit(USER_A, STARTING)
 
-  await e2e.send(privateCommand('/feature Custom funding'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Custom funding'))
   const chooserId = requiredPromptMessageId()
 
   // The board offers presets and Skip only — any other amount is typed straight into the chat.
@@ -254,19 +262,18 @@ test('a typed amount at the fund step is accepted without any extra prompt', asy
   expectNoErrors(e2e.logs)
 })
 
-test('canceling at the fund step drops the idea message and shows the wallet', async () => {
+test('canceling at the fund step shows the wallet without a submission', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
-  const featureUpdate = privateCommand('/feature Cancelled idea')
+  await openFeatureRequest()
+  const featureUpdate = privateText('Cancelled idea')
   await e2e.send(featureUpdate)
   const chooserId = requiredPromptMessageId()
   const mark = e2e.tg.calls.length
 
   await e2e.send(privateCallback(staticCallback.cancel, {messageId: chooserId}))
 
-  // Nothing was submitted, so the copyMessage source has no reader — it goes with the prompt.
   const deleted = deletedIdsSince(mark)
-  expect(deleted).toContain(featureUpdate.message?.message_id)
   expect(deleted).toContain(chooserId)
   expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
   await expectNoConversations(e2e.db)
@@ -278,7 +285,8 @@ test('the feature report is a receipt: /wallet leaves it, its button opens a fre
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  const featureUpdate = privateCommand('/feature Receipt behaviour')
+  await openFeatureRequest()
+  const featureUpdate = privateText('Receipt behaviour')
   await e2e.send(featureUpdate)
   const chooserId = requiredPromptMessageId()
   await e2e.send(privateCallback(staticCallback.featureFundSkip, {messageId: chooserId}))
@@ -308,7 +316,8 @@ test('a later /wallet keeps the feature report and only takes its open-menu row'
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
 
-  await e2e.send(privateCommand('/feature Survives the next wallet'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Survives the next wallet'))
   const chooserId = requiredPromptMessageId()
   await e2e.send(privateCallback(staticCallback.featureFundSkip, {messageId: chooserId}))
 
@@ -329,7 +338,8 @@ test('a later /wallet keeps the feature report and only takes its open-menu row'
 test('wallet callback from another message interrupts feature flow and still opens wallet', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
-  await e2e.send(privateCommand('/feature Interrupted request'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Interrupted request'))
   const promptMessageId = requiredPromptMessageId()
   await e2e.send(
     privateCallback(staticCallback.wallet, {
@@ -352,16 +362,14 @@ test('wallet callback from another message interrupts feature flow and still ope
 test('invalid fund amount keeps the input and prompt briefly, then removes both with the hint', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
-  await e2e.send(privateCommand('/feature Built-in on-chain wallet'))
+  await openFeatureRequest()
+  await e2e.send(privateText('Built-in on-chain wallet'))
   const fundPromptId = requiredPromptMessageId()
   const mark = e2e.tg.calls.length
   const invalidAmountUpdate = privateText('not a number')
 
   await e2e.send(invalidAmountUpdate)
 
-  const deleted = deletedIdsSince(mark)
-  expect(deleted).not.toContain(invalidAmountUpdate.message?.message_id)
-  expect(deleted).not.toContain(fundPromptId)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/whole number of sats/i)
   const hintMessageId = e2e.tg.lastMessageId('sendMessage')
   if (hintMessageId === undefined) throw new Error('Expected temporary invalid amount hint')

@@ -6,21 +6,13 @@ import type {ChatAdministratorRights} from 'grammy/types'
 
 const privateCommandsEn = [
   {command: 'wallet', description: 'Main menu and wallet info'},
-  {command: 'settings', description: 'Wallet settings'},
-  {command: 'subscriptions', description: 'Your active subscriptions'},
-  {command: 'chats', description: 'Your chats with paid subscriptions'},
   {command: 'donate', description: 'Support the project — one-shot, monthly, stats'},
-  {command: 'feature', description: 'Request a feature (optional sats tip)'},
   {command: 'help', description: 'FAQ, links and instructions'},
 ] as const
 
 const privateCommandsRu = [
   {command: 'wallet', description: 'Меню и информация о кошельке'},
-  {command: 'settings', description: 'Настройки кошелька'},
-  {command: 'subscriptions', description: 'Твои активные подписки'},
-  {command: 'chats', description: 'Твои чаты с платным доступом'},
   {command: 'donate', description: 'Поддержать проект — разово, ежемесячно, статистика'},
-  {command: 'feature', description: 'Запросить фичу (можно с сатоши)'},
   {command: 'help', description: 'FAQ, ссылки и инструкции'},
 ] as const
 

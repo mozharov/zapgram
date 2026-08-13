@@ -55,7 +55,7 @@ export async function editLivingMenu<T>(
  * Sending **before** deleting is what makes that safe: on a replay `send()` returns the message id
  * it returned the first time, `adoptLivingMenu` sees the tracked menu is already that message, and
  * the delete is skipped. Deleting first would destroy the prompt the conversation is standing on —
- * that is the `/feature` invalid-amount bug.
+ * that is the feature-request invalid-amount bug.
  *
  * `stripLastOpenMenu` clears its pointer, so it is a no-op on the replay too. `deleteMessageSafely`
  * goes through `ctx.api` and is replayed by grammY like any other context call.

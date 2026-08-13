@@ -24,7 +24,7 @@ export const scenarioCoverage = {
       'chat-onchain-enable',
       'chat-onchain-disable',
     ],
-    commands: ['/chats'],
+    commands: [],
     updates: [
       'my_chat_member',
       ':new_chat_title',
@@ -181,7 +181,7 @@ export const scenarioCoverage = {
   },
   'feature-requests': {
     routes: ['feature-request', 'feature-fund-amount', 'feature-fund-skip', 'cancel'],
-    commands: ['/feature'],
+    commands: [],
     updates: ['message', 'callback_query'],
     writes: [
       'users.insert',
@@ -286,7 +286,7 @@ export const scenarioCoverage = {
       'pay-subscription',
       'pay-join-balance',
     ],
-    commands: ['/wallet', '/settings'],
+    commands: ['/wallet'],
     updates: ['message', 'callback_query', 'hears', 'chat_join_request'],
     writes: [
       'users.insert',
@@ -341,7 +341,7 @@ export const scenarioCoverage = {
       'donation-custom-percent',
       'donate-monthly-custom',
     ],
-    commands: ['/start', '/help', '/wallet', '/settings', '/chats', '/subscriptions', '/donate'],
+    commands: ['/start', '/help', '/wallet', '/donate'],
     updates: ['message', 'callback_query', 'hears'],
     writes: [
       'users.insert',
@@ -455,7 +455,7 @@ export const scenarioCoverage = {
       'send-menu',
       'donation-settings',
     ],
-    commands: ['/wallet', '/settings'],
+    commands: ['/wallet'],
     updates: ['message', 'callback_query'],
     writes: ['users.update'],
     jobs: [],

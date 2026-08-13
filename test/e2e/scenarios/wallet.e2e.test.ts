@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {USER_A} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
@@ -211,7 +212,7 @@ test('the wallet screen exposes every private user section without commands', as
     '✉️ Send',
     '🔐 My subscriptions',
     '👥 Chats',
-    '⚙️ Settings',
+    '⚙️ NWC',
     'ℹ️ Help',
     '💚 Support project',
     '💡 I want a feature',
@@ -220,13 +221,13 @@ test('the wallet screen exposes every private user section without commands', as
 
 // --- The settings screen ---
 
-test('/settings offers connecting a wallet and a way back to the wallet', async () => {
-  await expectDelta(e2e, () => e2e.send(privateCommand('/settings')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/}],
+test('the NWC menu offers connecting a wallet and a way back to the wallet', async () => {
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.settings)), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
 
   // No disconnect and no tips toggle: both are rendered only once `nwc_url` is set.
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['connect-nwc', 'wallet'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['connect-nwc', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 

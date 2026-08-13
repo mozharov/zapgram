@@ -61,34 +61,12 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
     ],
   },
   // /wallet is the one command whose output cannot distinguish routing from the fallback: the
-  // terminal on('message') handler IS walletCommand. The fixture test in fixtures/updates.e2e.test.ts
-  // proves command recognition itself with /settings, which has a distinct screen.
+  // terminal on('message') handler IS walletCommand.
   {
     command: '/wallet',
     telegram: [
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
-    ],
-  },
-  {
-    command: '/settings',
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Settings/},
-    ],
-  },
-  {
-    command: '/chats',
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /don't have any chats/},
-    ],
-  },
-  {
-    command: '/subscriptions',
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /don't have any subscriptions/},
     ],
   },
   {
@@ -109,15 +87,25 @@ for (const {command, telegram} of commandCases) {
 
 test('the private commands are the ones the bot registers', () => {
   expect(commandCases.map(item => item.command).sort()).toEqual([
-    '/chats',
     '/donate',
     '/help',
-    '/settings',
     '/start',
-    '/subscriptions',
     '/wallet',
   ])
 })
+
+for (const command of ['/settings', '/chats', '/subscriptions', '/feature']) {
+  test(`${command} no longer has a dedicated handler`, async () => {
+    await expectDelta(e2e, () => e2e.send(privateCommand(command)), {
+      ...FIRST_TOUCH,
+      telegram: [
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+      ],
+    })
+    expectNoErrors(e2e.logs)
+  })
+}
 
 // --- Static callback routes ---
 
@@ -133,7 +121,7 @@ const staticCases: {
     methods: ['answerCallbackQuery', 'sendRichMessage'],
     text: /Wallet/,
   },
-  {data: staticCallback.settings, methods: ['editMessageText'], text: /Settings/},
+  {data: staticCallback.settings, methods: ['editMessageText'], text: /NWC/},
   {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
   {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
   {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
@@ -175,7 +163,7 @@ const staticCases: {
   {
     data: staticCallback.toggleNwcTips,
     methods: ['answerCallbackQuery', 'editMessageText'],
-    text: /Settings/,
+    text: /NWC/,
   },
   {data: staticCallback.cancel, methods: ['sendRichMessage'], text: /Wallet/},
   {

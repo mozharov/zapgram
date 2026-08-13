@@ -8,6 +8,7 @@ import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
 import {
   chatCustomMessageEditRoute,
+  chatsPageRoute,
   donationPercentRoute,
   staticCallback,
 } from '@telegram/callback-data.js'
@@ -460,7 +461,7 @@ const cancelCases: {
     step: 'url',
     reach: enterConnectNwcAtUrl,
     lifecyclePrompt: 'text',
-    parentText: /Settings/,
+    parentText: /NWC/,
   },
   {
     conversation: sendingToUser.name,
@@ -886,15 +887,15 @@ test('/help interrupts a number step and opens Help without a validation error',
   expectNoErrors(e2e.logs)
 })
 
-test('/chats interrupts a callback-only review and opens the chat list', async () => {
+test('the paid-chats menu action interrupts a callback-only review and opens the chat list', async () => {
   await enterPayInvoiceAtReview()
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /chats with the ability/},
+      {method: 'editMessageText', to: USER_A, text: /chats with the ability/},
     ],
   })
 
