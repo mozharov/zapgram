@@ -220,17 +220,13 @@ test('the wallet screen exposes every private user section without commands', as
 
 // --- The settings screen ---
 
-test('/settings offers connecting a wallet and nothing that needs one', async () => {
+test('/settings offers connecting a wallet and a way back to the wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/settings')), {
     telegram: [{method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/}],
   })
 
   // No disconnect and no tips toggle: both are rendered only once `nwc_url` is set.
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
-    'connect-nwc',
-    'group-settings',
-    'wallet',
-  ])
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['connect-nwc', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
@@ -238,11 +234,7 @@ test('the settings button renders the same screen in place', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('settings')), {
     telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
-    'connect-nwc',
-    'group-settings',
-    'wallet',
-  ])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['connect-nwc', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
