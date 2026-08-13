@@ -1,4 +1,3 @@
-import type {AppLogger} from '@infra/logger.js'
 import type {Api, InputFile} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
@@ -18,40 +17,13 @@ export type Notifier = {
   copyMessage(toUserId: number, fromChatId: number, messageId: number): Promise<boolean>
 }
 
-/** Telegram-backed notifier. Methods never throw — they log and return success/failure. */
-export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
-  return {
-    async send(userId, text, opts) {
-      try {
-        await api.sendMessage(userId, text, opts)
-        return true
-      } catch (error) {
-        log.error({error}, 'Failed to send Telegram message')
-        return false
-      }
-    },
-    async sendPhoto(userId, file, opts) {
-      try {
-        await api.sendPhoto(userId, file, opts)
-        return true
-      } catch (error) {
-        log.error({error}, 'Failed to send Telegram photo')
-        return false
-      }
-    },
-    async copyMessage(toUserId, fromChatId, messageId) {
-      try {
-        await api.copyMessage(toUserId, fromChatId, messageId)
-        return true
-      } catch (error) {
-        log.error({error, toUserId, fromChatId, messageId}, 'Failed to copy Telegram message')
-        return false
-      }
-    },
-  }
-}
-
-/** Leaf convenience — uses bootstrap runtime. */
+/**
+ * Leaf convenience — uses bootstrap runtime.
+ *
+ * The only implementation is `createChromeNotifier` (`@telegram/helpers/notification-chrome.js`),
+ * wired in `createContainer`. Do not add a plain API-wrapping notifier here: anything bypassing
+ * the chrome decorator drops its message out of the open-menu chain.
+ */
 export const notifier: Notifier = {
   send: (...args) => getRuntime().notifier.send(...args),
   sendPhoto: (...args) => getRuntime().notifier.sendPhoto(...args),
