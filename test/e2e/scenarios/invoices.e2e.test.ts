@@ -982,7 +982,7 @@ test('prompt edit failure does not block Help or leave a conversation row', asyn
   expect(e2e.tg.of('editMessageText')[0]).toMatchObject({message_id: promptMessageId})
   expect(e2e.tg.of('editMessageReplyMarkup')[0]).toMatchObject({message_id: promptMessageId})
   const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
-  expect(messages.some(text => /Previous action canceled/.test(text))).toBe(true)
+  expect(messages.some(text => /Previous action canceled/.test(text))).toBe(false)
   const richMessages = e2e.tg
     .of('sendRichMessage')
     .map(call => String((call.rich_message as {html?: string} | undefined)?.html))

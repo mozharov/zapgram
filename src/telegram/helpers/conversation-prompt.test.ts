@@ -112,25 +112,19 @@ describe('conversation prompt end state', () => {
   ])('resolves lifecycle states in %s', (language, cancelled, inactive) => {
     expect(translate('conversation-state.cancelled', language)).toBe(cancelled)
     expect(translate('conversation-state.inactive', language)).toBe(inactive)
-    expect(
-      translate('conversation-state.interrupted-fallback', language, {action: 'test action'}),
-    ).toContain('test action')
     expect(translate('conversation-state.invoice-memo-inactive', language)).not.toContain(
       'conversation-state',
     )
   })
 
-  test('builds a localized cancellation state with the prompt action', () => {
+  test('builds a localized cancellation state', () => {
     const ctx = {
-      t: (key: string, variables?: Record<string, unknown>) =>
-        key === 'conversation-state.cancelled'
-          ? '<i>Action canceled.</i>'
-          : `Previous action canceled: ${String(variables?.action)}`,
+      t: (key: string) =>
+        key === 'conversation-state.cancelled' ? '<i>Action canceled.</i>' : key,
     }
     expect(cancelledPromptState(ctx as never, prompt)).toEqual({
       kind: 'cancelled',
       statusHtml: '<i>Action canceled.</i>',
-      fallbackText: 'Previous action canceled: entering an amount',
     })
   })
 

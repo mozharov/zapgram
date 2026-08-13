@@ -29,7 +29,7 @@ export type ActivePrompt = {
 export type PromptEndState = {
   kind: 'cancelled' | 'inactive'
   statusHtml: string
-  fallbackText: string
+  fallbackText?: string
 }
 
 export type PromptUpdateKind = 'cancel' | 'interrupt' | 'input'
@@ -70,14 +70,11 @@ export function classifyPromptUpdate(
 
 export function cancelledPromptState(
   ctx: Pick<ConversationContext, 't'>,
-  prompt: ActivePrompt,
+  _prompt: ActivePrompt,
 ): PromptEndState {
   return {
     kind: 'cancelled',
     statusHtml: ctx.t('conversation-state.cancelled'),
-    fallbackText: ctx.t('conversation-state.interrupted-fallback', {
-      action: prompt.actionLabel,
-    }),
   }
 }
 
@@ -147,6 +144,8 @@ async function deactivatePromptOnce(prompt: ActivePrompt, state: PromptEndState)
       'Failed to remove keyboard from conversation prompt',
     )
   }
+
+  if (!state.fallbackText) return
 
   // Notifier, not bot.api: the fallback joins the open-menu chain like every other private push.
   const sent = await getRuntime().notifier.send(prompt.chatId, state.fallbackText)

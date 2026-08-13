@@ -6,7 +6,6 @@ canceled = <b>❌ Действие отменено.</b>
 conversation-state =
     .cancelled = <i>Действие отменено.</i>
     .inactive = <i>Этот шаг больше не активен.</i>
-    .interrupted-fallback = ❌ Предыдущее действие отменено: {$action}.
     .inactive-fallback = ℹ️ Предыдущий шаг больше не активен: {$action}.
     .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
     .use-buttons = Используй кнопки в активном сообщении.

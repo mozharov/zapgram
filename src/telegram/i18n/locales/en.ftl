@@ -6,7 +6,6 @@ canceled = <b>❌ Action canceled.</b>
 conversation-state =
     .cancelled = <i>Action canceled.</i>
     .inactive = <i>This step is no longer active.</i>
-    .interrupted-fallback = ❌ Previous action canceled: {$action}.
     .inactive-fallback = ℹ️ Previous step is no longer active: {$action}.
     .invoice-memo-inactive = <i>Adding a description is no longer active.</i>
     .use-buttons = Use the buttons on the active message.
