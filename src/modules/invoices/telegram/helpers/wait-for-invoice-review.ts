@@ -18,6 +18,7 @@ import {
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {invoiceReviewHtml} from './invoice-review.js'
@@ -87,6 +88,7 @@ export async function waitForInvoiceReview(
 
     if (opts?.onCancel) await opts.onCancel(opts.host ?? reviewHost)
     else await deactivatePrompt(conversation, prompt, cancelled)
+    if (next.message) await deleteMessageSafely(next)
     return conversation.halt()
   }
 }

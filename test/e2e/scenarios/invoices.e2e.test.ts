@@ -631,12 +631,17 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
 test('ordinary text on invoice review cancels payment and returns to Wallet', async () => {
   await enterPayInvoiceAtReview()
   const before = await snapshot(e2e)
+  const cancellation = privateText('pay')
 
-  await expectDelta(e2e, () => e2e.send(privateText('pay')), {
+  await expectDelta(e2e, () => e2e.send(cancellation), {
     db: {conversations: {removed: 1}},
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Wallet/}],
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Wallet/},
+      {method: 'deleteMessage', to: USER_A},
+    ],
   })
 
+  expect(e2e.tg.last('deleteMessage')?.message_id).toBe(cancellation.message?.message_id)
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })

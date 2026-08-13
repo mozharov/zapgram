@@ -21,6 +21,7 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {markupFromReplyMarkup, serializeBaseMarkup} from '@telegram/helpers/notification-chrome.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
@@ -51,7 +52,7 @@ export async function broadcasting(conversation: BotConversation, ctx: Conversat
     actionLabel: ctx.t('conversation-action.broadcast-confirm'),
   })
 
-  await waitForConfirm(conversation, ctx, confirmPrompt)
+  await waitForConfirm(conversation, ctx, confirmPrompt, source)
   await clearPromptControls(conversation, confirmPrompt)
 
   const {broadcast, totalCount: n} = await conversation.external(() =>
@@ -99,9 +100,7 @@ async function waitForLocale(
 
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await replyWithWallet(ctx)
-      return conversation.halt()
+      return cancelBroadcast(conversation, ctx, prompt, cancelled)
     }
 
     if (data && broadcastLocaleRoute.pattern.test(data) && isCallbackFromPrompt(next, prompt)) {
@@ -113,16 +112,14 @@ async function waitForLocale(
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await deactivatePrompt(conversation, prompt, cancelled)
-    await replyWithWallet(ctx)
-    return conversation.halt()
+    return cancelBroadcast(conversation, ctx, prompt, cancelled, {input: next})
   }
 }
 
 async function waitForSourceMessage(
   conversation: BotConversation,
   ctx: ConversationContext,
-): Promise<{chatId: number; messageId: number; replyMarkup: string | null}> {
+): Promise<BroadcastSource> {
   const html = ctx.t('broadcast.send-message')
   const message = await showLivingMenu(ctx, () =>
     ctx.reply(html, {
@@ -173,6 +170,7 @@ async function waitForConfirm(
   conversation: BotConversation,
   ctx: ConversationContext,
   prompt: ActivePrompt,
+  source: BroadcastSource,
 ): Promise<void> {
   const cancelled = cancelledPromptState(ctx, prompt)
 
@@ -184,22 +182,47 @@ async function waitForConfirm(
       const {action} = broadcastConfirmRoute.parse(data)
       await next.answerCallbackQuery()
       if (action === 'yes') return
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await replyWithWallet(ctx)
-      return conversation.halt()
+      return cancelBroadcast(conversation, ctx, prompt, cancelled, {source})
     }
 
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
-      await replyWithWallet(ctx)
-      return conversation.halt()
+      return cancelBroadcast(conversation, ctx, prompt, cancelled, {source})
     }
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
-    await deactivatePrompt(conversation, prompt, cancelled)
-    await replyWithWallet(ctx)
-    return conversation.halt()
+    return cancelBroadcast(conversation, ctx, prompt, cancelled, {input: next, source})
   }
+}
+
+type BroadcastSource = {chatId: number; messageId: number; replyMarkup: string | null}
+
+async function cancelBroadcast(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  prompt: ActivePrompt,
+  state: ReturnType<typeof cancelledPromptState>,
+  opts?: {input?: ConversationContext; source?: BroadcastSource},
+): Promise<never> {
+  await deactivatePrompt(conversation, prompt, state)
+  await replyWithWallet(ctx)
+  if (opts?.input?.message) await deleteMessageSafely(opts.input)
+  if (opts?.source) await deleteBroadcastSource(conversation, opts.source)
+  return conversation.halt()
+}
+
+async function deleteBroadcastSource(
+  conversation: BotConversation,
+  source: BroadcastSource,
+): Promise<void> {
+  await conversation.external(async () => {
+    const {bot, log} = getRuntime()
+    await bot.api.deleteMessage(source.chatId, source.messageId).catch(error => {
+      log.warn(
+        {error, chatId: source.chatId, messageId: source.messageId},
+        'Failed to delete cancelled broadcast source',
+      )
+    })
+  })
 }

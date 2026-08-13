@@ -126,12 +126,18 @@ test('text on broadcast confirmation cancels the action and returns to Wallet', 
     }),
   )
 
-  await e2e.send(privateText('Broadcast after retries', {from}))
-  await e2e.send(privateText('yes', {from}))
+  const source = privateText('Broadcast after retries', {from})
+  await e2e.send(source)
+  const cancellation = privateText('yes', {from})
+  await e2e.send(cancellation)
+  if (!source.message || !cancellation.message) throw new Error('Expected broadcast text updates')
 
   await expectNoConversations(e2e.db)
   expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
   expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
+  const deletedIds = e2e.tg.of('deleteMessage').map(call => Number(call.message_id))
+  expect(deletedIds).toContain(source.message.message_id)
+  expect(deletedIds).toContain(cancellation.message.message_id)
   expectNoErrors(e2e.logs)
 })
 

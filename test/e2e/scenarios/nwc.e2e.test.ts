@@ -239,12 +239,17 @@ test('text during wallet selection cancels the action and returns to Wallet', as
   await connectNwc()
   await e2e.send(privateCallback(staticCallback.createInvoice))
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
+  const cancellation = privateText('internal')
 
-  await expectDelta(e2e, () => e2e.send(privateText('internal')), {
+  await expectDelta(e2e, () => e2e.send(cancellation), {
     db: {conversations: {removed: 1}},
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Wallet/}],
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Wallet/},
+      {method: 'deleteMessage', to: USER_A},
+    ],
   })
 
+  expect(e2e.tg.last('deleteMessage')?.message_id).toBe(cancellation.message?.message_id)
   expectNoErrors(e2e.logs)
 })
 

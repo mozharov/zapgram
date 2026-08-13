@@ -16,6 +16,7 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 import {type FundedWallets, fundedWalletsForAmount, readWalletBalances} from './funded-wallets.js'
@@ -200,6 +201,7 @@ async function pickWallet(
 
     if (opts.onCancel) await opts.onCancel(opts.host ?? pickedHost)
     else await deactivatePrompt(conversation, prompt, cancelled)
+    if (next.message) await deleteMessageSafely(next)
     return conversation.halt()
   }
 
