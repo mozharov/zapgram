@@ -1,10 +1,12 @@
 import {updateUser} from '@modules/users/repository.js'
-import {replyWithWalletReplacingCallback} from '@modules/wallet/telegram/messages/wallet.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export const disconnectNwcCallback = async (ctx: BotContext) => {
+  await deleteMessageSafely(ctx)
   await updateUser(ctx.user.id, {nwcUrl: null, nwcTips: false})
   ctx.log.info('NWC wallet disconnected')
   // attachUser built nwc from the still-connected row; clear it so this request's wallet
@@ -24,5 +26,5 @@ export const disconnectNwcCallback = async (ctx: BotContext) => {
     },
   })
   await ctx.reply(ctx.t('nwc.disconnected'))
-  return replyWithWalletReplacingCallback(ctx)
+  return replyWithWallet(ctx)
 }

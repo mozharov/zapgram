@@ -1,30 +1,18 @@
 import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
 import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
-import {type LivingMenuOptions, showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
 
 export async function replyWithWallet(ctx: BotContext) {
-  return renderWallet(ctx)
-}
-
-export async function replyWithWalletReplacingCallback(ctx: BotContext) {
-  return renderWallet(ctx, {deleteCallbackMessage: true})
-}
-
-async function renderWallet(ctx: BotContext, options: LivingMenuOptions = {}) {
   const view = await loadLiveWalletBalanceView(ctx)
-  return showLivingMenu(
-    ctx,
-    () =>
-      ctx.replyWithRichMessage(
-        {html: ctx.t('wallet', view)},
-        {reply_markup: buildWalletKeyboard(ctx.t)},
-      ),
-    undefined,
-    options,
+  return showLivingMenu(ctx, () =>
+    ctx.replyWithRichMessage(
+      {html: ctx.t('wallet', view)},
+      {reply_markup: buildWalletKeyboard(ctx.t)},
+    ),
   )
 }
 
@@ -37,22 +25,17 @@ export async function replyWithCachedWallet(ctx: BotContext) {
   const wallet = ctx.user?.wallet
   if (!wallet) return
   const view = await buildWalletBalanceView(ctx, wallet.balance)
-  return showLivingMenu(ctx, () =>
-    ctx.replyWithRichMessage(
-      {html: ctx.t('wallet', view)},
-      {reply_markup: buildWalletKeyboard(ctx.t)},
-    ),
+  return ctx.replyWithRichMessage(
+    {html: ctx.t('wallet', view)},
+    {reply_markup: buildWalletKeyboard(ctx.t)},
   )
 }
 
-/** Replaces a callback menu using the balance already loaded by middleware. */
 export async function editMessageWithWallet(ctx: BotContext) {
   const view = await buildWalletBalanceView(ctx, ctx.user.wallet.balance)
-  return showLivingMenu(ctx, () =>
-    ctx.replyWithRichMessage(
-      {html: ctx.t('wallet', view)},
-      {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
-    ),
+  return ctx.editMessageText(
+    {html: ctx.t('wallet', view)},
+    {reply_markup: buildWalletKeyboard(ctx.t), ...disabledLinkPreview},
   )
 }
 

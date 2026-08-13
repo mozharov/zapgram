@@ -4,12 +4,10 @@ import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conv
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 
 export function editMessageWithSendMenu(ctx: BotContext) {
-  return showLivingMenu(ctx, () =>
-    ctx.reply(ctx.t('send-menu'), {
-      reply_markup: buildSendMenuKeyboard(ctx.t),
-      ...disabledLinkPreview,
-    }),
-  )
+  return ctx.editMessageText(ctx.t('send-menu'), {
+    reply_markup: buildSendMenuKeyboard(ctx.t),
+    ...disabledLinkPreview,
+  })
 }
 
 export function editHostWithSendMenu(ctx: BotContext, host: ConversationHost) {

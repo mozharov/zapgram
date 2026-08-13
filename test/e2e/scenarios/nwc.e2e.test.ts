@@ -192,8 +192,8 @@ test('disconnecting NWC clears nwc_url and nwc_tips', async () => {
       },
     },
     telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Wallet disconnected/},
       {method: 'deleteMessage', to: USER_A},
+      {method: 'sendMessage', to: USER_A, text: /Wallet disconnected/},
       // Same-request wallet must already be the single-balance copy (ctx.nwc cleared).
       {method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b>/},
     ],
@@ -230,6 +230,7 @@ test('/settings with a connected NWC offers disconnect and tips toggle', async (
   expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
     staticCallback.toggleNwcTips,
     staticCallback.disconnectNwc,
+    staticCallback.groupSettings,
     staticCallback.wallet,
   ])
   expectNoErrors(e2e.logs)

@@ -80,27 +80,25 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     return sent
   }
 
-  async function deleteLivingMenu(userId: number): Promise<number | undefined> {
+  async function deleteLivingMenu(userId: number): Promise<void> {
     try {
       const user = await deps.findUser(userId)
-      if (!user?.lastMenuMessageId) return undefined
-      const messageId = user.lastMenuMessageId
-      let deleted = false
+      if (!user?.lastMenuMessageId) return
       try {
-        await deps.deleteMessage(userId, messageId)
-        deleted = true
+        await deps.deleteMessage(userId, user.lastMenuMessageId)
       } catch (error) {
-        deps.log.warn({error, userId, messageId}, 'Failed to delete living menu')
+        deps.log.warn(
+          {error, userId, messageId: user.lastMenuMessageId},
+          'Failed to delete living menu',
+        )
+        try {
+          await deps.updateUser(userId, {lastMenuMessageId: null})
+        } catch (clearError) {
+          deps.log.warn({error: clearError, userId}, 'Failed to clear last menu pointer')
+        }
       }
-      try {
-        await deps.updateUser(userId, {lastMenuMessageId: null})
-      } catch (clearError) {
-        deps.log.warn({error: clearError, userId}, 'Failed to clear last menu pointer')
-      }
-      return deleted ? messageId : undefined
     } catch (error) {
       deps.log.warn({error, userId}, 'Failed to delete living menu')
-      return undefined
     }
   }
 

@@ -1,13 +1,13 @@
 import {expect, mock, test} from 'bun:test'
 import type {BotContext} from '@telegram/context.js'
-import {replaceLivingMenu, showLivingMenu} from './living-menu.js'
+import {showLivingMenu} from './living-menu.js'
 import type {NotificationChrome} from './notification-chrome.js'
 
 function chromeMock(): NotificationChrome {
   return {
     stripLastOpenMenu: mock(() => Promise.resolve()),
     deliver: mock(() => Promise.reject(new Error('unused'))),
-    deleteLivingMenu: mock(() => Promise.resolve(undefined as number | undefined)),
+    deleteLivingMenu: mock(() => Promise.resolve()),
     rememberLivingMenu: mock(() => Promise.resolve()),
   }
 }
@@ -39,7 +39,7 @@ test('showLivingMenu does not delete the host when the update is a callback', as
   const send = mock(() => Promise.resolve({message_id: 8}))
   const ctx = {
     user: {id: 2},
-    callbackQuery: {id: 'q', data: 'open-menu', message: {chat: {id: 2}, message_id: 5}},
+    callbackQuery: {id: 'q', data: 'open-menu'},
     msg: {message_id: 5},
     deleteMessage,
     log: {warn: mock(() => {})},
@@ -51,67 +51,6 @@ test('showLivingMenu does not delete the host when the update is a callback', as
   expect(chrome.deleteLivingMenu).toHaveBeenCalledWith(2)
   expect(chrome.stripLastOpenMenu).toHaveBeenCalledWith(2)
   expect(chrome.rememberLivingMenu).toHaveBeenCalledWith(2, 8)
-})
-
-test('showLivingMenu removes the previous menu before sending the replacement', async () => {
-  const events: string[] = []
-  const chrome = chromeMock()
-  chrome.deleteLivingMenu = mock(async () => {
-    events.push('delete')
-    return undefined
-  })
-  chrome.stripLastOpenMenu = mock(async () => {
-    events.push('strip-notification')
-  })
-  chrome.rememberLivingMenu = mock(async () => {
-    events.push('remember')
-  })
-  const send = mock(async () => {
-    events.push('send')
-    return {message_id: 12}
-  })
-  const ctx = {
-    user: {id: 3},
-    callbackQuery: {id: 'q', data: 'next-menu'},
-    log: {warn: mock(() => {})},
-  } as unknown as BotContext
-
-  await showLivingMenu(ctx, send, chrome)
-
-  expect(events).toEqual(['delete', 'strip-notification', 'send', 'remember'])
-})
-
-test('showLivingMenu deletes a different callback host when requested', async () => {
-  const chrome = chromeMock()
-  chrome.deleteLivingMenu = mock(() => Promise.resolve(undefined))
-  const deleteMessage = mock(() => Promise.resolve(true as const))
-  const ctx = {
-    user: {id: 5},
-    callbackQuery: {id: 'q', message: {chat: {id: 5}, message_id: 999}},
-    deleteMessage,
-    log: {warn: mock(() => {})},
-  } as unknown as BotContext
-
-  await showLivingMenu(ctx, () => Promise.resolve({message_id: 10}), chrome, {
-    deleteCallbackMessage: true,
-  })
-
-  expect(deleteMessage).toHaveBeenCalledTimes(1)
-})
-
-test('replaceLivingMenu keeps the input message', async () => {
-  const chrome = chromeMock()
-  const deleteMessage = mock(() => Promise.resolve(true as const))
-  const ctx = {
-    user: {id: 4},
-    msg: {message_id: 6},
-    deleteMessage,
-    log: {warn: mock(() => {})},
-  } as unknown as BotContext
-
-  await replaceLivingMenu(ctx, () => Promise.resolve({message_id: 9}), chrome)
-
-  expect(deleteMessage).not.toHaveBeenCalled()
 })
 
 test('showLivingMenu still sends when leftover menu cleanup rejects', async () => {

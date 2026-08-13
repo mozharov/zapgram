@@ -19,10 +19,15 @@ export function buildSettingsKeyboard(t: BotContext['t'], user: User) {
       })
   } else keyboard.row({callback_data: staticCallback.connectNwc, text: t('button.connect-nwc')})
 
-  keyboard.row({
-    callback_data: staticCallback.wallet,
-    text: t('button.back'),
-  })
+  keyboard
+    .row({
+      callback_data: staticCallback.groupSettings,
+      text: t('button.groups'),
+    })
+    .row({
+      callback_data: staticCallback.wallet,
+      text: t('button.back'),
+    })
 
   return keyboard
 }

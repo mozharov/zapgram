@@ -19,7 +19,7 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
-import {replaceLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -134,16 +134,12 @@ async function waitForFeatureText(
   ctx: ConversationContext,
 ): Promise<FeatureRequestSourceMessage | null> {
   const html = ctx.t('feature.prompt')
-  const message = await showLivingMenu(
-    ctx,
-    () =>
-      ctx.reply(html, {
-        reply_markup: new InlineKeyboard([
-          [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-        ]),
-      }),
-    getRuntime().notificationChrome,
-    {deleteCallbackMessage: true},
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+      ]),
+    }),
   )
   const prompt = createActivePrompt(message, {
     kind: 'text',
@@ -231,7 +227,7 @@ async function waitForCustomFundAmount(
   ctx: ConversationContext,
 ): Promise<number> {
   const html = ctx.t('feature.custom-amount')
-  const message = await replaceLivingMenu(ctx, () =>
+  const message = await showLivingMenu(ctx, () =>
     ctx.reply(html, {
       reply_markup: new InlineKeyboard([
         [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],

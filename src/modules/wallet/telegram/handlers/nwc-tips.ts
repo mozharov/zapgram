@@ -2,7 +2,6 @@ import {updateUser} from '@modules/users/repository.js'
 import {buildSettingsKeyboard} from '@modules/wallet/telegram/keyboards/settings.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export const nwcTipsCallback = async (ctx: BotContext) => {
@@ -24,9 +23,7 @@ export const nwcTipsCallback = async (ctx: BotContext) => {
       ctx.user.nwcTips ? 'callback-answer.nwc-tip-enabled' : 'callback-answer.nwc-tip-disabled',
     ),
   })
-  return showLivingMenu(ctx, () =>
-    ctx.reply(ctx.t('settings'), {
-      reply_markup: buildSettingsKeyboard(ctx.t, user),
-    }),
-  )
+  return ctx.editMessageText(ctx.t('settings'), {
+    reply_markup: buildSettingsKeyboard(ctx.t, user),
+  })
 }

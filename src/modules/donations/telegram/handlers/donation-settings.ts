@@ -4,7 +4,6 @@ import {formatDonationSettingsText} from '@modules/donations/telegram/messages/d
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donationPercentRoute, donationScopeRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../../../runtime.js'
 
 /** Auto-% screen nested under the unified support hub. */
@@ -16,11 +15,9 @@ export async function donationSettingsCallback(ctx: BotContext) {
     donation_scope: user.donationScope,
     source: 'hub_or_settings',
   })
-  await showLivingMenu(ctx, () =>
-    ctx.reply(formatDonationSettingsText(ctx.t, user), {
-      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-    }),
-  )
+  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+  })
   await ctx.answerCallbackQuery()
 }
 
@@ -43,11 +40,9 @@ export async function donationPercentCallback(ctx: BotContext) {
       donation_scope: user.donationScope,
     },
   })
-  await showLivingMenu(ctx, () =>
-    ctx.reply(formatDonationSettingsText(ctx.t, user), {
-      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-    }),
-  )
+  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+  })
   await ctx.answerCallbackQuery({
     text: ctx.t('settings-donation.percent-set', {percent: clamped}),
   })
@@ -70,11 +65,9 @@ export async function donationScopeCallback(ctx: BotContext) {
       donation_scope: scope,
     },
   })
-  await showLivingMenu(ctx, () =>
-    ctx.reply(formatDonationSettingsText(ctx.t, user), {
-      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-    }),
-  )
+  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+  })
   await ctx.answerCallbackQuery({
     text:
       scope === 'tips'

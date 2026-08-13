@@ -11,10 +11,8 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {InlineKeyboard} from 'grammy'
 import type {MessageEntity} from 'grammy/types'
-import {getRuntime} from '../../../../runtime.js'
 
 const MAX_MESSAGE_LENGTH = 1000
 
@@ -32,18 +30,12 @@ export async function editCustomMessage(
   const html = ctx.t(
     locale === 'ru' ? 'edit-custom-message.enter-russian' : 'edit-custom-message.enter-english',
   )
-  const message = await showLivingMenu(
-    ctx,
-    () =>
-      ctx.reply(html, {
-        reply_markup: new InlineKeyboard().add({
-          callback_data: staticCallback.cancel,
-          text: ctx.t('button.cancel'),
-        }),
-      }),
-    getRuntime().notificationChrome,
-    {deleteCallbackMessage: true},
-  )
+  const message = await ctx.reply(html, {
+    reply_markup: new InlineKeyboard().add({
+      callback_data: staticCallback.cancel,
+      text: ctx.t('button.cancel'),
+    }),
+  })
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,

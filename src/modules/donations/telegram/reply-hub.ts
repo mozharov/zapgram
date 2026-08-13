@@ -23,12 +23,10 @@ export async function editDonateHub(ctx: BotContext) {
   const user = await getRuntime().users.getOrThrow(ctx.user.id)
   ctx.user = user as typeof ctx.user
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
-  return showLivingMenu(ctx, async () =>
-    ctx.reply(await formatDonateHubText(ctx.t, user, stats, platform), {
-      reply_markup: buildDonateHubKeyboard(ctx.t, user),
-      link_preview_options: {is_disabled: true},
-    }),
-  )
+  return ctx.editMessageText(await formatDonateHubText(ctx.t, user, stats, platform), {
+    reply_markup: buildDonateHubKeyboard(ctx.t, user),
+    link_preview_options: {is_disabled: true},
+  })
 }
 
 /**
@@ -36,15 +34,6 @@ export async function editDonateHub(ctx: BotContext) {
  * If Telegram refuses delete, strip the keyboard instead.
  */
 export async function clearDonateCallbackMessage(ctx: BotContext): Promise<void> {
-  const previousMenuMessageId = await getRuntime().notificationChrome.deleteLivingMenu(ctx.user.id)
-  const callbackMessage = ctx.callbackQuery?.message
-  if (
-    callbackMessage &&
-    'message_id' in callbackMessage &&
-    callbackMessage.message_id === previousMenuMessageId
-  ) {
-    return
-  }
   try {
     await ctx.deleteMessage()
     return

@@ -164,17 +164,17 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('the wallet button replaces the active menu without asking for the balance again', async () => {
+test('the wallet button re-renders in place without asking for the balance again', async () => {
   credit(BALANCE_SATS)
   const mark = e2e.ln.requests.length
 
   await expectDelta(e2e, () => e2e.send(privateCallback('wallet')), {
     telegram: [
-      {method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/},
+      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/},
     ],
   })
 
-  // Re-rendering a screen reuses the balance the middleware already loaded, so no `/api/v1/wallet`.
+  // Editing a screen reuses the balance the middleware already loaded, so no `/api/v1/wallet`.
   expect(lnPathsSince(mark)).toEqual([
     'GET /users/api/v1/user',
     'GET /users/api/v1/user/<id>/wallet',
@@ -226,24 +226,23 @@ test('/settings offers connecting a wallet and nothing that needs one', async ()
   })
 
   // No disconnect and no tips toggle: both are rendered only once `nwc_url` is set.
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['connect-nwc', 'wallet'])
+  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+    'connect-nwc',
+    'group-settings',
+    'wallet',
+  ])
   expectNoErrors(e2e.logs)
 })
 
-test('the settings button replaces the active menu', async () => {
-  await e2e.send(privateCommand('/wallet'))
-  const previousMenuMessageId = e2e.tg.lastMessageId('sendRichMessage')
-  if (previousMenuMessageId === undefined) throw new Error('Expected the wallet menu message')
-  e2e.tg.reset()
-
+test('the settings button renders the same screen in place', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('settings')), {
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
-  expect(e2e.tg.last('deleteMessage')?.message_id).toBe(previousMenuMessageId)
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['connect-nwc', 'wallet'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
+    'connect-nwc',
+    'group-settings',
+    'wallet',
+  ])
   expectNoErrors(e2e.logs)
 })
 
@@ -254,7 +253,7 @@ test('toggling NWC tips flips the column and says which wallet pays now', async 
     db: {users: {changed: 1}},
     telegram: [
       {method: 'answerCallbackQuery', text: /tips are sent from the NWC wallet/},
-      {method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/},
+      {method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/},
     ],
   })
 
@@ -269,7 +268,7 @@ test('toggling NWC tips twice puts the column back', async () => {
     db: {users: {changed: 1}},
     telegram: [
       {method: 'answerCallbackQuery', text: /tips are sent from the ZapGram wallet/},
-      {method: 'sendMessage', to: USER_A},
+      {method: 'editMessageText', to: USER_A},
     ],
   })
 
@@ -279,17 +278,17 @@ test('toggling NWC tips twice puts the column back', async () => {
 
 test('chats opens the common chat screen with paid chats and a way back to wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('group-settings')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Chats/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Chats/}],
   })
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual(['chats:1', 'wallet'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
 test('the send menu opens the send screen', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('send-menu')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Send payment/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Send payment/}],
   })
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     'pay-invoice',
     'send-to-user',
     'wallet',
