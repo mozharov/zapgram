@@ -84,6 +84,14 @@ export async function configureBot(deps: {
     scope: {type: 'all_private_chats'},
     language_code: 'ru',
   })
+  for (const adminId of config.ADMIN_TELEGRAM_IDS) {
+    await bot.api.deleteMyCommands({scope: {type: 'chat', chat_id: adminId}})
+    await bot.api.deleteMyCommands({
+      scope: {type: 'chat', chat_id: adminId},
+      language_code: 'ru',
+    })
+  }
+  
   await bot.api.setMyCommands([...privateCommandsEn], {scope: {type: 'all_private_chats'}})
   await bot.api.setMyCommands([...privateCommandsRu], {
     scope: {type: 'all_private_chats'},
@@ -92,11 +100,6 @@ export async function configureBot(deps: {
 
   // BotCommandScopeChat replaces the full list for that private chat — include public + admin.
   for (const adminId of config.ADMIN_TELEGRAM_IDS) {
-    await bot.api.deleteMyCommands({scope: {type: 'chat', chat_id: adminId}})
-    await bot.api.deleteMyCommands({
-      scope: {type: 'chat', chat_id: adminId},
-      language_code: 'ru',
-    })
     await bot.api.setMyCommands([...privateCommandsEn, adminBroadcastEn], {
       scope: {type: 'chat', chat_id: adminId},
     })
