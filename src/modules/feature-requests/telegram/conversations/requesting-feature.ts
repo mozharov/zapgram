@@ -21,7 +21,7 @@ import {
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely, deleteMessagesSafely} from '@telegram/helpers/delete-message.js'
-import {closeLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {closeLivingMenu} from '@telegram/helpers/living-menu.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
@@ -37,18 +37,19 @@ export async function requestingFeature(conversation: BotConversation, ctx: Conv
   if (!source) return
 
   const fundHtml = ctx.t('feature.fund-prompt')
-  const fundMessage = await showLivingMenu(ctx, () =>
-    ctx.reply(fundHtml, {
-      reply_markup: buildFeatureFundKeyboard(ctx.t),
-    }),
+  const fundPrompt = await editFeaturePrompt(
+    conversation,
+    ctx,
+    fundHtml,
+    buildFeatureFundKeyboard(ctx.t),
   )
-  const fundPrompt = createActivePrompt(fundMessage, {
+  const activeFundPrompt = createActivePrompt(fundPrompt, {
     kind: 'text',
     html: fundHtml,
     actionLabel: ctx.t('conversation-action.feature-fund'),
   })
 
-  const fundChoice = await waitForFundChoice(conversation, ctx, fundPrompt)
+  const fundChoice = await waitForFundChoice(conversation, ctx, activeFundPrompt)
   if (fundChoice.kind === 'cancel') {
     // Nothing is submitted, so the idea message has no reader left — drop it with the prompt and
     // leave the user on a plain wallet menu.
@@ -57,7 +58,7 @@ export async function requestingFeature(conversation: BotConversation, ctx: Conv
     return conversation.halt()
   }
 
-  await clearPromptControls(conversation, fundPrompt)
+  await clearPromptControls(conversation, activeFundPrompt)
 
   const amountSats = fundChoice.kind === 'amount' ? fundChoice.amountSats : 0
 
@@ -99,8 +100,8 @@ export async function requestingFeature(conversation: BotConversation, ctx: Conv
 
   // The wizard's own screen becomes the report, so no extra message is sent. It keeps the open-menu
   // button and stays put; the user's feature message stays too — it is the `copyMessage` source.
-  await closeLivingMenu(ctx, fundMessage.message_id, markup =>
-    ctx.api.editMessageText(fundMessage.chat.id, fundMessage.message_id, reportHtml, {
+  await closeLivingMenu(ctx, activeFundPrompt.messageId, markup =>
+    ctx.api.editMessageText(activeFundPrompt.chatId, activeFundPrompt.messageId, reportHtml, {
       reply_markup: markup,
       ...disabledLinkPreview,
     }),
@@ -112,13 +113,12 @@ async function waitForFeatureText(
   ctx: ConversationContext,
 ): Promise<FeatureRequestSourceMessage | null> {
   const html = ctx.t('feature.prompt')
-  const message = await showLivingMenu(ctx, () =>
-    ctx.reply(html, {
-      reply_markup: new InlineKeyboard([
-        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-      ]),
-    }),
-  )
+  const message = await ctx.reply(html, {
+    reply_markup: new InlineKeyboard([
+      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+    ]),
+  })
+  await conversation.external(() => adoptFeaturePrompt(ctx, message.message_id))
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -153,6 +153,29 @@ async function waitForFeatureText(
       text,
     }
   }
+}
+
+async function editFeaturePrompt(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  html: string,
+  replyMarkup: InlineKeyboard,
+) {
+  const prompt = await conversation.external(() => currentFeaturePrompt(ctx))
+  await ctx.api.editMessageText(prompt.chatId, prompt.messageId, html, {reply_markup: replyMarkup})
+  return {chat: {id: prompt.chatId}, message_id: prompt.messageId}
+}
+
+async function currentFeaturePrompt(ctx: ConversationContext) {
+  const user = await getRuntime().users.getOrThrow(ctx.user.id)
+  if (!user.lastMenuMessageId) throw new Error('Feature request prompt is missing')
+  return {chatId: ctx.user.id, messageId: user.lastMenuMessageId}
+}
+
+async function adoptFeaturePrompt(ctx: ConversationContext, messageId: number): Promise<void> {
+  const {notificationChrome} = getRuntime()
+  await notificationChrome.stripLastOpenMenu(ctx.user.id)
+  await notificationChrome.adoptLivingMenu(ctx.user.id, messageId)
 }
 
 type FundChoice = {kind: 'skip'} | {kind: 'amount'; amountSats: number} | {kind: 'cancel'}

@@ -48,7 +48,7 @@ test('a menu feature request with text and skip sends meta + copyMessage to admi
   await e2e.send(privateText('Built-in on-chain wallet'))
 
   const fundPrompt = e2e.tg
-    .of('sendMessage')
+    .of('editMessageText')
     .some(c => /attach sats|прикрепить/i.test(String(c.text)))
   expect(fundPrompt).toBe(true)
 
@@ -142,9 +142,9 @@ test('a feature request from the menu uses its free-text message as the copyMess
   ).toBe(true)
 
   await e2e.send(privateText('Add scheduled tips'))
-  expect(e2e.tg.of('sendMessage').some(c => /attach sats|прикрепить/i.test(String(c.text)))).toBe(
-    true,
-  )
+  expect(
+    e2e.tg.of('editMessageText').some(c => /attach sats|прикрепить/i.test(String(c.text))),
+  ).toBe(true)
 
   await e2e.send(
     privateCallback(staticCallback.featureFundSkip, {messageId: requiredPromptMessageId()}),
@@ -182,9 +182,7 @@ test('blank feature text retries without submission and accepts the next message
       .of('editMessageReplyMarkup')
       .some(call => Number(call.message_id) === textPromptMessageId),
   ).toBe(true)
-  await e2e.send(
-    privateCallback(staticCallback.featureFundSkip, {messageId: requiredPromptMessageId()}),
-  )
+  await e2e.send(privateCallback(staticCallback.featureFundSkip, {messageId: textPromptMessageId}))
   await expectNoConversations(e2e.db)
   expect(e2e.tg.of('copyMessage').some(call => Number(call.chat_id) === OWNER)).toBe(true)
   expectNoErrors(e2e.logs)
@@ -220,7 +218,7 @@ test('a typed amount at the fund step is accepted without any extra prompt', asy
   const chooserId = requiredPromptMessageId()
 
   // The board offers presets and Skip only — any other amount is typed straight into the chat.
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     staticCallback.featureFundSkip,
     featureFundAmountRoute.build({amountSats: 21}),
     featureFundAmountRoute.build({amountSats: 100}),
@@ -359,7 +357,7 @@ test('wallet callback from another message interrupts feature flow and still ope
  * `bot.api` directly, so unlike `ctx.api` calls those side effects are NOT replayed from the log —
  * they re-execute for real and delete the very prompt they are standing on.
  */
-test('invalid fund amount keeps the input and prompt briefly, then removes both with the hint', async () => {
+test('invalid fund amount keeps the prompt and removes only the input with its hint', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
 
   await openFeatureRequest()
@@ -376,6 +374,8 @@ test('invalid fund amount keeps the input and prompt briefly, then removes both 
   const inputMessageId = invalidAmountUpdate.message?.message_id
   if (inputMessageId === undefined) throw new Error('Expected invalid amount input')
   await expectTempMessagesDeleted(mark, [inputMessageId, hintMessageId])
+  expect(deletedIdsSince(mark)).not.toContain(fundPromptId)
+  expect((await e2e.container.users.findById(USER_A))?.lastMenuMessageId).toBe(fundPromptId)
   expectNoErrors(e2e.logs)
 })
 
