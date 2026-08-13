@@ -3,6 +3,7 @@ import {
   isValidFeatureRequestText,
   normalizeFeatureRequestText,
 } from '@core/money/feature-request.js'
+import {sleep} from '@core/utils/sleep.js'
 import type {FeatureRequestSourceMessage} from '@modules/feature-requests/submit.service.js'
 import {buildFeatureFundKeyboard} from '@modules/feature-requests/telegram/keyboards/fund.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
@@ -224,7 +225,19 @@ async function waitForFundChoice(
     const text = next.message?.text?.trim()
     const sats = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
     if (!Number.isSafeInteger(sats) || !isValidDonationAmountSats(sats)) {
-      await next.reply(next.t('feature.invalid-amount'))
+      // Keep the chooser in place, remove the unusable input, and show only a temporary hint.
+      await deleteMessageSafely(next)
+      const hint = await next.reply(next.t('feature.invalid-amount'))
+      await conversation.external(() => {
+        const {bot, config} = getRuntime()
+        void sleep(config.TEMP_MESSAGE_DELAY_MS).then(async () => {
+          try {
+            await bot.api.deleteMessages(hint.chat.id, [hint.message_id])
+          } catch (error) {
+            next.log.warn({error, messageId: hint.message_id}, 'Failed to delete temporary hint')
+          }
+        })
+      })
       continue
     }
     // The report echoes the accepted amount, so the typed number itself is noise.
