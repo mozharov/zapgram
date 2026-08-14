@@ -6,12 +6,14 @@ export type Notifier = {
    * `true` when Telegram accepted the message; `false` after a logged failure. Never throws.
    * `flags.transient` marks a one-off validation/error notice: once superseded by the next
    * notification or menu, it is deleted outright instead of just losing its open-menu button.
+   * `flags.withoutMenu` keeps the message out of the open-menu chain entirely — for recipients the
+   * bot may not be able to write to again (see `createChromeNotifier`).
    */
   send(
     userId: number,
     text: string,
     opts?: Parameters<Api['sendMessage']>[2],
-    flags?: {transient?: boolean},
+    flags?: {transient?: boolean; withoutMenu?: boolean},
   ): Promise<boolean>
   /** `true` when Telegram accepted the photo; `false` after a logged failure. Never throws. */
   sendPhoto(

@@ -2,7 +2,7 @@ import {expect, mock, test} from 'bun:test'
 import {createUserRepository} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {createTestDb} from '@test/helpers/db.js'
-import {createNotificationChrome} from './notification-chrome.js'
+import {createChromeNotifier, createNotificationChrome} from './notification-chrome.js'
 
 function setup() {
   const users = createUserRepository(createTestDb())
@@ -237,4 +237,24 @@ test('adoptLivingMenu is idempotent, so a replayed send does not delete the mess
   await chrome.adoptLivingMenu(1, 9)
   expect(deleteMessage).toHaveBeenCalledTimes(1)
   expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+})
+
+test('notifier send with withoutMenu bypasses the chrome and appends no open-menu row', async () => {
+  const {users, chrome, editMessageReplyMarkup} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 10}))
+  editMessageReplyMarkup.mockClear()
+
+  const sendMessage = mock(() => Promise.resolve({message_id: 11}))
+  const notifier = createChromeNotifier(
+    {sendMessage} as never,
+    {error: mock(() => {})} as never,
+    chrome,
+  )
+
+  expect(await notifier.send(1, 'Access granted', undefined, {withoutMenu: true})).toBe(true)
+  expect(sendMessage).toHaveBeenCalledWith(1, 'Access granted', undefined)
+  // The previous receipt keeps its button, and the pointer still names it.
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
+  expect((await users.findById(1))?.lastNotificationMessageId).toBe(10)
 })

@@ -207,6 +207,14 @@ export function createChromeNotifier(
   return {
     async send(userId, text, opts, flags) {
       try {
+        // `withoutMenu` skips the chrome on purpose: an "Open wallet" button *sends* a new private
+        // message when pressed, and a join-request applicant who never pressed /start can only be
+        // written to inside the join-request contact window. Once that window closes the button is
+        // a guaranteed 403, so receipts aimed at those users carry no button and stay untracked.
+        if (flags?.withoutMenu) {
+          await api.sendMessage(userId, text, opts)
+          return true
+        }
         await chrome.deliver(
           userId,
           markupFromReplyMarkup(opts?.reply_markup),

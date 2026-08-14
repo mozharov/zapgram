@@ -70,6 +70,10 @@ test('a paid one-time invoice grants access and distributes the exact price once
     /Access to the community "E2E paid chat" received/,
   )
   expect(String(subscriberMessage?.text)).not.toContain('automatically debited')
+  // No "Open wallet": the button sends a new private message, which 403s for a join-request
+  // applicant once the contact window closes.
+  expect(subscriberMessage?.reply_markup).toBeUndefined()
+  expect(ownerMessage?.reply_markup).toBeDefined()
   expect(String(ownerMessage?.text)).toContain(
     'Subscription type: <b>one-time (permanent access)</b>',
   )
