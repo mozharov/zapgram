@@ -27,7 +27,7 @@ import type {BotContext} from '@telegram/context.js'
 import {errorHandler} from '@telegram/handlers/error.js'
 import {helpCommand} from '@telegram/handlers/help.js'
 import {helpCallback} from '@telegram/handlers/help-callback.js'
-import {startCommand} from '@telegram/handlers/start.js'
+import {startCommand, startGroupCommand} from '@telegram/handlers/start.js'
 import {unknownCallback} from '@telegram/handlers/unknown-callback.js'
 import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {conversations} from '@telegram/middlewares/conversations.js'
@@ -84,6 +84,10 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   privateChat.command(shellCommands[1], helpCommand)
   privateChat.callbackQuery(staticCallback.help, helpCallback)
   privateChat.on('my_chat_member', privateMyChatMemberHandler)
+
+  // Telegram auto-sends `/start@botusername` into the group when the bot is added via the
+  // "Add to Group" menu button — clean that up (see start.ts).
+  composer.chatType(['group', 'supergroup']).command(shellCommands[0], startGroupCommand)
 
   registerWallet(composer)
   registerTipping(composer)

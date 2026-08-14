@@ -6,9 +6,20 @@ import {
   personPropertiesFromTelegram,
   telegramUserDistinctId,
 } from '@telegram/analytics.js'
-import type {BotContext} from '@telegram/context.js'
+import type {BaseContext, BotContext} from '@telegram/context.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../runtime.js'
+
+/**
+ * Telegram auto-sends `/start@botusername` into a group when it's added via the "Add to Group"
+ * menu button. There is nothing for the bot to do with it — just remove the noise. Registered
+ * with `is_ephemeral: true` (configure-bot.ts) so it's invisible to the rest of the group even
+ * before this delete lands.
+ */
+export async function startGroupCommand(ctx: BaseContext): Promise<void> {
+  await deleteMessageSafely(ctx)
+}
 
 export async function startCommand(ctx: BotContext) {
   const {posthog} = getRuntime()

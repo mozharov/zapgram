@@ -5,7 +5,14 @@ import {parameterizedRoutes, staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
-import {groupText, privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
+import {
+  groupCommand,
+  groupEphemeralCommand,
+  groupText,
+  privateCallback,
+  privateCommand,
+  privateText,
+} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -106,6 +113,22 @@ for (const command of ['/settings', '/chats', '/subscriptions', '/feature']) {
     expectNoErrors(e2e.logs)
   })
 }
+
+// --- Group /start (auto-sent by the "Add to Group" menu button) ---
+
+test('an ephemeral /start@bot in a group is deleted and does nothing else', async () => {
+  await expectDelta(e2e, () => e2e.send(groupEphemeralCommand('/start')), {
+    telegram: [{method: 'deleteEphemeralMessage', to: CHAT_GROUP}],
+  })
+  expectNoErrors(e2e.logs)
+})
+
+test('a plain /start in a group is still deleted', async () => {
+  await expectDelta(e2e, () => e2e.send(groupCommand('/start')), {
+    telegram: [{method: 'deleteMessage', to: CHAT_GROUP}],
+  })
+  expectNoErrors(e2e.logs)
+})
 
 // --- Static callback routes ---
 

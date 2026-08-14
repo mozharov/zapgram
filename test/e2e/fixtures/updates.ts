@@ -97,12 +97,21 @@ export function groupText(text: string, opts: CommonOptions = {}): TestUpdate {
   })
 }
 
+export function groupCommand(text: string, opts: CommonOptions = {}): TestUpdate {
+  const update = groupText(text, opts)
+  if (!update.message) throw new Error('groupCommand did not create a message')
+  // Entity covers only the command token so grammY can put the rest in ctx.match.
+  const commandLength = text.split(/\s/, 1)[0]?.length ?? text.length
+  update.message.entities = [{type: 'bot_command', offset: 0, length: commandLength}]
+  return update
+}
+
 /**
  * A command declared with `is_ephemeral`: the group never saw it, so Telegram sends `message_id: 0`
  * plus an `ephemeral_message_id`. Deleted via `deleteEphemeralMessage`, not `deleteMessage`.
  */
 export function groupEphemeralCommand(text: string, opts: CommonOptions = {}): TestUpdate {
-  const update = groupText(text, opts)
+  const update = groupCommand(text, opts)
   const message = update.message
   if (!message) throw new Error('groupEphemeralCommand did not create a message')
   message.ephemeral_message_id = message.message_id
