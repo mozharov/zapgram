@@ -235,9 +235,9 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     telegram: [
       {method: 'editMessageReplyMarkup', to: OWNER},
       {method: 'editMessageText', to: OWNER, text: /set to 1\D?000 sats/},
-      {method: 'sendMessage', to: OWNER, text: /Price: <b>1\D?000 sats/},
     ],
   })
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>1\D?000 sats/)
 
   creditExternal(USER_A, PRICE)
   const payment = await requestJoin('one_time')
@@ -466,9 +466,9 @@ test('private keyboard navigation keeps one world through screens and conversati
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'editMessageText', to: USER_A, text: /set to 1\D?234 sats/},
-      {method: 'sendMessage', to: USER_A, text: /Price: <b>1\D?234 sats/},
     ],
   })
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>1\D?234 sats/)
 
   await expectEditedScreen(
     chatCustomMessageRoute.build({chatId: CHAT_GROUP}),

@@ -14,7 +14,7 @@ import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoic
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
-import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
@@ -25,6 +25,7 @@ import {
 } from '@telegram/helpers/conversation-host.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {closeLivingMenu} from '@telegram/helpers/living-menu.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
@@ -175,11 +176,18 @@ export async function payingInvoice(
     hasDescription: (!!description).toString(),
     invoice: invoice.paymentRequest,
   })
-  await ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
-    reply_markup: paidKeyboard(ctx, invoice.paymentRequest),
-    ...disabledLinkPreview,
-  })
-  await replyWithWallet(ctx)
+  // The wizard's own screen becomes the receipt, so no extra message is sent, and it keeps the
+  // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
+  await closeLivingMenu(
+    ctx,
+    host.messageId,
+    markup =>
+      ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
+        reply_markup: markup,
+        ...disabledLinkPreview,
+      }),
+    paidKeyboard(ctx, invoice.paymentRequest),
+  )
 }
 
 function paidKeyboard(ctx: ConversationContext, paymentRequest: string): InlineKeyboard {

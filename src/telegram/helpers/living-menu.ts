@@ -10,14 +10,19 @@ import type {NotificationChrome} from './notification-chrome.js'
  *
  * Prefer this over sending a separate result message — the wizard accumulates into one message the
  * way the invoice flow does, and the receipt then survives every later `/wallet`.
+ *
+ * Pass `baseMarkup` when the closed screen keeps its own buttons (e.g. "Copy invoice") alongside the
+ * open-menu row `edit` receives as its argument — that row already sits on top of `baseMarkup`, so
+ * `edit` only needs to apply it, not merge it itself.
  */
 export async function closeLivingMenu<T>(
   ctx: BotContext,
   messageId: number,
   edit: (markup: InlineKeyboardMarkup) => Promise<T>,
+  baseMarkup?: InlineKeyboardMarkup,
   chrome: NotificationChrome = getRuntime().notificationChrome,
 ): Promise<T> {
-  return chrome.retireMenuAsNotification(ctx.user.id, messageId, edit)
+  return chrome.retireMenuAsNotification(ctx.user.id, messageId, edit, baseMarkup)
 }
 
 /**

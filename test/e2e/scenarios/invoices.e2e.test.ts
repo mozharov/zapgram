@@ -174,7 +174,6 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'editMessageMedia', to: USER_A, text: /Description: <b>coffee<\/b>/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -187,7 +186,9 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
   expect(lastInvoiceCaption()).toContain(`Description: <b>${MEMO}</b>`)
   expect(lastInvoiceCaption()).not.toContain(MEMO_FOOTER)
   expect(lastInvoiceCaption()).not.toContain(previous.paymentRequest)
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.wallet])
+  // The QR becomes the receipt in place: no more wallet-edit row, just the self-disappearing
+  // "Open wallet" button `closeLivingMenu` appends.
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
   expectNoErrors(e2e.logs)
 })
 
@@ -309,7 +310,6 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received payment for a Lightning invoice/},
       {method: 'editMessageText', to: USER_A, text: /Invoice paid/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
@@ -325,6 +325,9 @@ test('paying a pending invoice moves the sats, drops the row and notifies the pa
   expect(receipt).toContain('<blockquote expandable>')
   expect(receipt).not.toContain('Paying Lightning invoice')
   expect(e2e.tg.last('editMessageText')?.link_preview_options).toEqual({is_disabled: true})
+  // The wizard's own screen becomes the receipt and keeps a self-disappearing "Open wallet" button
+  // rather than sending the wallet screen as a separate message.
+  expect(keyboardOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.openMenu)
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })
@@ -420,7 +423,7 @@ const cancelCases: {
   conversation: string
   step: string
   reach: () => Promise<void>
-  lifecyclePrompt: 'text' | 'memo' | 'host'
+  lifecyclePrompt: 'text' | 'host'
   parentText: RegExp
   parentMethod?: 'sendMessage' | 'sendRichMessage'
 }[] = [
@@ -429,14 +432,6 @@ const cancelCases: {
     step: 'amount',
     reach: enterCreateInvoiceAtAmount,
     lifecyclePrompt: 'host',
-    parentText: /Wallet/,
-    parentMethod: 'sendRichMessage',
-  },
-  {
-    conversation: creatingInvoice.name,
-    step: 'memo',
-    reach: enterCreateInvoiceAtMemo,
-    lifecyclePrompt: 'memo',
     parentText: /Wallet/,
     parentMethod: 'sendRichMessage',
   },
@@ -515,17 +510,11 @@ for (const {conversation, step, reach, lifecyclePrompt, parentText, parentMethod
             {method: 'answerCallbackQuery'},
             {method: 'editMessageText', to: USER_A, text: parentText},
           ]
-        : lifecyclePrompt === 'memo'
-          ? [
-              {method: 'answerCallbackQuery'},
-              {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
-              parent,
-            ]
-          : [
-              {method: 'answerCallbackQuery'},
-              {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-              parent,
-            ]
+        : [
+            {method: 'answerCallbackQuery'},
+            {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+            parent,
+          ]
 
     await expectDelta(e2e, () => e2e.send(update), {
       db: {conversations: {removed: 1}},
@@ -536,6 +525,28 @@ for (const {conversation, step, reach, lifecyclePrompt, parentText, parentMethod
     expectNoErrors(e2e.logs)
   })
 }
+
+test('cancelling the memo step keeps the QR as the receipt with an Open wallet button', async () => {
+  await enterCreateInvoiceAtMemo()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+      ],
+    },
+  )
+
+  // The QR becomes the receipt in place — no separate wallet message, just the self-disappearing
+  // "Open wallet" button `closeLivingMenu` appends.
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
 
 test('the shared registry contains all twelve conversations', () => {
   expect(registeredConversations.map(conversation => conversation.name).sort()).toEqual(
@@ -576,7 +587,6 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'editMessageMedia', to: USER_A, text: /Description:/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 

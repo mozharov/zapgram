@@ -26,6 +26,7 @@ import {
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
+import {closeLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard, InputFile} from 'grammy'
 import QRCode from 'qrcode'
@@ -84,10 +85,13 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     next.callbackQuery?.data === staticCallback.wallet &&
     isCallbackFromPrompt(next, qrPrompt)
   ) {
-    // Invoice is already live. Open Wallet as a new message and drop the invoice buttons.
+    // Invoice is already live. Open Wallet as a new message and drop the invoice buttons — but
+    // retire the QR message first, or the wallet send below would delete it as a superseded menu.
     // Do not fall through: the global wallet handler would replace this invoice.
     await next.answerCallbackQuery()
-    await clearPromptControls(conversation, qrPrompt)
+    await closeLivingMenu(ctx, qrPrompt.messageId, markup =>
+      ctx.api.editMessageReplyMarkup(qrPrompt.chatId, qrPrompt.messageId, {reply_markup: markup}),
+    )
     await replyWithWallet(ctx)
     return conversation.halt()
   } else {
@@ -114,8 +118,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       wallet_type: wallet,
     })
     if (memoResult.status === 'cancelled') {
-      await renderInvoice(ctx, host, paymentRequest, {wallet, usdSuffix, offerAddMemo: false})
-      await replyWithWallet(ctx)
+      await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
       return conversation.halt()
     }
     return conversation.halt({next: true})
@@ -127,8 +130,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
   captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
-  await renderInvoice(ctx, host, paymentRequest, {wallet, usdSuffix, offerAddMemo: false})
-  await replyWithWallet(ctx)
+  await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
 }
 
 /**
@@ -231,10 +233,39 @@ async function renderInvoice(
   return {message: promptMessageFromHost(host), html}
 }
 
+/**
+ * The invoice's terminal state (no more memo decision left): the QR/caption message becomes the
+ * receipt in place, so no extra message is sent and it keeps a self-disappearing "Open wallet" row
+ * instead of vanishing under a fresh wallet screen. That row replaces `invoiceKeyboard`'s own wallet
+ * button, so the keyboard underneath carries only the copy-invoice button.
+ */
+async function renderFinalInvoice(
+  ctx: ConversationContext,
+  host: ConversationHost,
+  paymentRequest: string,
+  opts: {wallet: 'internal' | 'nwc'; usdSuffix: string},
+): Promise<void> {
+  const {html, buffer} = await buildInvoiceCaption(ctx, paymentRequest, opts)
+  const keyboard = invoiceKeyboard(ctx, paymentRequest, false, {includeWalletButton: false})
+  await closeLivingMenu(
+    ctx,
+    host.messageId,
+    markup =>
+      ctx.api.editMessageMedia(
+        host.chatId,
+        host.messageId,
+        {type: 'photo', media: new InputFile(buffer), caption: html},
+        {reply_markup: markup},
+      ),
+    keyboard,
+  )
+}
+
 function invoiceKeyboard(
   ctx: ConversationContext,
   paymentRequest: string,
   offerAddMemo: boolean,
+  opts: {includeWalletButton: boolean} = {includeWalletButton: true},
 ): InlineKeyboard {
   const keyboard = new InlineKeyboard()
   const copyText = copyableText(paymentRequest)
@@ -247,7 +278,9 @@ function invoiceKeyboard(
       text: ctx.t('button.add-invoice-memo'),
     })
   }
-  keyboard.row({callback_data: staticCallback.wallet, text: ctx.t('button.open-wallet')})
+  if (opts.includeWalletButton) {
+    keyboard.row({callback_data: staticCallback.wallet, text: ctx.t('button.open-wallet')})
+  }
   return keyboard
 }
 

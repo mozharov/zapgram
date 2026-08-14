@@ -321,7 +321,7 @@ test("a different user cannot enable paid access for someone else's chat", async
 
 // --- Price conversation ---
 
-test('a valid price is stored and the completed conversation sends a fresh card', async () => {
+test('a valid price is stored and the confirmation folds into the updated card', async () => {
   await enterChangingPrice()
 
   await expectDelta(e2e, () => e2e.send(privateText(String(CHANGED_PRICE))), {
@@ -335,10 +335,11 @@ test('a valid price is stored and the completed conversation sends a fresh card'
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
-      {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
     ],
   })
 
+  // Folded into the same edit as the updated card, not a separate message.
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>123 sats/)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -369,10 +370,10 @@ for (const price of [0, -5]) {
         {method: 'deleteMessages', to: USER_A},
         {method: 'editMessageReplyMarkup', to: USER_A},
         {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
-        {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
       ],
     })
     expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
+    expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>123 sats/)
 
     await expectNoConversations(e2e.db)
     expectNoErrors(e2e.logs)

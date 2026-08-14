@@ -1,5 +1,5 @@
 import {getAccessibleChatForOwner, updateChat} from '@modules/chats/repository.js'
-import {editHostWithChat, replyWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {editHostWithChat} from '@modules/chats/telegram/messages/chat.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent, setTelegramChatGroup} from '@telegram/analytics.js'
@@ -41,13 +41,15 @@ export async function changingPrice(
     {price_sats: sats, chat_title: chat.title, payment_type: chat.paymentType},
     {chatId},
   )
-  await ctx.api.editMessageText(
-    host.chatId,
-    host.messageId,
+  // Folds into the same edit that shows the updated chat screen, so no separate message is sent
+  // and nothing is left for a later `showLivingMenu` call to delete.
+  await editHostWithChat(
+    ctx,
+    host,
+    chat,
     ctx.t('changing-price.completed', {
       price: sats,
       usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
     }),
   )
-  await replyWithChat(ctx, chat)
 }

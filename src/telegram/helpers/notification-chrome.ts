@@ -94,14 +94,19 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
    * So it behaves like every other receipt: the next `/wallet` leaves it alone instead of deleting it
    * with the menu it used to be, and pressing its button strips the row and sends a fresh menu. Use
    * it to close a conversation in place rather than sending a separate result message.
+   *
+   * `baseMarkup`, when the screen keeps its own buttons (e.g. "Copy invoice"), is recorded the same
+   * way `deliver` records one — otherwise a later `stripLastOpenMenu` would wipe those buttons too,
+   * since it always restores whatever `lastNotificationBaseMarkup` says the row sits on top of.
    */
   async function retireMenuAsNotification<T>(
     userId: number,
     messageId: number,
     edit: (markup: InlineKeyboardJson) => Promise<T>,
+    baseMarkup?: InlineKeyboardJson,
   ): Promise<T> {
     const user = await deps.findUser(userId)
-    const result = await edit(appendOpenMenu(undefined, user?.languageCode ?? 'en'))
+    const result = await edit(appendOpenMenu(baseMarkup, user?.languageCode ?? 'en'))
     // Skip when this message already is the tracked notification: stripping would pull off the row
     // the edit just added.
     if (user?.lastNotificationMessageId !== messageId) {
@@ -113,7 +118,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
       if (user) {
         const data: Partial<User> = {
           lastNotificationMessageId: messageId,
-          lastNotificationBaseMarkup: null,
+          lastNotificationBaseMarkup: serializeBaseMarkup(baseMarkup),
         }
         if (user.lastMenuMessageId === messageId) data.lastMenuMessageId = null
         await deps.updateUser(userId, data)
