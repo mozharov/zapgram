@@ -912,7 +912,7 @@ test('the paid-chats menu action interrupts a callback-only review and opens the
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageText', to: USER_A, text: /Action canceled/},
-      {method: 'editMessageText', to: USER_A, text: /chats with the ability/},
+      {method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/},
     ],
   })
 

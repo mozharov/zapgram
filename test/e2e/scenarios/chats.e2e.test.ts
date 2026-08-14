@@ -226,14 +226,14 @@ const cardCases: CardCase[] = [
     seed: {status: 'active'},
     data: chatPaidAccessRoute.build({chatId: CHAT_GROUP, status: 'inactive'}),
     changes: {status: 'inactive'},
-    text: /Paid access: <b>disabled/,
+    text: /🔴 <b>Paid access disabled/,
   },
   {
     label: 'enabling paid access',
     seed: {status: 'inactive'},
     data: chatPaidAccessRoute.build({chatId: CHAT_GROUP, status: 'active'}),
     changes: {status: 'active'},
-    text: /Paid access: <b>enabled/,
+    text: /🟢 <b>Paid access enabled/,
   },
   {
     label: 'switching to monthly payments',
@@ -279,11 +279,11 @@ for (const cardCase of cardCases) {
         chatId: CHAT_GROUP,
         status: finalChat.status === 'active' ? 'inactive' : 'active',
       }),
+      chatChangePriceRoute.build({chatId: CHAT_GROUP}),
       chatPaymentTypeRoute.build({
         chatId: CHAT_GROUP,
         paymentType: finalChat.paymentType === 'monthly' ? 'one_time' : 'monthly',
       }),
-      chatChangePriceRoute.build({chatId: CHAT_GROUP}),
       chatOnchainEnableRoute.build({chatId: CHAT_GROUP}),
       chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
       chatsPageRoute.build({page: 1}),
@@ -868,7 +868,7 @@ test('the paid-chats menu with one accessible chat has no page controls', async 
   const chats = await seedOwnedChats(1)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
   expect(chatCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([
@@ -883,7 +883,7 @@ test('the paid-chats menu with exactly ten accessible chats has no next page', a
   const chats = await seedOwnedChats(10)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
   const callbacks = chatCallbacksOf(e2e.tg.last('editMessageText'))
@@ -898,7 +898,7 @@ test('the paid-chats menu with eleven accessible chats exposes a second page aft
   const chats = await seedOwnedChats(11)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
   const firstPageChats = chatCallbacksOf(e2e.tg.last('editMessageText'))
@@ -915,7 +915,7 @@ test('the last page edits the list with one row and a previous-page button', asy
   const chats = await seedOwnedChats(11)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 2}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
   expectEditedNotSent(e2e.tg)

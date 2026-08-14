@@ -63,8 +63,8 @@ button =
     .next = ➡️
     .enable-monthly-payment = 🔄 Turn to monthly payment
     .enable-one-time-payment = 🔄 Turn to one-time payment
-    .change-price = Change price
-    .enable-paid-access = Enable paid access
+    .change-price = 💰 Change price
+    .enable-paid-access = ✅ Enable paid access
     .disable-paid-access = 🚫 Disable paid access
     .pay-subcription-with-wallet = 💰 Pay with {bot-name} balance
     .pay-subcription-with-nwc = 💰 Pay with NWC
@@ -427,31 +427,36 @@ paid-chat =
         }.</b>
         You can set up paid access to this chat.
 
-chats = <b>👥 Your chats with the ability to enable paid access.</b>
-    This list is for configuring paid access on chats where the bot is already an admin.
-    Add {bot-username} to a chat with invite and ban permissions to make it appear here.
-    .empty = <b>👥 You don't have any chats with the ability to enable paid access.</b>
+chats = <b>👥 Chats</b>
+    Chats where you can enable paid access.
+
+    Only chats where {bot-username} is already an admin show up here.
+    Add it to a chat with invite and ban permissions to make it appear.
+    .empty = <b>👥 Chats</b>
+        You don't have any chats with paid access available yet.
+
         Add {bot-username} to a chat with invite and ban permissions (button below), then choose <b>Paid chats</b> from the main menu to configure paid access.
 
 chat = <b>👥 {$title}</b>
-    
-    Paid access: <b>{$status ->
-    [active] enabled
-    *[other] disabled
-    }</b>
-    Price: <b>{$price} sats{$usdSuffix}</b>
-    Payment type: <b>{$paymentType ->
+
+    {$status ->
+    [active] 🟢 <b>Paid access enabled</b>
+    *[other] 🔴 <b>Paid access disabled</b>
+    }
+
+    💰 Price: <b>{$price} sats{$usdSuffix}</b>
+    🔁 Payment type: <b>{$paymentType ->
     [one_time] one-time
     *[other] monthly
     }</b>
-    On-chain pay: <b>{$onchain ->
+    ⛓ On-chain pay: <b>{$onchain ->
     [on] enabled (fingerprint {$fingerprint})
     *[other] disabled
     }</b>
 
-    <i>When changing the price or payment type, the price and payment type for existing subscribers will not change.</i>
-    <i>On-chain payments go directly to your wallet (zpub/xpub). Access is usually granted soon after the transaction appears on the network.</i>
-    <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request). Then the bot can message applicants with an invoice and approve them after payment.</i>
+    <i>Changing the price or payment type doesn't affect existing subscribers.</i>
+    <i>On-chain payments go directly to your wallet (zpub/xpub) — access is usually granted soon after the transaction appears on the network.</i>
+    <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request), so the bot can message applicants with an invoice and approve them after payment.</i>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
     .custom-message = <b>💬 Join request message</b>

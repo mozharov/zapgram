@@ -214,7 +214,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     {
       db: {chats: {changed: 1}},
       lnbits: {balances: {[userWalletName(OWNER)]: 0}},
-      telegram: [{method: 'editMessageText', to: OWNER, text: /Paid access: <b>enabled/}],
+      telegram: [{method: 'editMessageText', to: OWNER, text: /🟢 <b>Paid access enabled/}],
     },
   )
 
@@ -450,7 +450,7 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
 
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectEditedScreen(chatsPageRoute.build({page: 1}), /<b>👥 Chats<\/b>/)
   await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
 
   await expectDelta(
@@ -531,7 +531,7 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
   await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectEditedScreen(chatsPageRoute.build({page: 1}), /<b>👥 Chats<\/b>/)
 
   await expectEditedScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
   await expectEditedScreen(

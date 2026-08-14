@@ -296,7 +296,7 @@ const parameterizedCases: {
     route: 'chats-page',
     data: () => 'chats:1',
     methods: ['editMessageText'],
-    text: /Your chats with the ability/,
+    text: /<b>👥 Chats<\/b>/,
   },
   {
     route: 'chat',
@@ -308,14 +308,14 @@ const parameterizedCases: {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:off-paid`,
     methods: ['editMessageText'],
-    text: /Paid access: <b>disabled/,
+    text: /🔴 <b>Paid access disabled/,
     db: {chats: {changed: 1}},
   },
   {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:on-paid`,
     methods: ['editMessageText'],
-    text: /Paid access: <b>enabled/,
+    text: /🟢 <b>Paid access enabled/,
   },
   {
     route: 'chat-payment-type',

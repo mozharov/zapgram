@@ -24,21 +24,21 @@ export function buildChatKeyboard(t: BotContext['t'], chat: Chat) {
       text: t('button.enable-paid-access'),
     })
   }
-  if (chat.paymentType === 'monthly') {
-    keyboard.row({
-      callback_data: chatPaymentTypeRoute.build({chatId: chat.id, paymentType: 'one_time'}),
-      text: t('button.enable-one-time-payment'),
-    })
-  } else {
-    keyboard.row({
-      callback_data: chatPaymentTypeRoute.build({chatId: chat.id, paymentType: 'monthly'}),
-      text: t('button.enable-monthly-payment'),
-    })
-  }
-  keyboard.row({
-    callback_data: chatChangePriceRoute.build({chatId: chat.id}),
-    text: t('button.change-price'),
-  })
+  keyboard.row(
+    {
+      callback_data: chatChangePriceRoute.build({chatId: chat.id}),
+      text: t('button.change-price'),
+    },
+    chat.paymentType === 'monthly'
+      ? {
+          callback_data: chatPaymentTypeRoute.build({chatId: chat.id, paymentType: 'one_time'}),
+          text: t('button.enable-one-time-payment'),
+        }
+      : {
+          callback_data: chatPaymentTypeRoute.build({chatId: chat.id, paymentType: 'monthly'}),
+          text: t('button.enable-monthly-payment'),
+        },
+  )
   if (chat.onchainEnabled && chat.watchonlyWalletId) {
     keyboard.row({
       callback_data: chatOnchainDisableRoute.build({chatId: chat.id}),
