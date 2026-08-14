@@ -10,6 +10,7 @@ import {
   deactivatePrompt,
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -21,6 +22,7 @@ export async function waitForUser(
   opts?: {
     host?: ConversationHost
     html?: string
+    deleteInput?: boolean
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ) {
@@ -68,6 +70,8 @@ export async function waitForUser(
     }
 
     await clearPromptControls(conversation, prompt)
+    // The report echoes the selected username, so the typed @handle itself is noise.
+    if (opts?.deleteInput) await deleteMessageSafely(next)
     return result.user
   }
 }

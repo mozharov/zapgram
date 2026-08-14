@@ -63,9 +63,20 @@ test('the private send conversation transfers sats and closes after the amount',
     first_name: 'User B',
   })
   await e2e.send(privateCallback(staticCallback.sendToUser))
-  await e2e.send(privateText('@user_b'))
+  const usernameInput = privateText('@user_b')
+  const usernameMessageId = usernameInput.message?.message_id
+  if (usernameMessageId === undefined) throw new Error('Expected the username input message')
+  const telegramMark = e2e.tg.calls.length
+  await e2e.send(usernameInput)
 
   expect(e2e.tg.last('getChat')?.chat_id).toBe(USER_B)
+  // The accepted @username is echoed into every later screen, so the typed message is noise.
+  const deletedSingle = e2e.tg.calls
+    .slice(telegramMark)
+    .filter(call => call.method === 'deleteMessage')
+    .map(call => Number(call.payload.message_id))
+  expect(deletedSingle).toContain(usernameMessageId)
+
   await expectInternalTransfer(
     () => e2e.send(privateText(String(TIP_SATS))),
     USER_B,
@@ -75,10 +86,15 @@ test('the private send conversation transfers sats and closes after the amount',
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
       {method: 'editMessageText', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
   )
+
+  // The wizard's own screen becomes the report and keeps a self-disappearing "Open wallet" button
+  // rather than sending the wallet screen straight away.
+  expect(e2e.tg.last('editMessageText')?.reply_markup).toEqual({
+    inline_keyboard: [[{text: '👛 Open wallet', callback_data: staticCallback.openMenu}]],
+  })
 
   expect(notificationTo(USER_B)).toContain('Sender: @user_a')
   expect(notificationTo(USER_B)).toMatch(/Balance: <b>21 sats(?: \(\$[^)]+\))?<\/b>/)
@@ -115,7 +131,6 @@ test('an invalid private-send amount can be corrected without restarting the flo
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
       {method: 'editMessageText', to: USER_A, text: /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/},
-      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
     {conversationRemoved: true},
   )

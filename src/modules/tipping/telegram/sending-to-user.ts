@@ -5,10 +5,14 @@ import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
-import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {ensureHost, joinWizardHtml} from '@telegram/helpers/conversation-host.js'
+import {
+  disabledLinkPreview,
+  ensureHost,
+  joinWizardHtml,
+} from '@telegram/helpers/conversation-host.js'
+import {closeLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
@@ -20,12 +24,14 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   const toUser = await waitForUser(conversation, ctx, {
     host,
     html: joinWizardHtml(title, ctx.t('wait-for-user')),
+    deleteInput: true,
     onCancel: restoreSendMenu,
   })
   const selectedUser = ctx.t('wait-for-user.selected', {username: toUser.username ?? ''})
   const sats = await waitForSats(conversation, ctx, {
     host,
     html: joinWizardHtml(title, selectedUser, ctx.t('wait-for-sats')),
+    deleteInput: true,
     onCancel: restoreSendMenu,
   })
   const {wallet} = await waitForWallet(conversation, ctx, {
@@ -63,20 +69,23 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
       ? ctx.t('wait-for-wallet.nwc')
       : ctx.t('wait-for-wallet.internal')
     : undefined
-  await ctx.api.editMessageText(
-    host.chatId,
-    host.messageId,
-    joinWizardHtml(
-      title,
-      selectedUser,
-      selectedWallet,
-      ctx.t('sending-to-user.completed', {
-        amount: sats,
-        usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
-        recipient: toUser.username,
-      }),
-    ),
+  const reportHtml = joinWizardHtml(
+    title,
+    selectedUser,
+    selectedWallet,
+    ctx.t('sending-to-user.completed', {
+      amount: sats,
+      usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
+      recipient: toUser.username,
+    }),
   )
 
-  await replyWithWallet(ctx)
+  // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
+  // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
+  await closeLivingMenu(ctx, host.messageId, markup =>
+    ctx.api.editMessageText(host.chatId, host.messageId, reportHtml, {
+      reply_markup: markup,
+      ...disabledLinkPreview,
+    }),
+  )
 }
