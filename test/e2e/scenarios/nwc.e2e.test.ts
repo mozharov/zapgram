@@ -402,11 +402,11 @@ test('a join chooser offers the balance button when the NWC balance covers the p
         }),
       ),
     {
-      telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
     },
   )
 
-  const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
+  const callbacks = callbackDataOf(e2e.tg.last('sendRichMessage'))
   expect(callbacks).toContain(`pay-join-balance:${CHAT_GROUP}:nwc`)
   expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expect(callbacks.some(data => data.endsWith(':wallet'))).toBe(false)
@@ -432,7 +432,7 @@ test('paying a join via NWC balance settles the master invoice without debiting 
       from: {id: USER_A, username: 'user_a', language_code: 'en'},
     }),
   )
-  const balancePayData = callbackDataOf(e2e.tg.last('sendMessage')).find(
+  const balancePayData = callbackDataOf(e2e.tg.last('sendRichMessage')).find(
     data => data === `pay-join-balance:${CHAT_GROUP}:nwc`,
   )
   if (!balancePayData) throw new Error('Expected a pay-join-balance NWC button')
@@ -492,7 +492,7 @@ test('an insufficient NWC balance does not offer the NWC pay button', async () =
     }),
   )
 
-  const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
+  const callbacks = callbackDataOf(e2e.tg.last('sendRichMessage'))
   expect(callbacks.some(data => data.endsWith(':nwc'))).toBe(false)
   expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expectNoErrors(e2e.logs)

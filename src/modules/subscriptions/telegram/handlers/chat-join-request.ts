@@ -1,6 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
-import {effectiveCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
+import {richCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
@@ -78,18 +78,20 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
 
   const locale = await ctx.i18n.getLocale()
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
-  // Deliberately raw `sendMessage`, not the notifier: the chooser is a flow screen with its own
+  // Deliberately raw `sendRichMessage`, not the notifier: the chooser is a flow screen with its own
   // payment buttons, so it stays out of the open-menu chain and never carries "Open wallet".
   try {
-    await ctx.api.sendMessage(
+    await ctx.api.sendRichMessage(
       ctx.chatJoinRequest.user_chat_id,
-      ctx.t('subscription-invoice.choose-method', {
-        message: effectiveCustomMessage(chat, locale),
-        type: chat.paymentType,
-        price: chat.price,
-        usdSuffix: await usdSuffixForSats(chat.price),
-      }),
-      {reply_markup: keyboard, link_preview_options: {is_disabled: true}},
+      {
+        html: ctx.t('subscription-invoice.choose-method', {
+          message: richCustomMessage(chat, locale),
+          type: chat.paymentType,
+          price: chat.price,
+          usdSuffix: await usdSuffixForSats(chat.price),
+        }),
+      },
+      {reply_markup: keyboard},
     )
   } catch (error: unknown) {
     ctx.log.error({error}, 'Error while sending message to user about chat join request')

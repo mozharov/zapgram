@@ -510,20 +510,19 @@ enabling-onchain = <b>⛓ Включение on-chain оплаты</b>
         Сверь его со своим кошельком.
 
 onchain-invoice =
-    .created = <b>⛓ On-chain оплата за "{$title}"</b>
+    .created = <h1>⛓ Оплата on-chain</h1>
 
-        Отправь <b>не меньше {$price} сат{$usdSuffix}</b> на адрес:
-
-        <code>{$address}</code>
-
-        Тип подписки: <b>{$type ->
+        <p>💰 Отправь <b>не меньше {$price} сат{$usdSuffix}</b> на Bitcoin-адрес ниже.</p>
+        <p>🎟 Ты получишь: <b>{$type ->
         [one_time] вечный доступ
         *[other] доступ на месяц
-        }</b>
+        }</b> к <b>«{$title}»</b></p>
 
-        <i>Сумма сверх {$price} сат{$usdSuffix} — донат владельцу сообщества.</i>
+        <details open><summary>🏷 Bitcoin-адрес</summary><code>{$address}</code></details>
 
-        {$remaining}
+        <p>Доступ откроется, как только транзакция появится в сети.</p>
+        <p><i>Сумма сверх {$price} сат{$usdSuffix} — донат владельцу сообщества.</i></p>
+        <p>{$remaining}</p>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>
 
         {$type ->
@@ -557,27 +556,26 @@ subscription-invoice =
     .default-message = <b>🔒 Доступ к закрытому сообществу "{$title}"</b>
     .choose-method = {$message}
 
-    Цена: <b>{$price} сат{$usdSuffix}</b>
-    Тип подписки: <b>{$type ->
+    <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
+    <p>🎟 Ты получишь: <b>{$type ->
     [one_time] вечный доступ
     *[other] доступ на месяц
-    }</b>
+    }</b></p>
 
-    Выбери способ оплаты:
+    <p>Выбери, чем платить 👇</p>
     .created = {$message}
 
-    Цена: <b>{$price} сат{$usdSuffix}</b>
-    Тип подписки: <b>{$type ->
+    <p>⚡️ Оплати счёт Lightning, чтобы попасть внутрь.</p>
+    <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
+    <p>🎟 Ты получишь: <b>{$type ->
     [one_time] вечный доступ
     *[other] доступ на месяц
-    }</b>
+    }</b></p>
 
-    <b>Чтобы получить доступ к сообществу, оплати счёт Lightning:</b>
-    <code>{$invoice}</code>
+    <details open><summary>⚡️ Счёт Lightning</summary><code>{$invoice}</code></details>
 
-    <b>После успешной оплаты, я сразу предоставу тебе доступ к сообществу.</b>
-
-    {$remaining}
+    <p>Доступ откроется автоматически сразу после оплаты.</p>
+    <p>{$remaining}</p>
     .insufficient-balance = ⚠️ Недостаточно баланса для оплаты доступа.
     .remaining-time = <i>Счёт истекает <b>{TGTIME($expiresAt, format: "r")}</b>.</i>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>

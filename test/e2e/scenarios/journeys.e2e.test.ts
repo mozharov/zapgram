@@ -377,7 +377,7 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   })
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
   const rejoinChooser = e2e.tg.last('sendMessage')
   await expectDelta(
@@ -622,7 +622,7 @@ async function requestJoin(
     db: {
       ...(options.userAdded === false ? {} : {users: {added: 1}}),
     },
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
   const chooser = e2e.tg.last('sendMessage')
   await expectDelta(

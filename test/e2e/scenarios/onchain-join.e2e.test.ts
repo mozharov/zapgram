@@ -57,10 +57,10 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
 
-  const joinMessage = e2e.tg.last('sendMessage')
+  const joinMessage = e2e.tg.last('sendRichMessage')
   if (!joinMessage?.reply_markup) throw new Error('join chooser missing markup')
   expect(callbackDatas(joinMessage)).toEqual([
     payLightningRoute.build({chatId: CHAT_GROUP}),
@@ -85,7 +85,7 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
     {
       db: {onchainChatPayments: {added: 1}},
       telegram: [
-        {method: 'editMessageText', text: /On-chain payment/},
+        {method: 'editMessageText', text: /Pay on-chain/},
         {method: 'answerCallbackQuery'},
       ],
     },
@@ -108,7 +108,10 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
   expect(charge.webhook).toContain('/satspay/webhook/')
 
   const edited = e2e.tg.last('editMessageText')
-  expect(String(edited?.text)).toContain(onchainRow.address)
+  expect(htmlOf(edited)).toContain(onchainRow.address)
+  // Collapsible, tap-to-copy, and a BIP-21 QR carried as a rich media block on the same message.
+  expect(htmlOf(edited)).toContain(`<details open><summary>🏷 Bitcoin address</summary><code>`)
+  expect(htmlOf(edited)).toContain('<img src="tg://photo?id=qr"/>')
   expect(callbackDatas(edited).find(d => d.startsWith('pay-lightning:'))).toBe(
     payLightningRoute.build({chatId: CHAT_GROUP}),
   )
@@ -170,7 +173,7 @@ test('cron poll grants when charge is paid without webhook', async () => {
   await seedOnchainChat()
 
   await e2e.send(joinUpdate())
-  const joinMessage = e2e.tg.last('sendMessage')
+  const joinMessage = e2e.tg.last('sendRichMessage')
   await e2e.send(
     privateCallback(payOnchainRoute.build({chatId: CHAT_GROUP}), {
       from: {id: USER_A},
@@ -203,8 +206,8 @@ test('cron poll grants when charge is paid without webhook', async () => {
 test('pay-lightning shows the LN invoice on the same message after on-chain', async () => {
   await seedOnchainChat()
   await e2e.send(joinUpdate())
-  const joinMessage = e2e.tg.last('sendMessage')
-  expect(String(joinMessage?.text)).not.toContain('lnbc')
+  const joinMessage = e2e.tg.last('sendRichMessage')
+  expect(htmlOf(joinMessage)).not.toContain('lnbc')
   await e2e.send(
     privateCallback(payOnchainRoute.build({chatId: CHAT_GROUP}), {
       from: {id: USER_A},
@@ -218,13 +221,13 @@ test('pay-lightning shows the LN invoice on the same message after on-chain', as
     }),
   )
   const restored = e2e.tg.last('editMessageText')
-  expect(String(restored?.text)).toContain('lnbc')
+  expect(htmlOf(restored)).toContain('lnbc')
   const payments = await e2e.db.select().from(subscriptionPaymentsTable)
   const lnPayments = payments.filter(p => !p.paymentHash.startsWith('onchain:'))
   expect(lnPayments).toHaveLength(1)
   const lnPayment = lnPayments[0]
   if (!lnPayment) throw new Error('LN payment missing')
-  expect(String(restored?.text)).toContain(lnPayment.paymentRequest)
+  expect(htmlOf(restored)).toContain(lnPayment.paymentRequest)
   expectNoErrors(e2e.logs)
 })
 
@@ -265,4 +268,14 @@ function callbackDatas(payload: {reply_markup?: unknown} | undefined): string[] 
 function expectNoOwnerFeePayouts() {
   expectPayoutsExactly(e2e.ln, {toWallet: 'master wallet', sats: PRICE, times: 0})
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: Math.floor(PRICE * 0.05), times: 0})
+}
+
+/** Join screens are rich messages: the copy lives in `rich_message.html`, not `text`. */
+function htmlOf(payload: Record<string, unknown> | undefined): string {
+  if (!payload) return ''
+  if (typeof payload.text === 'string') return payload.text
+  const rich = payload.rich_message
+  if (!rich || typeof rich !== 'object') return ''
+  const html = Reflect.get(rich, 'html')
+  return typeof html === 'string' ? html : ''
 }

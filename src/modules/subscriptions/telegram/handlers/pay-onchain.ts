@@ -1,5 +1,7 @@
+import {satsToBtcAmount} from '@core/money/sats.js'
 import {getAccessibleChat} from '@modules/chats/repository.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
+import {editJoinScreen} from '@modules/subscriptions/telegram/join-screen.js'
 import {buildOnchainPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payOnchainRoute} from '@telegram/callback-data.js'
@@ -52,7 +54,7 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
     expiresAt: payment.expiresAt,
   })
 
-  const text = ctx.t('onchain-invoice.created', {
+  const html = ctx.t('onchain-invoice.created', {
     title: chat.title,
     address: payment.address,
     price: payment.amountSats,
@@ -62,9 +64,12 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
   })
 
   try {
-    await ctx.editMessageText(text, {
-      link_preview_options: {is_disabled: true},
-      reply_markup: buildOnchainPaymentKeyboard(ctx.t, chat.id),
+    await editJoinScreen(ctx, {
+      html,
+      // BIP-21: wallets scanning this prefill the exact amount instead of the address alone.
+      qrPayload: `bitcoin:${payment.address}?amount=${satsToBtcAmount(payment.amountSats)}`,
+      keyboard: buildOnchainPaymentKeyboard(ctx.t, chat.id),
+      log,
     })
   } catch (error) {
     log.error({error, chatId, paymentId: payment.id}, 'Failed to edit on-chain payment message')

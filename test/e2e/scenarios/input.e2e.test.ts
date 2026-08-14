@@ -85,16 +85,16 @@ test('a redelivered join request resends the method chooser without minting an i
   const update = chatJoinRequest('supergroup', {from: {id: USER_A}})
   await e2e.send(update)
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Choose a payment method/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Choose how you want to pay/)
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
 
   // Telegram can redeliver an update it never got a 200 for. Chooser is re-sent; no invoice yet.
   await expectDelta(e2e, () => e2e.send(update), {
     telegram: [
       {
-        method: 'sendMessage',
+        method: 'sendRichMessage',
         to: USER_A,
-        text: /Choose a payment method/,
+        text: /Choose how you want to pay/,
       },
     ],
   })
@@ -327,4 +327,12 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+/** Join screens are rich messages: the copy lives in `rich_message.html`, not `text`. */
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const rich = payload?.rich_message
+  if (!rich || typeof rich !== 'object') return ''
+  const html = Reflect.get(rich, 'html')
+  return typeof html === 'string' ? html : ''
 }

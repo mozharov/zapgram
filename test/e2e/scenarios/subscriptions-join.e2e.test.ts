@@ -59,9 +59,9 @@ test('a fresh join request sends a method chooser without minting an invoice', a
     text: /Access to private community "E2E paid chat"/,
   })
 
-  expect(String(chooser.text)).toMatch(/Subscription type: <b>permanent access<\/b>/)
-  expect(String(chooser.text)).toMatch(/Choose a payment method/)
-  expect(String(chooser.text)).not.toMatch(/lnbc/)
+  expect(htmlOf(chooser)).toMatch(/You get: <b>permanent access<\/b>/)
+  expect(htmlOf(chooser)).toMatch(/Choose how you want to pay/)
+  expect(htmlOf(chooser)).not.toMatch(/lnbc/)
   expect(callbackDataOf(chooser)).toEqual([payLightningRoute.build({chatId: CHAT_GROUP})])
   expect(buttonTextsOf(chooser)).toEqual(['⚡ Lightning'])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
@@ -74,10 +74,44 @@ test('choosing Lightning mints one linked one-time invoice with no balance butto
     text: /Access to private community "E2E paid chat"/,
   })
 
-  expect(String(telegram.text)).toMatch(/Subscription type: <b>permanent access<\/b>/)
-  expect(String(telegram.text)).toContain(`<code>${payment.paymentRequest}</code>`)
+  expect(htmlOf(telegram)).toMatch(/You get: <b>permanent access<\/b>/)
+  expect(htmlOf(telegram)).toContain(`<code>${payment.paymentRequest}</code>`)
+  // Collapsible and tap-to-copy, the way the invoice-creation screen presents a BOLT11.
+  expect(htmlOf(telegram)).toContain('<details open><summary>')
   expect(buttonsOf(telegram)).toEqual([])
   expect(payment.subscriptionType).toBe('one_time')
+})
+
+test('the Lightning screen carries a QR of the invoice as a rich media block', async () => {
+  const {telegram} = await issueJoinInvoice({
+    walletMsat: 0,
+    text: /Access to private community/,
+  })
+
+  // The screen must be edited in place, so an embedded media block is the only way to show a QR.
+  expect(htmlOf(telegram)).toContain('<img src="tg://photo?id=qr"/>')
+  expect(mediaIdsOf(telegram)).toEqual(['qr'])
+})
+
+test('a maximum-length custom message still leaves the join screens well inside 4096 chars', async () => {
+  const maxCustomMessage = 'x'.repeat(1000)
+  await seedActiveChat({customMessageEn: maxCustomMessage})
+  await e2e.send(joinUpdate({}))
+  const chooser = e2e.tg.last('sendRichMessage')
+
+  await e2e.send(
+    privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
+      from: applicantFrom('en'),
+      messageId: Number(chooser?.message_id ?? 1),
+    }),
+  )
+
+  expect(htmlOf(chooser)).toContain(maxCustomMessage)
+  expect(htmlOf(chooser).length).toBeLessThan(4096)
+  const invoiceScreen = e2e.tg.last('editMessageText')
+  expect(htmlOf(invoiceScreen)).toContain(maxCustomMessage)
+  expect(htmlOf(invoiceScreen).length).toBeLessThan(4096)
+  expectNoErrors(e2e.logs)
 })
 
 test('the chooser is sent to the join request private-chat id', async () => {
@@ -107,8 +141,8 @@ test('an exact wallet balance offers the ZapGram button on chooser and Lightning
   // Method row, then wallet on its own row (no NWC without funds).
   expect(buttonTextRowsOf(chooser)).toEqual([['⚡ Лайтнинг'], ['💰 С баланса ZapGram']])
 
-  const telegramText = String(telegram.text)
-  expect(telegramText).toMatch(/Тип подписки: <b>доступ на месяц<\/b>/)
+  const telegramText = htmlOf(telegram)
+  expect(telegramText).toMatch(/Ты получишь: <b>доступ на месяц<\/b>/)
   expect(callbackDataOf(telegram)).toEqual([
     payJoinBalanceRoute.build({chatId: CHAT_CHANNEL, from: 'wallet'}),
   ])
@@ -174,11 +208,11 @@ test('an expired subscription requires choosing Lightning before an invoice exis
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
 
-  const joinMessage = e2e.tg.last('sendMessage')
+  const joinMessage = e2e.tg.last('sendRichMessage')
   await expectDelta(
     e2e,
     () =>
@@ -251,14 +285,14 @@ test('a join request for an unknown chat leaves the whole world unchanged', asyn
 
 test('a Telegram delivery failure on the chooser leaves no payment record', async () => {
   await seedActiveChat()
-  e2e.tg.fail('sendMessage', {
+  e2e.tg.fail('sendRichMessage', {
     error_code: 400,
     description: 'Bad Request: user unavailable',
   })
 
-  // fail() still records the attempted call; delta must allow the failed sendMessage.
+  // fail() still records the attempted call; delta must allow the failed send.
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A}],
+    telegram: [{method: 'sendRichMessage', to: USER_A}],
   })
 
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
@@ -269,7 +303,7 @@ test('a Telegram delivery failure on the chooser leaves no payment record', asyn
 test('an LNbits mint failure on Lightning leaves no payment after the chooser', async () => {
   await seedActiveChat()
   await e2e.send(joinUpdate({userChatId: JOIN_USER_CHAT}))
-  const chooser = e2e.tg.last('sendMessage')
+  const chooser = e2e.tg.last('sendRichMessage')
   e2e.ln.state.failNext(
     {
       method: 'POST',
@@ -327,9 +361,9 @@ test('repeated Lightning picks reuse one invoice and report remaining time', asy
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
-  const secondChooser = e2e.tg.last('sendMessage')
+  const secondChooser = e2e.tg.last('sendRichMessage')
   await expectDelta(
     e2e,
     () =>
@@ -352,8 +386,8 @@ test('repeated Lightning picks reuse one invoice and report remaining time', asy
 
   const restored = e2e.tg.last('editMessageText')
   if (!restored) throw new Error('Repeated Lightning invoice was not edited in place')
-  expect(String(restored.text)).toContain(payment.paymentRequest)
-  expect(String(firstInvoice.text)).toContain(payment.paymentRequest)
+  expect(htmlOf(restored)).toContain(payment.paymentRequest)
+  expect(htmlOf(firstInvoice)).toContain(payment.paymentRequest)
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([payment])
   expectLedgerBalanced(before, await snapshot(e2e))
@@ -393,7 +427,7 @@ test('parallel Lightning picks converge on one current attempt and one BOLT11', 
     .filter(call => call.method === 'editMessageText')
     .map(call => call.payload)
   expect(edits).toHaveLength(2)
-  expect(edits.every(message => String(message.text).includes(payment.paymentRequest))).toBe(true)
+  expect(edits.every(message => htmlOf(message).includes(payment.paymentRequest))).toBe(true)
   expect(
     e2e.tg.calls.slice(tgMark).filter(call => call.method === 'answerCallbackQuery'),
   ).toHaveLength(2)
@@ -411,7 +445,7 @@ test('an invoice with exactly one hour remaining is reused and reports one hour'
   const requestMark = e2e.ln.requests.length
 
   await e2e.send(joinUpdate())
-  const chooser = e2e.tg.last('sendMessage')
+  const chooser = e2e.tg.last('sendRichMessage')
   await expectDelta(
     e2e,
     () =>
@@ -448,7 +482,7 @@ test('an invoice below one hour is replaced without deleting the previous attemp
   const requestMark = e2e.ln.requests.length
 
   await e2e.send(joinUpdate())
-  const chooser = e2e.tg.last('sendMessage')
+  const chooser = e2e.tg.last('sendRichMessage')
   await expectDelta(
     e2e,
     () =>
@@ -493,7 +527,7 @@ test('a restart after mint and failed Lightning edit reuses the persisted attemp
   await seedActiveChat()
 
   await e2e.send(joinUpdate({locale: 'ru'}))
-  const chooser = e2e.tg.last('sendMessage')
+  const chooser = e2e.tg.last('sendRichMessage')
   e2e.tg.fail('editMessageText', {
     error_code: 500,
     description: 'Internal Server Error: connection closed after mint',
@@ -511,7 +545,7 @@ test('a restart after mint and failed Lightning edit reuses the persisted attemp
   await e2e.restart()
 
   await e2e.send(joinUpdate({locale: 'ru'}))
-  const secondChooser = e2e.tg.last('sendMessage')
+  const secondChooser = e2e.tg.last('sendRichMessage')
   await expectDelta(
     e2e,
     () =>
@@ -532,7 +566,7 @@ test('a restart after mint and failed Lightning edit reuses the persisted attemp
     },
   )
 
-  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Счёт истекает/)
+  expect(htmlOf(e2e.tg.last('editMessageText'))).toMatch(/Счёт истекает/)
   expect(invoiceMintRequestsSince(requestMark)).toEqual([])
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([persisted])
   expect(await e2e.db.select().from(subscriptionIntentsTable)).toHaveLength(1)
@@ -571,12 +605,12 @@ async function issueJoinChooser(options: {
   const requestMark = e2e.ln.requests.length
   const invoiceChatId = options.userChatId ?? USER_A
   const chooserText =
-    options.text ?? (locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/)
+    options.text ?? (locale === 'ru' ? /Выбери, чем платить/ : /Choose how you want to pay/)
   await expectDelta(
     e2e,
     () => e2e.send(joinUpdate({chatType, locale, userChatId: options.userChatId})),
     {
-      telegram: [{method: 'sendMessage', to: invoiceChatId, text: chooserText}],
+      telegram: [{method: 'sendRichMessage', to: invoiceChatId, text: chooserText}],
     },
   )
 
@@ -586,14 +620,10 @@ async function issueJoinChooser(options: {
   expectNoPaidMasterPayouts(price)
   expectNoErrors(e2e.logs)
 
-  const chooser = e2e.tg.last('sendMessage')
+  const chooser = e2e.tg.last('sendRichMessage')
   if (!chooser) throw new Error('Join method chooser was not sent')
-  expect(chooser).toMatchObject({
-    chat_id: invoiceChatId,
-    parse_mode: 'HTML',
-    link_preview_options: {is_disabled: true},
-  })
-  expect(String(chooser.text)).toMatch(pricePattern(price, locale))
+  expect(chooser).toMatchObject({chat_id: invoiceChatId})
+  expect(htmlOf(chooser)).toMatch(pricePattern(price, locale))
   return {chooser, chatId, locale, price, paymentType}
 }
 
@@ -601,7 +631,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
   const setup = await issueJoinChooser({
     ...options,
     // Chooser never includes the BOLT11; match only method-picker copy here.
-    text: options.locale === 'ru' ? /Выбери способ оплаты/ : /Choose a payment method/,
+    text: options.locale === 'ru' ? /Выбери, чем платить/ : /Choose how you want to pay/,
   })
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
@@ -706,7 +736,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
 
   const telegram = e2e.tg.last('editMessageText')
   if (!telegram) throw new Error('Lightning invoice edit was not attempted')
-  const telegramText = String(telegram.text)
+  const telegramText = htmlOf(telegram)
   expect(telegramText).toMatch(pricePattern(setup.price, setup.locale))
   expect(telegramText).toContain(`<code>${payment.paymentRequest}</code>`)
   expectNoErrors(e2e.logs)
@@ -724,7 +754,13 @@ function seedApplicant(locale: Locale) {
 }
 
 function seedActiveChat(
-  overrides: {id?: number; type?: ChatType; paymentType?: PaymentType; price?: number} = {},
+  overrides: {
+    id?: number
+    type?: ChatType
+    paymentType?: PaymentType
+    price?: number
+    customMessageEn?: string
+  } = {},
 ) {
   return seedChat(e2e, {
     id: overrides.id ?? CHAT_GROUP,
@@ -734,6 +770,9 @@ function seedActiveChat(
     status: 'active',
     paymentType: overrides.paymentType ?? 'one_time',
     price: overrides.price ?? PRICE,
+    ...(overrides.customMessageEn === undefined
+      ? {}
+      : {customMessageEn: overrides.customMessageEn}),
   })
 }
 
@@ -788,6 +827,24 @@ function callbackDataOf(payload: Record<string, unknown>): string[] {
 
 function buttonTextsOf(payload: Record<string, unknown>): string[] {
   return buttonsOf(payload).flatMap(button => button.text ?? [])
+}
+
+function mediaIdsOf(payload: Record<string, unknown> | undefined): string[] {
+  const rich = payload?.rich_message
+  if (!rich || typeof rich !== 'object') return []
+  const media = Reflect.get(rich, 'media')
+  if (!Array.isArray(media)) return []
+  return media.map(entry => String((entry as {id?: unknown}).id))
+}
+
+/** Join screens are rich messages: the copy lives in `rich_message.html`, not `text`. */
+function htmlOf(payload: Record<string, unknown> | undefined): string {
+  if (!payload) return ''
+  if (typeof payload.text === 'string') return payload.text
+  const rich = payload.rich_message
+  if (!rich || typeof rich !== 'object') return ''
+  const html = Reflect.get(rich, 'html')
+  return typeof html === 'string' ? html : ''
 }
 
 function pricePattern(price: number, locale: Locale): RegExp {

@@ -168,8 +168,10 @@ function convertToHtml(text: string, entities: MessageEntity[]): string {
         closeTag = '</a>'
         break
       case 'spoiler':
-        openTag = '<span class="tg-spoiler">'
-        closeTag = '</span>'
+        // `<tg-spoiler>` is the one spelling both the classic and the rich HTML parser accept; the
+        // join screens render this message as rich, where `<span>` is not a tag at all.
+        openTag = '<tg-spoiler>'
+        closeTag = '</tg-spoiler>'
         break
       case 'blockquote':
         openTag = '<blockquote>'

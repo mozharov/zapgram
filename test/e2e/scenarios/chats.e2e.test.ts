@@ -810,14 +810,14 @@ for (const customJoin of [
           }),
         ),
       {
-        telegram: [{method: 'sendMessage', to: USER_B, text: customJoin.selected}],
+        telegram: [{method: 'sendRichMessage', to: USER_B, text: customJoin.selected}],
       },
     )
 
-    const notification = String(e2e.tg.last('sendMessage')?.text)
+    const notification = richHtmlOf(e2e.tg.last('sendRichMessage'))
     expect(notification).not.toContain(customJoin.other)
     expect(notification).not.toContain('Access to private community')
-    expect(notification).toMatch(/Choose a payment method|Выбери способ оплаты/)
+    expect(notification).toMatch(/Choose how you want to pay|Выбери, чем платить/)
     expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
     expectLedgerBalanced(beforeJoin, await snapshot(e2e))
     expectNoErrors(e2e.logs)
@@ -868,14 +868,18 @@ test('removing a custom message restores the default join copy', async () => {
       ),
     {
       telegram: [
-        {method: 'sendMessage', to: USER_B, text: /Access to private community "E2E paid chat"/},
+        {
+          method: 'sendRichMessage',
+          to: USER_B,
+          text: /Access to private community "E2E paid chat"/,
+        },
       ],
     },
   )
 
-  const joinText = String(e2e.tg.last('sendMessage')?.text)
+  const joinText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(joinText).not.toContain('Old custom welcome')
-  expect(joinText).toMatch(/Choose a payment method/)
+  expect(joinText).toMatch(/Choose how you want to pay/)
   expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
   expectLedgerBalanced(beforeJoin, await snapshot(e2e))
   expectNoErrors(e2e.logs)

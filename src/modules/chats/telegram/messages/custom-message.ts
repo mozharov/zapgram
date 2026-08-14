@@ -25,6 +25,20 @@ export function effectiveCustomMessage(chat: CustomMessageChat, locale: string):
   )
 }
 
+/**
+ * The same message, safe to drop into the `html` of a rich message.
+ *
+ * Everything the editor can produce (b/i/u/s/code/pre/a/blockquote) is spelled the same way in both
+ * dialects — the spoiler is the one exception, and rows written before the join screens went rich
+ * still carry the classic `<span class="tg-spoiler">` form. A rich message rejects the whole html
+ * over one unknown tag, so those are rewritten here rather than left to fail the send.
+ */
+export function richCustomMessage(chat: CustomMessageChat, locale: string): string {
+  return effectiveCustomMessage(chat, locale)
+    .replaceAll('<span class="tg-spoiler">', '<tg-spoiler>')
+    .replaceAll('</span>', '</tg-spoiler>')
+}
+
 export function editMessageWithCustomMessage(ctx: BotContext, chat: CustomMessageChat) {
   return editLivingMenu(ctx, () =>
     ctx.editMessageText(customMessageScreenText(ctx, chat), {

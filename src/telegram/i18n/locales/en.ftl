@@ -510,20 +510,19 @@ enabling-onchain = <b>⛓ Enable on-chain payments</b>
         Compare it with your wallet to confirm the correct account.
 
 onchain-invoice =
-    .created = <b>⛓ On-chain payment for "{$title}"</b>
+    .created = <h1>⛓ Pay on-chain</h1>
 
-        Send <b>at least {$price} sats{$usdSuffix}</b> to:
-
-        <code>{$address}</code>
-
-        Subscription type: <b>{$type ->
+        <p>💰 Send <b>at least {$price} sats{$usdSuffix}</b> to the Bitcoin address below.</p>
+        <p>🎟 You get: <b>{$type ->
         [one_time] permanent access
-        *[other] one month access
-        }</b>
+        *[other] one month of access
+        }</b> to <b>"{$title}"</b></p>
 
-        <i>Any amount above {$price} sats{$usdSuffix} is a donation to the community owner.</i>
+        <details open><summary>🏷 Bitcoin address</summary><code>{$address}</code></details>
 
-        {$remaining}
+        <p>Access opens as soon as the transaction appears on the network.</p>
+        <p><i>Any amount above {$price} sats{$usdSuffix} is a donation to the community owner.</i></p>
+        <p>{$remaining}</p>
     .paid = <b>✅ Access to the community "{$title}" received.</b>
 
         {$type ->
@@ -557,27 +556,26 @@ subscription-invoice =
     .default-message = <b>🔒 Access to private community "{$title}"</b>
     .choose-method = {$message}
 
-    Price: <b>{$price} sats{$usdSuffix}</b>
-    Subscription type: <b>{$type ->
+    <p>💰 Price: <b>{$price} sats{$usdSuffix}</b></p>
+    <p>🎟 You get: <b>{$type ->
     [one_time] permanent access
-    *[other] one month access
-    }</b>
+    *[other] one month of access
+    }</b></p>
 
-    Choose a payment method:
+    <p>Choose how you want to pay 👇</p>
     .created = {$message}
 
-    Price: <b>{$price} sats{$usdSuffix}</b>
-    Subscription type: <b>{$type ->
+    <p>⚡️ Pay this Lightning invoice to get in.</p>
+    <p>💰 Price: <b>{$price} sats{$usdSuffix}</b></p>
+    <p>🎟 You get: <b>{$type ->
     [one_time] permanent access
-    *[other] one month access
-    }</b>
+    *[other] one month of access
+    }</b></p>
 
-    <b>To get access to the community, pay the Lightning invoice:</b>
-    <code>{$invoice}</code>
+    <details open><summary>⚡️ Lightning invoice</summary><code>{$invoice}</code></details>
 
-    <b>After successful payment, I will immediately grant you access to the community.</b>
-
-    {$remaining}
+    <p>Access opens automatically the moment the invoice is paid.</p>
+    <p>{$remaining}</p>
     .insufficient-balance = ⚠️ Not enough balance to pay for access.
     .remaining-time = <i>The invoice expires <b>{TGTIME($expiresAt, format: "r")}</b>.</i>
     .paid = <b>✅ Access to the community "{$title}" received.</b>
