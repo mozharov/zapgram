@@ -33,16 +33,31 @@ test('/donate hub shows stats and external lightning address', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
   await e2e.send(privateCommand('/donate'))
 
-  const hub = e2e.tg.last('sendMessage')
-  expect(hub).toMatchObject({
-    link_preview_options: {is_disabled: true},
-  })
-  const messages = e2e.tg.of('sendMessage').map(c => String(c.text))
-  expect(messages.some(t => t.includes('zapgram@getalby.com'))).toBe(true)
-  expect(messages.some(t => /ZapPlanner/i.test(t))).toBe(false)
-  expect(messages.some(t => /Community|🌍/i.test(t))).toBe(true)
-  expect(messages.some(t => /All time:.*0/i.test(t) && /Last 30 days:.*0/i.test(t))).toBe(true)
-  expect(messages.some(t => /Auto on payments/i.test(t))).toBe(true)
+  const hub = e2e.tg.last('sendRichMessage')
+  const html = richHtmlOf(hub)
+  expect(html).toContain('zapgram@getalby.com')
+  expect(html).not.toMatch(/ZapPlanner/i)
+  expect(html).toMatch(/<h1>[\s\S]*Support ZapGram/)
+  expect(html).toMatch(/<details open><summary>🌍 Community impact/u)
+  expect(html).toMatch(/All time:[\s\S]*0[\s\S]*Last 30 days:[\s\S]*0/)
+  expect(html).toMatch(/Auto support:[\s\S]*Off[\s\S]*tips \+ invoices/)
+  expectNoErrors(e2e.logs)
+})
+
+test('/donate hub keeps the rich structure in Russian', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+  await e2e.send(
+    privateCommand('/donate', {
+      from: {id: USER_A, username: 'user_a', language_code: 'ru'},
+    }),
+  )
+
+  const html = richHtmlOf(e2e.tg.last('sendRichMessage'))
+  expect(html).toMatch(/<h1>💚 Поддержать ZapGram/u)
+  expect(html).toMatch(/<details open><summary>🌍 Вклад сообщества/u)
+  expect(html).toMatch(/<details open><summary>👤 Твоя поддержка/u)
+  expect(html).toContain('Последний донат:')
+  expect(html).toContain('zapgram@getalby.com')
   expectNoErrors(e2e.logs)
 })
 
@@ -74,7 +89,7 @@ test('one-shot donate 1000 credits fee wallet and updates stats', async () => {
         {method: 'deleteMessage'},
         {method: 'sendChatAction', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Thanks! You sent 1,?000 sats/},
-        {method: 'sendMessage', to: USER_A, text: /Support ZapGram|All time/},
+        {method: 'sendRichMessage', to: USER_A, text: /Support ZapGram|All time/},
       ],
     },
   )
@@ -193,7 +208,7 @@ test('monthly enable charges immediately and advances nextAt', async () => {
         {method: 'deleteMessage'},
         {method: 'sendChatAction', to: USER_A},
         {method: 'sendMessage', to: USER_A, text: /Monthly donation set to 100 sats/},
-        {method: 'sendMessage', to: USER_A, text: /zapgram@getalby.com|Support ZapGram/},
+        {method: 'sendRichMessage', to: USER_A, text: /zapgram@getalby.com|Support ZapGram/},
       ],
     },
   )
@@ -290,7 +305,7 @@ test('custom monthly amount stays active after invalid input and cancel returns 
 
   await expectNoConversations(e2e.db)
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Support ZapGram|Поддержать ZapGram/i)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Support ZapGram|Поддержать ZapGram/i)
   expect((await e2e.container.users.findById(USER_A))?.monthlyDonationSats).toBe(0)
   expectNoErrors(e2e.logs)
 })

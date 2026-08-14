@@ -11,10 +11,12 @@ export async function replyDonateHub(ctx: BotContext) {
   ctx.user = user as typeof ctx.user
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
   return showLivingMenu(ctx, async () =>
-    ctx.reply(await formatDonateHubText(ctx.t, user, stats, platform), {
-      reply_markup: buildDonateHubKeyboard(ctx.t, user),
-      link_preview_options: {is_disabled: true},
-    }),
+    ctx.replyWithRichMessage(
+      {html: await formatDonateHubText(ctx.t, user, stats, platform)},
+      {
+        reply_markup: buildDonateHubKeyboard(ctx.t, user),
+      },
+    ),
   )
 }
 
@@ -25,10 +27,13 @@ export async function editDonateHub(ctx: BotContext) {
   const {user: stats, platform} = await loadDonateHubStats(ctx.user.id)
   const text = await formatDonateHubText(ctx.t, user, stats, platform)
   return editLivingMenu(ctx, () =>
-    ctx.editMessageText(text, {
-      reply_markup: buildDonateHubKeyboard(ctx.t, user),
-      link_preview_options: {is_disabled: true},
-    }),
+    ctx.editMessageText(
+      {html: text},
+      {
+        reply_markup: buildDonateHubKeyboard(ctx.t, user),
+        link_preview_options: {is_disabled: true},
+      },
+    ),
   )
 }
 

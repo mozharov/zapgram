@@ -164,24 +164,30 @@ donation =
     .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
 
 donate = 
-    .hub = 💚 <b>Support {bot-name}</b>
-        Thanks for keeping the project alive.
+    .hub = <h1>💚 Support {bot-name}</h1>
+        <p>Thanks for keeping the project alive. Choose a one-shot amount below, or set up recurring support.</p>
 
-        🌍 <b>Community</b>
-        ⏱ All time: <b>{$platformTotalSats}</b> sats{$platformTotalUsdSuffix}
-        📅 Last 30 days: <b>{$platformLastMonthSats}</b> sats{$platformLastMonthUsdSuffix}
+        <details open><summary>🌍 Community impact</summary>
+        <ul>
+        <li><b>All time:</b> <b>{$platformTotalSats}</b> sats{$platformTotalUsdSuffix}</li>
+        <li><b>Last 30 days:</b> <b>{$platformLastMonthSats}</b> sats{$platformLastMonthUsdSuffix}</li>
+        </ul>
+        </details>
 
-        👤 <b>You</b>
-        💸 Sent: <b>{$totalSats}</b> sats{$totalUsdSuffix} · {$count} payments
-        🕐 {$last}
-        📅 Monthly: <b>{$monthlyStatus}</b>
-        ⚡️ Auto on payments: <b>{$autoPercent}</b> · {$autoScope}
+        <details open><summary>👤 Your support</summary>
+        <ul>
+        <li><b>Sent:</b> <b>{$totalSats}</b> sats{$totalUsdSuffix} · {$count} payments</li>
+        <li><b>Last:</b> {$last}</li>
+        <li><b>Monthly:</b> {$monthlyStatus}</li>
+        <li><b>Auto support:</b> {$autoPercent} · {$autoScope}</li>
+        </ul>
+        </details>
 
-        Tap an amount for a one-shot donation, or open Monthly / Auto %.
+        <p><b>One-shot support</b></p>
+        <p>Tap an amount below, or open <b>Monthly</b> / <b>Auto %</b>.</p>
 
-        🤝 Project is supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community
-
-        ⚡ <b>Lightning address:</b> <code>zapgram@getalby.com</code>
+        <p>⚡ <b>Lightning address</b><br/><code>zapgram@getalby.com</code></p>
+        <footer>🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.</footer>
     .stats-last = Last: {TGTIME($date, format: "d")}
     .stats-last-none = No donations yet
     .auto-off = Off

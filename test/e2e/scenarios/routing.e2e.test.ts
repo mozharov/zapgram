@@ -73,7 +73,7 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
     command: '/donate',
     telegram: [
       {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/},
+      {method: 'sendRichMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/},
     ],
   },
 ]
@@ -444,7 +444,7 @@ const parameterizedCases: {
       'deleteMessage',
       'sendChatAction',
       'sendMessage',
-      'sendMessage',
+      'sendRichMessage',
     ],
     text: /Could not send 21 sats|Support ZapGram/,
     // Fee-collection invoice is created even when the user cannot pay it.
@@ -458,7 +458,7 @@ const parameterizedCases: {
       'deleteMessage',
       'sendChatAction',
       'sendMessage',
-      'sendMessage',
+      'sendRichMessage',
     ],
     text: /first charge failed|zapgram@getalby.com|Support ZapGram/,
     db: {users: {changed: 1}},

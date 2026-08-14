@@ -164,24 +164,30 @@ donation =
     .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат{$usdSuffix} отправить не удалось. Проверь баланс / NWC или используй /donate.
 
 donate = 
-    .hub = 💚 <b>Поддержать {bot-name}</b>
-        Спасибо, что помогаешь проекту жить.
+    .hub = <h1>💚 Поддержать {bot-name}</h1>
+        <p>Спасибо, что помогаешь проекту жить. Выбери разовую сумму ниже или настрой регулярную поддержку.</p>
 
-        🌍 <b>Сообщество</b>
-        ⏱ За всё время: <b>{$platformTotalSats}</b> сат{$platformTotalUsdSuffix}
-        📅 За 30 дней: <b>{$platformLastMonthSats}</b> сат{$platformLastMonthUsdSuffix}
+        <details open><summary>🌍 Вклад сообщества</summary>
+        <ul>
+        <li><b>За всё время:</b> <b>{$platformTotalSats}</b> сат{$platformTotalUsdSuffix}</li>
+        <li><b>За 30 дней:</b> <b>{$platformLastMonthSats}</b> сат{$platformLastMonthUsdSuffix}</li>
+        </ul>
+        </details>
 
-        👤 <b>Ты</b>
-        💸 Отправлено: <b>{$totalSats}</b> сат{$totalUsdSuffix} · {$count} платежей
-        🕐 {$last}
-        📅 Ежемесячно: <b>{$monthlyStatus}</b>
-        ⚡️ Авто с платежей: <b>{$autoPercent}</b> · {$autoScope}
+        <details open><summary>👤 Твоя поддержка</summary>
+        <ul>
+        <li><b>Отправлено:</b> <b>{$totalSats}</b> сат{$totalUsdSuffix} · {$count} платежей</li>
+        <li><b>Последний донат:</b> {$last}</li>
+        <li><b>Ежемесячно:</b> {$monthlyStatus}</li>
+        <li><b>Автоподдержка:</b> {$autoPercent} · {$autoScope}</li>
+        </ul>
+        </details>
 
-        Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
+        <p><b>Разовая поддержка</b></p>
+        <p>Нажми сумму ниже или открой <b>Ежемесячно</b> / <b>Авто %</b>.</p>
 
-        🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>
-
-        ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
+        <p>⚡ <b>Lightning-адрес</b><br/><code>zapgram@getalby.com</code></p>
+        <footer>🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>.</footer>
     .stats-last = Последний: {TGTIME($date, format: "d")}
     .stats-last-none = Донатов пока нет
     .auto-off = Выкл
