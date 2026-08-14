@@ -151,7 +151,7 @@ const staticCases: {
   },
   {
     data: staticCallback.connectNwc,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'sendMessage'],
     text: /NWC URL/,
     conversation: true,
   },

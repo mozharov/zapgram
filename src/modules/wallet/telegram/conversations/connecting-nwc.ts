@@ -2,7 +2,6 @@ import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {updateUser} from '@modules/users/repository.js'
 import {replyWithSettings} from '@modules/wallet/telegram/messages/settings.js'
-import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
@@ -15,13 +14,12 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {closeLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function connectingNWC(conversation: BotConversation, ctx: ConversationContext) {
-  await ctx.reply(ctx.t('nwc.connecting'))
   const html = ctx.t('nwc.wait-url')
   const message = await replyWithWaitForUrl(ctx, html)
   const prompt = createActivePrompt(message, {
@@ -78,11 +76,16 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
       }),
     },
   })
-  await ctx.reply(ctx.t('nwc.connected'))
 
   ctx.user.nwcUrl = nwcUrl
   ctx.user.nwc = new NostrWallet(nwcUrl)
-  await replyWithWallet(ctx)
+
+  // The wizard's own screen becomes the report, so no extra message is sent.
+  await closeLivingMenu(ctx, prompt.messageId, markup =>
+    ctx.api.editMessageText(prompt.chatId, prompt.messageId, ctx.t('nwc.connected'), {
+      reply_markup: markup,
+    }),
+  )
 }
 
 async function replyWithWaitForUrl(ctx: BotContext, html: string) {

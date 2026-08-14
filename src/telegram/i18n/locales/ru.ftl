@@ -253,10 +253,9 @@ wallet = <h1>👛 Кошелёк</h1>
         <p><b>NWC:</b> {$nwcBalance} сат{$nwcUsdSuffix}</p>
     }
 
-nwc = 
+nwc =
     .disconnected = <b>✅ Кошелёк отключён от {bot-name}.</b>
-    .connecting = <b>🔗 Подключение кошелька по NWC...</b>
-    .wait-url = <b>🔤 Введи NWC URL твоего Lightning кошелька.</b> 
+    .wait-url = <b>🔤 Введи NWC URL твоего Lightning кошелька.</b>
         Он должен начинаться с <i>nostr+walletconnect://...</i>
     .invalid-url = <b>⚠️ Невалидный URL NWC.</b>
     .connected = <b>✅ Кошелёк подключён по NWC.</b>

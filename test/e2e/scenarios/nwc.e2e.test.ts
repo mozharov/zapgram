@@ -117,8 +117,7 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
       {method: 'deleteMessage', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
-      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+      {method: 'editMessageText', to: USER_A, text: /Wallet connected with NWC/},
     ],
   })
 
@@ -129,6 +128,19 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
   expect(after.lnbits.payments).toEqual(before.lnbits.payments)
 
+  // The wizard's own prompt becomes the report and keeps a self-disappearing "Open wallet" button
+  // rather than sending the wallet screen straight away.
+  const report = e2e.tg.last('editMessageText')
+  expect(report?.reply_markup).toEqual({
+    inline_keyboard: [[{text: '👛 Open wallet', callback_data: staticCallback.openMenu}]],
+  })
+
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.openMenu)), {
+    telegram: [
+      {method: 'answerCallbackQuery'},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+    ],
+  })
   const walletText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(walletText).toMatch(/<b>NWC:<\/b> 5\D?000 sats/)
   expect(walletText).not.toMatch(/<b>Balance:<\/b>/)
@@ -158,8 +170,7 @@ test('an invalid NWC URL keeps the prompt active and can be corrected', async ()
       {method: 'deleteMessage', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
-      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+      {method: 'editMessageText', to: USER_A, text: /Wallet connected with NWC/},
     ],
   })
   expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)

@@ -253,9 +253,8 @@ wallet = <h1>👛 Wallet</h1>
         <p><b>NWC:</b> {$nwcBalance} sats{$nwcUsdSuffix}</p>
     }
 
-nwc = 
+nwc =
     .disconnected = <b>✅ Wallet disconnected from {bot-name}.</b>
-    .connecting = <b>🔗 Connecting a wallet by NWC...</b>
     .wait-url = <b>🔤 Enter the NWC URL of your Lightning wallet.</b>
         It's must start with <i>nostr+walletconnect://...</i>
     .invalid-url = <b>⚠️ Invalid NWC URL.</b>
