@@ -18,6 +18,7 @@ function ctxWithLog(partial: {
   msg?: {sender_chat?: {id: number; type: string; title: string}}
   reply?: Context['reply']
   deleteMessages?: Context['deleteMessages']
+  api?: {deleteEphemeralMessage?: Context['api']['deleteEphemeralMessage']}
   log?: Pick<AppLogger, 'warn'>
 }) {
   const {log = {warn: mock(() => {})}, ...rest} = partial
@@ -26,6 +27,14 @@ function ctxWithLog(partial: {
 
 function sentMessage(messageId: number) {
   return Promise.resolve({message_id: messageId} as Awaited<ReturnType<Context['reply']>>)
+}
+
+function ephemeralSentMessage(chatId: number, ephemeralMessageId: number) {
+  return Promise.resolve({
+    message_id: 0,
+    chat: {id: chatId},
+    ephemeral_message_id: ephemeralMessageId,
+  } as Awaited<ReturnType<Context['reply']>>)
 }
 
 test('the notice is an ephemeral message addressed to the sender', async () => {
@@ -39,6 +48,21 @@ test('the notice is an ephemeral message addressed to the sender', async () => {
   expect(reply).toHaveBeenCalledWith('nope', {parse_mode: 'HTML', receiver_user_id: 42})
   await Bun.sleep(5)
   expect(deleteMessages).not.toHaveBeenCalled()
+})
+
+test('an ephemeral notice is deleted after the temp-message delay', async () => {
+  const reply = mock(() => ephemeralSentMessage(-100, 9)) as unknown as Context['reply']
+  const deleteEphemeralMessage = mock(() => Promise.resolve(true as const))
+
+  await replyOnlyToSender(
+    ctxWithLog({from: {id: 42}, reply, api: {deleteEphemeralMessage}}),
+    'nope',
+    {delayMs: 1},
+  )
+
+  expect(deleteEphemeralMessage).not.toHaveBeenCalled()
+  await Bun.sleep(20)
+  expect(deleteEphemeralMessage).toHaveBeenCalledWith(-100, 42, 9)
 })
 
 test('a refused ephemeral message falls back to a public temp message', async () => {

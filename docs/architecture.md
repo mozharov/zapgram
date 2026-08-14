@@ -88,11 +88,17 @@ update arrives with `message_id: 0` and an `ephemeral_message_id`. `deleteMessag
 with `deleteEphemeralMessage` (never `deleteMessage` on id 0). The `@zap_gram_bot 21` spelling is
 not a registered command, so it stays public and is still deleted via `deleteMessage`.
 
+grammY's own docs warn that delivery of an ephemeral delete "is not guaranteed... especially if
+[the recipient is] offline", so `deleteMessageSafely` also schedules a second delete attempt via
+`scheduleEphemeralMessageDelete` after `TEMP_MESSAGE_DELAY_MS`, on top of the immediate one, to
+catch a sender who reconnects later.
+
 Only a successful money movement earns a public message in a group (`notifyGroupTip`). Every
 failure and usage hint goes through `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`),
-which sends a Telegram ephemeral message (`receiver_user_id`): the rest of the group never sees it
-and Telegram expires it, so no delete follows. Anonymous admins and channel-post senders have no
-user to deliver to, so a refused send falls back to `replyWithTempMessage` — the public notice that
+which sends a Telegram ephemeral message (`receiver_user_id`): the rest of the group never sees it.
+Rather than rely on Telegram to expire it, a delete is scheduled after `TEMP_MESSAGE_DELAY_MS` via
+the same `scheduleEphemeralMessageDelete`. Anonymous admins and channel-post senders have no user to
+deliver to, so a refused send falls back to `replyWithTempMessage` — the public notice that
 `TEMP_MESSAGE_DELAY_MS` later deletes itself.
 
 ## Callback data

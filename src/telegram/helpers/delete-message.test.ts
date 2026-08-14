@@ -67,11 +67,35 @@ test('deleteMessageSafely deletes an ephemeral command via deleteEphemeralMessag
       },
       {warn},
     ),
+    {delayMs: 1},
   )
 
   expect(deleteEphemeralMessage).toHaveBeenCalledWith(-100, 42, 5)
   expect(deleteMessage).not.toHaveBeenCalled()
   expect(warn).not.toHaveBeenCalled()
+})
+
+test('deleteMessageSafely retries deleteEphemeralMessage after the temp-message delay', async () => {
+  const deleteEphemeralMessage = mock(() => Promise.resolve(true as const))
+  const warn = mock(() => {})
+
+  await deleteMessageSafely(
+    ctxWithLog(
+      {
+        api: {deleteEphemeralMessage},
+        chat: {id: -100},
+        from: {id: 42},
+        msg: {ephemeral_message_id: 5, receiver_user: {id: 42}},
+      },
+      {warn},
+    ),
+    {delayMs: 1},
+  )
+
+  expect(deleteEphemeralMessage).toHaveBeenCalledTimes(1)
+  await Bun.sleep(20)
+  expect(deleteEphemeralMessage).toHaveBeenCalledTimes(2)
+  expect(deleteEphemeralMessage).toHaveBeenLastCalledWith(-100, 42, 5)
 })
 
 test('deleteMessageSafely no-ops an ephemeral command when no receiver id is available', async () => {
@@ -114,6 +138,7 @@ test('deleteMessageSafely swallows Telegram 400 from deleteEphemeralMessage', as
         },
         {warn},
       ),
+      {delayMs: 1},
     ),
   ).resolves.toBeUndefined()
   expect(deleteEphemeralMessage).toHaveBeenCalledWith(-100, 42, 5)
