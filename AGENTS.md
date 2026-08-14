@@ -80,6 +80,16 @@ Flow surfaces stay outside **both**: invoice/QR and payment routes (`pay-lightni
 chooser (`chat-join-request.ts`). Adopting them would let the next `/wallet` delete a payment screen
 the user is working in.
 
+The join-request payment screen is the one exception, and it has a pointer of its own,
+`users.last_join_message_id`. It is a **second, temporary menu**: it keeps its own payment buttons
+and stays out of the open-menu chain, but only one may exist and a real menu supersedes it.
+`chat-join-request.ts` sends then calls `adoptJoinScreen`, so a new request deletes the screen the
+previous one left behind; `adoptLivingMenu` calls `dropJoinScreen` **before** its equal-id early
+return, so even repainting the same menu in place clears a payment screen that arrived on top of it.
+`forgetJoinScreen` releases the pointer without deleting, for the two places where that message stops
+being a payment screen: `pay-join-balance` (already deleted) and the on-chain settle edit wired in
+`container.ts`, which turns it into the member's only proof of access.
+
 Every private push goes through `notifier.*` (wrapped by `createChromeNotifier` in the container),
 never `bot.api.sendMessage` — that includes bot error messages. The error handler deliberately sends
 no wallet screen of its own: the open-menu button on the error message *is* the recovery path.

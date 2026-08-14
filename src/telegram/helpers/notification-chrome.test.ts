@@ -258,3 +258,83 @@ test('notifier send with withoutMenu bypasses the chrome and appends no open-men
   expect(editMessageReplyMarkup).not.toHaveBeenCalled()
   expect((await users.findById(1))?.lastNotificationMessageId).toBe(10)
 })
+
+// --- The join payment screen: a second, temporary menu ---
+
+test('a new join screen deletes the one the previous request left behind', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+
+  await chrome.adoptJoinScreen(1, 30)
+  expect(deleteMessage).not.toHaveBeenCalled()
+
+  await chrome.adoptJoinScreen(1, 31)
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 30)
+  expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
+})
+
+test('a re-sent join screen with the same id deletes nothing', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.adoptJoinScreen(1, 30)
+
+  await chrome.adoptJoinScreen(1, 30)
+
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect((await users.findById(1))?.lastJoinMessageId).toBe(30)
+})
+
+test('a new menu deletes both the previous menu and the join screen on top of it', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.adoptLivingMenu(1, 5)
+  await chrome.adoptJoinScreen(1, 30)
+
+  await chrome.adoptLivingMenu(1, 6)
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 30)
+  expect(deleteMessage).toHaveBeenCalledWith(1, 5)
+  const user = await users.findById(1)
+  expect(user?.lastMenuMessageId).toBe(6)
+  expect(user?.lastJoinMessageId).toBeNull()
+})
+
+test('repainting the same menu in place still clears the join screen', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.adoptLivingMenu(1, 5)
+  await chrome.adoptJoinScreen(1, 30)
+
+  // A callback edits menu 5 and re-adopts it: the equal-id early return must not skip the drop.
+  await chrome.adoptLivingMenu(1, 5)
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 30)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  const user = await users.findById(1)
+  expect(user?.lastMenuMessageId).toBe(5)
+  expect(user?.lastJoinMessageId).toBeNull()
+})
+
+test('a forgotten join screen is left in the chat by the next menu', async () => {
+  const {users, chrome, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.adoptJoinScreen(1, 30)
+
+  // Settled: message 30 is the member's proof of access now, not a payment screen.
+  await chrome.forgetJoinScreen(1, 30)
+  await chrome.adoptLivingMenu(1, 6)
+
+  expect(deleteMessage).not.toHaveBeenCalled()
+  expect((await users.findById(1))?.lastJoinMessageId).toBeNull()
+})
+
+test('forgetting a join screen the pointer no longer names changes nothing', async () => {
+  const {users, chrome} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.adoptJoinScreen(1, 31)
+
+  await chrome.forgetJoinScreen(1, 30)
+
+  expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
+})

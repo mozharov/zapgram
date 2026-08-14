@@ -342,6 +342,9 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     notifier,
     editTelegramMessage: async (telegramChatId, telegramMessageId, text) => {
       await bot.api.editMessageText(telegramChatId, telegramMessageId, text)
+      // Settled: that message is the member's proof of access now, not a payment screen. The next
+      // menu must leave it alone, so the join pointer lets go of it here.
+      await notificationChrome.forgetJoinScreen(telegramChatId, telegramMessageId)
     },
     log,
     translate,

@@ -159,6 +159,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
    */
   async function adoptLivingMenu(userId: number, messageId: number): Promise<void> {
     try {
+      await dropJoinScreen(userId)
       const user = await deps.findUser(userId)
       if (!user || user.lastMenuMessageId === messageId) return
       if (user.lastMenuMessageId) {
@@ -183,7 +184,75 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
-  return {stripLastOpenMenu, deliver, adoptLivingMenu, retireMenuAsNotification}
+  /**
+   * The join-request payment screen is a **second, temporary menu**: it has its own buttons and the
+   * member works inside it, so it stays out of the open-menu chain — but only one may exist, and the
+   * moment a real menu appears it has served its purpose.
+   *
+   * `adoptJoinScreen` therefore mirrors `adoptLivingMenu` on its own pointer (a new join request
+   * deletes the screen the previous one left behind), and `adoptLivingMenu` calls `dropJoinScreen`
+   * before anything else — including before its own equal-id early return, so repainting the very
+   * same menu in place still clears the payment screen that arrived on top of it.
+   *
+   * Sending before adopting matters here for the same reason it does for the living menu: the delete
+   * must never run before its replacement exists.
+   */
+  async function adoptJoinScreen(userId: number, messageId: number): Promise<void> {
+    try {
+      const user = await deps.findUser(userId)
+      if (!user || user.lastJoinMessageId === messageId) return
+      await deleteJoinScreen(userId, user.lastJoinMessageId)
+      await deps.updateUser(userId, {lastJoinMessageId: messageId})
+    } catch (error) {
+      deps.log.warn({error, userId, messageId}, 'Failed to adopt join payment screen')
+    }
+  }
+
+  async function dropJoinScreen(userId: number): Promise<void> {
+    try {
+      const user = await deps.findUser(userId)
+      if (!user?.lastJoinMessageId) return
+      await deleteJoinScreen(userId, user.lastJoinMessageId)
+      await deps.updateUser(userId, {lastJoinMessageId: null})
+    } catch (error) {
+      deps.log.warn({error, userId}, 'Failed to drop join payment screen')
+    }
+  }
+
+  /**
+   * The tracked screen is gone or is no longer a payment screen — someone deleted it, or the settle
+   * path edited it into the member's only proof of access. Let go of the pointer without touching
+   * the message: dropping it later would delete a receipt, and re-deleting a deleted message only
+   * buys a failed API call on an otherwise clean path.
+   */
+  async function forgetJoinScreen(userId: number, messageId: number): Promise<void> {
+    try {
+      const user = await deps.findUser(userId)
+      if (user?.lastJoinMessageId !== messageId) return
+      await deps.updateUser(userId, {lastJoinMessageId: null})
+    } catch (error) {
+      deps.log.warn({error, userId, messageId}, 'Failed to forget join payment screen')
+    }
+  }
+
+  async function deleteJoinScreen(userId: number, messageId: number | null): Promise<void> {
+    if (!messageId) return
+    try {
+      await deps.deleteMessage(userId, messageId)
+    } catch (error) {
+      deps.log.warn({error, userId, messageId}, 'Failed to delete superseded join payment screen')
+    }
+  }
+
+  return {
+    stripLastOpenMenu,
+    deliver,
+    adoptLivingMenu,
+    retireMenuAsNotification,
+    adoptJoinScreen,
+    dropJoinScreen,
+    forgetJoinScreen,
+  }
 }
 
 export type NotificationChrome = ReturnType<typeof createNotificationChrome>

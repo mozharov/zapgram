@@ -80,8 +80,9 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
   // Deliberately raw `sendRichMessage`, not the notifier: the chooser is a flow screen with its own
   // payment buttons, so it stays out of the open-menu chain and never carries "Open wallet".
+  let sent: {message_id: number}
   try {
-    await ctx.api.sendRichMessage(
+    sent = await ctx.api.sendRichMessage(
       ctx.chatJoinRequest.user_chat_id,
       {
         html: ctx.t('subscription-invoice.choose-method', {
@@ -97,6 +98,10 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
     ctx.log.error({error}, 'Error while sending message to user about chat join request')
     return
   }
+  // Send first, adopt second: the screen a second join request replaces must not be deleted before
+  // its replacement exists. Adopting also puts this message under the single-menu rule — the next
+  // menu clears it, the same way a new one clears the screen a previous request left behind.
+  await getRuntime().notificationChrome.adoptJoinScreen(ctx.user.id, sent.message_id)
 
   ctx.log.info(
     {

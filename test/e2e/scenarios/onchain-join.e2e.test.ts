@@ -11,7 +11,7 @@ import {eq} from 'drizzle-orm'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
-import {chatJoinRequest, privateCallback} from '../fixtures/updates.js'
+import {chatJoinRequest, privateCallback, privateCommand} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -163,6 +163,14 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
     .where(eq(subscriptionsTable.userId, USER_A))
   expect(subs).toHaveLength(1)
 
+  // The payment screen was edited into the member's only proof of access, so the single-menu rule
+  // must let go of it: opening the wallet may not take the receipt down with the join screen.
+  const receipt = Number(joinMessage.message_id)
+  expect((await e2e.container.users.findById(USER_A))?.lastJoinMessageId).toBeNull()
+  const menuMark = e2e.tg.calls.length
+  await e2e.send(privateCommand('/wallet'))
+  expect(deletedIdsSince(menuMark)).not.toContain(receipt)
+
   const after = await snapshot(e2e)
   expectLedgerBalanced(before, after)
   expectNoOwnerFeePayouts()
@@ -268,6 +276,13 @@ function callbackDatas(payload: {reply_markup?: unknown} | undefined): string[] 
 function expectNoOwnerFeePayouts() {
   expectPayoutsExactly(e2e.ln, {toWallet: 'master wallet', sats: PRICE, times: 0})
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: Math.floor(PRICE * 0.05), times: 0})
+}
+
+function deletedIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessage')
+    .map(call => Number(call.payload.message_id))
 }
 
 /** Join screens are rich messages: the copy lives in `rich_message.html`, not `text`. */

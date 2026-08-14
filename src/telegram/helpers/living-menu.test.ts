@@ -9,6 +9,9 @@ function chromeMock(): NotificationChrome {
     deliver: mock(() => Promise.reject(new Error('unused'))),
     adoptLivingMenu: mock(() => Promise.resolve()),
     retireMenuAsNotification: mock(() => Promise.reject(new Error('unused'))),
+    adoptJoinScreen: mock(() => Promise.resolve()),
+    dropJoinScreen: mock(() => Promise.resolve()),
+    forgetJoinScreen: mock(() => Promise.resolve()),
   }
 }
 

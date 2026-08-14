@@ -38,6 +38,8 @@ export const usersTable = sqliteTable(
     lastNotificationTransient: integer('last_notification_transient', {mode: 'boolean'})
       .notNull()
       .default(false),
+    /** Latest join-request payment screen: a second, temporary menu the next menu clears. */
+    lastJoinMessageId: integer('last_join_message_id', {mode: 'number'}),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [

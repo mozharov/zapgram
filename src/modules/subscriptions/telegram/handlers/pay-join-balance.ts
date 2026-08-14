@@ -81,6 +81,12 @@ export const payJoinBalanceCallback = async (
   )
 
   await deleteMessageSafely(ctx)
+  // Paid from a balance: this screen is gone for good, so the pointer lets go of it instead of
+  // handing the next menu an id to fail on.
+  const clicked = ctx.callbackQuery.message?.message_id
+  if (clicked !== undefined) {
+    await getRuntime().notificationChrome.forgetJoinScreen(ctx.user.id, clicked)
+  }
   await ctx.answerCallbackQuery()
   await ctx.reply(ctx.t('subscription-invoice.paid-from-balance'))
 }

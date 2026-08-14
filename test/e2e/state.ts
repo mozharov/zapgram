@@ -427,7 +427,8 @@ function normalizeDbValue(value: unknown, key?: string): unknown {
     key === 'lastMenuMessageId' ||
     key === 'lastNotificationMessageId' ||
     key === 'lastNotificationBaseMarkup' ||
-    key === 'lastNotificationTransient'
+    key === 'lastNotificationTransient' ||
+    key === 'lastJoinMessageId'
   ) {
     return undefined
   }

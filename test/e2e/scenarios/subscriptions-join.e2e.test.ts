@@ -7,7 +7,7 @@ import {expectNoErrors, expectPayoutsExactly, expectWorldUnchanged} from '../ass
 import {decodeMintedInvoice} from '../fakes/bolt11.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
-import {chatJoinRequest, privateCallback} from '../fixtures/updates.js'
+import {chatJoinRequest, privateCallback, privateCommand} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -111,6 +111,44 @@ test('a maximum-length custom message still leaves the join screens well inside 
   const invoiceScreen = e2e.tg.last('editMessageText')
   expect(htmlOf(invoiceScreen)).toContain(maxCustomMessage)
   expect(htmlOf(invoiceScreen).length).toBeLessThan(4096)
+  expectNoErrors(e2e.logs)
+})
+
+// --- The chooser is a second, temporary menu ---
+
+test('a second join request deletes the chooser the first one left behind', async () => {
+  await seedActiveChat()
+  await e2e.send(joinUpdate({}))
+  const first = requiredMessageId()
+  const mark = e2e.tg.calls.length
+
+  await e2e.send(joinUpdate({}))
+
+  expect(deletedIdsSince(mark)).toEqual([first])
+  expect(e2e.tg.lastMessageId('sendRichMessage')).not.toBe(first)
+  expectNoErrors(e2e.logs)
+})
+
+test('opening a menu clears the chooser, and clears it again alongside an older menu', async () => {
+  await seedActiveChat()
+
+  // A menu is already open when the chooser arrives.
+  await e2e.send(privateCommand('/wallet'))
+  const menu = requiredMessageId()
+  await e2e.send(joinUpdate({}))
+  const chooser = requiredMessageId()
+  expect(chooser).not.toBe(menu)
+  const mark = e2e.tg.calls.length
+
+  // Opening the menu again takes both: exactly one live menu is left.
+  await e2e.send(privateCommand('/wallet'))
+
+  const deleted = deletedIdsSince(mark)
+  expect(deleted).toContain(chooser)
+  expect(deleted).toContain(menu)
+  const user = await e2e.container.users.findById(USER_A)
+  expect(user?.lastJoinMessageId).toBeNull()
+  expect(user?.lastMenuMessageId).toBe(e2e.tg.lastMessageId('sendRichMessage'))
   expectNoErrors(e2e.logs)
 })
 
@@ -827,6 +865,19 @@ function callbackDataOf(payload: Record<string, unknown>): string[] {
 
 function buttonTextsOf(payload: Record<string, unknown>): string[] {
   return buttonsOf(payload).flatMap(button => button.text ?? [])
+}
+
+function requiredMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendRichMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound rich message ID')
+  return messageId
+}
+
+function deletedIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessage')
+    .map(call => Number(call.payload.message_id))
 }
 
 function mediaIdsOf(payload: Record<string, unknown> | undefined): string[] {

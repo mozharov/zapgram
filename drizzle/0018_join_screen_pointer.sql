@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `last_join_message_id` integer;
