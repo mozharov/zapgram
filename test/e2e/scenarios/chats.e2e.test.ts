@@ -339,7 +339,7 @@ test('a valid price is stored and the confirmation folds into the updated card',
   })
 
   // Folded into the same edit as the updated card, not a separate message.
-  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>123 sats/)
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>123 sats/)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -373,7 +373,7 @@ for (const price of [0, -5]) {
       ],
     })
     expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
-    expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>123 sats/)
+    expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>123 sats/)
 
     await expectNoConversations(e2e.db)
     expectNoErrors(e2e.logs)
@@ -427,7 +427,7 @@ test('canceling on-chain setup marks its prompt and returns to chat details', as
 
   await expectNoConversations(e2e.db)
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('E2E paid chat')
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toContain('E2E paid chat')
   expect((await e2e.container.chats.getOrThrow(CHAT_GROUP)).onchainEnabled).toBe(false)
   expectNoErrors(e2e.logs)
 })

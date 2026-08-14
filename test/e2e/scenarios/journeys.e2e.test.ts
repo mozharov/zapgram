@@ -237,7 +237,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
       {method: 'editMessageText', to: OWNER, text: /set to 1\D?000 sats/},
     ],
   })
-  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>1\D?000 sats/)
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>1\D?000 sats/)
 
   creditExternal(USER_A, PRICE)
   const payment = await requestJoin('one_time')
@@ -468,7 +468,7 @@ test('private keyboard navigation keeps one world through screens and conversati
       {method: 'editMessageText', to: USER_A, text: /set to 1\D?234 sats/},
     ],
   })
-  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Price: <b>1\D?234 sats/)
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>1\D?234 sats/)
 
   await expectEditedScreen(
     chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
@@ -846,6 +846,12 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
     | {inline_keyboard?: {callback_data?: string}[][]}
     | undefined
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }
 
 function requiredMessageId(

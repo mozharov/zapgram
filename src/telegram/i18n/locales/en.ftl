@@ -270,23 +270,27 @@ settings = <b>⚙️ NWC</b>
     If the connected wallet is unavailable during a payment, the transaction will fail. Use {bot-name} Wallet if keeping the connected wallet online is inconvenient for you.
 
     <i>Use /help to learn more.</i>
-    .groups = <b>👥 Chats</b>
-        You can add {bot-username} to a group chat to enable tips in the chat using the /tip command.
+    .groups = <h1>👥 Chats</h1>
+        <p>Add {bot-username} to a group chat to enable tips with the <code>/tip</code> command.</p>
 
-        <b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below. Adding the bot alone does not enable paid access.
+        <p><b>Paid access</b> is configured separately: make the bot an admin with invite and ban rights, then open <b>Paid chats</b> below. Adding the bot alone does not enable paid access.</p>
 
-        <b>Examples of Uses:</b>
-        • <code>/tip</code> — send 21 sats to the chat owner
-        • <code>/tip 100</code> — send 100 sats to the chat owner
-        • (reply to message) <code>/tip</code> — send 21 sats to the author of the message
-        • (reply to message) <code>/tip 1000</code> — send 1000 sats to the author of the message
-        • <code>/tip @user</code> — send 21 sats to the selected user
-        • <code>/tip 50 @user</code> — send 50 sats to the selected user
+        <details><summary>📋 Examples of /tip</summary>
+        <ul>
+        <li><code>/tip</code> — send 21 sats to the chat owner</li>
+        <li><code>/tip 100</code> — send 100 sats to the chat owner</li>
+        <li>(reply to message) <code>/tip</code> — send 21 sats to the author of the message</li>
+        <li>(reply to message) <code>/tip 1000</code> — send 1000 sats to the author of the message</li>
+        <li><code>/tip @user</code> — send 21 sats to the selected user</li>
+        <li><code>/tip 50 @user</code> — send 50 sats to the selected user</li>
+        </ul>
+        </details>
 
-        <b>Advanced Features</b>
-        If you make {bot-name} an admin of your group, all /tip commands without a specified recipient will be sent to your wallet. {bot-name} will automatically delete all technical messages to keep the chat clean. For the bot to work properly, it only needs the rights to delete messages.
-        
-        If you make {bot-name} an admin of your channel, all /tip commands in reply to that channel's posts will also be sent to your wallet.
+        <details><summary>⚙️ Advanced: admin features</summary>
+        <p>If you make {bot-name} an admin of your group, all /tip commands without a specified recipient will be sent to your wallet. {bot-name} will automatically delete all technical messages to keep the chat clean. For the bot to work properly, it only needs the rights to delete messages.</p>
+
+        <p>If you make {bot-name} an admin of your channel, all /tip commands in reply to that channel's posts will also be sent to your wallet.</p>
+        </details>
 
 settings-donation = ⚡️ <b>Auto % on payments</b>
 
@@ -437,26 +441,28 @@ chats = <b>👥 Chats</b>
 
         Add {bot-username} to a chat with invite and ban permissions (button below), then choose <b>Paid chats</b> from the main menu to configure paid access.
 
-chat = <b>👥 {$title}</b>
+chat = <h1>👥 {$title}</h1>
 
-    {$status ->
+    <p>{$status ->
     [active] 🟢 <b>Paid access enabled</b>
     *[other] 🔴 <b>Paid access disabled</b>
-    }
+    }</p>
 
-    💰 Price: <b>{$price} sats{$usdSuffix}</b>
-    🔁 Payment type: <b>{$paymentType ->
+    <p>💰 Price: <b>{$price} sats{$usdSuffix}</b></p>
+    <p>🔁 Payment type: <b>{$paymentType ->
     [one_time] one-time
     *[other] monthly
-    }</b>
-    ⛓ On-chain pay: <b>{$onchain ->
+    }</b></p>
+    <p>⛓ On-chain pay: <b>{$onchain ->
     [on] enabled (fingerprint {$fingerprint})
     *[other] disabled
-    }</b>
+    }</b></p>
 
-    <i>Changing the price or payment type doesn't affect existing subscribers.</i>
-    <i>On-chain payments go directly to your wallet (zpub/xpub) — access is usually granted soon after the transaction appears on the network.</i>
-    <i>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request), so the bot can message applicants with an invoice and approve them after payment.</i>
+    <details><summary>ℹ️ More info</summary>
+    <p>Changing the price or payment type doesn't affect existing subscribers.</p>
+    <p>On-chain payments go directly to your wallet (zpub/xpub) — access is usually granted soon after the transaction appears on the network.</p>
+    <p>For paid access to work, the chat must require <b>admin approval for new members</b> (Approve New Members / invite link with join request), so the bot can message applicants with an invoice and approve them after payment.</p>
+    </details>
     .not-found = <b>👥 Chat not found.</b>
         Add {bot-username} to a chat with invite and ban permissions to use this command.
     .custom-message = <b>💬 Join request message</b>

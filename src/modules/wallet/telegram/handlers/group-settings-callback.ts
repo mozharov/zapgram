@@ -19,6 +19,6 @@ export async function groupSettingsCallback(ctx: BotContext) {
     })
 
   await editLivingMenu(ctx, () =>
-    ctx.editMessageText(ctx.t('settings.groups'), {reply_markup: keyboard}),
+    ctx.editMessageText({html: ctx.t('settings.groups')}, {reply_markup: keyboard}),
   )
 }

@@ -1,6 +1,10 @@
 import type {Chat} from '@infra/db/types.js'
 import type {BotContext} from '@telegram/context.js'
-import {type ConversationHost, joinWizardHtml} from '@telegram/helpers/conversation-host.js'
+import {
+  type ConversationHost,
+  editHostRich,
+  joinWizardHtml,
+} from '@telegram/helpers/conversation-host.js'
 import {editLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {buildChatKeyboard} from '../keyboards/chat.js'
@@ -8,7 +12,7 @@ import {buildChatKeyboard} from '../keyboards/chat.js'
 export async function editMessageWithChat(ctx: BotContext, chat: Chat) {
   const text = await buildText(ctx.t, chat)
   await editLivingMenu(ctx, () =>
-    ctx.editMessageText(text, {reply_markup: buildChatKeyboard(ctx.t, chat)}),
+    ctx.editMessageText({html: text}, {reply_markup: buildChatKeyboard(ctx.t, chat)}),
   )
 }
 
@@ -23,14 +27,14 @@ export async function editHostWithChat(
   prefixHtml?: string,
 ) {
   const text = joinWizardHtml(prefixHtml, await buildText(ctx.t, chat))
-  await ctx.api.editMessageText(host.chatId, host.messageId, text, {
-    reply_markup: buildChatKeyboard(ctx.t, chat),
-  })
+  await editHostRich(ctx, host, {html: text}, buildChatKeyboard(ctx.t, chat))
 }
 
 export async function replyWithChat(ctx: BotContext, chat: Chat) {
   const text = await buildText(ctx.t, chat)
-  await showLivingMenu(ctx, () => ctx.reply(text, {reply_markup: buildChatKeyboard(ctx.t, chat)}))
+  await showLivingMenu(ctx, () =>
+    ctx.replyWithRichMessage({html: text}, {reply_markup: buildChatKeyboard(ctx.t, chat)}),
+  )
 }
 
 async function buildText(t: BotContext['t'], chat: Chat) {
