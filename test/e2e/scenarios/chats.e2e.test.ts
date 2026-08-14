@@ -408,11 +408,21 @@ test('invalid masterpub keeps on-chain setup active and a corrected key enables 
   expect(afterInvalid.db.conversations).toHaveLength(1)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Paste a zpub|Вставь zpub/i)
 
-  await e2e.send(privateText(MASTERPUB))
+  const keyInput = privateText(MASTERPUB)
+  const telegramMark = e2e.tg.calls.length
+  await e2e.send(keyInput)
 
   const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
   expect(chat).toMatchObject({onchainEnabled: true, onchainMasterpub: MASTERPUB})
   expect(chat.watchonlyWalletId).toBeTruthy()
+  // The pasted extended public key and its confirmation both clear themselves afterwards. The
+  // earlier invalid attempt cleans up on its own timer, so pin the batch carrying the valid key.
+  await waitForDeletedMessages(telegramMark, keyInput.message?.message_id)
+  const batch = e2e.tg
+    .of('deleteMessages')
+    .map(payload => (Array.isArray(payload.message_ids) ? payload.message_ids.map(Number) : []))
+    .find(ids => ids.includes(Number(keyInput.message?.message_id)))
+  expect(batch).toHaveLength(2)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -590,8 +600,7 @@ for (const editCase of [
 
     // The confirmation is disposable: the card below it already shows the new state. The pasted
     // message is not in the batch — the card's own `showLivingMenu` already removed it.
-    await waitForDeleteMessages(telegramMark)
-    const deleted = deletedMessageIdsSince(telegramMark)
+    const deleted = await waitForDeletedMessages(telegramMark)
     expect(deleted).toHaveLength(1)
     expect(deleted).not.toContain(inputMessageId)
 
@@ -1081,10 +1090,14 @@ function errorMessages(): string[] {
     .map(log => String(log.msg ?? ''))
 }
 
-/** Temp-message cleanup runs on a timer, so poll instead of racing the configured delay. */
-async function waitForDeleteMessages(mark: number): Promise<void> {
+/**
+ * Temp-message cleanup runs on a timer, so poll instead of racing the configured delay. With
+ * `expected`, wait for that exact id — an earlier hint's timer can otherwise satisfy the wait.
+ */
+async function waitForDeletedMessages(mark: number, expected?: number): Promise<number[]> {
   for (let attempt = 0; attempt < 200; attempt++) {
-    if (e2e.tg.calls.slice(mark).some(call => call.method === 'deleteMessages')) return
+    const deleted = deletedMessageIdsSince(mark)
+    if (expected === undefined ? deleted.length > 0 : deleted.includes(expected)) return deleted
     await Bun.sleep(5)
   }
   throw new Error('The temporary message was never deleted')

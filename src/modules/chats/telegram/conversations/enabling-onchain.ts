@@ -87,8 +87,13 @@ export async function enablingOnchain(
       {chatId},
     )
 
-    await ctx.reply(
-      ctx.t('enabling-onchain.completed', {
+    // Both the pasted key and the confirmation clear themselves after the temp-message delay: the
+    // chat card below already reports the fingerprint, and an extended public key is not something
+    // to leave sitting in the chat history.
+    await replyWithConversationTempMessage(
+      conversation,
+      next,
+      next.t('enabling-onchain.completed', {
         fingerprint: result.fingerprint,
       }),
     )
