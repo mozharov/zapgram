@@ -64,21 +64,13 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
   })
 
   await notifySatsReceived(toUser.id, sats, ctx.user.username)
-  const selectedWallet = ctx.user.nwc
-    ? wallet === 'nwc'
-      ? ctx.t('wait-for-wallet.nwc')
-      : ctx.t('wait-for-wallet.internal')
-    : undefined
-  const reportHtml = joinWizardHtml(
-    title,
-    selectedUser,
-    selectedWallet,
-    ctx.t('sending-to-user.completed', {
-      amount: sats,
-      usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
-      recipient: toUser.username,
-    }),
-  )
+  // The final report drops the wizard's title/breadcrumb lines: the send already happened, so only
+  // the confirmation itself is worth keeping.
+  const reportHtml = ctx.t('sending-to-user.completed', {
+    amount: sats,
+    usdSuffix: await conversation.external(() => usdSuffixForSats(sats)),
+    recipient: toUser.username,
+  })
 
   // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
   // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.

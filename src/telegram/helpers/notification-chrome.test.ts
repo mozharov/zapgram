@@ -184,6 +184,46 @@ test('adoptLivingMenu swallows a failed persist', async () => {
   await expect(chromeWithFailingUpdate.adoptLivingMenu(1, 12)).resolves.toBeUndefined()
 })
 
+test('deliver marked transient is deleted, not stripped, once superseded', async () => {
+  const {users, chrome, editMessageReplyMarkup, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 10}), {transient: true})
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 11}))
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 10)
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
+  const user = await users.findById(1)
+  expect(user?.lastNotificationMessageId).toBe(11)
+})
+
+test('stripLastOpenMenu deletes a transient notification and forgets the pointer', async () => {
+  const {users, chrome, editMessageReplyMarkup, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 9}), {transient: true})
+
+  await chrome.stripLastOpenMenu(1)
+
+  expect(deleteMessage).toHaveBeenCalledWith(1, 9)
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
+  const user = await users.findById(1)
+  expect(user?.lastNotificationMessageId).toBeNull()
+})
+
+test('retireMenuAsNotification resets the transient flag so a later strip does not delete a receipt', async () => {
+  const {users, chrome, editMessageReplyMarkup, deleteMessage} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 5}), {transient: true})
+  await chrome.stripLastOpenMenu(1)
+  expect(deleteMessage).toHaveBeenCalledWith(1, 5)
+
+  await chrome.retireMenuAsNotification(1, 20, markup => Promise.resolve({markup}))
+  await chrome.deliver(1, undefined, () => Promise.resolve({message_id: 21}))
+
+  expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 20, {reply_markup: {inline_keyboard: []}})
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+})
+
 test('adoptLivingMenu is idempotent, so a replayed send does not delete the message it tracks', async () => {
   const {users, chrome, deleteMessage} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})

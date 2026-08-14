@@ -34,6 +34,10 @@ export const usersTable = sqliteTable(
     lastNotificationMessageId: integer('last_notification_message_id', {mode: 'number'}),
     /** JSON `inline_keyboard` of that notification without the open-menu row. */
     lastNotificationBaseMarkup: text('last_notification_base_markup'),
+    /** True for one-off validation/error notices: superseding them deletes instead of stripping. */
+    lastNotificationTransient: integer('last_notification_transient', {mode: 'boolean'})
+      .notNull()
+      .default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [

@@ -364,6 +364,7 @@ describe('mergePersonProperties', () => {
         lastMenuMessageId: null,
         lastNotificationMessageId: null,
         lastNotificationBaseMarkup: null,
+        lastNotificationTransient: false,
       }),
       personPropertiesFromTelegram({
         id: 42,

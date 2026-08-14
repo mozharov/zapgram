@@ -2,6 +2,7 @@ import {msatsToSats} from '@core/money/sats.js'
 import type {BotContext} from '@telegram/context.js'
 import {type ConversationHost, disabledLinkPreview} from '@telegram/helpers/conversation-host.js'
 import {editLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixesForSats, usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../../runtime.js'
 import {buildWalletKeyboard} from '../keyboards/wallet.js'
@@ -44,7 +45,7 @@ async function getNWCBalance(ctx: BotContext) {
   if (ctx.user.nwc) {
     return ctx.user.nwc.getBalance().catch(async (error: unknown) => {
       getRuntime().log.error({error}, 'Failed to get NWC balance')
-      await ctx.reply(ctx.t('error.nwc-connection'))
+      await replyWithTempMessage(ctx, ctx.t('error.nwc-connection'))
       return null
     })
   }

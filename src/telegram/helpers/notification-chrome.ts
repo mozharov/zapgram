@@ -36,11 +36,26 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
    * Clears the pointer on success as well as on failure: once stripped, that message no longer
    * carries an open-menu row, so it is no longer "the notification holding the button". That also
    * makes a second call a cheap no-op, which is what keeps a conversation replay from re-editing it.
+   *
+   * A transient notification (a one-off validation error, not a receipt) has nothing worth keeping
+   * once superseded, so it is deleted outright instead of just losing its button.
    */
   async function stripLastOpenMenu(userId: number): Promise<void> {
     try {
       const user = await deps.findUser(userId)
       if (!user?.lastNotificationMessageId) return
+      if (user.lastNotificationTransient) {
+        try {
+          await deps.deleteMessage(userId, user.lastNotificationMessageId)
+        } catch (error) {
+          deps.log.warn(
+            {error, userId, messageId: user.lastNotificationMessageId},
+            'Failed to delete transient notification',
+          )
+        }
+        await forgetNotification(userId)
+        return
+      }
       const base = parseBaseMarkup(user.lastNotificationBaseMarkup)
       try {
         await deps.editMessageReplyMarkup(userId, user.lastNotificationMessageId, {
@@ -62,6 +77,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     userId: number,
     baseMarkup: InlineKeyboardJson | undefined,
     send: (markup: InlineKeyboardJson) => Promise<T>,
+    options?: {transient?: boolean},
   ): Promise<T> {
     const user = await deps.findUser(userId)
     const markup = appendOpenMenu(baseMarkup, user?.languageCode ?? 'en')
@@ -76,6 +92,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
         await deps.updateUser(userId, {
           lastNotificationMessageId: sent.message_id,
           lastNotificationBaseMarkup: serializeBaseMarkup(baseMarkup),
+          lastNotificationTransient: options?.transient ?? false,
         })
       }
     } catch (error) {
@@ -119,6 +136,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
         const data: Partial<User> = {
           lastNotificationMessageId: messageId,
           lastNotificationBaseMarkup: serializeBaseMarkup(baseMarkup),
+          lastNotificationTransient: false,
         }
         if (user.lastMenuMessageId === messageId) data.lastMenuMessageId = null
         await deps.updateUser(userId, data)
@@ -187,10 +205,13 @@ export function createChromeNotifier(
   chrome: NotificationChrome,
 ): Notifier {
   return {
-    async send(userId, text, opts) {
+    async send(userId, text, opts, flags) {
       try {
-        await chrome.deliver(userId, markupFromReplyMarkup(opts?.reply_markup), markup =>
-          api.sendMessage(userId, text, {...opts, reply_markup: markup}),
+        await chrome.deliver(
+          userId,
+          markupFromReplyMarkup(opts?.reply_markup),
+          markup => api.sendMessage(userId, text, {...opts, reply_markup: markup}),
+          {transient: flags?.transient},
         )
         return true
       } catch (error) {

@@ -601,15 +601,15 @@ test('ordinary text on the QR step drops the buttons and opens Wallet', async ()
   await expectDelta(e2e, () => e2e.send(privateText('add a memo')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
-  expect(e2e.tg.last('editMessageCaption')).toMatchObject({
-    message_id: qrMessageId,
-    reply_markup: {inline_keyboard: []},
-  })
+  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
+  // The QR becomes the receipt in place — no "cancelled" annotation, just the self-disappearing
+  // "Open wallet" button `closeLivingMenu` appends.
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
@@ -623,16 +623,14 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     db: {conversations: {changed: 1}},
     telegram: [
-      {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Invoice review/},
     ],
   })
 
-  expect(e2e.tg.last('editMessageCaption')).toMatchObject({
-    message_id: qrMessageId,
-    reply_markup: {inline_keyboard: []},
-  })
+  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Select a wallet to pay this invoice/)
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
@@ -666,12 +664,14 @@ test('a callback from another message deactivates the QR and starts its own flow
     {
       db: {conversations: {changed: 1}},
       telegram: [
-        {method: 'editMessageCaption', to: USER_A, text: /no longer active/},
+        {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
         {method: 'editMessageText', to: USER_A, text: /Send or forward a message/},
       ],
     },
   )
 
+  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
@@ -682,11 +682,13 @@ test('/wallet during memo input deactivates both memo prompts and keeps the invo
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageCaption', to: USER_A, text: /Action canceled/},
+      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
+  // The invoice keeps living as the receipt — no "cancelled" annotation.
+  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })

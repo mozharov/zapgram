@@ -104,6 +104,7 @@ callback-answer =
 error = 
     .unknown = <b>⚠️ Unknown error occurred.</b>
     .nwc-connection = <b>⚠️ Failed to connect to the wallet by NWC.</b>
+        This is why the request took a while. Check your NWC wallet connection settings.
     .nwc-timeout = <b>⚠️ NWC connection timed out.</b>
         Operation status is unknown. Check your NWC wallet connection.
     .to-yourself = <b>⚠️ You can't send sats to yourself.</b>

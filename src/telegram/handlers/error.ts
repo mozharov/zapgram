@@ -22,7 +22,12 @@ export const errorHandler: ErrorHandler = async err => {
 
   // Join requests have no group reply target for the applicant — DM the private peer.
   if (ctx.chatJoinRequest) {
-    const sent = await getRuntime().notifier.send(ctx.chatJoinRequest.user_chat_id, errorResponse)
+    const sent = await getRuntime().notifier.send(
+      ctx.chatJoinRequest.user_chat_id,
+      errorResponse,
+      undefined,
+      {transient: true},
+    )
     if (!sent) ctx.log.error('Failed to reply about error on chat join request')
     return
   }
@@ -37,9 +42,13 @@ export const errorHandler: ErrorHandler = async err => {
   // Through the notifier so the error joins the open-menu chain: it carries the "Open wallet"
   // button and strips it off the previous notification. That button *is* the recovery path — the
   // handler deliberately does not render a wallet menu of its own, which used to leave an
-  // untracked second menu behind on every error.
+  // untracked second menu behind on every error. `transient` marks it as disposable: it is a
+  // one-off notice, not a receipt, so the next button press or menu deletes it instead of just
+  // stripping its button.
   const chatId = ctx.chat?.id
   if (chatId === undefined) return
-  const sent = await getRuntime().notifier.send(chatId, errorResponse)
+  const sent = await getRuntime().notifier.send(chatId, errorResponse, undefined, {
+    transient: true,
+  })
   if (!sent) ctx.log.error('Failed to reply about error in private chat')
 }

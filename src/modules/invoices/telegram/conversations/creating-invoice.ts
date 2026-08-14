@@ -21,8 +21,6 @@ import {
 import {
   clearPromptControls,
   createActivePrompt,
-  inactivePromptState,
-  interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
@@ -68,11 +66,6 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     html: invoiceView.html,
     actionLabel: ctx.t('conversation-action.invoice-memo-options'),
   })
-  const inactive = inactivePromptState(
-    ctx,
-    qrPrompt,
-    ctx.t('conversation-state.invoice-memo-inactive'),
-  )
 
   const next = await conversation.wait()
   if (
@@ -96,8 +89,10 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     return conversation.halt()
   } else {
     // Invoice is already live. Any other update (command, bolt11, leftover text)
-    // drops the memo buttons so the update can open Wallet or start payment.
-    return interruptConversation(conversation, qrPrompt, inactive)
+    // drops the memo buttons so the update can open Wallet or start payment. The invoice itself
+    // keeps living, so re-render its terminal state instead of annotating it as cancelled.
+    await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
+    return conversation.halt({next: true})
   }
 
   captureBotEvent(getRuntime().posthog, 'invoice_memo_add_tapped', {
@@ -117,10 +112,10 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
       amount_sats: sats,
       wallet_type: wallet,
     })
-    if (memoResult.status === 'cancelled') {
-      await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
-      return conversation.halt()
-    }
+    // Both an explicit cancel and an interrupting update (new invoice, command, ...) leave the
+    // invoice itself unchanged, so re-render its terminal state either way.
+    await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
+    if (memoResult.status === 'cancelled') return conversation.halt()
     return conversation.halt({next: true})
   }
 

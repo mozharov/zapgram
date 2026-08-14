@@ -60,7 +60,9 @@ export async function waitForMemoText(
       return {status: 'cancelled', reason: 'cancel'}
     }
     if (kind === 'interrupt') {
-      await deactivatePrompt(conversation, prompt, cancelled)
+      // Same guard as 'cancel': a persistent host (the invoice) stays live and is re-rendered by
+      // the caller, so it must not be annotated with the generic "Action canceled." text here.
+      if (!opts?.host) await deactivatePrompt(conversation, prompt, cancelled)
       return {status: 'interrupted', reason: 'interrupt'}
     }
 
