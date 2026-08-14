@@ -129,6 +129,20 @@ test('insufficient_funds in private chat is error text carrying the open-menu bu
   await expectMoneyUnchanged(before)
 })
 
+test('the message that caused a private error is removed after the temp-message delay', async () => {
+  const invoice = mintInvoice({sats: 100, description: 'too expensive'})
+  const input = privateText(invoice.bolt11)
+  const inputMessageId = input.message?.message_id
+  if (inputMessageId === undefined) throw new Error('Expected the failing input message')
+  const mark = e2e.tg.calls.length
+
+  // The notice itself is transient — the next notification or menu removes it — so leaving the
+  // failed input behind would strand half of the exchange in the chat.
+  await sendAndWaitForTempMessage(input)
+
+  expect(deletedMessageIdsSince(mark)).toContain(inputMessageId)
+})
+
 test('invoice_already_paid keeps the payee pending row and shows the dedicated copy', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
   const pending = await seedPendingInvoice(e2e, {userId: USER_B, sats: 21})
@@ -568,6 +582,14 @@ async function expectGroupError(
   expect(Number(errorCallTo(CHAT_GROUP).receiver_user_id)).toBe(sender)
   expect(e2e.tg.of('deleteMessages')).toEqual([])
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }
 
 async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {

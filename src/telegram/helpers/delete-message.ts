@@ -68,6 +68,21 @@ export function scheduleEphemeralMessageDelete(
 }
 
 /**
+ * Schedule a best-effort delete of a plain message after the temp-message delay. Used for the input
+ * a failure answers: the error notice itself is transient — the next notification or menu removes
+ * it — so the message that caused it must not be left behind on its own.
+ */
+export function scheduleMessageDelete(
+  ctx: ContextWithLog,
+  messageId: number,
+  delayMs?: number,
+): void {
+  void sleep(delayMs ?? getRuntime().config.TEMP_MESSAGE_DELAY_MS).then(() =>
+    deleteMessagesSafely(ctx, [messageId]),
+  )
+}
+
+/**
  * Best-effort bulk delete (e.g. temp group notices). Same rationale as deleteMessageSafely.
  */
 export async function deleteMessagesSafely(

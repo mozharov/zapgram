@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {chatRoute, staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
+import {mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
@@ -214,6 +215,32 @@ test('a private error carries the open-menu button and spawns no menu of its own
     inline_keyboard: [[{text: '👛 Open wallet', callback_data: staticCallback.openMenu}]],
   })
   expect(methodsSince(mark)).not.toContain('sendRichMessage')
+})
+
+test('open-menu on an error deletes the error instead of only stripping its button', async () => {
+  await e2e.send(privateText(mintInvoice({sats: 100, description: 'too expensive'}).bolt11))
+  const error = e2e.tg.lastMessageId('sendMessage')
+  expect(error).toBeDefined()
+  const mark = e2e.tg.calls.length
+
+  await e2e.send(privateCallback(staticCallback.openMenu, {messageId: error}))
+
+  // A transient notice is disposable: nothing of it is worth keeping once the menu is back.
+  expect(deletedIdsSince(mark)).toContain(error)
+  expect(await notificationPointer()).toBeNull()
+})
+
+test('a later notification deletes the error it supersedes', async () => {
+  await e2e.send(privateText(mintInvoice({sats: 100, description: 'too expensive'}).bolt11))
+  const error = e2e.tg.lastMessageId('sendMessage')
+  expect(error).toBeDefined()
+  const mark = e2e.tg.calls.length
+
+  await e2e.container.notifier.send(USER_A, 'you received sats')
+
+  expect(deletedIdsSince(mark)).toContain(error)
+  expect(methodsSince(mark)).not.toContain('editMessageReplyMarkup')
+  expect(await notificationPointer()).toBe(e2e.tg.lastMessageId('sendMessage'))
 })
 
 // --- Helpers ---

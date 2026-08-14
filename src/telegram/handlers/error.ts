@@ -2,6 +2,7 @@ import {AppError} from '@core/errors/app-error.js'
 import type {BotContext} from '@telegram/context.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
+import {scheduleMessageDelete} from '@telegram/helpers/delete-message.js'
 import {replyOnlyToSender} from '@telegram/helpers/ephemeral-message.js'
 import type {ErrorHandler} from 'grammy'
 import {getRuntime} from '../../runtime.js'
@@ -51,4 +52,9 @@ export const errorHandler: ErrorHandler = async err => {
     transient: true,
   })
   if (!sent) ctx.log.error('Failed to reply about error in private chat')
+  // The notice is transient, so the input it answers must go with it: otherwise the next
+  // notification deletes the explanation and leaves a lone failed message in the chat. A callback
+  // carries the bot's own screen in `ctx.msg`, which is why only a real user message qualifies.
+  const failedInput = ctx.message
+  if (failedInput && !failedInput.from?.is_bot) scheduleMessageDelete(ctx, failedInput.message_id)
 }
