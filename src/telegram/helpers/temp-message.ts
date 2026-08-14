@@ -22,17 +22,23 @@ export async function replyWithTempMessage(
 }
 
 /**
- * Show an invalid-input hint inside a conversation, then remove both the hint and the rejected
- * user message after the configured delay. `conversation.external` schedules the timer once, so
- * replaying the conversation body does not create duplicate cleanups.
+ * Show a hint or a closing confirmation inside a conversation, then remove both it and the user
+ * message it answers after the configured delay. `conversation.external` schedules the timer once,
+ * so replaying the conversation body does not create duplicate cleanups.
+ *
+ * Pass `keepInput` when the caller already disposes of the user message itself — `showLivingMenu`
+ * deletes it right away, and listing an id that is gone by the time the timer fires would risk
+ * taking the whole batch, hint included, down with it.
  */
 export async function replyWithConversationTempMessage(
   conversation: BotConversation,
   ctx: ConversationContext,
   text: string,
+  options?: {keepInput?: boolean},
 ): Promise<void> {
   const hint = await ctx.reply(text)
-  const inputMessageId = ctx.message?.from?.is_bot ? undefined : ctx.message?.message_id
+  const userMessageId = ctx.message?.from?.is_bot ? undefined : ctx.message?.message_id
+  const inputMessageId = options?.keepInput ? undefined : userMessageId
   const messageIds = [inputMessageId, hint.message_id].filter(
     (messageId): messageId is number => messageId !== undefined,
   )

@@ -101,7 +101,14 @@ export async function editCustomMessage(
       chatId,
       locale === 'ru' ? {customMessageRu: htmlMessage} : {customMessageEn: htmlMessage},
     )
-    await next.reply(next.t('edit-custom-message.completed', {locale: locale.toUpperCase()}))
+    // The confirmation is disposable: the screen below already shows the new state, so it clears
+    // itself after the temp-message delay. `replyWithCustomMessage` deletes the pasted message.
+    await replyWithConversationTempMessage(
+      conversation,
+      next,
+      next.t('edit-custom-message.completed', {locale: locale.toUpperCase()}),
+      {keepInput: true},
+    )
     await replyWithCustomMessage(next, updatedChat)
     return
   }

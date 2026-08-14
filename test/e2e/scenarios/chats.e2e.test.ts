@@ -566,7 +566,10 @@ for (const editCase of [
     )
     e2e.tg.reset()
 
-    await expectDelta(e2e, () => e2e.send(privateText(editCase.input)), {
+    const input = privateText(editCase.input)
+    const inputMessageId = input.message?.message_id
+    const telegramMark = e2e.tg.calls.length
+    await expectDelta(e2e, () => e2e.send(input), {
       db: {
         chats: {
           changed: 1,
@@ -584,6 +587,13 @@ for (const editCase of [
         {method: 'sendMessage', to: USER_A, text: /Join request message/},
       ],
     })
+
+    // The confirmation is disposable: the card below it already shows the new state. The pasted
+    // message is not in the batch — the card's own `showLivingMenu` already removed it.
+    await waitForDeleteMessages(telegramMark)
+    const deleted = deletedMessageIdsSince(telegramMark)
+    expect(deleted).toHaveLength(1)
+    expect(deleted).not.toContain(inputMessageId)
 
     expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
       ...editCase.initial,
@@ -1069,6 +1079,15 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+/** Temp-message cleanup runs on a timer, so poll instead of racing the configured delay. */
+async function waitForDeleteMessages(mark: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (e2e.tg.calls.slice(mark).some(call => call.method === 'deleteMessages')) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary message was never deleted')
 }
 
 function deletedMessageIdsSince(mark: number): number[] {

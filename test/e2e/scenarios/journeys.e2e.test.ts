@@ -496,6 +496,8 @@ test('private keyboard navigation keeps one world through screens and conversati
       {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
+  // The confirmation clears itself on a timer; drain it here so it cannot land mid-assertion later.
+  await waitForTempCleanup()
   await expectDelta(
     e2e,
     () =>
@@ -518,6 +520,7 @@ test('private keyboard navigation keeps one world through screens and conversati
       {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
+  await waitForTempCleanup()
   await expectEditedScreen(
     chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
     /Join request message/,
@@ -732,6 +735,16 @@ async function settleJoin(
     expect(end).toBeLessThanOrEqual(Date.now() + ONE_MONTH_IN_MS)
   }
   expectPayouts(payoutTimes)
+}
+
+/** Temp-message cleanup runs on a timer; wait it out so it cannot leak into the next delta. */
+async function waitForTempCleanup(): Promise<void> {
+  const before = e2e.tg.of('deleteMessages').length
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (e2e.tg.of('deleteMessages').length > before) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary message was never deleted')
 }
 
 async function expectEditedScreen(data: string, text: RegExp): Promise<void> {
