@@ -64,12 +64,9 @@ const writeOperations = [
 
 const inventory: Record<Category, readonly string[]> = {
   routes: [...parameterizedRoutes.map(route => route.name), ...Object.values(staticCallback)],
-  commands: [
-    ...shellCommands,
-    ...walletCommands,
-    ...donationCommands,
-    ...broadcastCommands,
-  ].map(command => `/${command}`),
+  commands: [...shellCommands, ...walletCommands, ...donationCommands, ...broadcastCommands].map(
+    command => `/${command}`,
+  ),
   updates: [...handledUpdateTypes, ...unhandledUpdateTypes],
   writes: writeOperations,
   jobs: defaultJobDefinitions().map(job => job.name),

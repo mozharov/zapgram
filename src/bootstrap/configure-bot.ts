@@ -91,7 +91,7 @@ export async function configureBot(deps: {
       language_code: 'ru',
     })
   }
-  
+
   await bot.api.setMyCommands([...privateCommandsEn], {scope: {type: 'all_private_chats'}})
   await bot.api.setMyCommands([...privateCommandsRu], {
     scope: {type: 'all_private_chats'},
