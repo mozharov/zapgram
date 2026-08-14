@@ -347,12 +347,17 @@ for (const price of [0, -5]) {
   test(`price ${price} is rejected and can be corrected`, async () => {
     await enterChangingPrice()
 
-    await expectDelta(e2e, () => e2e.send(privateText(String(price))), {
+    const invalidInput = privateText(String(price))
+    const invalidMessageId = invalidInput.message?.message_id
+    if (invalidMessageId === undefined) throw new Error('Expected the invalid price input message')
+    await expectDelta(e2e, () => e2e.send(invalidInput), {
       db: {conversations: {changed: 1}},
       telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
     })
 
-    await expectDelta(e2e, () => e2e.send(privateText(String(CHANGED_PRICE))), {
+    const correctedInput = privateText(String(CHANGED_PRICE))
+    const telegramMark = e2e.tg.calls.length
+    await expectDelta(e2e, () => e2e.send(correctedInput), {
       db: {
         chats: {
           changed: 1,
@@ -361,11 +366,13 @@ for (const price of [0, -5]) {
         conversations: {removed: 1},
       },
       telegram: [
+        {method: 'deleteMessages', to: USER_A},
         {method: 'editMessageReplyMarkup', to: USER_A},
         {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
         {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
       ],
     })
+    expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
 
     await expectNoConversations(e2e.db)
     expectNoErrors(e2e.logs)
@@ -1061,4 +1068,12 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }

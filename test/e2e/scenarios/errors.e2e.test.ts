@@ -145,18 +145,17 @@ test('invoice_already_paid keeps the payee pending row and shows the dedicated c
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
 })
 
-test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', async () => {
+test('a bolt11-shaped but undecodable payment request stays in invoice input', async () => {
   const before = await snapshot(e2e)
 
   await e2e.send(privateText('lnbc1notavalidinvoice00'))
 
-  expectPrivateError('invoice_parsing', 'en')
-  // Conversation still enters: decode throws InvoiceParsingError from payingInvoice.
+  // Invoice text is validated before entering payingInvoice, so a malformed invoice is an
+  // in-flow correction rather than an error-boundary failure.
   expect(
-    e2e.tg
-      .of('sendMessage')
-      .some(call => String(call.text).includes('Error processing the Lightning invoice')),
+    e2e.tg.of('sendMessage').some(call => String(call.text).includes('Invalid Lightning invoice')),
   ).toBe(true)
+  expect(errorMessages()).not.toContain('Bot error')
   await expectMoneyUnchanged(before)
 })
 

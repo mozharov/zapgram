@@ -140,15 +140,21 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
 test('an invalid NWC URL keeps the prompt active and can be corrected', async () => {
   await e2e.send(privateCallback(staticCallback.connectNwc))
 
-  await expectDelta(e2e, () => e2e.send(privateText('https://example.com/wallet')), {
+  const invalidInput = privateText('https://example.com/wallet')
+  const invalidMessageId = invalidInput.message?.message_id
+  if (invalidMessageId === undefined) throw new Error('Expected the invalid NWC input message')
+  await expectDelta(e2e, () => e2e.send(invalidInput), {
     db: {conversations: {changed: 1}},
     telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid NWC URL/}],
   })
   expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
 
-  await expectDelta(e2e, () => e2e.send(privateText(NWC_URL)), {
+  const correctedInput = privateText(NWC_URL)
+  const telegramMark = e2e.tg.calls.length
+  await expectDelta(e2e, () => e2e.send(correctedInput), {
     db: {users: {changed: 1}, conversations: {removed: 1}},
     telegram: [
+      {method: 'deleteMessages', to: USER_A},
       {method: 'deleteMessage', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
@@ -156,6 +162,7 @@ test('an invalid NWC URL keeps the prompt active and can be corrected', async ()
       {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
     ],
   })
+  expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
 
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: NWC_URL})
   expectNoErrors(e2e.logs)
@@ -657,4 +664,12 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }

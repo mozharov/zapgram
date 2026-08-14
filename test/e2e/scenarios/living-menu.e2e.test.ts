@@ -205,11 +205,11 @@ test('a private error carries the open-menu button and spawns no menu of its own
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
   const mark = e2e.tg.calls.length
 
-  // An undecodable bolt11 raises InvoiceParsingError inside the paying-invoice conversation.
-  await e2e.send(privateText('lnbc1notavalidinvoice00'))
+  // attachUser rejects bot senders before a handler can create a menu.
+  await e2e.send(privateText('hello', {from: {id: OWNER, is_bot: true}}))
 
   const error = e2e.tg.of('sendMessage').at(-1)
-  expect(String(error?.text)).toMatch(/Error processing the Lightning invoice/)
+  expect(String(error?.text)).toMatch(/can't send from a bot/i)
   expect(error?.reply_markup).toEqual({
     inline_keyboard: [[{text: '👛 Open wallet', callback_data: staticCallback.openMenu}]],
   })

@@ -95,16 +95,22 @@ test('an invalid private-send amount can be corrected without restarting the flo
   await e2e.send(privateCallback(staticCallback.sendToUser))
   await e2e.send(privateText('@user_b'))
 
-  await expectDelta(e2e, () => e2e.send(privateText('not-a-number')), {
+  const invalidInput = privateText('not-a-number')
+  const invalidMessageId = invalidInput.message?.message_id
+  if (invalidMessageId === undefined) throw new Error('Expected the invalid tip input message')
+  await expectDelta(e2e, () => e2e.send(invalidInput), {
     db: {conversations: {changed: 1}},
     telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
   })
 
+  const correctedInput = privateText(String(TIP_SATS))
+  const telegramMark = e2e.tg.calls.length
   await expectInternalTransfer(
-    () => e2e.send(privateText(String(TIP_SATS))),
+    () => e2e.send(correctedInput),
     USER_B,
     '100002 wallet',
     [
+      {method: 'deleteMessages', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
@@ -113,6 +119,7 @@ test('an invalid private-send amount can be corrected without restarting the flo
     ],
     {conversationRemoved: true},
   )
+  expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
   expectNoErrors(e2e.logs)
 })
 
@@ -639,4 +646,12 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }

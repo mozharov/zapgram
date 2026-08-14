@@ -554,10 +554,10 @@ test('pasted bolt11 invoice reaches the invoices module', async () => {
     ...FIRST_TOUCH,
     telegram: ['sendMessage'],
   })
-  expect(joinedOutput()).toMatch(/Error processing the Lightning invoice/)
-  // The invoice is unparseable on purpose: routing is proven by reaching the paying-invoice
-  // conversation at all. The single log line is the InvoiceParsingError it then raises.
-  expect(e2e.logs).toHaveLength(1)
+  expect(joinedOutput()).toMatch(/Invalid Lightning invoice/)
+  // The invoice is unparseable on purpose: routing is proven by the invoice-input conversation
+  // returning its localized correction rather than falling through to the wallet.
+  expect(e2e.logs).toHaveLength(0)
 })
 
 // --- Chat-type isolation ---

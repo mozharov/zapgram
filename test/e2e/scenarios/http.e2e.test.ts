@@ -104,12 +104,12 @@ test('POST /bot with a wrong or missing secret leaves the world unchanged', asyn
 // --- Request id ---
 
 test('POST /bot stamps reqId on the update and every log line of it carries it', async () => {
-  // Undecodable bolt11 trips the error boundary, which logs through ctx.log — the child logger
-  // the update middleware builds from `update.reqId`. The 8-char id shape is only ever produced
-  // by the HTTP request logger, so finding it here proves the router wrote it onto the body
-  // before grammY ran the update.
+  // An unaffordable, valid invoice trips the error boundary. The child logger the update
+  // middleware creates takes its reqId from `update.reqId`, which the router overwrites before
+  // grammY runs the update.
   e2e.logs.length = 0
-  const update = privateText('lnbc1invalid', {from: {id: USER_A}})
+  const pending = await seedPendingInvoice(e2e, {userId: USER_A, sats: 21})
+  const update = privateText(pending.paymentRequest, {from: {id: USER_A}})
 
   const response = await postBot(update)
   expect(response.status).toBe(200)
@@ -127,7 +127,6 @@ test('POST /bot stamps reqId on the update and every log line of it carries it',
   // Fixture reqIds look like `e2e-N`; the router must overwrite them with its own.
   expect(String(botError?.reqId)).not.toMatch(/^e2e-/)
   // The failing update is identifiable without reading any other line.
-  expect(botError?.action).toBe('ln_invoice_pasted')
   expect(botError?.userId).toBe(USER_A)
 })
 
