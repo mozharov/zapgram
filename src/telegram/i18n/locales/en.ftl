@@ -518,7 +518,8 @@ onchain-invoice =
         *[other] one month of access
         }</b> to <b>"{$title}"</b></p>
 
-        <details open><summary>🏷 Bitcoin address</summary><code>{$address}</code></details>
+        <p>Scan the QR below, or tap the address to copy it.</p>
+        <blockquote expandable><code>{$address}</code></blockquote>
 
         <p>Access opens as soon as the transaction appears on the network.</p>
         <p><i>Any amount above {$price} sats{$usdSuffix} is a donation to the community owner.</i></p>
@@ -565,14 +566,14 @@ subscription-invoice =
     <p>Choose how you want to pay 👇</p>
     .created = {$message}
 
-    <p>⚡️ Pay this Lightning invoice to get in.</p>
     <p>💰 Price: <b>{$price} sats{$usdSuffix}</b></p>
     <p>🎟 You get: <b>{$type ->
     [one_time] permanent access
     *[other] one month of access
     }</b></p>
 
-    <details open><summary>⚡️ Lightning invoice</summary><code>{$invoice}</code></details>
+    <p>⚡️ Pay the Lightning invoice: scan the QR below, or tap the invoice to copy it.</p>
+    <blockquote expandable><code>{$invoice}</code></blockquote>
 
     <p>Access opens automatically the moment the invoice is paid.</p>
     <p>{$remaining}</p>

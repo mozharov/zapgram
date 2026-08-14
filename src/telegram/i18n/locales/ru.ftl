@@ -518,7 +518,8 @@ onchain-invoice =
         *[other] доступ на месяц
         }</b> к <b>«{$title}»</b></p>
 
-        <details open><summary>🏷 Bitcoin-адрес</summary><code>{$address}</code></details>
+        <p>Отсканируй QR ниже или нажми на адрес, чтобы скопировать.</p>
+        <blockquote expandable><code>{$address}</code></blockquote>
 
         <p>Доступ откроется, как только транзакция появится в сети.</p>
         <p><i>Сумма сверх {$price} сат{$usdSuffix} — донат владельцу сообщества.</i></p>
@@ -565,14 +566,14 @@ subscription-invoice =
     <p>Выбери, чем платить 👇</p>
     .created = {$message}
 
-    <p>⚡️ Оплати счёт Lightning, чтобы попасть внутрь.</p>
     <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
     <p>🎟 Ты получишь: <b>{$type ->
     [one_time] вечный доступ
     *[other] доступ на месяц
     }</b></p>
 
-    <details open><summary>⚡️ Счёт Lightning</summary><code>{$invoice}</code></details>
+    <p>⚡️ Оплати счёт Lightning: отсканируй QR ниже или нажми на счёт, чтобы скопировать.</p>
+    <blockquote expandable><code>{$invoice}</code></blockquote>
 
     <p>Доступ откроется автоматически сразу после оплаты.</p>
     <p>{$remaining}</p>

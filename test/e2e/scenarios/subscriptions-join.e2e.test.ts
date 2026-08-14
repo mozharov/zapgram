@@ -77,7 +77,7 @@ test('choosing Lightning mints one linked one-time invoice with no balance butto
   expect(htmlOf(telegram)).toMatch(/You get: <b>permanent access<\/b>/)
   expect(htmlOf(telegram)).toContain(`<code>${payment.paymentRequest}</code>`)
   // Collapsible and tap-to-copy, the way the invoice-creation screen presents a BOLT11.
-  expect(htmlOf(telegram)).toContain('<details open><summary>')
+  expect(htmlOf(telegram)).toContain('<blockquote expandable><code>')
   expect(buttonsOf(telegram)).toEqual([])
   expect(payment.subscriptionType).toBe('one_time')
 })

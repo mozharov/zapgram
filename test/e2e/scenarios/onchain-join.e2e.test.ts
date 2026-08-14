@@ -110,7 +110,7 @@ test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts'
   const edited = e2e.tg.last('editMessageText')
   expect(htmlOf(edited)).toContain(onchainRow.address)
   // Collapsible, tap-to-copy, and a BIP-21 QR carried as a rich media block on the same message.
-  expect(htmlOf(edited)).toContain(`<details open><summary>🏷 Bitcoin address</summary><code>`)
+  expect(htmlOf(edited)).toContain(`<blockquote expandable><code>${onchainRow.address}</code>`)
   expect(htmlOf(edited)).toContain('<img src="tg://photo?id=qr"/>')
   expect(callbackDatas(edited).find(d => d.startsWith('pay-lightning:'))).toBe(
     payLightningRoute.build({chatId: CHAT_GROUP}),
