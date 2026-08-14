@@ -183,9 +183,6 @@ donate =
         </ul>
         </details>
 
-        <p><b>One-shot support</b></p>
-        <p>Tap an amount below, or open <b>Monthly</b> / <b>Auto %</b>.</p>
-
         <p>⚡ <b>Lightning address</b><br/><code>zapgram@getalby.com</code></p>
         <footer>🤝 Supported by the <a href="https://t.me/bitcoin21ideas">21ideas</a> community.</footer>
     .stats-last = Last: {TGTIME($date, format: "d")}
@@ -203,8 +200,8 @@ donate =
     .monthly-menu = 📅 <b>Monthly donation</b>
 
         Current: <b>{$sats}</b> sats{$usdSuffix} (0 = off).
+
         Choose an amount. Enabling charges once now, then every 30 days.
-        Back returns to the full support hub (one-shot + auto %).
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
     .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
     .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats{$usdSuffix}. Next charge stays on schedule.
@@ -296,7 +293,8 @@ settings-donation = ⚡️ <b>Auto % on payments</b>
     Current: <b>{$status}</b> · {$scope}
 
     A voluntary % added on top of your tips and invoice pays (never blocks the main payment).
-    0% turns it off. One-shot and monthly: use the Support hub buttons.
+    
+    0% turns it off.
     .off = Off
     .percent = {$percent}%
     .scope-tips = tips only
