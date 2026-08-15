@@ -92,6 +92,11 @@ export async function payingInvoice(
     flow: 'pay_invoice',
     host,
     html: joinWizardHtml(details, ctx.t('wait-for-wallet.pay-invoice')),
+    soleWallet: {
+      html: wallet => joinWizardHtml(details, ctx.t(`wait-for-wallet.pay-invoice-${wallet}`)),
+      buttonText: ctx.t('button.confirm-pay-invoice'),
+      actionLabel: ctx.t('conversation-action.confirm-invoice-payment'),
+    },
     copyText: copyableText(invoice.paymentRequest),
     onCancel: restoreParent,
   })

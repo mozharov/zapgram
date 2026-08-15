@@ -291,17 +291,19 @@ test('paying an invoice shows decoded details before the wallet picker', async (
   expectNoErrors(e2e.logs)
 })
 
-test('paying an invoice does not offer a wallet that cannot cover it', async () => {
+test('paying an invoice confirms the only wallet that can cover it', async () => {
   await connectNwc()
   const invoice = foreignInvoice(100)
   await e2e.send(privateCallback(staticCallback.payInvoice))
 
   await e2e.send(privateText(invoice.bolt11))
 
+  // The internal balance is empty, so NWC is the only rail: nothing left to choose between.
   const prompt = e2e.tg.last('editMessageText')
   expect(callbackDataOf(prompt)).toEqual(['nwc', 'cancel'])
-  expect(buttonTextsOf(prompt)).toContain('⚡️ NWC')
-  expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/ZapGram/)
+  expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
+  expect(String(prompt?.text)).toMatch(/Paying from your NWC wallet\. Confirm the payment/)
+  expect(String(prompt?.text)).not.toMatch(/Select a wallet/)
   expectNoErrors(e2e.logs)
 })
 
@@ -317,7 +319,9 @@ test('paying an invoice hides NWC and notes it when the balance cannot be read',
   const prompt = e2e.tg.last('editMessageText')
   expect(String(prompt?.text)).toMatch(/Couldn't reach the connected NWC wallet/)
   expect(callbackDataOf(prompt)).toEqual(['internal', 'cancel'])
-  expect(buttonTextsOf(prompt)).toContain('🤖 ZapGram')
+  expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
+  // An unreachable NWC leaves one payable wallet, and the screen has to say which one it is.
+  expect(String(prompt?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/NWC/)
   expectNoErrors(e2e.logs)
 })

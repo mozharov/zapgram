@@ -40,7 +40,8 @@ export const COVERS = scenarioCoverage.invoices
  * - a conversation writes exactly one `conversations` row, keyed by chat. It appears when the
  *   conversation is entered and is gone the moment it ends, however it ends.
  *
- * NWC is never connected here, so paying an invoice offers only the internal wallet button.
+ * NWC is never connected here, so paying an invoice has a single payable wallet: the wallet step
+ * is a confirmation naming ZapGram rather than a picker.
  */
 
 const AMOUNT = 1000
@@ -216,7 +217,7 @@ test('an LNbits that refuses to mint the invoice leaves no pending row behind', 
 
 // --- Paying an invoice ---
 
-test('a message containing a bolt11 opens invoice details and the wallet picker', async () => {
+test('a message containing a bolt11 opens invoice details and the payment confirmation', async () => {
   // Minted before the window: issuing it is an LNbits event, and the point here is what the
   // *message* does. Balance is checked before a wallet can be offered.
   credit(USER_A, 1000)
@@ -234,7 +235,7 @@ test('a message containing a bolt11 opens invoice details and the wallet picker'
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(String(review?.text)).toMatch(/Created:/)
   expect(String(review?.text)).not.toMatch(/Created at:/)
-  expect(String(review?.text)).toMatch(/Select a wallet to pay this invoice/)
+  expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).not.toMatch(/Expires:[\s\S]*?<\/b>\n{3,}<blockquote/)
   expect(review?.link_preview_options).toEqual({is_disabled: true})
   expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
@@ -257,7 +258,7 @@ test('an invoice pasted from Send is deleted and folded into the host review', a
 
   const review = e2e.tg.last('editMessageText')
   expect(String(review?.text)).toMatch(/issued elsewhere/)
-  expect(String(review?.text)).toMatch(/Select a wallet to pay this invoice/)
+  expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(review?.link_preview_options).toEqual({is_disabled: true})
   expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
@@ -631,7 +632,9 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
 
   expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
   expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Select a wallet to pay this invoice/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
+    /Paying from your ZapGram wallet\. Confirm the payment/,
+  )
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })

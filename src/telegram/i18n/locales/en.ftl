@@ -330,6 +330,8 @@ wait-for-wallet = <b>👛 Select Wallet</b>
     .auto-only-nwc = <b>⚡️ Only the NWC wallet has enough balance, so it was selected automatically.</b>
     .nwc-unreachable = <b>⚠️ Couldn't reach the connected NWC wallet.</b>
     .pay-invoice = <b>👛 Select a wallet to pay this invoice</b>
+    .pay-invoice-internal = <b>🤖 Paying from your {bot-name} wallet. Confirm the payment</b>
+    .pay-invoice-nwc = <b>⚡️ Paying from your NWC wallet. Confirm the payment</b>
 
 sats-received = <b>📩 You received {$amount} sats{$usdSuffix}</b>.
     {$username -> 

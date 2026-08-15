@@ -29,6 +29,16 @@ export type WalletSelection = {
   host?: ConversationHost
 }
 
+/**
+ * One usable wallet is not a choice. Flows that pass this turn the picker into a confirmation
+ * naming the paying wallet, instead of offering a single wallet button.
+ */
+export type SoleWalletPrompt = {
+  html: (wallet: 'internal' | 'nwc') => string
+  buttonText: string
+  actionLabel: string
+}
+
 export async function waitForWallet(
   conversation: BotConversation,
   ctx: ConversationContext,
@@ -37,6 +47,7 @@ export async function waitForWallet(
     flow?: WalletSelectFlow
     host?: ConversationHost
     html?: string
+    soleWallet?: SoleWalletPrompt
     copyText?: string
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
@@ -69,10 +80,11 @@ export async function waitForWallet(
         flow,
         requiredSats,
         nwcBalanceError: false,
-        html: opts?.html ?? ctx.t('wait-for-wallet.pay-invoice'),
-        keyboard: walletKeyboard(ctx, {
-          copyText: opts?.copyText,
+        ...walletPrompt(ctx, {
           funded: {internal: true, nwc: false, nwcBalanceError: false},
+          html: opts?.html ?? ctx.t('wait-for-wallet.pay-invoice'),
+          copyText: opts?.copyText,
+          sole: opts?.soleWallet,
         }),
       })
     }
@@ -134,13 +146,12 @@ export async function waitForWallet(
       flow,
       requiredSats,
       nwcBalanceError: funded.nwcBalanceError,
-      html: joinWizardHtml(
-        opts?.html ?? ctx.t('wait-for-wallet'),
-        funded.nwcBalanceError ? ctx.t('wait-for-wallet.nwc-unreachable') : undefined,
-      ),
-      keyboard: walletKeyboard(ctx, {
-        copyText: opts?.copyText,
+      ...walletPrompt(ctx, {
         funded,
+        html: opts?.html ?? ctx.t('wait-for-wallet'),
+        note: funded.nwcBalanceError ? ctx.t('wait-for-wallet.nwc-unreachable') : undefined,
+        copyText: opts?.copyText,
+        sole: opts?.soleWallet,
       }),
     })
   }
@@ -155,6 +166,41 @@ export async function waitForWallet(
   })
 }
 
+/** The screen and buttons for the wallet step: a picker, or a confirmation of the only wallet. */
+function walletPrompt(
+  ctx: ConversationContext,
+  opts: {
+    funded: FundedWallets
+    html: string
+    note?: string
+    copyText?: string
+    sole?: SoleWalletPrompt
+  },
+): {html: string; keyboard: InlineKeyboard; actionLabel?: string} {
+  const soleWallet = soleFundedWallet(opts.funded)
+  if (soleWallet && opts.sole) {
+    return {
+      html: joinWizardHtml(opts.sole.html(soleWallet), opts.note),
+      keyboard: confirmWalletKeyboard(ctx, {
+        wallet: soleWallet,
+        text: opts.sole.buttonText,
+        copyText: opts.copyText,
+      }),
+      actionLabel: opts.sole.actionLabel,
+    }
+  }
+  return {
+    html: joinWizardHtml(opts.html, opts.note),
+    keyboard: walletKeyboard(ctx, {copyText: opts.copyText, funded: opts.funded}),
+  }
+}
+
+/** The wallet left when exactly one of the two can pay, undefined when both or neither can. */
+function soleFundedWallet(funded: FundedWallets): 'internal' | 'nwc' | undefined {
+  if (funded.internal === funded.nwc) return undefined
+  return funded.internal ? 'internal' : 'nwc'
+}
+
 async function pickWallet(
   conversation: BotConversation,
   ctx: ConversationContext,
@@ -165,6 +211,7 @@ async function pickWallet(
     host?: ConversationHost
     html: string
     keyboard: InlineKeyboard
+    actionLabel?: string
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ): Promise<WalletSelection> {
@@ -173,7 +220,7 @@ async function pickWallet(
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html: opts.html,
-    actionLabel: ctx.t('conversation-action.select-wallet'),
+    actionLabel: opts.actionLabel ?? ctx.t('conversation-action.select-wallet'),
   })
   const cancelled = cancelledPromptState(ctx, prompt)
 
@@ -241,6 +288,18 @@ function walletKeyboard(
     keyboard.row({callback_data: 'nwc', text: nwcText})
   }
 
+  keyboard.row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
+  return keyboard
+}
+
+function confirmWalletKeyboard(
+  ctx: ConversationContext,
+  opts: {wallet: 'internal' | 'nwc'; text: string; copyText?: string},
+) {
+  const keyboard = new InlineKeyboard()
+  if (opts.copyText) keyboard.copyText(ctx.t('button.copy-invoice'), opts.copyText)
+  // Same callback data as the picker: the confirmation still resolves to a wallet.
+  keyboard.row({callback_data: opts.wallet, text: opts.text})
   keyboard.row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
   return keyboard
 }

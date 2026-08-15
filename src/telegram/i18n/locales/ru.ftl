@@ -330,6 +330,8 @@ wait-for-wallet = <b>👛 Выбери кошелёк</b>
     .auto-only-nwc = <b>⚡️ Баланса достаточно только на NWC-кошельке, поэтому он выбран автоматически.</b>
     .nwc-unreachable = <b>⚠️ Не удалось подключиться к NWC-кошельку.</b>
     .pay-invoice = <b>👛 Выбери кошелёк для оплаты счёта</b>
+    .pay-invoice-internal = <b>🤖 Оплата пройдёт с кошелька {bot-name}. Подтверди оплату</b>
+    .pay-invoice-nwc = <b>⚡️ Оплата пройдёт с NWC-кошелька. Подтверди оплату</b>
 
 sats-received = <b>📩 Тебе пришло {$amount} сат{$usdSuffix}</b>.
     {$username -> 
