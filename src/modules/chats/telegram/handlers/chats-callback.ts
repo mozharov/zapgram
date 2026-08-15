@@ -2,6 +2,7 @@ import {getAccessibleChatsCount, getPaginatedAccessibleChats} from '@modules/cha
 import {buildChatsKeyboard} from '@modules/chats/telegram/keyboards/chats.js'
 import {chatsPageRoute, staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {editLivingMenu} from '@telegram/helpers/living-menu.js'
 import {type CallbackQueryContext, InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -16,16 +17,20 @@ export const chatsCallback = async (ctx: CallbackQueryContext<BotContext>) => {
         text: ctx.t('button.add-chat'),
       })
       .row({
-        callback_data: staticCallback.groupSettings,
+        callback_data: staticCallback.wallet,
         text: ctx.t('button.back'),
       })
-    return ctx.editMessageText(ctx.t('chats.empty'), {reply_markup: keyboard})
+    return editLivingMenu(ctx, () =>
+      ctx.editMessageText(ctx.t('chats.empty'), {reply_markup: keyboard}),
+    )
   }
   if (totalChats <= (page - 1) * limit) page = Math.ceil(totalChats / limit)
 
   const chats = await getPaginatedAccessibleChats(ctx.user.id, page, limit)
   const hasNext = totalChats > page * limit
-  return ctx.editMessageText(ctx.t('chats'), {
-    reply_markup: buildChatsKeyboard(ctx.t, chats, page, hasNext),
-  })
+  return editLivingMenu(ctx, () =>
+    ctx.editMessageText(ctx.t('chats'), {
+      reply_markup: buildChatsKeyboard(ctx.t, chats, page, hasNext),
+    }),
+  )
 }

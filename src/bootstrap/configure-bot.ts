@@ -6,21 +6,13 @@ import type {ChatAdministratorRights} from 'grammy/types'
 
 const privateCommandsEn = [
   {command: 'wallet', description: 'Main menu and wallet info'},
-  {command: 'settings', description: 'Wallet settings'},
-  {command: 'subscriptions', description: 'Your active subscriptions'},
-  {command: 'chats', description: 'Your chats with paid subscriptions'},
   {command: 'donate', description: 'Support the project — one-shot, monthly, stats'},
-  {command: 'feature', description: 'Request a feature (optional sats tip)'},
   {command: 'help', description: 'FAQ, links and instructions'},
 ] as const
 
 const privateCommandsRu = [
   {command: 'wallet', description: 'Меню и информация о кошельке'},
-  {command: 'settings', description: 'Настройки кошелька'},
-  {command: 'subscriptions', description: 'Твои активные подписки'},
-  {command: 'chats', description: 'Твои чаты с платным доступом'},
   {command: 'donate', description: 'Поддержать проект — разово, ежемесячно, статистика'},
-  {command: 'feature', description: 'Запросить фичу (можно с сатоши)'},
   {command: 'help', description: 'FAQ, ссылки и инструкции'},
 ] as const
 
@@ -87,6 +79,19 @@ export async function configureBot(deps: {
   await bot.api.setMyDescription(descriptionEn)
   await bot.api.setMyDescription(descriptionRu, {language_code: 'ru'})
 
+  await bot.api.deleteMyCommands({scope: {type: 'all_private_chats'}})
+  await bot.api.deleteMyCommands({
+    scope: {type: 'all_private_chats'},
+    language_code: 'ru',
+  })
+  for (const adminId of config.ADMIN_TELEGRAM_IDS) {
+    await bot.api.deleteMyCommands({scope: {type: 'chat', chat_id: adminId}})
+    await bot.api.deleteMyCommands({
+      scope: {type: 'chat', chat_id: adminId},
+      language_code: 'ru',
+    })
+  }
+
   await bot.api.setMyCommands([...privateCommandsEn], {scope: {type: 'all_private_chats'}})
   await bot.api.setMyCommands([...privateCommandsRu], {
     scope: {type: 'all_private_chats'},
@@ -103,11 +108,14 @@ export async function configureBot(deps: {
       language_code: 'ru',
     })
   }
+  // `is_ephemeral`: the /tip message itself stays invisible to the rest of the group (and to other
+  // bots) — only the public confirmation of a successful tip is seen by everyone.
   await bot.api.setMyCommands(
     [
       {
         command: 'tip',
         description: 'Send sats: /tip [amount] [username]',
+        is_ephemeral: true,
       },
     ],
     {scope: {type: 'all_group_chats'}},
@@ -117,6 +125,7 @@ export async function configureBot(deps: {
       {
         command: 'tip',
         description: 'Отправить саты: /tip [amount] [username]',
+        is_ephemeral: true,
       },
     ],
     {scope: {type: 'all_group_chats'}, language_code: 'ru'},

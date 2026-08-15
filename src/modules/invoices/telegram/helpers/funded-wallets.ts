@@ -38,7 +38,7 @@ export async function readWalletBalances(input: {
     const nwcMsats = await input.nwc.getBalance()
     return {internalMsats: input.internalBalanceMsats, nwcMsats, nwcBalanceError: false}
   } catch (error) {
-    input.log?.error({error}, 'Failed to get NWC balance for wallet selection')
+    input.log?.warn({error}, 'Failed to get NWC balance for wallet selection')
     return {internalMsats: input.internalBalanceMsats, nwcMsats: null, nwcBalanceError: true}
   }
 }

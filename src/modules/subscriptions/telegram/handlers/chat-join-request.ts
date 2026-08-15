@@ -1,5 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
+import {richCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
@@ -17,15 +18,20 @@ type Context = ChatTypeContext<BotContext, 'supergroup' | 'channel'> & {
 
 export const chatJoinRequestHandler = async (ctx: Context) => {
   const {chat: tgChat} = ctx.chatJoinRequest
-  ctx.log.debug({tgChat, user: ctx.user})
+  // Never spread `ctx.user` into a log record: it carries the user's NWC connection secret.
+  ctx.log.debug({chatTitle: tgChat.title, chatType: tgChat.type}, 'Chat join request received')
 
   const chat = await getChat({id: tgChat.id})
-  if (chat?.status !== 'active') return
+  if (chat?.status !== 'active') {
+    ctx.log.info({paidAccess: chat?.status ?? 'unknown_chat'}, 'Chat join request left to admins')
+    return
+  }
 
   const {posthog} = getRuntime()
 
   const subscription = await getSubscriptionByUserAndChat(ctx.user.id, chat.id)
   if (subscription) {
+    ctx.log.info({subscriptionId: subscription.id}, 'Chat join request auto-approved')
     captureBotEvent(
       posthog,
       'chat_join_request_auto_approved',
@@ -71,24 +77,42 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
   })
 
   const locale = await ctx.i18n.getLocale()
-  const message = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
   // user_chat_id is the private-chat peer for the join-request contact window; from.id is only a user id.
+  // Deliberately raw `sendRichMessage`, not the notifier: the chooser is a flow screen with its own
+  // payment buttons, so it stays out of the open-menu chain and never carries "Open wallet".
+  let sent: {message_id: number}
   try {
-    await ctx.api.sendMessage(
+    sent = await ctx.api.sendRichMessage(
       ctx.chatJoinRequest.user_chat_id,
-      ctx.t('subscription-invoice.choose-method', {
-        message: message ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
-        type: chat.paymentType,
-        price: chat.price,
-        usdSuffix: await usdSuffixForSats(chat.price),
-      }),
-      {reply_markup: keyboard, link_preview_options: {is_disabled: true}},
+      {
+        html: ctx.t('subscription-invoice.choose-method', {
+          message: richCustomMessage(chat, locale),
+          type: chat.paymentType,
+          price: chat.price,
+          usdSuffix: await usdSuffixForSats(chat.price),
+        }),
+      },
+      {reply_markup: keyboard},
     )
   } catch (error: unknown) {
     ctx.log.error({error}, 'Error while sending message to user about chat join request')
     return
   }
+  // Send first, adopt second: the screen a second join request replaces must not be deleted before
+  // its replacement exists. Adopting also puts this message under the single-menu rule — the next
+  // menu clears it, the same way a new one clears the screen a previous request left behind.
+  await getRuntime().notificationChrome.adoptJoinScreen(ctx.user.id, sent.message_id)
 
+  ctx.log.info(
+    {
+      price: chat.price,
+      paymentType: chat.paymentType,
+      onchainOffered: showOnchain,
+      walletCovers: balanceAvailability.walletCovers,
+      nwcCovers: balanceAvailability.nwcCovers,
+    },
+    'Join payment method chooser sent',
+  )
   captureBotEvent(
     posthog,
     'subscription_join_method_chooser_sent',

@@ -43,6 +43,96 @@ Preserve idempotency comments in settle/grant/payment repositories verbatim when
 
 Use `src/telegram/callback-data.ts` for any new `callback_data` route (`build` + `pattern` + `parse`).
 
+## Living menu (private chat)
+
+Exactly one message in the private chat is a live menu, and exactly one message carries the
+"Open wallet" button. `users.last_menu_message_id` and `users.last_notification_message_id` /
+`last_notification_base_markup` are the pointers; `notificationChrome`
+(`src/telegram/helpers/notification-chrome.ts`) owns all three. Design:
+`docs/superpowers/specs/2026-08-12-private-chat-declutter-design.md`.
+
+Two helpers in `src/telegram/helpers/living-menu.ts`, and every menu render must use one of them:
+
+- `showLivingMenu(ctx, send)` — a **new** menu message. Deletes the user's triggering message, strips
+  the open-menu row off the last notification, **sends**, and only then adopts the new message —
+  which is what deletes the menu it replaces. Commands, the private text fallback, `open-menu`,
+  `cancel`, and a conversation's first prompt.
+- `editLivingMenu(ctx, edit)` — an **in-place** repaint of a menu screen. Edits first (a vanished
+  message must not cost us the tracked menu), then adopts the clicked message.
+
+Both end in `chrome.adoptLivingMenu(userId, messageId)`: same id → no-op, different id → delete the
+tracked menu and move the pointer. That is what stops a click on an orphaned menu from leaving two
+live menus, and it is why there is no "delete the tracked menu" primitive to call on its own.
+
+**Send before deleting — this order is load-bearing.** Every `conversation.wait()` re-runs the
+conversation body from the top. grammY replays `ctx.api` calls from its log, but the chrome reaches
+the database and `bot.api` directly, so those steps re-execute for real on each replay. Because the
+replayed `send()` returns the id it returned the first time, `adoptLivingMenu` recognises it as the
+tracked menu and skips the delete. Deleting first destroyed the prompt the conversation was standing
+on — that was the `/feature` invalid-amount bug. `stripLastOpenMenu` clears its pointer on success
+for the same reason, and `deliver` likewise sends before stripping so a refused send leaves the
+previous receipt's button intact. When the clicked message was the last notification, its
+  notification pointers are cleared — the receipt is a menu now, so nothing may restore its keyboard.
+
+Flow surfaces stay outside **both**: invoice/QR and payment routes (`pay-lightning`, `pay-onchain`,
+`pay-subscription`, `pay-join-balance`, `subscription-renew`), every `editHost*` path in
+`conversation-host.ts`, `onchain/telegram/edit-status-message.ts`, and the join-request payment
+chooser (`chat-join-request.ts`). Adopting them would let the next `/wallet` delete a payment screen
+the user is working in.
+
+The join-request payment screen is the one exception, and it has a pointer of its own,
+`users.last_join_message_id`. It is a **second, temporary menu**: it keeps its own payment buttons
+and stays out of the open-menu chain, but only one may exist and a real menu supersedes it.
+`chat-join-request.ts` sends then calls `adoptJoinScreen`, so a new request deletes the screen the
+previous one left behind; `adoptLivingMenu` calls `dropJoinScreen` **before** its equal-id early
+return, so even repainting the same menu in place clears a payment screen that arrived on top of it.
+`forgetJoinScreen` releases the pointer without deleting, for the two places where that message stops
+being a payment screen: `pay-join-balance` (already deleted) and the on-chain settle edit wired in
+`container.ts`, which turns it into the member's only proof of access.
+
+Every private push goes through `notifier.*` (wrapped by `createChromeNotifier` in the container),
+never `bot.api.sendMessage` — that includes bot error messages. The error handler deliberately sends
+no wallet screen of its own: the open-menu button on the error message *is* the recovery path.
+
+## Group messages
+
+`/tip` is registered for group chats with `is_ephemeral: true`: the typed command reaches the bot
+but no other member sees it. Those updates carry `message_id: 0` + `ephemeral_message_id`.
+`deleteMessageSafely` deletes them with `deleteEphemeralMessage` (never `deleteMessage` on id 0).
+
+Only successful money movements are public in a group. Every failure or usage hint goes through
+`replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`), which sends a Telegram ephemeral
+message (`receiver_user_id`) that only the acting member sees and Telegram expires on its own — so
+it is never deleted afterwards. Anonymous admins, send-as channel, and other non-identifiable
+senders have no deliverable user: skip ephemeral and use `replyWithTempMessage` (timed delete).
+
+`/tip` (and other attachUser money paths) only debit a real human account. Bots, `sender_chat`
+identities (channel / group / anonymous admin), and Group Anonymous Bot raise `FromBotError` with
+user-facing copy; recipients may still be a channel/group owner via `getUserFromChatCreator`.
+
+## Dates
+
+Every timestamp a user sees goes through `TGTIME($var, format: "Dt")` in the `.ftl` files
+(`src/telegram/i18n/tg-time.ts`), which emits a Telegram `date_time` entity so the client renders it
+in the viewer's own timezone. Pass the raw `Date` as the translation variable — never a
+pre-formatted string. Fluent's built-in `DATETIME` is banned in locale files and a test enforces it:
+it can only render a timezone we choose, and the Bot API exposes no user timezone.
+
+## Logging
+
+Full rules: `docs/architecture.md` → Logging.
+
+- Log the interaction, not the transport. `src/telegram/middlewares/logger.ts` writes one
+  `Update handled` / `Update failed` line per update; ignored updates stay at `debug`. Do not add
+  per-request info logging at the HTTP layer.
+- In handlers/conversations use `ctx.log`; it already carries `reqId`, `action`, `userId`, `chatId`,
+  so log only what is new (ids, amounts, outcome). Services take `log` through `deps`; leaf
+  jobs/services use `getRuntime().log`.
+- Add an info line for every state change and money movement; skip it for read-only screens.
+- Never log message text, NWC URLs, LNbits keys, or whole `ctx.user` / wallet objects.
+- Inside conversations, log after the last `wait()` or inside `conversation.external` — anything
+  else re-runs on every replay.
+
 ## Tests
 
 Choose the narrowest test level that still crosses the boundary under test:

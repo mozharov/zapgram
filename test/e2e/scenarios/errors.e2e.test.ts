@@ -9,6 +9,7 @@ import {NostrWallet} from '@infra/nostr/wallet.js'
 import {
   payLightningRoute,
   paySubscriptionRoute,
+  staticCallback,
   subscriptionRoute,
 } from '@telegram/callback-data.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
@@ -39,8 +40,8 @@ import {scenarioCoverage} from './coverage.js'
 
 /**
  * Domain errors as the user sees them: every AppErrorCode reaches the right Fluent copy, private
- * chats get error + wallet, groups get a temporary message, channels stay silent, and copy is free
- * of Fluent isolation marks and raw translation keys.
+ * errors carry the open-menu button and nothing else follows them, group failures reach only their
+ * sender, channels stay silent, and copy is free of Fluent isolation marks and raw translation keys.
  *
  * `not_found` intentionally maps to `error.unknown`. NWC payment failures are forced through the
  * real pay-subscription route by stubbing `NostrWallet.prototype.payInvoice` — the live NWC
@@ -112,20 +113,34 @@ test('error-copy maps every AppErrorCode, with not_found falling back to unknown
   }
 })
 
-test('insufficient_funds is shown in a group as a temporary message', async () => {
+test('insufficient_funds is shown in a group only to the sender', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
   await expectGroupError(groupText('/tip 21 @user_b'), 'insufficient_funds', 'en')
 })
 
-test('insufficient_funds in private chat is error text plus the wallet screen', async () => {
+test('insufficient_funds in private chat is error text carrying the open-menu button', async () => {
   const invoice = mintInvoice({sats: 100, description: 'too expensive'})
   const before = await snapshot(e2e)
 
   // Balance is checked when choosing a wallet, before the review / pay button.
   await e2e.send(privateText(invoice.bolt11))
 
-  expectPrivateErrorAndWallet('insufficient_funds', 'en')
+  expectPrivateError('insufficient_funds', 'en')
   await expectMoneyUnchanged(before)
+})
+
+test('the message that caused a private error is removed after the temp-message delay', async () => {
+  const invoice = mintInvoice({sats: 100, description: 'too expensive'})
+  const input = privateText(invoice.bolt11)
+  const inputMessageId = input.message?.message_id
+  if (inputMessageId === undefined) throw new Error('Expected the failing input message')
+  const mark = e2e.tg.calls.length
+
+  // The notice itself is transient — the next notification or menu removes it — so leaving the
+  // failed input behind would strand half of the exchange in the chat.
+  await sendAndWaitForTempMessage(input)
+
+  expect(deletedMessageIdsSince(mark)).toContain(inputMessageId)
 })
 
 test('invoice_already_paid keeps the payee pending row and shows the dedicated copy', async () => {
@@ -136,24 +151,25 @@ test('invoice_already_paid keeps the payee pending row and shows the dedicated c
   await e2e.send(privateText(pending.paymentRequest))
   const before = await snapshot(e2e)
 
-  await e2e.send(privateCallback(payButton()))
+  await e2e.send(privateCallback(payButton(), {messageId: requiredPromptMessageId()}))
 
-  expectPrivateErrorAndWallet('invoice_already_paid', 'en')
+  expectPrivateError('invoice_already_paid', 'en')
   const after = await snapshot(e2e)
   expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
 })
 
-test('invoice_parsing rejects a bolt11-shaped but undecodable payment request', async () => {
+test('a bolt11-shaped but undecodable payment request stays in invoice input', async () => {
   const before = await snapshot(e2e)
 
   await e2e.send(privateText('lnbc1notavalidinvoice00'))
 
-  expectPrivateErrorAndWallet('invoice_parsing', 'en')
-  // Conversation enters before decode, so the opening "Paying..." line is also present.
+  // Invoice text is validated before entering payingInvoice, so a malformed invoice is an
+  // in-flow correction rather than an error-boundary failure.
   expect(
-    e2e.tg.of('sendMessage').some(call => String(call.text).includes('Paying Lightning invoice')),
+    e2e.tg.of('sendMessage').some(call => String(call.text).includes('Invalid Lightning invoice')),
   ).toBe(true)
+  expect(errorMessages()).not.toContain('Bot error')
   await expectMoneyUnchanged(before)
 })
 
@@ -200,7 +216,7 @@ test('nwc_connection is raised when paying a subscription invoice via NWC withou
 
   await e2e.send(privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})))
 
-  expectPrivateErrorAndWallet('nwc_connection', 'en')
+  expectPrivateError('nwc_connection', 'en')
   await expectMoneyUnchanged(before)
 })
 
@@ -236,7 +252,7 @@ for (const scenario of [
       privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'nwc'})),
     )
 
-    expectPrivateErrorAndWallet(scenario.code, 'en')
+    expectPrivateError(scenario.code, 'en')
     await expectMoneyUnchanged(before)
   })
 }
@@ -297,7 +313,7 @@ test('not_found is intentionally shown as the unknown error copy', async () => {
 
   await e2e.send(privateCallback(subscriptionRoute.build({subscriptionId: subscription.id})))
 
-  expectPrivateErrorAndWallet('not_found', 'en')
+  expectPrivateError('not_found', 'en')
   expect(errorTextTo(USER_A)).toBe(expectedErrorText('unknown', 'en'))
   await expectMoneyUnchanged(before)
 })
@@ -324,26 +340,49 @@ test('unknown surfaces for a non-AppError failure', async () => {
 
 // --- Delivery modes ---
 
-test('a group error is a temporary message that is deleted', async () => {
+test('a group error is an ephemeral message that needs no cleanup', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
   const before = await snapshot(e2e)
 
-  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+  await expectDelta(e2e, () => e2e.send(groupText('/tip 21 @user_b')), {
     telegram: [
       {method: 'deleteMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},
       {
         method: 'sendMessage',
         to: CHAT_GROUP,
+        receiverUserId: USER_A,
         text: expectedErrorPattern('insufficient_funds', 'en'),
       },
-      {method: 'deleteMessages', to: CHAT_GROUP},
     ],
   })
 
   const after = await snapshot(e2e)
   expect(after.db).toEqual(before.db)
   expect(after.lnbits).toEqual(before.lnbits)
+  expect(errorMessages()).toEqual(['Bot error'])
+})
+
+test('a group error Telegram refuses to keep private falls back to a public temporary message', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  // Only the ephemeral attempt fails; the public fallback takes the next queued (default) response.
+  e2e.tg.fail('sendMessage', {error_code: 400, description: 'Bad Request: user not found'})
+
+  await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+    telegram: [
+      {method: 'deleteMessage', to: CHAT_GROUP},
+      {method: 'sendChatAction', to: CHAT_GROUP},
+      {method: 'sendMessage', to: CHAT_GROUP, receiverUserId: USER_A},
+      {
+        method: 'sendMessage',
+        to: CHAT_GROUP,
+        receiverUserId: null,
+        text: expectedErrorPattern('insufficient_funds', 'en'),
+      },
+      {method: 'deleteMessages', to: CHAT_GROUP},
+    ],
+  })
+
   expect(errorMessages()).toEqual(['Bot error'])
 })
 
@@ -461,7 +500,7 @@ test('job notifications normalize each stored language_code independently', asyn
 
 test('error replies are sent with HTML parse mode and no raw keys', async () => {
   await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
-  await sendAndWaitForTempMessage(groupText('/tip 21 @user_b'))
+  await e2e.send(groupText('/tip 21 @user_b'))
 
   const errorCall = e2e.tg
     .of('sendMessage')
@@ -498,20 +537,24 @@ async function seedOwnerAndChat(): Promise<void> {
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active'})
 }
 
-function expectPrivateErrorAndWallet(code: AppErrorCode, locale: Locale): void {
+/**
+ * Private error path: the error joins the open-menu chain, so it carries the "Open wallet" row and
+ * nothing follows it. The button *is* the recovery path — the handler no longer renders a wallet of
+ * its own, which used to leave an untracked second menu in the chat on every error.
+ */
+function expectPrivateError(code: AppErrorCode, locale: Locale): void {
   const displayCode = code === 'not_found' ? 'unknown' : code
   const expected = expectedErrorText(displayCode, locale)
-  const texts = e2e.tg.of('sendMessage').map(call => String(call.text))
-  expect(texts).toContain(expected)
-  // Private error path: error reply then wallet. With NWC connected the wallet copy shows
-  // "ZapGram:" / "NWC:" lines instead of the single "Balance:" line.
-  const isWallet = (text: string) =>
-    text.includes('Balance:') || text.includes('NWC:') || /👛/.test(text)
-  expect(texts.some(isWallet)).toBe(true)
-  const errorIndex = texts.lastIndexOf(expected)
-  const walletIndex = texts.findIndex((text, index) => index > errorIndex && isWallet(text))
-  expect(errorIndex).toBeGreaterThanOrEqual(0)
-  expect(walletIndex).toBeGreaterThan(errorIndex)
+  const index = e2e.tg.calls.findIndex(
+    call => call.method === 'sendMessage' && String(call.payload.text) === expected,
+  )
+  expect(index).toBeGreaterThanOrEqual(0)
+  expect(e2e.tg.calls[index]?.payload.reply_markup).toEqual({
+    inline_keyboard: [
+      [{text: translate('button.open-wallet', locale), callback_data: staticCallback.openMenu}],
+    ],
+  })
+  expect(e2e.tg.calls.slice(index + 1).map(call => call.method)).not.toContain('sendRichMessage')
   expectCleanUserText(expected)
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
 }
@@ -524,8 +567,10 @@ async function expectGroupError(
   const before = await snapshot(e2e)
   const displayCode = code === 'not_found' ? 'unknown' : code
   const expected = expectedErrorText(displayCode, locale)
+  const sender = update.message?.from?.id
+  if (sender === undefined) throw new Error('A group error scenario needs a sending user')
 
-  await sendAndWaitForTempMessage(update)
+  await e2e.send(update)
 
   const after = await snapshot(e2e)
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
@@ -533,8 +578,18 @@ async function expectGroupError(
   expect(after.db.pendingInvoices).toEqual(before.db.pendingInvoices)
   expect(errorTextTo(CHAT_GROUP)).toBe(expected)
   expectCleanUserText(expected)
-  expect(e2e.tg.of('deleteMessages').length).toBeGreaterThan(0)
+  // Group failures are ephemeral: addressed to the sender alone, so nothing is deleted afterwards.
+  expect(Number(errorCallTo(CHAT_GROUP).receiver_user_id)).toBe(sender)
+  expect(e2e.tg.of('deleteMessages')).toEqual([])
   expect(errorMessages().some(message => message === 'Bot error')).toBe(true)
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }
 
 async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
@@ -564,11 +619,15 @@ function expectedErrorPattern(code: AppErrorCode, locale: Locale): RegExp {
 }
 
 function errorTextTo(chatId: number): string {
+  return String(errorCallTo(chatId).text)
+}
+
+function errorCallTo(chatId: number): Record<string, unknown> {
   const call = e2e.tg
     .of('sendMessage')
     .find(payload => Number(payload.chat_id) === chatId && String(payload.text).includes('⚠️'))
   if (!call) throw new Error(`No error sendMessage to ${chatId}`)
-  return String(call.text)
+  return call
 }
 
 function expectCleanUserText(text: string): void {
@@ -587,10 +646,16 @@ function payButton(): string {
       return markup?.inline_keyboard?.flat() ?? []
     })
     .map(button => button.callback_data)
-    .filter((data): data is string => typeof data === 'string' && data.startsWith('pay:'))
+    .filter((data): data is string => data === 'internal' || Boolean(data?.startsWith('pay:')))
   const button = buttons.at(-1)
   if (!button) throw new Error('Pay button not found')
   return button
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound invoice review message ID')
+  return messageId
 }
 
 function stubNwcPayInvoice(impl: () => Promise<void> | void): void {

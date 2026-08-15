@@ -27,7 +27,7 @@ import type {BotContext} from '@telegram/context.js'
 import {errorHandler} from '@telegram/handlers/error.js'
 import {helpCommand} from '@telegram/handlers/help.js'
 import {helpCallback} from '@telegram/handlers/help-callback.js'
-import {startCommand} from '@telegram/handlers/start.js'
+import {startCommand, startGroupCommand} from '@telegram/handlers/start.js'
 import {unknownCallback} from '@telegram/handlers/unknown-callback.js'
 import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {conversations} from '@telegram/middlewares/conversations.js'
@@ -38,6 +38,22 @@ import {posthogMiddleware} from '@telegram/middlewares/posthog.js'
 import type {Bot} from 'grammy'
 
 export const shellCommands = ['start', 'help'] as const
+
+/** Single source of truth for every persisted grammY conversation installed by the bot. */
+export const registeredConversations = [
+  connectingNWC,
+  sendingToUser,
+  payingInvoice,
+  creatingInvoice,
+  changingPrice,
+  editCustomMessage,
+  enablingOnchain,
+  customDonateAmount,
+  customDonationPercent,
+  customMonthlyAmount,
+  requestingFeature,
+  broadcasting,
+] as const
 
 /**
  * Registers all grammY middleware and feature modules.
@@ -59,24 +75,19 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   // Every conversation sits above every command and callback so an active conversation
   // always sees the next update and cancels on unrelated input. Module registers only
   // install their own command/callback handlers — not createConversation.
-  privateChat.use(createConversation(connectingNWC))
-  privateChat.use(createConversation(sendingToUser))
-  privateChat.use(createConversation(payingInvoice))
-  privateChat.use(createConversation(creatingInvoice))
-  privateChat.use(createConversation(changingPrice))
-  privateChat.use(createConversation(editCustomMessage))
-  privateChat.use(createConversation(enablingOnchain))
-  privateChat.use(createConversation(customDonateAmount))
-  privateChat.use(createConversation(customDonationPercent))
-  privateChat.use(createConversation(customMonthlyAmount))
-  privateChat.use(createConversation(requestingFeature))
-  privateChat.use(createConversation(broadcasting))
+  for (const conversation of registeredConversations) {
+    privateChat.use(createConversation(conversation))
+  }
 
   // Shell commands available before feature modules
   privateChat.command(shellCommands[0], startCommand)
   privateChat.command(shellCommands[1], helpCommand)
   privateChat.callbackQuery(staticCallback.help, helpCallback)
   privateChat.on('my_chat_member', privateMyChatMemberHandler)
+
+  // Telegram auto-sends `/start@botusername` into the group when the bot is added via the
+  // "Add to Group" menu button — clean that up (see start.ts).
+  composer.chatType(['group', 'supergroup']).command(shellCommands[0], startGroupCommand)
 
   registerWallet(composer)
   registerTipping(composer)

@@ -361,6 +361,11 @@ describe('mergePersonProperties', () => {
         monthlyDonationLastHash: null,
         monthlyDonationLastFailNotifyAt: null,
         botBlocked: false,
+        lastMenuMessageId: null,
+        lastNotificationMessageId: null,
+        lastNotificationBaseMarkup: null,
+        lastNotificationTransient: false,
+        lastJoinMessageId: null,
       }),
       personPropertiesFromTelegram({
         id: 42,

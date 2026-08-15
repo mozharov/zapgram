@@ -60,6 +60,46 @@ describe('fake Telegram Bot API server', () => {
     expect(await attachment.text()).toBe('photo')
   })
 
+  test('captures a rich message with its inline keyboard', async () => {
+    const {bot, tg} = await setup()
+
+    const sent = await bot.api.sendRichMessage(
+      777,
+      {html: '<h1>ZapGram</h1><p>Wallet</p>'},
+      {reply_markup: {inline_keyboard: [[{text: 'Open', callback_data: 'wallet'}]]}},
+    )
+
+    expect(tg.last('sendRichMessage')).toEqual({
+      chat_id: 777,
+      rich_message: {html: '<h1>ZapGram</h1><p>Wallet</p>'},
+      reply_markup: {inline_keyboard: [[{text: 'Open', callback_data: 'wallet'}]]},
+    })
+    expect(tg.lastMessageId('sendRichMessage')).toBe(sent.message_id)
+  })
+
+  test('records message results and preserves message ids across edits', async () => {
+    const {bot, tg} = await setup()
+
+    const prompt = await bot.api.sendMessage(777, 'Prompt')
+    expect(tg.lastResult('sendMessage')).toMatchObject({message_id: prompt.message_id})
+    expect(tg.lastMessageId('sendMessage')).toBe(prompt.message_id)
+
+    const editedText = await bot.api.editMessageText(777, prompt.message_id, 'Updated prompt')
+    expect(editedText).not.toBe(true)
+    expect(tg.lastMessageId('editMessageText')).toBe(prompt.message_id)
+
+    const photo = await bot.api.sendPhoto(777, 'photo-file-id', {caption: 'Before'})
+    const editedCaption = await bot.api.editMessageCaption(777, photo.message_id, {
+      caption: 'After',
+    })
+    expect(editedCaption).not.toBe(true)
+    expect(tg.lastMessageId('editMessageCaption')).toBe(photo.message_id)
+
+    tg.reset()
+    expect(tg.lastResult('sendMessage')).toBeUndefined()
+    expect(tg.lastMessageId('sendPhoto')).toBeUndefined()
+  })
+
   test('retries a Bot API 429 immediately when retry_after is zero', async () => {
     const {bot, tg} = await setup()
     tg.fail('sendMessage', {error_code: 429, description: 'Too Many Requests', retry_after: 0})

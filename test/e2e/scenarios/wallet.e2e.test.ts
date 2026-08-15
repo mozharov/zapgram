@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {USER_A} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
@@ -34,6 +35,109 @@ afterEach(async () => {
 
 // --- The wallet screen ---
 
+test('/start is one compact English onboarding screen with partner and two actions', async () => {
+  await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
+    telegram: [
+      {
+        method: 'sendRichMessage',
+        to: USER_A,
+        text: /Bitcoin Lightning wallet[\s\S]*How it works[\s\S]*21ideas/,
+      },
+    ],
+  })
+
+  const start = e2e.tg.last('sendRichMessage')
+  const html = richHtmlOf(start)
+  expect(html).toMatch(/zero fees/)
+  expect(html).toMatch(/voluntary 5% donation[\s\S]*for tips only[\s\S]*\/donate/)
+  expect(html).not.toMatch(/<b>Balance:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(html).toContain('bot-description-en.png')
+  expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
+  expect(callbackDataOf(start)).not.toContain('create-invoice')
+  expectNoErrors(e2e.logs)
+})
+
+test('/start renders the compact screen and actions in Russian', async () => {
+  await e2e.send(
+    privateCommand('/start', {
+      from: {id: USER_A, username: 'user_a', language_code: 'ru'},
+    }),
+  )
+
+  const start = e2e.tg.last('sendRichMessage')
+  const html = richHtmlOf(start)
+  expect(html).toMatch(/Bitcoin Lightning кошелёк[\s\S]*Как это работает/)
+  expect(html).toMatch(/комиссия — 0/)
+  expect(html).toMatch(/добровольный донат 5%[\s\S]*\/tip[\s\S]*\/donate/)
+  expect(html).not.toMatch(/<b>Баланс:<\/b>|<b>ZapGram:<\/b>|<b>NWC:<\/b>/)
+  expect(html).toContain('21 идея')
+  expect(html).toContain('bot-description-ru.png')
+  expect(buttonTextsOf(start)).toEqual(['👛 Открыть кошелёк', 'ℹ️ Как это работает'])
+  expect(callbackDataOf(start)).toEqual(['wallet', 'help'])
+  expectNoErrors(e2e.logs)
+})
+
+test('ordinary and landing /start payloads render identical UI', async () => {
+  await e2e.send(privateCommand('/start'))
+  const ordinary = startUi(e2e.tg.last('sendRichMessage'))
+
+  await e2e.send(privateCommand('/start landing'))
+  const landing = startUi(e2e.tg.last('sendRichMessage'))
+
+  expect(landing).toEqual(ordinary)
+  expectNoErrors(e2e.logs)
+})
+
+test('/start keeps bot_started payload and landing attribution properties', async () => {
+  const captures: Record<string, unknown>[] = []
+  const aliases: Record<string, unknown>[] = []
+  Reflect.set(e2e.container, 'posthog', {
+    alias: (input: Record<string, unknown>) => aliases.push(input),
+    capture: (input: Record<string, unknown>) => captures.push(input),
+    withContext: (_context: unknown, callback: () => unknown) => callback(),
+  })
+
+  await e2e.send(privateCommand('/start'))
+  await e2e.send(privateCommand('/start lp_landing-user'))
+
+  const started = captures.filter(capture => capture.event === 'bot_started')
+  expect(started).toHaveLength(2)
+  expect(started[0]?.properties).toMatchObject({
+    start_param: null,
+    from_landing: false,
+  })
+  expect(started[1]?.properties).toMatchObject({
+    start_param: 'lp_landing-user',
+    from_landing: true,
+    $set: {acquisition_source: 'landing'},
+    $set_once: {initial_acquisition_source: 'landing'},
+  })
+  expect(aliases).toEqual([{distinctId: String(USER_A), alias: 'landing-user'}])
+  expectNoErrors(e2e.logs)
+})
+
+for (const locale of ['en', 'ru'] as const) {
+  test(`/help keeps the moved wallet, community, partner and support details in ${locale}`, async () => {
+    await e2e.send(
+      privateCommand('/help', {
+        from: {id: USER_A, username: 'user_a', language_code: locale},
+      }),
+    )
+
+    const help = e2e.tg.last('sendRichMessage')
+    const text = richHtmlOf(help)
+    expect(text).toMatch(/NWC/)
+    expect(text).toMatch(locale === 'ru' ? /Внутренний кошелёк/ : /Internal wallet/)
+    expect(text).toMatch(locale === 'ru' ? /Группы, каналы/ : /Groups, channels/)
+    expect(text).toMatch(locale === 'ru' ? /Партнёр/ : /Partner/)
+    expect(text).toContain('/donate')
+    expect(text).toMatch(/<h1>[\s\S]*<details/)
+    expect(text).toContain(locale === 'ru' ? 'bot-description-ru.png' : 'bot-description-en.png')
+    expect(callbackDataOf(help)).toEqual(['wallet'])
+    expectNoErrors(e2e.logs)
+  })
+}
+
 test('/wallet reads the balance from LNbits and shows it', async () => {
   credit(BALANCE_SATS)
   const mark = e2e.ln.requests.length
@@ -41,10 +145,10 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     telegram: [
       {
-        method: 'sendMessage',
+        method: 'sendRichMessage',
         to: USER_A,
         // Default fake rate 100_000 → 1234 sats ≈ $1.23
-        text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/,
+        text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/,
       },
     ],
   })
@@ -57,7 +161,7 @@ test('/wallet reads the balance from LNbits and shows it', async () => {
     'GET /api/v1/wallet',
     'GET /api/v1/rate/USD',
   ])
-  expect(String(e2e.tg.last('sendMessage')?.text)).toContain('(~$')
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toContain('($')
   expectNoErrors(e2e.logs)
 })
 
@@ -67,7 +171,7 @@ test('the wallet button re-renders in place without asking for the balance again
 
   await expectDelta(e2e, () => e2e.send(privateCallback('wallet')), {
     telegram: [
-      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(~\$1\.23\)/},
+      {method: 'editMessageText', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats \(\$1\.23\)/},
     ],
   })
 
@@ -84,38 +188,46 @@ test('without a connected NWC wallet the screen shows one balance line', async (
   credit(BALANCE_SATS)
   await e2e.send(privateCommand('/wallet'))
 
-  const text = String(e2e.tg.last('sendMessage')?.text)
+  const text = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(text).toMatch(/<b>Balance:<\/b>/)
   expect(text).not.toMatch(/NWC:/)
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null})
 })
 
-test('the wallet screen offers receive, send, settings, help and support', async () => {
+test('the wallet screen exposes every private user section without commands', async () => {
   await e2e.send(privateCommand('/wallet'))
 
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('sendRichMessage'))).toEqual([
     'create-invoice',
     'send-menu',
+    'subscriptions:1',
+    'group-settings',
     'settings',
     'help',
     'donate',
+    'feature-request',
+  ])
+  expect(buttonTextsOf(e2e.tg.last('sendRichMessage'))).toEqual([
+    '📩 Receive',
+    '✉️ Send',
+    '🔐 My subscriptions',
+    '👥 Chats',
+    '⚙️ NWC',
+    'ℹ️ Help',
+    '💚 Support project',
+    '💡 I want a feature',
   ])
 })
 
 // --- The settings screen ---
 
-test('/settings offers connecting a wallet and nothing that needs one', async () => {
-  await expectDelta(e2e, () => e2e.send(privateCommand('/settings')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/}],
+test('the NWC menu offers connecting a wallet and a way back to the wallet', async () => {
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.settings)), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
 
   // No disconnect and no tips toggle: both are rendered only once `nwc_url` is set.
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
-    'connect-nwc',
-    'group-settings',
-    'donate',
-    'wallet',
-  ])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['connect-nwc', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
@@ -123,12 +235,7 @@ test('the settings button renders the same screen in place', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('settings')), {
     telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
-    'connect-nwc',
-    'group-settings',
-    'donate',
-    'wallet',
-  ])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['connect-nwc', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
@@ -162,11 +269,11 @@ test('toggling NWC tips twice puts the column back', async () => {
   expectNoErrors(e2e.logs)
 })
 
-test('group settings opens the groups screen with paid chats and a way back', async () => {
+test('chats opens the common chat screen with paid chats and a way back to wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('group-settings')), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Groups and channels/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Chats/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'settings'])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['chats:1', 'wallet'])
   expectNoErrors(e2e.logs)
 })
 
@@ -190,7 +297,7 @@ test('a transient 500 on the balance endpoint never reaches the user', async () 
   const mark = e2e.ln.requests.length
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b> 1\D?234 sats/}],
   })
 
   // got retries a failed GET, so the second attempt is what the user's balance came from.
@@ -203,13 +310,10 @@ test('a balance endpoint that stays down leaves the user with an error and the w
   e2e.ln.state.failAlways({method: 'GET', path: '/api/v1/wallet'}, {status: 500, body: {}})
   const mark = e2e.ln.requests.length
 
-  // Command fails the live balance read; the error handler appends the wallet screen from the
-  // middleware-cached balance without a second GET (which would only add got retries).
+  // Command fails the live balance read; the error reply carries the open-menu button as the only
+  // recovery path, so no wallet screen (and no further balance GET) follows it.
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Unknown error occurred/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Unknown error occurred/}],
   })
 
   expect(lnPathsSince(mark).filter(path => path === 'GET /api/v1/wallet')).toHaveLength(3)
@@ -236,6 +340,24 @@ function lnPathsSince(mark: number): string[] {
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {
   const markup = payload?.reply_markup as {inline_keyboard?: {callback_data?: string}[][]}
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function buttonTextsOf(payload: Record<string, unknown> | undefined): string[] {
+  const markup = payload?.reply_markup as {inline_keyboard?: {text?: string}[][]}
+  return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.text ?? [])
+}
+
+function startUi(payload: Record<string, unknown> | undefined) {
+  return {
+    richMessage: payload?.rich_message,
+    replyMarkup: payload?.reply_markup,
+  }
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
 }
 
 function errorMessages(): string[] {

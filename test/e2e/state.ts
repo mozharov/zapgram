@@ -48,6 +48,14 @@ export type WorldState = {
   telegram: TgCall[]
 }
 
+/** `receiverUserId` is the ephemeral recipient: a user id to require one, `null` to forbid one. */
+export type TelegramCallExpectation = {
+  method: string
+  to?: number
+  receiverUserId?: number | null
+  text?: RegExp
+}
+
 type DbKey = keyof WorldState['db']
 type RowDelta = {before?: unknown; after?: unknown}
 type DbExpectation = {
@@ -100,7 +108,7 @@ export async function expectDelta(
       balances?: Record<string, number>
       payments?: {out: boolean; sats: number; times: number}[]
     }
-    telegram?: string[] | {method: string; to?: number; text?: RegExp}[]
+    telegram?: string[] | TelegramCallExpectation[]
   },
 ): Promise<void> {
   const before = await snapshot(e2e)
@@ -225,13 +233,13 @@ function assertPaymentDelta(
 function assertTelegramDelta(
   before: WorldState,
   after: WorldState,
-  expected: string[] | {method: string; to?: number; text?: RegExp}[],
+  expected: string[] | TelegramCallExpectation[],
 ): void {
   const prefix = after.telegram.slice(0, before.telegram.length)
   if (!Bun.deepEquals(prefix, before.telegram)) {
     throw new Error(`Telegram history changed before the action: ${format({before, after})}`)
   }
-  const calls = after.telegram.slice(before.telegram.length)
+  const calls = chromeCalls(after.telegram.slice(before.telegram.length), expected)
   if (expected.every(item => typeof item === 'string')) {
     const methods = calls.map(call => call.method)
     if (!Bun.deepEquals(methods, expected)) {
@@ -256,11 +264,63 @@ function assertTelegramDelta(
     if (item.to !== undefined && to !== item.to) {
       throw new Error(`Telegram call ${index}: expected recipient ${item.to}, got ${format(call)}`)
     }
-    const text = String(call.payload.text ?? call.payload.caption ?? '')
+    // `receiverUserId: null` pins a group message as public — an ephemeral one would carry an id.
+    if (item.receiverUserId !== undefined) {
+      const receiver = call.payload.receiver_user_id
+      const expectedReceiver = item.receiverUserId
+      const matches =
+        expectedReceiver === null ? receiver === undefined : Number(receiver) === expectedReceiver
+      if (!matches) {
+        throw new Error(
+          `Telegram call ${index}: expected receiver_user_id ${expectedReceiver}, got ${format(call)}`,
+        )
+      }
+    }
+    const text = telegramText(call.payload)
     if (item.text && !item.text.test(text)) {
       throw new Error(`Telegram call ${index}: text ${format(text)} does not match ${item.text}`)
     }
   })
+}
+
+/** Living-menu chrome: extra deletes/markup edits. Keep only as many as the case listed. */
+const LIVING_UI_TELEGRAM_METHODS = new Set([
+  'deleteMessage',
+  'deleteEphemeralMessage',
+  'editMessageReplyMarkup',
+])
+
+function chromeCalls(calls: TgCall[], expected: string[] | TelegramCallExpectation[]): TgCall[] {
+  const allowed = new Map<string, number>()
+  for (const item of expected) {
+    const method = typeof item === 'string' ? item : item.method
+    if (!LIVING_UI_TELEGRAM_METHODS.has(method)) continue
+    allowed.set(method, (allowed.get(method) ?? 0) + 1)
+  }
+  const seen = new Map<string, number>()
+  return calls.filter(call => {
+    if (!LIVING_UI_TELEGRAM_METHODS.has(call.method)) return true
+    const next = (seen.get(call.method) ?? 0) + 1
+    if (next > (allowed.get(call.method) ?? 0)) return false
+    seen.set(call.method, next)
+    return true
+  })
+}
+
+function telegramText(payload: Record<string, unknown>): string {
+  if (typeof payload.text === 'string') return payload.text
+  if (typeof payload.caption === 'string') return payload.caption
+  const media = payload.media
+  if (media && typeof media === 'object' && !Array.isArray(media)) {
+    const mediaCaption = Reflect.get(media, 'caption')
+    if (typeof mediaCaption === 'string') return mediaCaption
+  }
+  const richMessage = payload.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  const html = Reflect.get(richMessage, 'html')
+  if (typeof html === 'string') return html
+  const markdown = Reflect.get(richMessage, 'markdown')
+  return typeof markdown === 'string' ? markdown : ''
 }
 
 function diffRows(key: DbKey, before: unknown[], after: unknown[]) {
@@ -363,6 +423,15 @@ function normalizeDbRows(rows: unknown[]): unknown[] {
 }
 
 function normalizeDbValue(value: unknown, key?: string): unknown {
+  if (
+    key === 'lastMenuMessageId' ||
+    key === 'lastNotificationMessageId' ||
+    key === 'lastNotificationBaseMarkup' ||
+    key === 'lastNotificationTransient' ||
+    key === 'lastJoinMessageId'
+  ) {
+    return undefined
+  }
   if (
     key === 'createdAt' ||
     key === 'updatedAt' ||

@@ -1,8 +1,18 @@
 import {getAccessibleChatForOwner, updateChat} from '@modules/chats/repository.js'
-import {replyWithChat} from '@modules/chats/telegram/messages/chat.js'
+import {replyWithCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
+import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import type {MessageEntity} from 'grammy/types'
 
@@ -11,7 +21,7 @@ const MAX_MESSAGE_LENGTH = 1000
 export async function editCustomMessage(
   conversation: BotConversation,
   ctx: ConversationContext,
-  {chatId}: {chatId: number},
+  {chatId, locale}: {chatId: number; locale: 'ru' | 'en'},
 ) {
   const chat = await getAccessibleChatForOwner(chatId, ctx.user.id)
   if (!chat) {
@@ -19,88 +29,89 @@ export async function editCustomMessage(
     return conversation.halt()
   }
 
-  // Get Russian message
-  const ruMessage = await ctx.reply(ctx.t('edit-custom-message.enter-russian'), {
-    reply_markup: new InlineKeyboard().add({
-      callback_data: staticCallback.cancel,
-      text: ctx.t('button.cancel'),
+  const html = ctx.t(
+    locale === 'ru' ? 'edit-custom-message.enter-russian' : 'edit-custom-message.enter-english',
+  )
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard().add({
+        callback_data: staticCallback.cancel,
+        text: ctx.t('button.cancel'),
+      }),
     }),
+  )
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t(
+      locale === 'ru'
+        ? 'conversation-action.edit-message-ru'
+        : 'conversation-action.edit-message-en',
+    ),
   })
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-  const ruContext = await conversation.waitFor(':text', {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(ruMessage)
-      if (ctx.callbackQuery?.data === 'cancel') {
-        await ctx.reply(ctx.t('canceled'))
-        return conversation.halt({next: true})
-      }
-      await ctx.reply(ctx.t('edit-custom-message.invalid'))
-      await ctx.reply(ctx.t('canceled'))
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
+      if (owned) await replyWithCustomMessage(ctx, owned)
+      else await replyWithWallet(ctx)
       return conversation.halt()
-    },
-  })
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
 
-  await conversation.external(() => removeInlineKeyboard(ruMessage))
+    const text = next.message?.text?.trim()
+    if (!text) {
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('edit-custom-message.invalid'),
+      )
+      continue
+    }
 
-  // Get the text with HTML entities preserved
-  const ruMessageText = ruContext.message?.text.trim() || ''
-  const ruMessageEntities = ruContext.message?.entities || []
+    const entities = next.message?.entities ?? []
+    const htmlMessage = entities.length > 0 ? convertToHtml(text, entities) : text
+    if (htmlMessage.length > MAX_MESSAGE_LENGTH) {
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('edit-custom-message.too-long'),
+      )
+      continue
+    }
 
-  // Convert to HTML format if entities present
-  const ruHtmlMessage =
-    ruMessageEntities.length > 0 ? convertToHtml(ruMessageText, ruMessageEntities) : ruMessageText
+    // Ownership can change while the conversation waits for input.
+    const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
+    if (!owned) {
+      await clearPromptControls(conversation, prompt)
+      await replyWithConversationTempMessage(conversation, next, next.t('chat.not-found'))
+      return
+    }
 
-  if (!ruHtmlMessage || ruHtmlMessage.length > MAX_MESSAGE_LENGTH) {
-    await ctx.reply(ctx.t('edit-custom-message.too-long'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+    await clearPromptControls(conversation, prompt)
+    const updatedChat = await updateChat(
+      chatId,
+      locale === 'ru' ? {customMessageRu: htmlMessage} : {customMessageEn: htmlMessage},
+    )
+    // The confirmation is disposable: the screen below already shows the new state, so it clears
+    // itself after the temp-message delay. `replyWithCustomMessage` deletes the pasted message.
+    await replyWithConversationTempMessage(
+      conversation,
+      next,
+      next.t('edit-custom-message.completed', {locale: locale.toUpperCase()}),
+      {keepInput: true},
+    )
+    await replyWithCustomMessage(next, updatedChat)
+    return
   }
-
-  // Get English message
-  const enMessage = await ctx.reply(ctx.t('edit-custom-message.enter-english'), {
-    reply_markup: new InlineKeyboard().add({
-      callback_data: staticCallback.cancel,
-      text: ctx.t('button.cancel'),
-    }),
-  })
-
-  const enContext = await conversation.waitFor(':text', {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(enMessage)
-      if (ctx.callbackQuery?.data === 'cancel') {
-        await ctx.reply(ctx.t('canceled'))
-        return conversation.halt({next: true})
-      }
-      await ctx.reply(ctx.t('edit-custom-message.invalid'))
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt()
-    },
-  })
-
-  await conversation.external(() => removeInlineKeyboard(enMessage))
-
-  // Get the text with HTML entities preserved
-  const enMessageText = enContext.message?.text.trim() || ''
-  const enMessageEntities = enContext.message?.entities || []
-
-  // Convert to HTML format if entities present
-  const enHtmlMessage =
-    enMessageEntities.length > 0 ? convertToHtml(enMessageText, enMessageEntities) : enMessageText
-
-  if (!enHtmlMessage || enHtmlMessage.length > MAX_MESSAGE_LENGTH) {
-    await ctx.reply(ctx.t('edit-custom-message.too-long'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
-  }
-
-  // Update chat with new custom messages
-  const updatedChat = await updateChat(chatId, {
-    customMessageRu: ruHtmlMessage,
-    customMessageEn: enHtmlMessage,
-  })
-
-  await ctx.reply(ctx.t('edit-custom-message.completed'))
-  await replyWithChat(ctx, updatedChat)
 }
 
 // Helper function to convert text with entities to HTML format
@@ -157,8 +168,10 @@ function convertToHtml(text: string, entities: MessageEntity[]): string {
         closeTag = '</a>'
         break
       case 'spoiler':
-        openTag = '<span class="tg-spoiler">'
-        closeTag = '</span>'
+        // `<tg-spoiler>` is the one spelling both the classic and the rich HTML parser accept; the
+        // join screens render this message as rich, where `<span>` is not a tag at all.
+        openTag = '<tg-spoiler>'
+        closeTag = '</tg-spoiler>'
         break
       case 'blockquote':
         openTag = '<blockquote>'

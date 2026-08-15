@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {createE2E, type E2E} from '../harness.js'
+import {USER_A} from './ids.js'
 import {
   chatJoinRequest,
   groupReply,
@@ -42,19 +43,20 @@ test('all update factories produce updates accepted by the real bot', async () =
   expect(updates.every(update => typeof update.reqId === 'string')).toBe(true)
 })
 
-test('privateCommand uses the full command length and supports a manual update id', async () => {
-  // /settings, not /wallet: the plain-text fallback IS walletCommand, so /wallet would look
-  // identical whether grammY recognized the command or dropped it into the fallback.
-  const update = privateCommand('/settings', {updateId: 4242, reqId: 'manual-request'})
+test('privateCommand uses the full command length and supports a manual update id', () => {
+  const update = privateCommand('/wallet', {updateId: 4242, reqId: 'manual-request'})
   expect(update.update_id).toBe(4242)
   expect(update.reqId).toBe('manual-request')
   expect(update.message?.entities).toEqual([
-    {type: 'bot_command', offset: 0, length: '/settings'.length},
+    {type: 'bot_command', offset: 0, length: '/wallet'.length},
   ])
+})
 
-  await e2e.send(update)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Settings/)
+test('privateCallback can target the message id returned for an outbound prompt', async () => {
+  const prompt = await e2e.container.bot.api.sendMessage(USER_A, 'Choose an action')
+  const promptMessageId = e2e.tg.lastMessageId('sendMessage')
+  const callback = privateCallback('choose-action', {messageId: promptMessageId})
 
-  await e2e.send(privateText('/settings'))
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Wallet/)
+  expect(promptMessageId).toBe(prompt.message_id)
+  expect(callback.callback_query?.message?.message_id).toBe(prompt.message_id)
 })

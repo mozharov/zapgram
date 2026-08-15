@@ -31,7 +31,7 @@ export async function formatDonateHubText(
 
   const last =
     stats.lastAt != null
-      ? t('donate.stats-last', {date: stats.lastAt.toISOString().slice(0, 10)})
+      ? t('donate.stats-last', {date: stats.lastAt})
       : t('donate.stats-last-none')
 
   const autoPercent =

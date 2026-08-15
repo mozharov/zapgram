@@ -1,43 +1,89 @@
-import {ToYourselfError} from '@core/errors/to-yourself.js'
-import {UserDoesNotHaveWalletError} from '@core/errors/user-does-not-have-wallet.js'
 import {getUserByUsername} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 
-export async function waitForUser(conversation: BotConversation, ctx: ConversationContext) {
-  const message = await replyWithWaitForUser(ctx)
-  const usernameContext = await conversation.waitForHears(USERNAME_REGEX, {
-    otherwise: async ctx => {
-      await removeInlineKeyboard(message)
-      if (ctx.update.message?.text) await ctx.reply(ctx.t('wait-for-user.invalid'))
-      await ctx.reply(ctx.t('canceled'))
-      return conversation.halt({next: true})
-    },
+export async function waitForUser(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  opts?: {
+    host?: ConversationHost
+    html?: string
+    deleteInput?: boolean
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
+) {
+  const html = opts?.html ?? ctx.t('wait-for-user')
+  const message = await showHostOrReply(
+    ctx,
+    html,
+    new InlineKeyboard([[{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}]]),
+    opts?.host,
+  )
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.select-recipient'),
   })
-  const matched = usernameContext.match[1]
-  if (matched === undefined) throw new Error('Username match missing')
-  const username = matched.toLowerCase()
-  await conversation.external(() => removeInlineKeyboard(message))
-  return validateUsername(ctx, username)
-}
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-function replyWithWaitForUser(ctx: ConversationContext) {
-  return ctx.reply(ctx.t('wait-for-user'), {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      if (opts?.host) await opts.onCancel?.(opts.host)
+      else {
+        await deactivatePrompt(conversation, prompt, cancelled)
+        await opts?.onCancel?.({chatId: prompt.chatId, messageId: prompt.messageId})
+      }
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') {
+      return interruptConversation(conversation, prompt, cancelled)
+    }
+
+    const matched = USERNAME_REGEX.exec(next.message?.text?.trim() ?? '')?.[1]
+    if (!matched) {
+      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-user.invalid'))
+      continue
+    }
+
+    const result = await validateUsername(next, matched.toLowerCase())
+    if (result.status === 'invalid') {
+      await replyWithConversationTempMessage(conversation, next, next.t(result.translationKey))
+      continue
+    }
+
+    await clearPromptControls(conversation, prompt)
+    // The report echoes the selected username, so the typed @handle itself is noise.
+    if (opts?.deleteInput) await deleteMessageSafely(next)
+    return result.user
+  }
 }
 
 async function validateUsername(ctx: ConversationContext, username: string) {
-  if (username === ctx.user.username) throw new ToYourselfError()
+  if (username === ctx.user.username)
+    return {status: 'invalid' as const, translationKey: 'error.to-yourself'}
   const user = await getUserByUsername(username)
-  if (!user) throw new UserDoesNotHaveWalletError()
+  if (!user) return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
   const tgUser = await ctx.api.getChat(user.id)
-  if (tgUser.username?.toLowerCase() !== username) throw new UserDoesNotHaveWalletError()
-  return user
+  if (tgUser.username?.toLowerCase() !== username) {
+    return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
+  }
+  return {status: 'ok' as const, user}
 }

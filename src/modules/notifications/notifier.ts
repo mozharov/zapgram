@@ -1,10 +1,20 @@
-import type {AppLogger} from '@infra/logger.js'
 import type {Api, InputFile} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
 export type Notifier = {
-  /** `true` when Telegram accepted the message; `false` after a logged failure. Never throws. */
-  send(userId: number, text: string, opts?: Parameters<Api['sendMessage']>[2]): Promise<boolean>
+  /**
+   * `true` when Telegram accepted the message; `false` after a logged failure. Never throws.
+   * `flags.transient` marks a one-off validation/error notice: once superseded by the next
+   * notification or menu, it is deleted outright instead of just losing its open-menu button.
+   * `flags.withoutMenu` keeps the message out of the open-menu chain entirely — for recipients the
+   * bot may not be able to write to again (see `createChromeNotifier`).
+   */
+  send(
+    userId: number,
+    text: string,
+    opts?: Parameters<Api['sendMessage']>[2],
+    flags?: {transient?: boolean; withoutMenu?: boolean},
+  ): Promise<boolean>
   /** `true` when Telegram accepted the photo; `false` after a logged failure. Never throws. */
   sendPhoto(
     userId: number,
@@ -18,40 +28,13 @@ export type Notifier = {
   copyMessage(toUserId: number, fromChatId: number, messageId: number): Promise<boolean>
 }
 
-/** Telegram-backed notifier. Methods never throw — they log and return success/failure. */
-export function createTelegramNotifier(api: Api, log: AppLogger): Notifier {
-  return {
-    async send(userId, text, opts) {
-      try {
-        await api.sendMessage(userId, text, opts)
-        return true
-      } catch (error) {
-        log.error({error}, 'Failed to send Telegram message')
-        return false
-      }
-    },
-    async sendPhoto(userId, file, opts) {
-      try {
-        await api.sendPhoto(userId, file, opts)
-        return true
-      } catch (error) {
-        log.error({error}, 'Failed to send Telegram photo')
-        return false
-      }
-    },
-    async copyMessage(toUserId, fromChatId, messageId) {
-      try {
-        await api.copyMessage(toUserId, fromChatId, messageId)
-        return true
-      } catch (error) {
-        log.error({error, toUserId, fromChatId, messageId}, 'Failed to copy Telegram message')
-        return false
-      }
-    },
-  }
-}
-
-/** Leaf convenience — uses bootstrap runtime. */
+/**
+ * Leaf convenience — uses bootstrap runtime.
+ *
+ * The only implementation is `createChromeNotifier` (`@telegram/helpers/notification-chrome.js`),
+ * wired in `createContainer`. Do not add a plain API-wrapping notifier here: anything bypassing
+ * the chrome decorator drops its message out of the open-menu chain.
+ */
 export const notifier: Notifier = {
   send: (...args) => getRuntime().notifier.send(...args),
   sendPhoto: (...args) => getRuntime().notifier.sendPhoto(...args),

@@ -74,6 +74,59 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 2. Paid → claim row (delete returning) then notify. Claim is shared by LNbits webhook, internal bot pay (`paying-invoice`), and `check-pending-invoices` cron so internal→internal cannot double-notify.
 3. Tips/transfers mint invoices without a pending row; they notify via their own path (`notifySatsReceived`). A webhook for those hashes is a no-op.
 
+## Group messages
+
+The group tip trigger is matched per update by `matchTipRequest`
+(`src/modules/tipping/telegram/tip-match.ts`), not by a `hears` regex: clients send
+`/tip@this_bot` in every chat that holds more than one bot, and the addressee has to be compared
+against `ctx.me.username` rather than a baked-in name. `/tip@other_bot` belongs to that bot and is
+ignored silently; a bare `@this_bot` mention is the same trigger as `/tip`.
+
+`/tip` is registered for `all_group_chats` with `is_ephemeral: true`, so the command a member types
+is delivered to the bot but stays invisible to the rest of the group and to other bots. Such an
+update arrives with `message_id: 0` and an `ephemeral_message_id`. `deleteMessageSafely` deletes it
+with `deleteEphemeralMessage` (never `deleteMessage` on id 0). The `@zap_gram_bot 21` spelling is
+not a registered command, so it stays public and is still deleted via `deleteMessage`.
+
+grammY's own docs warn that delivery of an ephemeral delete "is not guaranteed... especially if
+[the recipient is] offline", so `deleteMessageSafely` also schedules a second delete attempt via
+`scheduleEphemeralMessageDelete` after `TEMP_MESSAGE_DELAY_MS`, on top of the immediate one, to
+catch a sender who reconnects later.
+
+Only a successful money movement earns a public message in a group (`notifyGroupTip`). Every
+failure and usage hint goes through `replyOnlyToSender` (`src/telegram/helpers/ephemeral-message.ts`),
+which sends a Telegram ephemeral message (`receiver_user_id`): the rest of the group never sees it.
+Rather than rely on Telegram to expire it, a delete is scheduled after `TEMP_MESSAGE_DELAY_MS` via
+the same `scheduleEphemeralMessageDelete`. Anonymous admins and channel-post senders have no user to
+deliver to, so a refused send falls back to `replyWithTempMessage` — the public notice that
+`TEMP_MESSAGE_DELAY_MS` later deletes itself.
+
 ## Callback data
 
 All parameterized `callback_data` strings go through `src/telegram/callback-data.ts` (`defineCallback` → `build` / `parse` / `pattern`) so keyboards and handlers cannot drift.
+
+## Logging
+
+The unit of logging is the **interaction**, not the HTTP request. `POST /bot - 4ms` repeated per
+update says nothing, so the transport line lives at `debug`
+(`src/http/middlewares/request-logger.ts`) and the meaningful record is written one layer down.
+
+- **Correlation.** The HTTP layer mints `reqId`, stamps it on the Telegram update body, and
+  `src/telegram/middlewares/logger.ts` builds `ctx.log` as a child logger carrying
+  `reqId` + `describeUpdate(ctx)` (`action`, `updateId`, `chatId`, `chatType`, `userId`,
+  `callbackData`, `command`). Every line written while handling that update inherits them, so no
+  handler has to repeat who/what it is working on.
+- **One outcome line per update.** `Update handled` (info, with `ms`) or `Update failed` (warn,
+  with `ms`; the error itself comes from the error boundary). Updates the bot ignores — group
+  chatter, other bots' commands — stop at `debug` and never reach info.
+- **`action` matches the PostHog event name** (`command_wallet`, `callback_pay_onchain`, …) so a
+  log line and the analytics event for the same interaction are searchable under one name.
+- **What else gets an info line:** state changes (chat price / paid access / payment type /
+  on-chain enable-disable, NWC connect-disconnect, donation settings), money movements (invoice
+  minted and paid, tip sent, join invoice minted / reused / paid, settle and payout), and every
+  webhook outcome. Read-only screens rely on the per-update line alone.
+- **Levels.** `error` = we are broken. `warn` = someone else is broken or a request was rejected
+  (bad webhook secret, unhandled callback, unreachable user). `info` = a fact worth reconstructing
+  later. `debug` = transport and timing detail.
+- **Never log:** raw message text, NWC URLs, admin keys, or whole `ctx.user` / wallet objects —
+  the user's NWC secret lives on that row. Log ids, amounts, and lengths instead.

@@ -3,6 +3,9 @@ import {
   broadcastConfirmRoute,
   broadcastLocaleRoute,
   chatChangePriceRoute,
+  chatCustomMessageEditRoute,
+  chatCustomMessagePreviewRoute,
+  chatCustomMessageResetRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
   chatOnchainDisableRoute,
@@ -40,6 +43,9 @@ describe('callback-data routes', () => {
       {route: chatCustomMessageRoute, params: {chatId: 5}},
       {route: chatEditCustomMessageRoute, params: {chatId: 5}},
       {route: chatRemoveCustomMessageRoute, params: {chatId: 5}},
+      {route: chatCustomMessageEditRoute, params: {chatId: -5, locale: 'ru' as const}},
+      {route: chatCustomMessagePreviewRoute, params: {chatId: -5, locale: 'en' as const}},
+      {route: chatCustomMessageResetRoute, params: {chatId: 5, locale: 'ru' as const}},
       {route: chatOnchainEnableRoute, params: {chatId: -100}},
       {route: chatOnchainDisableRoute, params: {chatId: -100}},
       {route: subscriptionsPageRoute, params: {page: 2}},
@@ -99,6 +105,18 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(24)
+    expect(parameterizedRoutes).toHaveLength(27)
+  })
+
+  test('language-specific custom-message routes reject unsupported locales', () => {
+    for (const route of [
+      chatCustomMessageEditRoute,
+      chatCustomMessagePreviewRoute,
+      chatCustomMessageResetRoute,
+    ]) {
+      const invalid = `chat:-5:custom-message:${route.name.split('-').at(-1)}:fr`
+      expect(route.pattern.test(invalid)).toBe(false)
+      expect(() => route.parse(invalid)).toThrow('Invalid callback data')
+    }
   })
 })

@@ -103,6 +103,11 @@ export function createScheduler(
         const startedAt = Date.now()
         const tickPromise = Promise.resolve()
           .then(() => def.tick())
+          .then(() => {
+            // Per-tick timing at debug: eight jobs on minute-level crons would otherwise be the
+            // loudest thing in the log. Jobs that did work log it themselves.
+            log.debug({job: def.name, ms: Date.now() - startedAt}, 'Job tick finished')
+          })
           .catch((error: unknown) => {
             log.error({error, job: def.name}, 'Job tick failed')
             // Errors only — successful ticks are noise; product events stay on user paths.

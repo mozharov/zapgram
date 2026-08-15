@@ -22,6 +22,7 @@ import {
   donationScopeCallback,
   donationSettingsCallback,
 } from './telegram/handlers/donation-settings.js'
+import {clearDonateCallbackMessage} from './telegram/reply-hub.js'
 
 export const donationCommands = ['donate'] as const
 
@@ -40,6 +41,7 @@ export function register(composer: Composer<BotContext>): void {
 
   privateChat.callbackQuery(staticCallback.donateCustom, async ctx => {
     await ctx.answerCallbackQuery()
+    await clearDonateCallbackMessage(ctx)
     await ctx.conversation.enter(customDonateAmount.name)
   })
   privateChat.callbackQuery(staticCallback.donationCustomPercent, async ctx => {
@@ -48,6 +50,7 @@ export function register(composer: Composer<BotContext>): void {
   })
   privateChat.callbackQuery(staticCallback.donateMonthlyCustom, async ctx => {
     await ctx.answerCallbackQuery()
+    await clearDonateCallbackMessage(ctx)
     await ctx.conversation.enter(customMonthlyAmount.name)
   })
 }

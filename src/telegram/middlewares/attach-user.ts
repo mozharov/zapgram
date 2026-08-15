@@ -4,6 +4,7 @@ import type {User} from '@infra/db/types.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {getOrCreateUser} from '@modules/users/repository.js'
 import type {BotContext} from '@telegram/context.js'
+import {isIdentifiableHumanSender} from '@telegram/helpers/identifiable-sender.js'
 import type {Middleware} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
@@ -14,10 +15,13 @@ import {getRuntime} from '../../runtime.js'
  * after the user opens the bot again (join-request-only users often never /start but can still
  * press invoice buttons or open the wallet). `my_chat_member` block/unblock is left to
  * {@link privateMyChatMemberHandler} so attachUser does not fight a block event.
+ *
+ * Money paths must never debit a bot, channel, or anonymous-admin identity: Bot API does not
+ * expose the real human behind `sender_chat`, so those updates raise {@link FromBotError}.
  */
 export const attachUser: Middleware<Context> = async (ctx, next) => {
   if (!ctx.from) return next()
-  if (ctx.from.is_bot) throw new FromBotError()
+  if (!isIdentifiableHumanSender(ctx)) throw new FromBotError()
 
   const {config, log, users} = getRuntime()
   let user = await getOrCreateUser({

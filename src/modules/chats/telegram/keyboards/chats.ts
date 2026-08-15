@@ -36,7 +36,7 @@ export function buildChatsKeyboard(
       text: t('button.add-chat'),
     })
     .row({
-      callback_data: staticCallback.groupSettings,
+      callback_data: staticCallback.wallet,
       text: t('button.back'),
     })
 }

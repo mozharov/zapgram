@@ -8,6 +8,7 @@ import {getRuntime} from '../../../../runtime.js'
 export const disconnectNwcCallback = async (ctx: BotContext) => {
   await deleteMessageSafely(ctx)
   await updateUser(ctx.user.id, {nwcUrl: null, nwcTips: false})
+  ctx.log.info('NWC wallet disconnected')
   // attachUser built nwc from the still-connected row; clear it so this request's wallet
   // reply matches the DB instead of still listing an NWC balance.
   ctx.user.nwcUrl = null

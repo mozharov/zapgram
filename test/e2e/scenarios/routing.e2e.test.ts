@@ -5,7 +5,14 @@ import {parameterizedRoutes, staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
-import {groupText, privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
+import {
+  groupCommand,
+  groupEphemeralCommand,
+  groupText,
+  privateCallback,
+  privateCommand,
+  privateText,
+} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -49,27 +56,32 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
   {
     command: '/start',
     telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Bitcoin Lightning wallet/},
     ],
   },
-  {command: '/help', telegram: [{method: 'sendMessage', to: USER_A, text: /Lightning Network/}]},
-  // /wallet is the one command whose output cannot distinguish routing from the fallback: the
-  // terminal on('message') handler IS walletCommand. The fixture test in fixtures/updates.e2e.test.ts
-  // proves command recognition itself with /settings, which has a distinct screen.
-  {command: '/wallet', telegram: [{method: 'sendMessage', to: USER_A, text: /Wallet/}]},
-  {command: '/settings', telegram: [{method: 'sendMessage', to: USER_A, text: /Settings/}]},
   {
-    command: '/chats',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /don't have any chats/}],
+    command: '/help',
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Lightning Network/},
+    ],
   },
+  // /wallet is the one command whose output cannot distinguish routing from the fallback: the
+  // terminal on('message') handler IS walletCommand.
   {
-    command: '/subscriptions',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /don't have any subscriptions/}],
+    command: '/wallet',
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
   },
   {
     command: '/donate',
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/}],
+    telegram: [
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendRichMessage', to: USER_A, text: /Support ZapGram|zapgram@getalby.com/},
+    ],
   },
 ]
 
@@ -82,14 +94,40 @@ for (const {command, telegram} of commandCases) {
 
 test('the private commands are the ones the bot registers', () => {
   expect(commandCases.map(item => item.command).sort()).toEqual([
-    '/chats',
     '/donate',
     '/help',
-    '/settings',
     '/start',
-    '/subscriptions',
     '/wallet',
   ])
+})
+
+for (const command of ['/settings', '/chats', '/subscriptions', '/feature']) {
+  test(`${command} no longer has a dedicated handler`, async () => {
+    await expectDelta(e2e, () => e2e.send(privateCommand(command)), {
+      ...FIRST_TOUCH,
+      telegram: [
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+      ],
+    })
+    expectNoErrors(e2e.logs)
+  })
+}
+
+// --- Group /start (auto-sent by the "Add to Group" menu button) ---
+
+test('an ephemeral /start@bot in a group is deleted and does nothing else', async () => {
+  await expectDelta(e2e, () => e2e.send(groupEphemeralCommand('/start')), {
+    telegram: [{method: 'deleteEphemeralMessage', to: CHAT_GROUP}],
+  })
+  expectNoErrors(e2e.logs)
+})
+
+test('a plain /start in a group is still deleted', async () => {
+  await expectDelta(e2e, () => e2e.send(groupCommand('/start')), {
+    telegram: [{method: 'deleteMessage', to: CHAT_GROUP}],
+  })
+  expectNoErrors(e2e.logs)
 })
 
 // --- Static callback routes ---
@@ -101,19 +139,24 @@ const staticCases: {
   conversation?: boolean
 }[] = [
   {data: staticCallback.wallet, methods: ['editMessageText'], text: /Wallet/},
-  {data: staticCallback.settings, methods: ['editMessageText'], text: /Settings/},
+  {
+    data: staticCallback.openMenu,
+    methods: ['answerCallbackQuery', 'sendRichMessage'],
+    text: /Wallet/,
+  },
+  {data: staticCallback.settings, methods: ['editMessageText'], text: /NWC/},
   {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
-  {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Groups and channels/},
+  {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
   {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
   {
     data: staticCallback.sendToUser,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Enter the username/,
     conversation: true,
   },
   {
     data: staticCallback.createInvoice,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Enter the amount/,
     conversation: true,
   },
@@ -125,27 +168,27 @@ const staticCases: {
   },
   {
     data: staticCallback.payInvoice,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Lightning invoice/,
     conversation: true,
   },
   {
     data: staticCallback.connectNwc,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'sendMessage'],
     text: /NWC URL/,
     conversation: true,
   },
   {
     data: staticCallback.disconnectNwc,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['deleteMessage', 'sendMessage', 'sendRichMessage'],
     text: /Wallet disconnected/,
   },
   {
     data: staticCallback.toggleNwcTips,
     methods: ['answerCallbackQuery', 'editMessageText'],
-    text: /Settings/,
+    text: /NWC/,
   },
-  {data: staticCallback.cancel, methods: ['sendMessage'], text: /Wallet/},
+  {data: staticCallback.cancel, methods: ['sendRichMessage'], text: /Wallet/},
   {
     data: staticCallback.donationSettings,
     methods: ['editMessageText', 'answerCallbackQuery'],
@@ -158,7 +201,7 @@ const staticCases: {
   },
   {
     data: staticCallback.donateCustom,
-    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /amount in sats/,
     conversation: true,
   },
@@ -168,14 +211,15 @@ const staticCases: {
     text: /auto-donation percent|percent \(0/,
     conversation: true,
   },
+  {
+    data: staticCallback.featureRequest,
+    methods: ['answerCallbackQuery', 'sendMessage'],
+    text: /What should we build/,
+    conversation: true,
+  },
   // Conversation-only feature-request fund buttons.
   {
     data: staticCallback.featureFundSkip,
-    methods: ['deleteMessage', 'answerCallbackQuery'],
-    text: /Unknown button/,
-  },
-  {
-    data: staticCallback.featureFundCustom,
     methods: ['deleteMessage', 'answerCallbackQuery'],
     text: /Unknown button/,
   },
@@ -191,7 +235,7 @@ const staticCases: {
   },
   {
     data: staticCallback.donateMonthlyCustom,
-    methods: ['answerCallbackQuery', 'editMessageReplyMarkup', 'sendMessage'],
+    methods: ['answerCallbackQuery', 'deleteMessage', 'sendMessage'],
     text: /monthly donation amount/,
     conversation: true,
   },
@@ -252,7 +296,7 @@ const parameterizedCases: {
     route: 'chats-page',
     data: () => 'chats:1',
     methods: ['editMessageText'],
-    text: /Your chats with the ability/,
+    text: /<b>👥 Chats<\/b>/,
   },
   {
     route: 'chat',
@@ -264,14 +308,14 @@ const parameterizedCases: {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:off-paid`,
     methods: ['editMessageText'],
-    text: /Paid access: <b>disabled/,
+    text: /🔴 <b>Paid access disabled/,
     db: {chats: {changed: 1}},
   },
   {
     route: 'chat-paid-access',
     data: ({chat}) => `chat:${chat.id}:on-paid`,
     methods: ['editMessageText'],
-    text: /Paid access: <b>enabled/,
+    text: /🟢 <b>Paid access enabled/,
   },
   {
     route: 'chat-payment-type',
@@ -289,7 +333,7 @@ const parameterizedCases: {
   {
     route: 'chat-change-price',
     data: ({chat}) => `chat:${chat.id}:change-price`,
-    methods: ['deleteMessage', 'sendMessage', 'sendMessage'],
+    methods: ['editMessageText'],
     text: /Changing the price of paid access/,
     db: {conversations: {added: 1}},
   },
@@ -297,14 +341,33 @@ const parameterizedCases: {
     route: 'chat-custom-message',
     data: ({chat}) => `chat:${chat.id}:custom-message`,
     methods: ['editMessageText'],
-    text: /Custom EN message/,
+    text: /Join request message[\s\S]*RU: <b>custom[\s\S]*EN: <b>custom/,
   },
   {
     route: 'chat-edit-custom-message',
     data: ({chat}) => `chat:${chat.id}:edit-custom-message`,
+    methods: ['editMessageText'],
+    text: /Join request message/,
+  },
+  {
+    route: 'chat-custom-message-edit',
+    data: ({chat}) => `chat:${chat.id}:custom-message:edit:ru`,
     methods: ['deleteMessage', 'sendMessage'],
     text: /Enter a custom message in Russian/,
     db: {conversations: {added: 1}},
+  },
+  {
+    route: 'chat-custom-message-preview',
+    data: ({chat}) => `chat:${chat.id}:custom-message:preview:en`,
+    methods: ['editMessageText'],
+    text: /Preview · EN[\s\S]*Custom EN message/,
+  },
+  {
+    route: 'chat-custom-message-reset',
+    data: ({chat}) => `chat:${chat.id}:custom-message:reset:ru`,
+    methods: ['editMessageText'],
+    text: /Join request message[\s\S]*RU: <b>default[\s\S]*EN: <b>custom/,
+    db: {chats: {changed: 1}},
   },
   {
     route: 'chat-remove-custom-message',
@@ -404,7 +467,7 @@ const parameterizedCases: {
       'deleteMessage',
       'sendChatAction',
       'sendMessage',
-      'sendMessage',
+      'sendRichMessage',
     ],
     text: /Could not send 21 sats|Support ZapGram/,
     // Fee-collection invoice is created even when the user cannot pay it.
@@ -418,7 +481,7 @@ const parameterizedCases: {
       'deleteMessage',
       'sendChatAction',
       'sendMessage',
-      'sendMessage',
+      'sendRichMessage',
     ],
     text: /first charge failed|zapgram@getalby.com|Support ZapGram/,
     db: {users: {changed: 1}},
@@ -470,7 +533,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(46)
+  expect(registry).toHaveLength(50)
   expect(covered).toEqual(registry)
 })
 
@@ -504,7 +567,7 @@ test('a refused deleteMessage does not abort callback cleanup or raise a bot err
 test('plain private text falls back to the wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('hello there')), {
     ...FIRST_TOUCH,
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Wallet/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
   })
   expectNoErrors(e2e.logs)
 })
@@ -512,12 +575,12 @@ test('plain private text falls back to the wallet', async () => {
 test('pasted bolt11 invoice reaches the invoices module', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('lnbc1pabcdef')), {
     ...FIRST_TOUCH,
-    telegram: ['sendMessage', 'sendMessage', 'sendMessage'],
+    telegram: ['sendMessage'],
   })
-  expect(joinedOutput()).toMatch(/Paying Lightning invoice/)
-  // The invoice is unparseable on purpose: routing is proven by reaching the paying-invoice
-  // conversation at all. The single log line is the InvoiceParsingError it then raises.
-  expect(e2e.logs).toHaveLength(1)
+  expect(joinedOutput()).toMatch(/Invalid Lightning invoice/)
+  // The invoice is unparseable on purpose: routing is proven by the invoice-input conversation
+  // returning its localized correction rather than falling through to the wallet.
+  expect(e2e.logs).toHaveLength(0)
 })
 
 // --- Chat-type isolation ---
@@ -558,7 +621,7 @@ for (const [type, chat] of [
 test('/tip in a private chat does not reach the group tipping handler', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/tip 21')), {
     ...FIRST_TOUCH,
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Wallet/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
   })
   expectNoErrors(e2e.logs)
 })
@@ -567,7 +630,9 @@ test('/tip in a private chat does not reach the group tipping handler', async ()
 
 test('an update from a bot account is rejected before a user row is created', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('hello', {from: {is_bot: true}})), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /anonymous profile/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /bot, channel, group, or anonymous profile/},
+    ],
   })
 
   expect(await e2e.db.select().from(usersTable)).toEqual([])
@@ -577,7 +642,18 @@ test('an update from a bot account is rejected before a user row is created', as
 
 function joinedOutput(): string {
   return e2e.tg.calls
-    .map(call => String(call.payload.text ?? call.payload.caption ?? ''))
+    .map(call => {
+      const richMessage = call.payload.rich_message as
+        | {html?: string; markdown?: string}
+        | undefined
+      return String(
+        call.payload.text ??
+          call.payload.caption ??
+          richMessage?.html ??
+          richMessage?.markdown ??
+          '',
+      )
+    })
     .join('\n')
 }
 

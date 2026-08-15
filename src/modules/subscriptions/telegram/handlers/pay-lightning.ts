@@ -1,6 +1,8 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
+import {richCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
+import {editJoinScreen} from '@modules/subscriptions/telegram/join-screen.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {payLightningRoute} from '@telegram/callback-data.js'
@@ -51,16 +53,14 @@ export const payLightningCallback = async (
   })
 
   const locale = await ctx.i18n.getLocale()
-  const customMessage = locale === 'ru' ? chat.customMessageRu : chat.customMessageEn
-  const remainingHours = Math.floor(invoice.remainingMinutes / 60)
-  const remainingMinutes = invoice.remainingMinutes % 60
-  const remaining = ctx.t('subscription-invoice.remaining-time', {
-    hours: remainingHours,
-    minutes: remainingMinutes,
-  })
+  // Minted attempts always store the decoded expiry; the reuse path is the only one that could
+  // hand back a row without it, and there the remaining minutes are exact enough.
+  const expiresAt =
+    invoice.attempt.expiresAt ?? new Date(Date.now() + invoice.remainingMinutes * 60_000)
+  const remaining = ctx.t('subscription-invoice.remaining-time', {expiresAt})
 
-  const text = ctx.t('subscription-invoice.created', {
-    message: customMessage ?? ctx.t('subscription-invoice.default-message', {title: chat.title}),
+  const html = ctx.t('subscription-invoice.created', {
+    message: richCustomMessage(chat, locale),
     invoice: invoice.attempt.paymentRequest,
     type: chat.paymentType,
     price: chat.price,
@@ -69,9 +69,11 @@ export const payLightningCallback = async (
   })
 
   try {
-    await ctx.editMessageText(text, {
-      reply_markup: keyboard,
-      link_preview_options: {is_disabled: true},
+    await editJoinScreen(ctx, {
+      html,
+      qrPayload: invoice.attempt.paymentRequest.toUpperCase(),
+      keyboard,
+      log,
     })
   } catch (error) {
     log.error({error, chatId}, 'Failed to edit Lightning join invoice message')

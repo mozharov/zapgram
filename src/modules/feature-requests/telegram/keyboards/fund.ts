@@ -7,8 +7,11 @@ import {InlineKeyboard} from 'grammy'
 /**
  * Optional funding after the user described a feature:
  * [Skip] [21] [100]
- * [1k] [10k] [100k] [✏️]
+ * [1k] [10k] [100k]
  * [Cancel]
+ *
+ * There is no custom-amount button: any other amount is typed straight into the chat and the fund
+ * step accepts it, so the board never has to hand the flow over to a separate prompt.
  */
 export function buildFeatureFundKeyboard(t: BotContext['t']) {
   const keyboard = new InlineKeyboard()
@@ -20,7 +23,6 @@ export function buildFeatureFundKeyboard(t: BotContext['t']) {
   for (const amount of FEATURE_FUND_PRESETS_SATS.slice(2)) {
     keyboard.text(formatPresetSatsLabel(amount), featureFundAmountRoute.build({amountSats: amount}))
   }
-  keyboard.text(t('button.feature-fund-custom-short'), staticCallback.featureFundCustom)
   keyboard.row({
     callback_data: staticCallback.cancel,
     text: t('button.cancel'),

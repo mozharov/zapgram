@@ -305,7 +305,15 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
 
       await deps.markWinnerCompleted(payment.id, now())
 
-      await deps.notifier.send(payment.userId, await buildSubscriberMessage(payment, chat, user))
+      // `withoutMenu`: the subscriber usually reached us through a join request and may never have
+      // pressed /start, so the bot can only write to them inside the join-request window. An
+      // "Open wallet" button sends a fresh private message and would 403 once that window closes.
+      await deps.notifier.send(
+        payment.userId,
+        await buildSubscriberMessage(payment, chat, user),
+        undefined,
+        {withoutMenu: true},
+      )
 
       const total = payment.price - fee
       const [usdSuffix = '', feeUsdSuffix = '', totalUsdSuffix = ''] = await usdSuffixesFor([

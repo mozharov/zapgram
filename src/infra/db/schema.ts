@@ -28,6 +28,18 @@ export const usersTable = sqliteTable(
     }),
     /** User blocked the bot in private chat (or unreachable); skip broadcasts. */
     botBlocked: integer('bot_blocked', {mode: 'boolean'}).notNull().default(false),
+    /** Latest living-menu message in the private chat (`chat_id` = user id). */
+    lastMenuMessageId: integer('last_menu_message_id', {mode: 'number'}),
+    /** Latest decorated private notification message. */
+    lastNotificationMessageId: integer('last_notification_message_id', {mode: 'number'}),
+    /** JSON `inline_keyboard` of that notification without the open-menu row. */
+    lastNotificationBaseMarkup: text('last_notification_base_markup'),
+    /** True for one-off validation/error notices: superseding them deletes instead of stripping. */
+    lastNotificationTransient: integer('last_notification_transient', {mode: 'boolean'})
+      .notNull()
+      .default(false),
+    /** Latest join-request payment screen: a second, temporary menu the next menu clears. */
+    lastJoinMessageId: integer('last_join_message_id', {mode: 'number'}),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [
@@ -313,6 +325,8 @@ export const broadcastsTable = sqliteTable(
     locale: text('locale', {enum: ['en', 'ru']}).notNull(),
     sourceChatId: integer('source_chat_id', {mode: 'number'}).notNull(),
     sourceMessageId: integer('source_message_id', {mode: 'number'}).notNull(),
+    /** JSON snapshot of the source message inline keyboard (`copyMessage` replaces markup). */
+    sourceReplyMarkup: text('source_reply_markup'),
     status: text('status', {
       enum: ['sending', 'completed', 'cancelled', 'failed'],
     })

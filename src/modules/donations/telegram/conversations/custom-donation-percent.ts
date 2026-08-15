@@ -4,7 +4,17 @@ import {formatDonationSettingsText} from '@modules/donations/telegram/messages/d
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
@@ -12,32 +22,61 @@ export async function customDonationPercent(
   conversation: BotConversation,
   ctx: ConversationContext,
 ) {
-  const message = await ctx.reply(ctx.t('settings-donation.custom-percent-prompt'), {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
+  const html = ctx.t('settings-donation.custom-percent-prompt')
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+      ]),
+    }),
+  )
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.donation-percent'),
   })
-  const raw = await conversation.form.int({
-    otherwise: async c => {
-      await removeInlineKeyboard(message)
-      if (c.update.message?.text) await c.reply(c.t('settings-donation.invalid-percent'))
-      await c.reply(c.t('canceled'))
-      return conversation.halt({next: true})
-    },
-  })
-  await conversation.external(() => removeInlineKeyboard(message))
-  if (raw < 0 || raw > 100) {
-    await conversation.external(() =>
-      captureBotEvent(getRuntime().posthog, 'donation_invalid_percent', {
-        feature: 'donations',
-        source: 'custom',
-        raw_percent: raw,
-      }),
-    )
-    await ctx.reply(ctx.t('settings-donation.invalid-percent'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+  const cancelled = cancelledPromptState(ctx, prompt)
+
+  let raw: number
+  let input: ConversationContext | undefined
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      const user = await conversation.external(() => getRuntime().users.getOrThrow(ctx.user.id))
+      await showLivingMenu(ctx, () =>
+        ctx.reply(formatDonationSettingsText(ctx.t, user), {
+          reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+        }),
+      )
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
+
+    const text = next.message?.text?.trim()
+    const parsed = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
+    if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 100) {
+      await conversation.external(() =>
+        captureBotEvent(getRuntime().posthog, 'donation_invalid_percent', {
+          feature: 'donations',
+          source: 'custom',
+          raw_percent: Number.isFinite(parsed) ? parsed : null,
+        }),
+      )
+      await replyWithConversationTempMessage(
+        conversation,
+        next,
+        next.t('settings-donation.invalid-percent'),
+      )
+      continue
+    }
+    raw = parsed
+    input = next
+    break
   }
+  await clearPromptControls(conversation, prompt)
 
   const percent = clampDonationPercent(raw)
   const previous = ctx.user.donationPercent
@@ -59,7 +98,10 @@ export async function customDonationPercent(
   )
   await ctx.reply(ctx.t('settings-donation.percent-set', {percent}))
   // Return to auto-% screen (still under the support hub via Back).
-  await ctx.reply(formatDonationSettingsText(ctx.t, user), {
-    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-  })
+  await showLivingMenu(ctx, () =>
+    ctx.reply(formatDonationSettingsText(ctx.t, user), {
+      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+    }),
+  )
+  if (input?.message) await deleteMessageSafely(input)
 }

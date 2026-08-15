@@ -113,6 +113,27 @@
       "when": 1786800000000,
       "tag": "0015_admin_broadcast",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1786900000000,
+      "tag": "0016_private_chat_declutter",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1787000000000,
+      "tag": "0017_notification_transient",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1787100000000,
+      "tag": "0018_join_screen_pointer",
+      "breakpoints": true
     }
   ]
 }

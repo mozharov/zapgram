@@ -30,9 +30,10 @@ export function extractSatsPayChargeFromWebhook(body: unknown): {
 export async function handleSatsPayWebhook(
   body: unknown,
 ): Promise<CompleteOnchainResult | 'ignored'> {
-  const {completeOnchainJoin, onchainPayments, posthog} = getRuntime()
+  const {completeOnchainJoin, log, onchainPayments, posthog} = getRuntime()
   const charge = extractSatsPayChargeFromWebhook(body)
   if (!charge) {
+    log.warn('SatsPay webhook body is not a charge; ignored')
     captureUserEvent(posthog, 'onchain_webhook_ignored', SATSPAY_WEBHOOK_ANALYTICS_DISTINCT_ID, {
       reason: 'invalid_body',
     })

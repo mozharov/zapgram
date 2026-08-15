@@ -2,7 +2,7 @@ import {afterEach, beforeEach, expect, setSystemTime, test} from 'bun:test'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import {ONE_MONTH_IN_MS} from '@core/subscriptions/policy.js'
 import type {Subscription, SubscriptionPayment} from '@infra/db/types.js'
-import {paySubscriptionRoute} from '@telegram/callback-data.js'
+import {paySubscriptionRoute, staticCallback} from '@telegram/callback-data.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {expectNoErrors, expectPayoutsExactly, expectWorldUnchanged} from '../asserts.js'
 import {decodeMintedInvoice} from '../fakes/bolt11.js'
@@ -106,7 +106,7 @@ test('an expiring subscription auto-renews from the internal balance exactly onc
       expiryDate: extendedEndsAt(subscription),
       price: PRICE,
       // Default fake LNbits rate 100_000 → 1000 sats ≈ $1.00
-      usdSuffix: ' (~$1.00)',
+      usdSuffix: ' ($1.00)',
     }),
   )
   expect(String(subscriberMessage?.text)).not.toContain('Доступ к сообществу')
@@ -158,6 +158,7 @@ test('an insufficient balance reuses one renewal payment for the manual reminder
   expect(String(photo.caption)).toContain(payment.paymentRequest)
   expect(callbackDataOf(photo)).toEqual([
     paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
+    staticCallback.openMenu,
   ])
   const masterId = masterWallet().id
   const masterInvoices = e2e.ln.state.payments.filter(candidate => {
@@ -249,8 +250,9 @@ test('disabled auto-renewal creates one exact manual invoice and one wallet butt
   expect([...signature]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
   expect(callbackDataOf(photo)).toEqual([
     paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'}),
+    staticCallback.openMenu,
   ])
-  expect(buttonTextsOf(photo)).toEqual(['💰 С баланса ZapGram'])
+  expect(buttonTextsOf(photo)).toEqual(['💰 С баланса ZapGram', '👛 Открыть кошелёк'])
   const requests = paymentRequestsSince(requestMark)
   expect(requests).toHaveLength(1)
   expect(requests[0]?.body).toMatchObject({

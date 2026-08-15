@@ -2,11 +2,13 @@ import {updateUser} from '@modules/users/repository.js'
 import {buildSettingsKeyboard} from '@modules/wallet/telegram/keyboards/settings.js'
 import {mergePersonProperties, personPropertiesFromTelegram} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {editLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../../../runtime.js'
 
 export const nwcTipsCallback = async (ctx: BotContext) => {
   const user = await updateUser(ctx.user.id, {nwcTips: !ctx.user.nwcTips})
   ctx.user.nwcTips = user.nwcTips
+  ctx.log.info({nwcTips: user.nwcTips}, 'NWC tips setting toggled')
   // Merge with Telegram person fields so a local $set does not drop name / $name.
   getRuntime().posthog?.capture({
     event: 'nwc_tips_toggled',
@@ -22,7 +24,9 @@ export const nwcTipsCallback = async (ctx: BotContext) => {
       ctx.user.nwcTips ? 'callback-answer.nwc-tip-enabled' : 'callback-answer.nwc-tip-disabled',
     ),
   })
-  return ctx.editMessageText(ctx.t('settings'), {
-    reply_markup: buildSettingsKeyboard(ctx.t, user),
-  })
+  return editLivingMenu(ctx, () =>
+    ctx.editMessageText(ctx.t('settings'), {
+      reply_markup: buildSettingsKeyboard(ctx.t, user),
+    }),
+  )
 }

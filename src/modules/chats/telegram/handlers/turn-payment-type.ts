@@ -11,6 +11,7 @@ export const turnPaymentTypeCallback = async (ctx: CallbackQueryContext<BotConte
   let chat = await getAccessibleChatForOwner(id, ctx.user.id)
   if (!chat) return ctx.editMessageText(ctx.t('chat.not-found'))
   chat = await updateChat(id, {paymentType})
+  ctx.log.info({chatId: id, paymentType, price: chat.price}, 'Chat payment type updated')
   const {posthog} = getRuntime()
   if (posthog) setTelegramChatGroup(posthog, chat, String(ctx.user.id))
   captureBotEvent(

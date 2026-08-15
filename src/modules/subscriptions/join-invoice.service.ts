@@ -1,6 +1,7 @@
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {decideInvoiceReuse} from '@core/subscriptions/invoice-reuse.js'
 import type {SubscriptionPayment} from '@infra/db/types.js'
+import type {AppLogger} from '@infra/logger.js'
 import type {FinalizeReservedAttemptData, ReserveInvoiceAttemptResult} from './intent-repository.js'
 
 const BUSY_RETRY_DELAY_MS = 25
@@ -40,6 +41,8 @@ type JoinInvoiceServiceDeps = {
     expirySeconds: number,
   ) => Promise<{payment_hash: string; bolt11: string}>
   invoiceExpirySeconds: number
+  /** Optional so unit tests can construct the service without a logger. */
+  log?: AppLogger
   now?: () => Date
   sleep?: (milliseconds: number) => Promise<void>
 }
@@ -74,8 +77,24 @@ export function createJoinInvoiceService(deps: JoinInvoiceServiceDeps) {
 
     while (true) {
       const reservation = await deps.reserveInvoiceAttempt(request, now())
-      if (reservation.action === 'closed') return undefined
+      if (reservation.action === 'closed') {
+        deps.log?.info(
+          {userId: request.userId, chatId: request.chatId},
+          'Join invoice skipped: intent already closed',
+        )
+        return undefined
+      }
       if (reservation.action === 'reuse') {
+        deps.log?.info(
+          {
+            userId: request.userId,
+            chatId: request.chatId,
+            paymentId: reservation.attempt.id,
+            paymentHash: reservation.attempt.paymentHash,
+            remainingMinutes: reservation.remainingMinutes,
+          },
+          'Join invoice reused',
+        )
         return {
           attempt: reservation.attempt,
           remainingMinutes: reservation.remainingMinutes,
@@ -84,6 +103,10 @@ export function createJoinInvoiceService(deps: JoinInvoiceServiceDeps) {
       }
       if (reservation.action === 'busy') {
         if (now().getTime() - startedAt >= BUSY_WAIT_TIMEOUT_MS) {
+          deps.log?.error(
+            {userId: request.userId, chatId: request.chatId, intentId: reservation.intent.id},
+            'Timed out waiting for a concurrent join invoice attempt',
+          )
           throw new Error(
             `Timed out waiting for invoice attempt for intent ${reservation.intent.id}`,
           )
@@ -125,9 +148,24 @@ export function createJoinInvoiceService(deps: JoinInvoiceServiceDeps) {
         finalizedAt,
       )
       finalized = true
+      deps.log?.info(
+        {
+          userId: request.userId,
+          chatId: request.chatId,
+          paymentId: attempt.id,
+          paymentHash: attempt.paymentHash,
+          sats: request.price,
+          subscriptionType: request.subscriptionType,
+        },
+        'Join invoice minted',
+      )
       return {attempt, remainingMinutes: reuse.remainingMinutes, reused: false}
     } finally {
       if (!finalized) {
+        deps.log?.warn(
+          {userId: request.userId, chatId: request.chatId, intentId: reservation.intent.id},
+          'Join invoice reservation released without an invoice',
+        )
         await deps.releaseAttemptReservation(reservation.intent.id, reservation.reservationId)
       }
     }

@@ -3,47 +3,69 @@ import {replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {removeInlineKeyboard} from '@telegram/helpers/keyboard.js'
+import {
+  cancelledPromptState,
+  classifyPromptUpdate,
+  clearPromptControls,
+  createActivePrompt,
+  deactivatePrompt,
+  interruptConversation,
+} from '@telegram/helpers/conversation-prompt.js'
+import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 
 export async function customMonthlyAmount(conversation: BotConversation, ctx: ConversationContext) {
-  await conversation.external(async () => {
-    try {
-      await ctx.editMessageReplyMarkup({reply_markup: {inline_keyboard: []}})
-    } catch {
-      // ignore
-    }
+  const html = ctx.t('donate.monthly-custom-amount')
+  const message = await showLivingMenu(ctx, () =>
+    ctx.reply(html, {
+      reply_markup: new InlineKeyboard([
+        [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+      ]),
+    }),
+  )
+  const prompt = createActivePrompt(message, {
+    kind: 'text',
+    html,
+    actionLabel: ctx.t('conversation-action.donate-monthly'),
   })
+  const cancelled = cancelledPromptState(ctx, prompt)
 
-  const message = await ctx.reply(ctx.t('donate.monthly-custom-amount'), {
-    reply_markup: new InlineKeyboard([
-      [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
-    ]),
-  })
-  const sats = await conversation.form.int({
-    otherwise: async c => {
-      await removeInlineKeyboard(message)
-      if (c.update.message?.text) await c.reply(c.t('donate.invalid-amount'))
-      await c.reply(c.t('canceled'))
-      return conversation.halt({next: true})
-    },
-  })
-  await conversation.external(() => removeInlineKeyboard(message))
-  if (!isValidDonationAmountSats(sats)) {
-    await conversation.external(() =>
-      captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
-        feature: 'donations',
-        flow: 'monthly',
-        source: 'custom',
-        amount_sats: sats,
-      }),
-    )
-    await ctx.reply(ctx.t('donate.invalid-amount'))
-    await ctx.reply(ctx.t('canceled'))
-    return conversation.halt()
+  let sats: number
+  let input: ConversationContext | undefined
+  for (;;) {
+    const next = await conversation.wait()
+    const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
+    if (kind === 'cancel') {
+      await next.answerCallbackQuery()
+      await deactivatePrompt(conversation, prompt, cancelled)
+      await replyDonateHub(ctx)
+      return conversation.halt()
+    }
+    if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
+
+    const text = next.message?.text?.trim()
+    const parsed = text && /^\d+$/.test(text) ? Number(text) : Number.NaN
+    if (!Number.isSafeInteger(parsed) || !isValidDonationAmountSats(parsed)) {
+      await conversation.external(() =>
+        captureBotEvent(getRuntime().posthog, 'donation_invalid_amount', {
+          feature: 'donations',
+          flow: 'monthly',
+          source: 'custom',
+          amount_sats: Number.isFinite(parsed) ? parsed : null,
+        }),
+      )
+      await replyWithConversationTempMessage(conversation, next, next.t('donate.invalid-amount'))
+      continue
+    }
+    sats = parsed
+    input = next
+    break
   }
+  await clearPromptControls(conversation, prompt)
 
   const current = await conversation.external(() => getRuntime().users.getOrThrow(ctx.user.id))
   const wasOff = current.monthlyDonationSats <= 0
@@ -68,6 +90,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     )
     await ctx.reply(ctx.t('donate.monthly-amount-updated', {sats, usdSuffix}))
     await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
     return
   }
 
@@ -138,4 +161,5 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   }
 
   await replyDonateHub(ctx)
+  if (result.status === 'paid' && input?.message) await deleteMessageSafely(input)
 }

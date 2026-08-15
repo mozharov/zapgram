@@ -85,16 +85,16 @@ test('a redelivered join request resends the method chooser without minting an i
   const update = chatJoinRequest('supergroup', {from: {id: USER_A}})
   await e2e.send(update)
 
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Choose a payment method/)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Choose how you want to pay/)
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
 
   // Telegram can redeliver an update it never got a 200 for. Chooser is re-sent; no invoice yet.
   await expectDelta(e2e, () => e2e.send(update), {
     telegram: [
       {
-        method: 'sendMessage',
+        method: 'sendRichMessage',
         to: USER_A,
-        text: /Choose a payment method/,
+        text: /Choose how you want to pay/,
       },
     ],
   })
@@ -144,10 +144,7 @@ test('paying the same subscription invoice twice does not debit twice', async ()
   // The payment row outlives the click — only the settle cron deletes it — so the second click
   // reaches the same invoice. LNbits is what refuses it, and the refusal is what the user sees.
   await expectDelta(e2e, () => e2e.send(update), {
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /already been paid/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
-    ],
+    telegram: [{method: 'sendMessage', to: USER_A, text: /already been paid/}],
   })
   expect(errorMessages()).toEqual([
     'POST /api/v1/payments: HTTP error',
@@ -168,7 +165,7 @@ for (const {label, text} of textCases) {
   test(`${label} falls back to the wallet like any other text`, async () => {
     await expectDelta(e2e, () => e2e.send(privateText(text)), {
       ...FIRST_TOUCH,
-      telegram: [{method: 'sendMessage', to: USER_A, text: /Wallet/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
     })
     expectNoErrors(e2e.logs)
   })
@@ -250,16 +247,17 @@ test('a handle the recipient no longer owns stops resolving', async () => {
 
   await expectDelta(
     e2e,
-    async () => {
-      await e2e.send(groupText('/tip 21 @old_handle', {from: {id: USER_A, username: 'user_a'}}))
-      await waitForTempMessageDeletion()
-    },
+    () => e2e.send(groupText('/tip 21 @old_handle', {from: {id: USER_A, username: 'user_a'}})),
     {
       telegram: [
         {method: 'deleteMessage'},
         {method: 'sendChatAction'},
-        {method: 'sendMessage', to: CHAT_GROUP, text: /doesn't have a ZapGram wallet/},
-        {method: 'deleteMessages'},
+        {
+          method: 'sendMessage',
+          to: CHAT_GROUP,
+          receiverUserId: USER_A,
+          text: /doesn't have a ZapGram wallet/,
+        },
       ],
     },
   )
@@ -325,21 +323,16 @@ function credit(userId: number, sats: number): void {
   e2e.ln.state.credit(wallet.id, sats * 1000)
 }
 
-/**
- * An error reply in a group is a temp message: the handler returns immediately and deletes it a
- * few milliseconds later. Waiting for that delete keeps it inside the assertion window that
- * expects it, instead of leaking into whatever the test does next.
- */
-async function waitForTempMessageDeletion(): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (e2e.tg.of('deleteMessages').length > 0) return
-    await Bun.sleep(5)
-  }
-  throw new Error('The temp error message was never deleted')
-}
-
 function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+/** Join screens are rich messages: the copy lives in `rich_message.html`, not `text`. */
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const rich = payload?.rich_message
+  if (!rich || typeof rich !== 'object') return ''
+  const html = Reflect.get(rich, 'html')
+  return typeof html === 'string' ? html : ''
 }

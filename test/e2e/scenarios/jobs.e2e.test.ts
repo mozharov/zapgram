@@ -113,7 +113,7 @@ test('a paid pending invoice is notified and deleted', async () => {
   expectLedgerBalanced(before, after)
   expect(await e2e.db.select().from(pendingInvoicesTable)).toEqual([])
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
-    new RegExp(`Amount: <b>${PENDING_SATS} sats(?: \\(~\\$[^)]+\\))?</b>`),
+    new RegExp(`Amount: <b>${PENDING_SATS} sats(?: \\(\\$[^)]+\\))?</b>`),
   )
   expectNoErrors(e2e.logs)
 })

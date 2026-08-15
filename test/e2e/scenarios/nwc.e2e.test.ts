@@ -1,5 +1,5 @@
 import {afterAll, afterEach, beforeEach, expect, mock, test} from 'bun:test'
-import {subscriptionPaymentsTable} from '@infra/db/schema.js'
+import {conversationsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
@@ -117,8 +117,7 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
       {method: 'deleteMessage', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Wallet connected with NWC/},
-      {method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+      {method: 'editMessageText', to: USER_A, text: /Wallet connected with NWC/},
     ],
   })
 
@@ -129,11 +128,54 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
   expect(after.lnbits.wallets).toEqual(before.lnbits.wallets)
   expect(after.lnbits.payments).toEqual(before.lnbits.payments)
 
-  const walletText = String(e2e.tg.last('sendMessage')?.text)
+  // The wizard's own prompt becomes the report and keeps a self-disappearing "Open wallet" button
+  // rather than sending the wallet screen straight away.
+  const report = e2e.tg.last('editMessageText')
+  expect(report?.reply_markup).toEqual({
+    inline_keyboard: [[{text: '👛 Open wallet', callback_data: staticCallback.openMenu}]],
+  })
+
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.openMenu)), {
+    telegram: [
+      {method: 'answerCallbackQuery'},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 0 sats/},
+    ],
+  })
+  const walletText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(walletText).toMatch(/<b>NWC:<\/b> 5\D?000 sats/)
   expect(walletText).not.toMatch(/<b>Balance:<\/b>/)
 
   expect(nwcCalls.filter(call => call.method === 'getBalance').length).toBeGreaterThanOrEqual(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('an invalid NWC URL keeps the prompt active and can be corrected', async () => {
+  await e2e.send(privateCallback(staticCallback.connectNwc))
+
+  const invalidInput = privateText('https://example.com/wallet')
+  const invalidMessageId = invalidInput.message?.message_id
+  if (invalidMessageId === undefined) throw new Error('Expected the invalid NWC input message')
+  await expectDelta(e2e, () => e2e.send(invalidInput), {
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid NWC URL/}],
+  })
+  expect(await e2e.db.select().from(conversationsTable)).toHaveLength(1)
+
+  const correctedInput = privateText(NWC_URL)
+  const telegramMark = e2e.tg.calls.length
+  await expectDelta(e2e, () => e2e.send(correctedInput), {
+    db: {users: {changed: 1}, conversations: {removed: 1}},
+    telegram: [
+      {method: 'deleteMessages', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'editMessageText', to: USER_A, text: /Wallet connected with NWC/},
+    ],
+  })
+  expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
+
+  expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: NWC_URL})
   expectNoErrors(e2e.logs)
 })
 
@@ -171,12 +213,12 @@ test('disconnecting NWC clears nwc_url and nwc_tips', async () => {
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Wallet disconnected/},
       // Same-request wallet must already be the single-balance copy (ctx.nwc cleared).
-      {method: 'sendMessage', to: USER_A, text: /<b>Balance:<\/b>/},
+      {method: 'sendRichMessage', to: USER_A, text: /<b>Balance:<\/b>/},
     ],
   })
 
   expect(await e2e.container.users.findById(USER_A)).toMatchObject({nwcUrl: null, nwcTips: false})
-  const walletText = String(e2e.tg.last('sendMessage')?.text)
+  const walletText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(walletText).not.toMatch(/NWC:/)
   expectNoErrors(e2e.logs)
 })
@@ -186,30 +228,115 @@ test('/wallet with a connected NWC shows both balances', async () => {
   creditInternal(USER_A, 1234)
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /<b>ZapGram:<\/b> 1\D?234 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /<b>ZapGram:<\/b> 1\D?234 sats/}],
   })
 
-  const text = String(e2e.tg.last('sendMessage')?.text)
+  const text = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(text).toMatch(/<b>NWC:<\/b> 5\D?000 sats/)
   expect(text).not.toMatch(/<b>Balance:<\/b>/)
   expect(nwcCalls.some(call => call.method === 'getBalance')).toBe(true)
   expectNoErrors(e2e.logs)
 })
 
-test('/settings with a connected NWC offers disconnect and tips toggle', async () => {
+test('the NWC menu with a connected wallet offers disconnect and tips toggle', async () => {
   await connectNwc()
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/settings')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Connecting an external wallet/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.settings)), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Connecting an external wallet/}],
   })
 
-  expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
     staticCallback.toggleNwcTips,
     staticCallback.disconnectNwc,
-    staticCallback.groupSettings,
-    staticCallback.donate,
     staticCallback.wallet,
   ])
+  expectNoErrors(e2e.logs)
+})
+
+test('text during wallet selection cancels the action and returns to Wallet', async () => {
+  await connectNwc()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
+  const cancellation = privateText('internal')
+
+  await expectDelta(e2e, () => e2e.send(cancellation), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageText', to: USER_A, text: /Wallet/},
+      {method: 'deleteMessage', to: USER_A},
+    ],
+  })
+
+  expect(e2e.tg.last('deleteMessage')?.message_id).toBe(cancellation.message?.message_id)
+  expectNoErrors(e2e.logs)
+})
+
+test('paying an invoice shows decoded details before the wallet picker', async () => {
+  await connectNwc()
+  creditInternal(USER_A, 2000)
+  const invoice = foreignInvoice(100)
+  await e2e.send(privateCallback(staticCallback.payInvoice))
+
+  await e2e.send(privateText(invoice.bolt11))
+
+  const prompt = e2e.tg.last('editMessageText')
+  expect(String(prompt?.text)).toMatch(/Amount: <b>100 sats/)
+  expect(String(prompt?.text)).toMatch(/Select a wallet to pay this invoice/)
+  expect(String(prompt?.text)).toContain('<blockquote expandable>')
+  expect(String(prompt?.text)).not.toMatch(/Powered by t\.me\/zap_gram_bot/)
+  expect(String(prompt?.text)).not.toMatch(/Description:/)
+  expect(prompt?.link_preview_options).toEqual({is_disabled: true})
+  expect(callbackDataOf(prompt)).toEqual(['internal', 'nwc', 'cancel'])
+  expect(buttonTextsOf(prompt)).toEqual(expect.arrayContaining(['🤖 ZapGram', '⚡️ NWC']))
+  expectNoErrors(e2e.logs)
+})
+
+test('paying an invoice does not offer a wallet that cannot cover it', async () => {
+  await connectNwc()
+  const invoice = foreignInvoice(100)
+  await e2e.send(privateCallback(staticCallback.payInvoice))
+
+  await e2e.send(privateText(invoice.bolt11))
+
+  const prompt = e2e.tg.last('editMessageText')
+  expect(callbackDataOf(prompt)).toEqual(['nwc', 'cancel'])
+  expect(buttonTextsOf(prompt)).toContain('⚡️ NWC')
+  expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/ZapGram/)
+  expectNoErrors(e2e.logs)
+})
+
+test('paying an invoice hides NWC and notes it when the balance cannot be read', async () => {
+  getBalanceShouldFail = true
+  await connectNwc()
+  creditInternal(USER_A, 2000)
+  const invoice = foreignInvoice(100)
+  await e2e.send(privateCallback(staticCallback.payInvoice))
+
+  await e2e.send(privateText(invoice.bolt11))
+
+  const prompt = e2e.tg.last('editMessageText')
+  expect(String(prompt?.text)).toMatch(/Couldn't reach the connected NWC wallet/)
+  expect(callbackDataOf(prompt)).toEqual(['internal', 'cancel'])
+  expect(buttonTextsOf(prompt)).toContain('🤖 ZapGram')
+  expect(buttonTextsOf(prompt).join('\n')).not.toMatch(/NWC/)
+  expectNoErrors(e2e.logs)
+})
+
+test('wallet selection consumes Cancel from its own prompt', async () => {
+  await connectNwc()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -275,11 +402,11 @@ test('a join chooser offers the balance button when the NWC balance covers the p
         }),
       ),
     {
-      telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+      telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
     },
   )
 
-  const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
+  const callbacks = callbackDataOf(e2e.tg.last('sendRichMessage'))
   expect(callbacks).toContain(`pay-join-balance:${CHAT_GROUP}:nwc`)
   expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expect(callbacks.some(data => data.endsWith(':wallet'))).toBe(false)
@@ -305,7 +432,7 @@ test('paying a join via NWC balance settles the master invoice without debiting 
       from: {id: USER_A, username: 'user_a', language_code: 'en'},
     }),
   )
-  const balancePayData = callbackDataOf(e2e.tg.last('sendMessage')).find(
+  const balancePayData = callbackDataOf(e2e.tg.last('sendRichMessage')).find(
     data => data === `pay-join-balance:${CHAT_GROUP}:nwc`,
   )
   if (!balancePayData) throw new Error('Expected a pay-join-balance NWC button')
@@ -365,7 +492,7 @@ test('an insufficient NWC balance does not offer the NWC pay button', async () =
     }),
   )
 
-  const callbacks = callbackDataOf(e2e.tg.last('sendMessage'))
+  const callbacks = callbackDataOf(e2e.tg.last('sendRichMessage'))
   expect(callbacks.some(data => data.endsWith(':nwc'))).toBe(false)
   expect(callbacks.some(data => data.startsWith('pay-lightning:'))).toBe(true)
   expectNoErrors(e2e.logs)
@@ -449,6 +576,12 @@ test('an expiring subscription auto-renews via NWC when the internal balance is 
 
 // --- helpers ---
 
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}
+
 /**
  * Credit an LNbits wallet as if an external NWC payment just settled its unpaid invoice.
  * Money enters the fake ledger from outside — the same shape a real NWC pay produces.
@@ -507,13 +640,47 @@ function walletByName(name: string) {
   return wallet
 }
 
+function foreignInvoice(sats: number) {
+  const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
+  if (!master) throw new Error('Fake LNbits master wallet not found')
+  return e2e.ln.state.createInvoice({
+    wallet: master,
+    sats,
+    memo: e2e.container.config.memoFooter,
+    expirySec: 3600,
+  })
+}
+
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {
   const markup = payload?.reply_markup as {inline_keyboard?: {callback_data?: string}[][]}
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function buttonTextsOf(payload: Record<string, unknown> | undefined): string[] {
+  const markup = payload?.reply_markup as {inline_keyboard?: {text?: string}[][]}
+  return (markup?.inline_keyboard ?? [])
+    .flat()
+    .flatMap(button => (typeof button.text === 'string' ? [button.text] : []))
+}
+
+function requiredPromptMessageId(): number {
+  const edited = e2e.tg.lastMessageId('editMessageText')
+  if (edited !== undefined) return edited
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }
 
 function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }

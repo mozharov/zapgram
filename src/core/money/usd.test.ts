@@ -50,6 +50,6 @@ describe('formatUsdSuffix', () => {
   })
 
   test('wraps amount', () => {
-    expect(formatUsdSuffix(0.95)).toBe(' (~$0.95)')
+    expect(formatUsdSuffix(0.95)).toBe(' ($0.95)')
   })
 })

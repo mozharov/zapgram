@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `last_notification_transient` integer DEFAULT false NOT NULL;

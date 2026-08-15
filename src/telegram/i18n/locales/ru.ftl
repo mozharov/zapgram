@@ -3,12 +3,44 @@ bot-username = @zap_gram_bot
 
 canceled = <b>❌ Действие отменено.</b>
 
+conversation-state =
+    .cancelled = <i>Действие отменено.</i>
+    .inactive = <i>Этот шаг больше не активен.</i>
+    .inactive-fallback = ℹ️ Предыдущий шаг больше не активен: {$action}.
+    .invoice-memo-inactive = <i>Добавление описания больше не активно.</i>
+
+conversation-action =
+    .enter-sats = ввод суммы
+    .enter-invoice = ввод Lightning-счёта
+    .connect-nwc = подключение NWC-кошелька
+    .select-recipient = выбор получателя
+    .edit-message-ru = редактирование сообщения на русском
+    .edit-message-en = редактирование сообщения на английском
+    .select-wallet = выбор кошелька
+    .confirm-invoice-payment = подтверждение оплаты счёта
+    .invoice-memo-options = добавление описания счёта
+    .enter-invoice-memo = ввод описания счёта
+    .enable-onchain = включение on-chain оплаты
+    .donate-one-shot = ввод суммы поддержки
+    .donation-percent = ввод процента авто-доната
+    .donate-monthly = ввод суммы ежемесячной поддержки
+    .feature-text = ввод предложения функции
+    .feature-fund = выбор поддержки функции
+    .broadcast-locale = выбор языка рассылки
+    .broadcast-source = выбор сообщения рассылки
+    .broadcast-confirm = подтверждение рассылки
+
 button = 
     .back = ⬅️ Назад
     .help = ℹ️ Помощь
-    .settings = ⚙️ Настройки
+    .settings = ⚙️ NWC
     .receive = 📩 Получить
     .send = ✉️ Отправить
+    .subscriptions = 🔐 Мои подписки
+    .chats = 👥 Чаты
+    .feature-request = 💡 Предложить идею
+    .open-wallet = 👛 Открыть кошелёк
+    .how-it-works = ℹ️ Как это работает
     .enable-nwc-tips = ⚡️ Использовать NWC для отправки донатов в группах
     .disable-nwc-tips = 🤖 Использовать {bot-name} для отправки донатов в группах
     .disconnect-nwc = 🚫 Отсоединить NWC-кошелёк
@@ -19,6 +51,7 @@ button =
     .add-chat = 👥 Добавить чат
     .paid-chats = 🔐 Платные чаты
     .add-invoice-memo = 🔡 Добавить описание
+    .copy-invoice = Скопировать счёт
     .pay-invoice = ⚡️ Оплатить Lightning счёт
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
@@ -30,8 +63,8 @@ button =
     .next = ➡
     .enable-monthly-payment = 🔄 Переключить на ежемесячную оплату
     .enable-one-time-payment = 🔄 Переключить на разовую оплату
-    .change-price = Изменить цену
-    .enable-paid-access = Включить платный доступ
+    .change-price = 💰 Изменить цену
+    .enable-paid-access = ✅ Включить платный доступ
     .disable-paid-access = 🚫 Отключить платный доступ
     .pay-subcription-with-wallet = 💰 С баланса {bot-name}
     .pay-subcription-with-nwc = 💰 Через NWC
@@ -40,6 +73,9 @@ button =
     .custom-message = 💬 Пользовательское сообщение
     .edit-custom-message = 💬 Изменить сообщение
     .remove-custom-message = ❌ Вернуть сообщение по умолчанию
+    .edit-custom-message-locale = ✏️ Изменить {$locale}
+    .preview-custom-message = 👁 Превью {$locale}
+    .reset-custom-message = ♻️ Сбросить {$locale}
     .enable-onchain = ⛓ Включить on-chain оплату
     .disable-onchain = 🚫 Выключить on-chain оплату
     .pay-onchain = ⛓ Биткоин
@@ -59,7 +95,6 @@ button =
     .donation-scope-all = Tips + счета
     .back-to-support = ⬅️ Поддержка
     .feature-fund-skip = Без сат
-    .feature-fund-custom-short = ✏️
 
 callback-answer = 
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
@@ -68,7 +103,8 @@ callback-answer =
 
 error = 
     .unknown = <b>⚠️ Произошла неизвестная ошибка.</b>
-    .nwc-connection = <b>⚠️ Неудалось подключиться к кошельку по NWC.</b>
+    .nwc-connection = <b>⚠️ Не удалось подключиться к кошельку по NWC.</b>
+        Из-за этого запрос обрабатывался долго. Проверь настройки подключения NWC-кошелька.
     .nwc-timeout = <b>⚠️ Время ожидания ответа от NWC истекло.</b>
         Статус операции неизвестен. Проверь подключение NWC-кошелька.
     .to-yourself = <b>⚠️ Нельзя отправлять сатоши самому себе.</b>
@@ -85,56 +121,30 @@ error =
         Попробуй ещё раз через минуту. Если это заявка на вступление в чат — подай её снова.
     .no-recipient = <b>⚠️ Не указан получатель.</b>
     .to-bot = <b>⚠️ Ты не можешь отправлять саты ботам.</b>
-    .from-bot = <b>⚠️ Ты не можешь использовать {bot-name} с анонимного профиля.</b>
+    .from-bot = <b>⚠️ Нельзя отправлять от лица бота, канала, группы или анонимного профиля.</b>
+        Пиши со своего личного аккаунта.
 
-start = ⚡ <b>{bot-name} — Bitcoin Lightning кошелёк в Telegram.</b>
+start = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
+    <h1>⚡ {bot-name}</h1>
+    <p>Bitcoin Lightning кошелёк: отправляй и получай сатоши в чатах, включай платный доступ к группам и каналам.</p>
 
-    С {bot-name} ты можешь отправлять и получать Bitcoin в чатах Telegram, а так же платить и принимать платежи по всему миру через Lightning Network.
+    <h2>Как это работает</h2>
+    <ol>
+    <li>Открой Кошелёк — внутренний кошелёк уже готов к работе.</li>
+    <li>Получи сатоши или отправь их другому пользователю Telegram. Переводы внутри Telegram мгновенные, комиссия — 0.</li>
+    <li>При желании подключи свой Lightning-кошелёк через NWC. Сатоши останутся под твоим контролем.</li>
+    </ol>
 
+    <details><summary>Добровольная поддержка 5% включена</summary><p>По умолчанию включён добровольный донат 5% от суммы перевода только при отправке /tip в чатах. Оплата счетов не входит. Изменить или отключить: /donate.</p></details>
 
-    ℹ️ <b>Два вида кошельков в {bot-name}:</b>
-    
-    <b>Внутренний кошелёк.</b>
-    Твои Bitcoin хранятся на наших серверах, что позволяет избегать комиссий при переводах внутри Telegram. Переводы бесплатны и мгновенны, как сообщения.
-      
-    <b>Внешний кошелёк.</b>
-    Ты можешь подключить свой Lightning-кошелёк через Nostr Wallet Connect (NWC). 
-    Твои сатоши остаются полностью под твоим контролем. {bot-name} действует в рамках установленных тобой лимитов.
-
-
-    👥 <b>Групповые чаты и каналы:</b>
-    Добавь {bot-username} в групповой чат, чтобы участники могли легко отправлять и принимать донаты.
-
-    <i>Больше о возможностях {bot-name} в группах и каналах в /settings.</i>
-
-    👥 <b>Платный доступ к закрытому чату:</b>
-    Добавь {bot-username} в чат с правами на приглашение и блокировку пользователей, для создания платного доступа с разовой оплатой или ежемесячной подпиской. 
-    Используй /chats для контроля платных чатов.
-
-    💚 <b>Добровольная поддержка:</b>
-    У новых аккаунтов включён <b>5%</b> вклад автору бота на платежах (донаты и оплата счетов). Изменить или отключить: /donate.
-    Вне бота: <code>zapgram@getalby.com</code>.
-
-    💡 <b>Идеи фич:</b>
-    Напиши запрос через /feature — можно прикрепить сатоши, чтобы показать, что важно.
-
-    <b>🤝 Партнёр</b>
-    В сообществе <a href="https://21ideas.org">21 идея</a> {bot-name} используется для tips в чате и платного доступа к сообществу.
-    Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
-    • <a href="https://21ideas.org">21ideas.org</a> — обучающие материалы по Bitcoin
-    • <a href="https://21ideas.org/zapgram/">Гайд по ZapGram от 21 идея</a>
-
-    🕊 <b>Добро пожаловать в мир свободных платежей!</b>
-    <i>Подробнее о {bot-name}, Bitcoin, Lightning Network и совместимых кошельках в /help.</i>
+    <footer>🤝 При поддержке сообщества <a href="https://t.me/bitcoin21ideas">21 идея</a>.</footer>
 
 feature =
     .prompt = 💡 <b>Что сделать в боте?</b>
         Пришли одно текстовое сообщение с идеей.
-        Или так: <code>/feature твоя идея</code>.
     .invalid-text = ⚠️ Пришли непустое текстовое сообщение с идеей.
     .fund-prompt = 💰 Можно прикрепить сатоши к этой идее (тип, не обещание, что сделаем).
-        Или отправь бесплатно.
-    .custom-amount = 🔤 Сколько сат прикрепить (1–100000000).
+        Выбери сумму ниже, пришли любую другую числом или отправь бесплатно.
     .invalid-amount = ⚠️ Введи целое число сат от 1 до 100000000.
     .submitted = ✅ Спасибо! Запрос фичи отправлен.
     .submitted-funded = ✅ Спасибо! Запрос отправлен с <b>{$sats}</b> сат{$usdSuffix}.
@@ -155,25 +165,28 @@ donation =
     .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат{$usdSuffix} отправить не удалось. Проверь баланс / NWC или используй /donate.
 
 donate = 
-    .hub = 💚 <b>Поддержать {bot-name}</b>
-        Спасибо, что помогаешь проекту жить.
+    .hub = <h1>💚 Поддержать {bot-name}</h1>
+        <p>Спасибо, что помогаешь проекту жить. Выбери разовую сумму ниже или настрой регулярную поддержку.</p>
 
-        🌍 <b>Сообщество</b>
-        ⏱ За всё время: <b>{$platformTotalSats}</b> сат{$platformTotalUsdSuffix}
-        📅 За 30 дней: <b>{$platformLastMonthSats}</b> сат{$platformLastMonthUsdSuffix}
+        <details open><summary>🌍 Вклад сообщества</summary>
+        <ul>
+        <li><b>За всё время:</b> <b>{$platformTotalSats}</b> сат{$platformTotalUsdSuffix}</li>
+        <li><b>За 30 дней:</b> <b>{$platformLastMonthSats}</b> сат{$platformLastMonthUsdSuffix}</li>
+        </ul>
+        </details>
 
-        👤 <b>Ты</b>
-        💸 Отправлено: <b>{$totalSats}</b> сат{$totalUsdSuffix} · {$count} платежей
-        🕐 {$last}
-        📅 Ежемесячно: <b>{$monthlyStatus}</b>
-        ⚡️ Авто с платежей: <b>{$autoPercent}</b> · {$autoScope}
+        <details open><summary>👤 Твоя поддержка</summary>
+        <ul>
+        <li><b>Отправлено:</b> <b>{$totalSats}</b> сат{$totalUsdSuffix} · {$count} платежей</li>
+        <li><b>Последний донат:</b> {$last}</li>
+        <li><b>Ежемесячно:</b> {$monthlyStatus}</li>
+        <li><b>Автоподдержка:</b> {$autoPercent} · {$autoScope}</li>
+        </ul>
+        </details>
 
-        Нажми сумму для разового доната или открой «Ежемесячно» / «Авто %».
-
-        🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>
-
-        ⚡ <b>Lightning-адрес:</b> <code>zapgram@getalby.com</code>
-    .stats-last = Последний: {$date}
+        <p>⚡ <b>Lightning-адрес</b><br/><code>zapgram@getalby.com</code></p>
+        <footer>🤝 Проект поддерживается сообществом <a href="https://t.me/bitcoin21ideas">21 идея</a>.</footer>
+    .stats-last = Последний: {TGTIME($date, format: "d")}
     .stats-last-none = Донатов пока нет
     .auto-off = Выкл
     .auto-on = {$percent}%
@@ -188,8 +201,8 @@ donate =
     .monthly-menu = 📅 <b>Ежемесячный донат</b>
 
         Сейчас: <b>{$sats}</b> сат{$usdSuffix} (0 = выкл).
+
         Выбери сумму. При включении спишем сразу, затем каждые 30 дней.
-        «Назад» — в общий хаб поддержки (разово + авто %).
     .monthly-enabled = ✅ Ежемесячный донат: {$sats} сат{$usdSuffix}. Первый платёж получен; следующий через 30 дней.
     .monthly-enable-failed = ⚠️ Ежемесячный донат: {$sats} сат{$usdSuffix}, но первый платёж не прошёл. Повторим автоматически. Проверь баланс / NWC.
     .monthly-amount-updated = ✅ Сумма обновлена: {$sats} сат{$usdSuffix}. Следующее списание по расписанию.
@@ -197,56 +210,58 @@ donate =
     .monthly-failed = ⚠️ Не удалось списать ежемесячный донат {$sats} сат{$usdSuffix}. Проверь баланс / NWC или /donate.
     .monthly-custom-amount = 🔤 Введи сумму ежемесячного доната в сатоши.
 
-help = <b>ℹ️ Bitcoin</b>
-    Биткоин — лучшая форма денег в истории человечества, существующая в интернете. Децентрализованная система не требующая разрешений, не имеющая хозяев и управляющих структур. Биткоин — устойчивые деньги, которые быстрее, безопаснее и доступнее, чем фиатные валюты, которые мы вынуждены использовать сегодня.
-    
-    Биткоин — первый ресурс в истории человечества, чьё предложение строго ограничено; количество выпущенных биткоинов никогда не превысит 21 миллион. 
-    Самая маленькая единица в сети Биткоин называется сатоши (сат). 100 000 000 сат = 1 биткоин.
+help = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
+    <h1>Как работает {bot-name}</h1>
+    <p>{bot-name} добавляет в Telegram быстрые Bitcoin-платежи, tips и платный доступ к сообществам через Lightning Network.</p>
 
-    Рекомендую начать своё знакомство с Биткоином с этой статьи:
-    • <a href="https://21ideas.org/start/start/">Что такое Bitcoin?</a>
+    <details open><summary>Кошельки и комиссии</summary>
+    <ul>
+    <li><b>Внутренний кошелёк:</b> кастодиальное хранение на серверах {bot-name}. Переводы между пользователями Telegram мгновенные и бесплатные.</li>
+    <li><b>Внешний кошелёк:</b> подключи свой кошелёк через NWC. Сатоши останутся под твоим контролем, а {bot-name} будет действовать в заданных тобой лимитах.</li>
+    <li>Совместимые NWC-кошельки: <a href="https://getalby.com/invited-by/mozharov">Alby</a> (рекомендуется) и <a href="https://coinos.io">Coinos</a>.</li>
+    <li>При отправке из внутреннего кошелька {bot-name} на внешний кошелёк комиссия составляет 1 сат + 1.5% от суммы.</li>
+    </ul>
+    </details>
 
-    <b>ℹ️ Lightning Network</b>
-    Сеть Лайтинг — это платёжный протокол, который позволяет совершать быстрые и дешёвые платежи в сети Биткоин. Именно благодрая сети Лайтнинг молниеносно-быстрые биткоин-платежи с околонулевой комиссией уже доступны более чем 650 миллионам людей по всему миру.
-    • <a href="https://21ideas.org/chto-takoe-laitning/">Что такое Lightning Network?</a>
+    <details><summary>Платежи и tips</summary>
+    <ul>
+    <li>Для быстрой оплаты отправь Lightning-счёт в этот чат.</li>
+    <li>Добавь {bot-username} в группу или канал, чтобы участники могли отправлять tips.</li>
+    <li>Переводы между пользователями {bot-name} внутри Telegram проходят без комиссии.</li>
+    </ul>
+    </details>
 
-    <b>ℹ️ Совместимые с {bot-name} кошельки (NWC)</b>
-    • <a href="https://getalby.com/invited-by/mozharov">Alby</a> (рекомендуется)
-    • <a href="https://coinos.io">Coinos</a>
+    <details><summary>Группы, каналы и платный доступ</summary><p>Добавь {bot-username} в закрытую группу или канал, чтобы настроить разовую оплату или ежемесячную подписку. Для платного доступа сделай бота админом с правами приглашать и банить. Управление доступно в разделе «Чаты» внутри Кошелька.</p></details>
 
-    <b>ℹ️ {bot-name}</b>
-    • Быстрая оплата: просто отправь сообщение с Lightning-счётом в чат.
-    • Платный доступ к чату: добавь {bot-username} в закрытый чат, для создания платного доступа с разовой оплатой или ежемесячной подпиской. Используй /chats для контроля чатов с платным доступом.
-    • Запросы фич: /feature — опиши идею; можно прикрепить сатоши как сигнал приоритета.
-    • Открытый исходный код: код {bot-name} полностью открыт и доступен на <a href="https://github.com/v-mozharov/zapgram">GitHub</a>.
+    <details><summary>Добровольная поддержка</summary><p>Для новых аккаунтов по умолчанию включён вклад 5% только с tips; оплата счетов не входит. Изменить или отключить: /donate. Также доступен адрес <code>zapgram@getalby.com</code>.</p></details>
 
-    <b>🤝 Партнёр</b>
-    В сообществе <a href="https://21ideas.org">21 идея</a> {bot-name} используется для tips в чате и платного доступа к сообществу.
-    Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>
-    • <a href="https://21ideas.org">21ideas.org</a> — обучающие материалы по Bitcoin
-    • <a href="https://21ideas.org/zapgram/">Гайд по ZapGram от 21 идея</a>
+    <details><summary>Узнать о Bitcoin и Lightning</summary>
+    <ul>
+    <li><a href="https://21ideas.org/start/start/">Что такое Bitcoin?</a></li>
+    <li><a href="https://21ideas.org/chto-takoe-laitning/">Что такое Lightning Network?</a></li>
+    </ul>
+    </details>
 
-    <i>При оплате счетов, созданных вне кошелька {bot-name}, взимается комиссия в размере 1 сат + 1.5% от суммы перевода. Комиссия взимается только при оплате из кошелька {bot-name}.</i>
+    <h2>Партнёр: 21 идея</h2>
+    <p>Сообщество <a href="https://21ideas.org">21 идея</a> использует {bot-name} для tips и платного доступа. Канал: <a href="https://t.me/bitcoin21ideas">@bitcoin21ideas</a>. Также доступен <a href="https://21ideas.org/zapgram/">гайд по ZapGram</a>.</p>
+    <hr/>
+    <footer>Открытый код: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Поддержка: @vmozharov · Предложить идею в главном меню</footer>
 
-    <i>Если требуется помощь или возникли вопросы по работе {bot-name}, пишите мне в Telegram: @vmozharov</i>
-
-wallet = <b>👛 Кошелёк</b> ㅤ ㅤ ㅤ ㅤ ㅤ
-
-    {$nwcBalance -> 
-    [no] <b>Баланс:</b> {$balance} сат{$usdSuffix}
-    *[other] <b>{bot-name}:</b> {$balance} сат{$usdSuffix}
-        <b>NWC:</b> {$nwcBalance} сат{$nwcUsdSuffix}
+wallet = <h1>👛 Кошелёк</h1>
+    {$nwcBalance ->
+    [no] <p><b>Баланс:</b> {$balance} сат{$usdSuffix}</p>
+    *[other] <p><b>{bot-name}:</b> {$balance} сат{$usdSuffix}</p>
+        <p><b>NWC:</b> {$nwcBalance} сат{$nwcUsdSuffix}</p>
     }
 
-nwc = 
+nwc =
     .disconnected = <b>✅ Кошелёк отключён от {bot-name}.</b>
-    .connecting = <b>🔗 Подключение кошелька по NWC...</b>
-    .wait-url = <b>🔤 Введи NWC URL твоего Lightning кошелька.</b> 
+    .wait-url = <b>🔤 Введи NWC URL твоего Lightning кошелька.</b>
         Он должен начинаться с <i>nostr+walletconnect://...</i>
     .invalid-url = <b>⚠️ Невалидный URL NWC.</b>
     .connected = <b>✅ Кошелёк подключён по NWC.</b>
 
-settings = <b>⚙️ Настройки</b>
+settings = <b>⚙️ NWC</b>
 
     <b>⚡️ Подключение внешнего кошелька</b>
     Подключи свой Lightning-кошелёк к {bot-name} через Nostr Wallet Connect (NWC), чтобы совершать платежи напрямую из подключённого кошелька.
@@ -255,30 +270,35 @@ settings = <b>⚙️ Настройки</b>
     Если твой NWC-кошелёк будет недоступен во время платежа, платёж не пройдёт. Используй кошелёк {bot-name}, если поддержание NWC-кошелька в сети для тебя проблематично.
 
     <i>Используй /help для дополнительной информации.</i>
-    .groups = <b>👥 Групповые чаты и каналы</b>
-        Ты можешь добавить {bot-username} в групповой чат, чтобы включить донаты в чате с помощью команды /tip.
+    .groups = <h1>👥 Чаты</h1>
+        <p>Добавь {bot-username} в групповой чат, чтобы включить донаты с помощью команды <code>/tip</code>.</p>
 
-        <b>Платный доступ</b> настраивается отдельно: сделай бота админом с правами приглашать и банить, затем открой <b>Платные чаты</b> ниже (или <code>/chats</code>). Одно только добавление бота платный доступ не включает.
+        <p><b>Платный доступ</b> настраивается отдельно: сделай бота админом с правами приглашать и банить, затем открой <b>Платные чаты</b> ниже. Одно только добавление бота платный доступ не включает.</p>
 
-        <b>Примеры использования:</b>
-        • <code>/tip</code> — отправить 21 сат владельцу чата 
-        • <code>/tip 100</code> — отправить 100 сат владельцу чата
-        • (ответ на сообщение) <code>/tip</code> — отправить 21 сат автору сообщения
-        • (ответ на сообщение) <code>/tip 1000</code> — отправить 1000 сат автору сообщения
-        • <code>/tip @user</code> — отправить 21 сат выбранному пользователю
-        • <code>/tip 50 @user</code> — отправить 50 сат выбранному пользователю
+        <details><summary>📋 Примеры /tip</summary>
+        <ul>
+        <li><code>/tip</code> — отправить 21 сат владельцу чата</li>
+        <li><code>/tip 100</code> — отправить 100 сат владельцу чата</li>
+        <li>(ответ на сообщение) <code>/tip</code> — отправить 21 сат автору сообщения</li>
+        <li>(ответ на сообщение) <code>/tip 1000</code> — отправить 1000 сат автору сообщения</li>
+        <li><code>/tip @user</code> — отправить 21 сат выбранному пользователю</li>
+        <li><code>/tip 50 @user</code> — отправить 50 сат выбранному пользователю</li>
+        </ul>
+        </details>
 
-        <b>Расширенные возможности</b>
-        Если ты сделаешь {bot-name} администратором своей группы, то все /tip без указанного получателя будут отправляться на твой кошелёк. {bot-name} будет автоматически удалять все технические сообщения, чтобы поддерживать чистоту в чате. Для корректной работы боту необходимы только права на удаления сообщений.
-        
-        Если ты сделаешь {bot-name} администратором своего канала, то все /tip в ответ на публикации этого канала будут отправляться на твой кошелёк.
+        <details><summary>⚙️ Расширенные возможности</summary>
+        <p>Если ты сделаешь {bot-name} администратором своей группы, то все /tip без указанного получателя будут отправляться на твой кошелёк. {bot-name} будет автоматически удалять все технические сообщения, чтобы поддерживать чистоту в чате. Для корректной работы боту необходимы только права на удаления сообщений.</p>
+
+        <p>Если ты сделаешь {bot-name} администратором своего канала, то все /tip в ответ на публикации этого канала будут отправляться на твой кошелёк.</p>
+        </details>
 
 settings-donation = ⚡️ <b>Авто % с платежей</b>
 
     Сейчас: <b>{$status}</b> · {$scope}
 
     Добровольный % сверху tips и оплаты счетов (основной платёж не блокируется).
-    0% — выкл. Разово и ежемесячно — кнопки в хабе «Поддержать».
+    
+    0% — выкл.
     .off = Выкл
     .percent = {$percent}%
     .scope-tips = только tips
@@ -298,6 +318,7 @@ sending-to-user = <b>✉️ Отправка сат пользователю Tel
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>
+    .selected = <b>👤 @{$username}</b>
 
 wait-for-sats = <b>🔢 Введи сумму в сатах.</b>
     .invalid = <b>⚠️ Неверная сумма. Ожидается целое число от 1 до 100000000.</b>
@@ -307,6 +328,8 @@ wait-for-wallet = <b>👛 Выбери кошелёк</b>
     .internal = <b>🤖 Выбран кошелёк {bot-name}.</b>
     .auto-only-internal = <b>🤖 Баланса достаточно только на кошельке {bot-name}, поэтому он выбран автоматически.</b>
     .auto-only-nwc = <b>⚡️ Баланса достаточно только на NWC-кошельке, поэтому он выбран автоматически.</b>
+    .nwc-unreachable = <b>⚠️ Не удалось подключиться к NWC-кошельку.</b>
+    .pay-invoice = <b>👛 Выбери кошелёк для оплаты счёта</b>
 
 sats-received = <b>📩 Тебе пришло {$amount} сат{$usdSuffix}</b>.
     {$username -> 
@@ -325,22 +348,22 @@ wait-for-invoice-review = <b>ℹ️ Проверка счёта</b>
         {$hasDescription ->
         [true] Описание: <b>{$description}</b>
         <i></i>
-        *[other] <i></i>
-        }{$fee -> 
-        [no] <i></i>
+        *[other]{""}
+        }{$fee ->
+        [no]{""}
         *[other] Комиссия: <b>{$fee} сат{$feeUsdSuffix}</b>
         <i></i>
-        }Дата создания: <b>{DATETIME($createdDate, timeZone: "UTC")} {DATETIME($createdDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Дата создания: <b>{TGTIME($createdDate, format: "Dt")}</b>
         {$expiryDate ->
-        [no] <i></i>
-        *[other] Срок действия: <b>{DATETIME($expiryDate, timeZone: "UTC")} {DATETIME($expiryDate, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
-        <i></i>
+        [no]{""}
+        *[other] Срок действия: <b>{TGTIME($expiryDate, format: "Dt")}</b>
+        }{$hasExpired ->
+        [true]
+        <b>⚠️ Срок действия счёта истёк.</b>
+        *[other]{""}
         }
 
-        {$hasExpired ->
-        [true] <b>⚠️ Срок действия счёта истёк.</b>
-        *[other] <i></i>
-        }
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 received-incoming-invoice = 📥 <b>Получен платёж за Lightning-счёт.</b>
         Сумма: <b>{$amount} сат{$usdSuffix}</b>.
@@ -357,17 +380,32 @@ paying-invoice = <b>🧾 Оплата счёта Lightning...</b>
         Сумма платежа: <b>{$amount} сат{$usdSuffix}</b>
         Комиссия: <b>{$fee} сат{$feeUsdSuffix}</b>
         Итого: <b>{$total} сат{$totalUsdSuffix}</b>
+        {$wallet ->
+        [nwc] Кошелёк: <b>NWC</b>
+        *[internal] Кошелёк: <b>{bot-name}</b>
+        }
+        {$hasDescription ->
+        [true] Описание: <b>{$description}</b>
+        <i></i>
+        *[other]{""}
+        }
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 creating-invoice = <b>🧾 Создание счёта Lightning...</b>
-     .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>
+    .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>
+
+        {$wallet ->
+        [nwc] Кошелёк: <b>NWC</b>
+        *[internal] Кошелёк: <b>{bot-name}</b>
+        }
+
         {$hasDescription ->
         [true] Описание: <b>{$description}</b>
         <i></i>
         *[other] <i></i>
-        }Срок действия: <b>{DATETIME($expiresAt, timeZone: "UTC")} {DATETIME($expiresAt, hour: "numeric", minute: "numeric", timeZone: "UTC")} (UTC)</b>
+        }Срок действия: <b>{TGTIME($expiresAt, format: "Dt")}</b>
 
-        Lightning счёт:
-        <code>{$invoice}</code>
+        <blockquote expandable><code>{$invoice}</code></blockquote>
 
 wait-for-memo = <b>🔡 Введи описание счёта.</b>
     .invalid = <b>⚠️ Невалидное описание. Ожидается строка до 150 символов.</b>
@@ -393,42 +431,50 @@ paid-chat =
         }.</b>
         Ты можешь настроить платный доступ к этому чату.
 
-chats = <b>👥 Твои чаты с возможностью платного доступа.</b>
-    Здесь настраивается платный доступ для чатов, куда бот уже добавлен админом.
-    Добавь {bot-username} в чат с правами на приглашение и блокировку, чтобы чат появился в списке.
-    .empty = <b>👥 У тебя нет чатов с возможностью платного доступа.</b>
-        Добавь {bot-username} в чат с правами на приглашение и блокировку (кнопка ниже), затем снова открой /chats, чтобы настроить платный доступ.
+chats = <b>👥 Чаты</b>
+    Чаты, где можно включить платный доступ.
 
-chat = <b>👥 {$title}</b>
-    
-    Платный доступ: <b>{$status ->
-    [active] активен
-    *[other] выключен
-    }</b>
-    Цена: <b>{$price} сат{$usdSuffix}</b>
-    Тип оплаты: <b>{$paymentType ->
+    Здесь показаны только чаты, куда {bot-username} уже добавлен админом.
+    Добавь его в чат с правами на приглашение и блокировку, чтобы чат появился в списке.
+    .empty = <b>👥 Чаты</b>
+        У тебя пока нет чатов с платным доступом.
+
+        Добавь {bot-username} в чат с правами на приглашение и блокировку (кнопка ниже), затем выбери <b>Платные чаты</b> в главном меню, чтобы настроить платный доступ.
+
+chat = <h1>👥 {$title}</h1>
+
+    <p>{$status ->
+    [active] 🟢 <b>Платный доступ включён</b>
+    *[other] 🔴 <b>Платный доступ выключен</b>
+    }</p>
+
+    <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
+    <p>🔁 Тип оплаты: <b>{$paymentType ->
     [one_time] разовая
     *[other] ежемесячная
-    }</b>
-    On-chain оплата: <b>{$onchain ->
+    }</b></p>
+    <p>⛓ On-chain оплата: <b>{$onchain ->
     [on] включена (fingerprint {$fingerprint})
     *[other] выключена
-    }</b>
+    }</b></p>
 
-    <i>При изменении цены или типа оплаты, цена и тип оплаты для существующих подписчиков не изменятся.</i>
-    <i>On-chain платежи идут сразу на твой кошелёк (zpub/xpub). Доступ обычно открывается вскоре после появления транзакции в сети.</i>
-    <i>Чтобы платный доступ работал, в чате должны быть <b>заявки на вступление</b> (одобрение новых участников / invite-ссылка с запросом на вступление). Тогда бот сможет отправить инвойс вступившему и принять его после оплаты.</i>
+    <details><summary>ℹ️ Подробнее</summary>
+    <p>При изменении цены или типа оплаты цена и тип оплаты для существующих подписчиков не изменятся.</p>
+    <p>On-chain платежи идут сразу на твой кошелёк (zpub/xpub) — доступ обычно открывается вскоре после появления транзакции в сети.</p>
+    <p>Чтобы платный доступ работал, в чате должны быть включены <b>заявки на вступление</b> (одобрение новых участников / invite-ссылка с запросом на вступление) — тогда бот сможет отправить инвойс вступившему и принять его после оплаты.</p>
+    </details>
     .not-found = <b>👥 Чат не найден.</b>
         Добавь {bot-username} в чат с правами на приглашение и блокировку пользователей, чтобы использовать эту команду.
-    .custom-message = Ты можешь изменить часть сообщения, которое видит пользователь при отправке заявки на вступление в чат.
+    .custom-message = <b>💬 Сообщение для заявки на вступление</b>
+        Настраивай русскую и английскую версии независимо. Пока язык не настроен, используется текст по умолчанию.
 
-        <b>Текущее сообщение:</b>
+        RU: <b>{$ruStatus}</b>
+        EN: <b>{$enStatus}</b>
+    .custom-message-status-custom = своё
+    .custom-message-status-default = по умолчанию
+    .custom-message-preview = <b>👁 Превью · {$locale}</b>
 
-        <b>Ru:</b>
-        {$ruMessage}
-
-        <b>En:</b>
-        {$enMessage}
+        {$message}
 
 changing-price = <b>₿ Изменение цены платного доступа...</b>
     .completed = <b>✅ Цена платного доступа установлена на {$price} сат{$usdSuffix}.</b>
@@ -464,20 +510,20 @@ enabling-onchain = <b>⛓ Включение on-chain оплаты</b>
         Сверь его со своим кошельком.
 
 onchain-invoice =
-    .created = <b>⛓ On-chain оплата за "{$title}"</b>
+    .created = <h1>⛓ Оплата on-chain</h1>
 
-        Отправь <b>не меньше {$price} сат{$usdSuffix}</b> на адрес:
-
-        <code>{$address}</code>
-
-        Тип подписки: <b>{$type ->
+        <p>💰 Отправь <b>не меньше {$price} сат{$usdSuffix}</b> на Bitcoin-адрес ниже.</p>
+        <p>🎟 Ты получишь: <b>{$type ->
         [one_time] вечный доступ
         *[other] доступ на месяц
-        }</b>
+        }</b> к <b>«{$title}»</b></p>
 
-        <i>Сумма сверх {$price} сат{$usdSuffix} — донат владельцу сообщества.</i>
+        <p>Отсканируй QR ниже или нажми на адрес, чтобы скопировать.</p>
+        <blockquote expandable><code>{$address}</code></blockquote>
 
-        {$remaining}
+        <p>Доступ откроется, как только транзакция появится в сети.</p>
+        <p><i>Сумма сверх {$price} сат{$usdSuffix} — донат владельцу сообщества.</i></p>
+        <p>{$remaining}</p>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>
 
         {$type ->
@@ -511,51 +557,34 @@ subscription-invoice =
     .default-message = <b>🔒 Доступ к закрытому сообществу "{$title}"</b>
     .choose-method = {$message}
 
-    Цена: <b>{$price} сат{$usdSuffix}</b>
-    Тип подписки: <b>{$type ->
+    <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
+    <p>🎟 Ты получишь: <b>{$type ->
     [one_time] вечный доступ
     *[other] доступ на месяц
-    }</b>
+    }</b></p>
 
-    Выбери способ оплаты:
+    <p>Выбери, чем платить 👇</p>
     .created = {$message}
 
-    Цена: <b>{$price} сат{$usdSuffix}</b>
-    Тип подписки: <b>{$type ->
+    <p>💰 Цена: <b>{$price} сат{$usdSuffix}</b></p>
+    <p>🎟 Ты получишь: <b>{$type ->
     [one_time] вечный доступ
     *[other] доступ на месяц
-    }</b>
+    }</b></p>
 
-    <b>Чтобы получить доступ к сообществу, оплати счёт Lightning:</b>
-    <code>{$invoice}</code>
+    <p>⚡️ Оплати счёт Lightning: отсканируй QR ниже или нажми на счёт, чтобы скопировать.</p>
+    <blockquote expandable><code>{$invoice}</code></blockquote>
 
-    <b>После успешной оплаты, я сразу предоставу тебе доступ к сообществу.</b>
-
-    {$remaining}
+    <p>Доступ откроется автоматически сразу после оплаты.</p>
+    <p>{$remaining}</p>
     .insufficient-balance = ⚠️ Недостаточно баланса для оплаты доступа.
-    .remaining-time = <i>Счёт действителен ещё <b>{$hours ->
-        [0] {$minutes ->
-            [one] {$minutes} минуту
-            [few] {$minutes} минуты
-           *[many] {$minutes} минут
-        }
-       *[other] {$hours ->
-            [one] {$hours} час
-            [few] {$hours} часа
-           *[many] {$hours} часов
-        }{$minutes ->
-            [0] { "" }
-            [one] { " " }и {$minutes} минуту
-            [few] { " " }и {$minutes} минуты
-           *[many] { " " }и {$minutes} минут
-        }
-    }</b>.</i>
+    .remaining-time = <i>Счёт истекает <b>{TGTIME($expiresAt, format: "r")}</b>.</i>
     .paid = <b>✅ Доступ к сообществу "{$title}" получен.</b>
 
     {$type ->
     [one_time] <i></i>
     *[other] <i>Сумма подписки будет автоматически списываться с твоего кошелька {bot-name} каждый месяц.</i>
-        <i>Чтобы получать напоминания об окончании и управлять автопродлением, открой бота (/start) и /subscriptions.</i>
+        <i>Чтобы получать напоминания об окончании и управлять автопродлением, открой главное меню и выбери «Мои подписки».</i>
     }
     .paid-from-balance = <b>✅ Оплата прошла.</b>
         В течение 5-ти минут ты получишь доступ к сообществу.
@@ -566,7 +595,7 @@ subscription-invoice =
         Отправь новую заявку на вступление в чат, чтобы получить новый счёт.
 
 subscription-renewal = 
-    .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {DATETIME($expiryDate, timeZone: "UTC")}.</b>
+    .renewed = <b>✅ Твоя подписка на "{$title}" продлена до {TGTIME($expiryDate, format: "D")}.</b>
         Сумма оплаты: <b>{$price} сат{$usdSuffix}</b>
     .need-payment = <b>⚠️ Твоя подписка на "{$title}" истекает через 24 часа. Оплати счёт Lightning на сумму {$price} сат{$usdSuffix}, чтобы продлить доступ на месяц:</b>
         <code>{$invoice}</code>
@@ -592,7 +621,7 @@ subscription = <b>👥 Подписка на чат "{$chatTitle}"</b>
     Стоимость: <b>{$price} сат{$usdSuffix}</b>
     Срок действия до: <b>{$endsAt ->
         [no] бессрочно
-        *[other] {$endsAt}
+        *[other] {TGTIME($endsAt, format: "Dt")}
     }</b>
     {$endsAt ->
         [no] <i></i>
@@ -611,4 +640,4 @@ edit-custom-message =
         Этот текст будет отображаться пользователям, запрашивающим вступление в чат.
     .invalid = ❌ Пожалуйста, отправь валидное текстовое сообщение.
     .too-long = ❌ Сообщение слишком длинное. Максимальная допустимая длина 1000 символов.
-    .completed = ✅ Пользовательское сообщение успешно обновлено.
+    .completed = ✅ Пользовательское сообщение {$locale} обновлено.

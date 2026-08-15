@@ -34,7 +34,6 @@ services:
       # Optional analytics: omit POSTHOG_PROJECT_TOKEN to disable
       POSTHOG_PROJECT_TOKEN: ${POSTHOG_PROJECT_TOKEN:-}
       POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.i.posthog.com}
-      # Comma-separated Telegram user ids for /feature request DMs
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
     volumes:
       - bot-data:/app/data

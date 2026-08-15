@@ -4,6 +4,7 @@ import {formatDonationSettingsText} from '@modules/donations/telegram/messages/d
 import {captureBotEvent} from '@telegram/analytics.js'
 import {donationPercentRoute, donationScopeRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
+import {editLivingMenu} from '@telegram/helpers/living-menu.js'
 import {getRuntime} from '../../../../runtime.js'
 
 /** Auto-% screen nested under the unified support hub. */
@@ -15,9 +16,11 @@ export async function donationSettingsCallback(ctx: BotContext) {
     donation_scope: user.donationScope,
     source: 'hub_or_settings',
   })
-  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
-    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-  })
+  await editLivingMenu(ctx, () =>
+    ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+    }),
+  )
   await ctx.answerCallbackQuery()
 }
 
@@ -28,6 +31,7 @@ export async function donationPercentCallback(ctx: BotContext) {
   const clamped = clampDonationPercent(percent)
   const previous = ctx.user.donationPercent
   const user = await getRuntime().users.update(ctx.user.id, {donationPercent: clamped})
+  ctx.log.info({donationPercent: clamped, previous}, 'Donation percent updated')
   captureBotEvent(getRuntime().posthog, 'donation_percent_set', {
     feature: 'donations',
     donation_percent: clamped,
@@ -39,9 +43,11 @@ export async function donationPercentCallback(ctx: BotContext) {
       donation_scope: user.donationScope,
     },
   })
-  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
-    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-  })
+  await editLivingMenu(ctx, () =>
+    ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+    }),
+  )
   await ctx.answerCallbackQuery({
     text: ctx.t('settings-donation.percent-set', {percent: clamped}),
   })
@@ -53,6 +59,7 @@ export async function donationScopeCallback(ctx: BotContext) {
   const {scope} = donationScopeRoute.parse(data)
   const previous = ctx.user.donationScope
   const user = await getRuntime().users.update(ctx.user.id, {donationScope: scope})
+  ctx.log.info({donationScope: scope, previous}, 'Donation scope updated')
   captureBotEvent(getRuntime().posthog, 'donation_scope_set', {
     feature: 'donations',
     donation_scope: scope,
@@ -63,9 +70,11 @@ export async function donationScopeCallback(ctx: BotContext) {
       donation_scope: scope,
     },
   })
-  await ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
-    reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
-  })
+  await editLivingMenu(ctx, () =>
+    ctx.editMessageText(formatDonationSettingsText(ctx.t, user), {
+      reply_markup: buildDonationSettingsKeyboard(ctx.t, user),
+    }),
+  )
   await ctx.answerCallbackQuery({
     text:
       scope === 'tips'

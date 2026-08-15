@@ -1,7 +1,11 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import type {Chat} from '@infra/db/types.js'
+import {effectiveCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
 import {
   chatChangePriceRoute,
+  chatCustomMessageEditRoute,
+  chatCustomMessagePreviewRoute,
+  chatCustomMessageResetRoute,
   chatCustomMessageRoute,
   chatEditCustomMessageRoute,
   chatOnchainEnableRoute,
@@ -10,6 +14,7 @@ import {
   chatRemoveCustomMessageRoute,
   chatRoute,
   chatsPageRoute,
+  staticCallback,
 } from '@telegram/callback-data.js'
 import {expectEditedNotSent, expectNoConversations, expectNoErrors} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -38,6 +43,8 @@ export const COVERS = scenarioCoverage.chats
 
 const CHAT_PRICE = 1000
 const CHANGED_PRICE = 123
+const MASTERPUB =
+  'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz'
 const OWNER_PROFILE = {
   id: OWNER,
   is_bot: false,
@@ -102,7 +109,10 @@ for (const type of ['supergroup', 'channel'] as const) {
     })
 
     expect(e2e.tg.last('getChatAdministrators')?.chat_id).toBe(chatId)
-    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([chatRoute.build({chatId})])
+    expect(callbackDataOf(e2e.tg.last('sendMessage'))).toEqual([
+      chatRoute.build({chatId}),
+      staticCallback.openMenu,
+    ])
     expectNoErrors(e2e.logs)
   })
 }
@@ -216,14 +226,14 @@ const cardCases: CardCase[] = [
     seed: {status: 'active'},
     data: chatPaidAccessRoute.build({chatId: CHAT_GROUP, status: 'inactive'}),
     changes: {status: 'inactive'},
-    text: /Paid access: <b>disabled/,
+    text: /🔴 <b>Paid access disabled/,
   },
   {
     label: 'enabling paid access',
     seed: {status: 'inactive'},
     data: chatPaidAccessRoute.build({chatId: CHAT_GROUP, status: 'active'}),
     changes: {status: 'active'},
-    text: /Paid access: <b>enabled/,
+    text: /🟢 <b>Paid access enabled/,
   },
   {
     label: 'switching to monthly payments',
@@ -269,11 +279,11 @@ for (const cardCase of cardCases) {
         chatId: CHAT_GROUP,
         status: finalChat.status === 'active' ? 'inactive' : 'active',
       }),
+      chatChangePriceRoute.build({chatId: CHAT_GROUP}),
       chatPaymentTypeRoute.build({
         chatId: CHAT_GROUP,
         paymentType: finalChat.paymentType === 'monthly' ? 'one_time' : 'monthly',
       }),
-      chatChangePriceRoute.build({chatId: CHAT_GROUP}),
       chatOnchainEnableRoute.build({chatId: CHAT_GROUP}),
       chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
       chatsPageRoute.build({page: 1}),
@@ -311,7 +321,7 @@ test("a different user cannot enable paid access for someone else's chat", async
 
 // --- Price conversation ---
 
-test('a valid price is stored and the completed conversation sends a fresh card', async () => {
+test('a valid price is stored and the confirmation folds into the updated card', async () => {
   await enterChangingPrice()
 
   await expectDelta(e2e, () => e2e.send(privateText(String(CHANGED_PRICE))), {
@@ -324,48 +334,128 @@ test('a valid price is stored and the completed conversation sends a fresh card'
     },
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /set to 123 sats/},
-      {method: 'sendMessage', to: USER_A, text: /Price: <b>123 sats/},
+      {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
     ],
   })
 
+  // Folded into the same edit as the updated card, not a separate message.
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>123 sats/)
   await expectNoConversations(e2e.db)
-  expect(e2e.tg.of('editMessageText')).toHaveLength(0)
   expectNoErrors(e2e.logs)
 })
 
 for (const price of [0, -5]) {
-  test(`price ${price} is rejected without changing the chat`, async () => {
+  test(`price ${price} is rejected and can be corrected`, async () => {
     await enterChangingPrice()
 
-    await expectDelta(e2e, () => e2e.send(privateText(String(price))), {
-      db: {conversations: {removed: 1}},
+    const invalidInput = privateText(String(price))
+    const invalidMessageId = invalidInput.message?.message_id
+    if (invalidMessageId === undefined) throw new Error('Expected the invalid price input message')
+    await expectDelta(e2e, () => e2e.send(invalidInput), {
+      db: {conversations: {changed: 1}},
+      telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
+    })
+
+    const correctedInput = privateText(String(CHANGED_PRICE))
+    const telegramMark = e2e.tg.calls.length
+    await expectDelta(e2e, () => e2e.send(correctedInput), {
+      db: {
+        chats: {
+          changed: 1,
+          match: rows => expectOnlyChatChanges(rows, {price: CHANGED_PRICE}),
+        },
+        conversations: {removed: 1},
+      },
       telegram: [
+        {method: 'deleteMessages', to: USER_A},
         {method: 'editMessageReplyMarkup', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/},
-        {method: 'sendMessage', to: USER_A, text: /Action canceled/},
+        {method: 'editMessageText', to: USER_A, text: /set to 123 sats/},
       ],
     })
+    expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
+    expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>123 sats/)
 
     await expectNoConversations(e2e.db)
     expectNoErrors(e2e.logs)
   })
 }
 
-test('a nonnumeric price cancels the conversation and falls through to the wallet', async () => {
+test('a nonnumeric price keeps the conversation active', async () => {
   await enterChangingPrice()
 
   await expectDelta(e2e, () => e2e.send(privateText('abc')), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:/},
-    ],
+    db: {conversations: {changed: 1}},
+    telegram: [{method: 'sendMessage', to: USER_A, text: /Invalid amount of sats/}],
   })
 
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+// --- On-chain setup conversation ---
+
+test('invalid masterpub keeps on-chain setup active and a corrected key enables it', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  const beforeInvalid = await snapshot(e2e)
+  await e2e.send(privateText('not-an-xpub'))
+
+  const afterInvalid = await snapshot(e2e)
+  expect(afterInvalid.db.chats).toEqual(beforeInvalid.db.chats)
+  expect(afterInvalid.lnbits).toEqual(beforeInvalid.lnbits)
+  expect(afterInvalid.db.conversations).toHaveLength(1)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Paste a zpub|Вставь zpub/i)
+
+  const keyInput = privateText(MASTERPUB)
+  const telegramMark = e2e.tg.calls.length
+  await e2e.send(keyInput)
+
+  const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
+  expect(chat).toMatchObject({onchainEnabled: true, onchainMasterpub: MASTERPUB})
+  expect(chat.watchonlyWalletId).toBeTruthy()
+  // The pasted extended public key and its confirmation both clear themselves afterwards. The
+  // earlier invalid attempt cleans up on its own timer, so pin the batch carrying the valid key.
+  await waitForDeletedMessages(telegramMark, keyInput.message?.message_id)
+  const batch = e2e.tg
+    .of('deleteMessages')
+    .map(payload => (Array.isArray(payload.message_ids) ? payload.message_ids.map(Number) : []))
+    .find(ids => ids.includes(Number(keyInput.message?.message_id)))
+  expect(batch).toHaveLength(2)
   await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('canceling on-chain setup marks its prompt and returns to chat details', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  const promptMessageId = requiredPromptMessageId()
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId}))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toContain('E2E paid chat')
+  expect((await e2e.container.chats.getOrThrow(CHAT_GROUP)).onchainEnabled).toBe(false)
+  expectNoErrors(e2e.logs)
+})
+
+test('/wallet interrupts on-chain setup without reopening chat details', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
+
+  await e2e.send(privateCallback(chatOnchainEnableRoute.build({chatId: CHAT_GROUP})))
+  await e2e.send(privateCommand('/wallet'))
+
+  await expectNoConversations(e2e.db)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Action canceled|Действие отменено/i)
+  const messages = e2e.tg.of('sendMessage').map(call => String(call.text))
+  expect(messages.filter(text => text.includes('E2E paid chat'))).toHaveLength(0)
+  expect(e2e.tg.of('sendRichMessage').some(call => /Wallet|Кошелёк/i.test(richHtmlOf(call)))).toBe(
+    true,
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -373,22 +463,44 @@ test('a nonnumeric price cancels the conversation and falls through to the walle
 
 const customScreenCases = [
   {
-    label: 'without a custom message',
+    label: 'with both defaults',
     customMessages: {},
+    status: /RU: <b>default<\/b>[\s\S]*EN: <b>default<\/b>/,
     expectedCallbacks: [
-      chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
       chatRoute.build({chatId: CHAT_GROUP}),
     ],
   },
   {
-    label: 'with a custom message',
+    label: 'with only Russian customized',
+    customMessages: {customMessageRu: 'Особое приветствие'},
+    status: /RU: <b>custom<\/b>[\s\S]*EN: <b>default<\/b>/,
+    expectedCallbacks: [
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatRoute.build({chatId: CHAT_GROUP}),
+    ],
+  },
+  {
+    label: 'with both languages customized',
     customMessages: {
       customMessageRu: 'Особое приветствие',
       customMessageEn: 'A special welcome',
     },
+    status: /RU: <b>custom<\/b>[\s\S]*EN: <b>custom<\/b>/,
     expectedCallbacks: [
-      chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}),
-      chatRemoveCustomMessageRoute.build({chatId: CHAT_GROUP}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+      chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessagePreviewRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale: 'en'}),
       chatRoute.build({chatId: CHAT_GROUP}),
     ],
   },
@@ -407,63 +519,257 @@ for (const screenCase of customScreenCases) {
     await expectDelta(
       e2e,
       () => e2e.send(privateCallback(chatCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-      {telegram: [{method: 'editMessageText', to: USER_A, text: /Current message/}]},
+      {telegram: [{method: 'editMessageText', to: USER_A, text: screenCase.status}]},
     )
 
     expectEditedNotSent(e2e.tg)
     expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
       ...screenCase.expectedCallbacks,
     ])
+    expect(String(e2e.tg.last('editMessageText')?.text)).not.toMatch(
+      /Особое приветствие|A special welcome/,
+    )
     expectNoErrors(e2e.logs)
   })
 }
 
-test('the custom-message conversation stores both language variants', async () => {
+for (const editCase of [
+  {
+    locale: 'ru' as const,
+    prompt: /Enter a custom message in Russian/,
+    input: 'Новое русское сообщение',
+    initial: {customMessageRu: 'Старое русское', customMessageEn: 'Keep English'},
+    change: {customMessageRu: 'Новое русское сообщение'},
+  },
+  {
+    locale: 'en' as const,
+    prompt: /Enter a custom message in English/,
+    input: 'New English message',
+    initial: {customMessageRu: 'Сохрани русский', customMessageEn: 'Old English'},
+    change: {customMessageEn: 'New English message'},
+  },
+] as const) {
+  test(`editing ${editCase.locale.toUpperCase()} changes only that language`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      ...editCase.initial,
+    })
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(
+          privateCallback(
+            chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: editCase.locale}),
+          ),
+        ),
+      {
+        db: {conversations: {added: 1}},
+        telegram: [
+          {method: 'deleteMessage', to: USER_A},
+          {method: 'sendMessage', to: USER_A, text: editCase.prompt},
+        ],
+      },
+    )
+    e2e.tg.reset()
+
+    const input = privateText(editCase.input)
+    const inputMessageId = input.message?.message_id
+    const telegramMark = e2e.tg.calls.length
+    await expectDelta(e2e, () => e2e.send(input), {
+      db: {
+        chats: {
+          changed: 1,
+          match: rows => expectOnlyChatChanges(rows, editCase.change),
+        },
+        conversations: {removed: 1},
+      },
+      telegram: [
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {
+          method: 'sendMessage',
+          to: USER_A,
+          text: new RegExp(`${editCase.locale.toUpperCase()} custom message has been updated`),
+        },
+        {method: 'sendMessage', to: USER_A, text: /Join request message/},
+      ],
+    })
+
+    // The confirmation is disposable: the card below it already shows the new state. The pasted
+    // message is not in the batch — the card's own `showLivingMenu` already removed it.
+    const deleted = await waitForDeletedMessages(telegramMark)
+    expect(deleted).toHaveLength(1)
+    expect(deleted).not.toContain(inputMessageId)
+
+    expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+      ...editCase.initial,
+      ...editCase.change,
+    })
+    await expectNoConversations(e2e.db)
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('invalid and too-long input keep the selected one-language flow active', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: USER_A,
+    status: 'active',
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Old English',
+  })
+  await e2e.send(
+    privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'})),
+  )
+
+  await e2e.send(privateText(' '))
+  await e2e.send(privateText('x'.repeat(1001)))
+
+  expect((await snapshot(e2e)).db.conversations).toHaveLength(1)
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Old English',
+  })
+  expect(
+    e2e.tg
+      .of('sendMessage')
+      .map(call => String(call.text))
+      .join('\n'),
+  ).toMatch(/valid text message[\s\S]*too long/)
+
+  await e2e.send(privateText('Correct English'))
+
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Не менять',
+    customMessageEn: 'Correct English',
+  })
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('canceling one language returns to custom-message management without changing either text', async () => {
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: USER_A,
+    status: 'active',
+    customMessageRu: 'Сохранить RU',
+    customMessageEn: 'Keep EN',
+  })
+  await e2e.send(
+    privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'})),
+  )
+  const promptMessageId = requiredPromptMessageId()
+
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: promptMessageId})),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Action canceled/},
+        {method: 'sendMessage', to: USER_A, text: /Join request message/},
+      ],
+    },
+  )
+  expect(await e2e.container.chats.getOrThrow(CHAT_GROUP)).toMatchObject({
+    customMessageRu: 'Сохранить RU',
+    customMessageEn: 'Keep EN',
+  })
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+for (const previewCase of [
+  {locale: 'ru' as const, custom: 'Особое приветствие'},
+  {locale: 'en' as const, custom: null},
+] as const) {
+  test(`preview ${previewCase.locale.toUpperCase()} uses its effective custom/default text`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    const chat = await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      customMessageRu: previewCase.locale === 'ru' ? previewCase.custom : null,
+      customMessageEn: previewCase.locale === 'en' ? previewCase.custom : null,
+    })
+    const expected = effectiveCustomMessage(chat, previewCase.locale)
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(
+          privateCallback(
+            chatCustomMessagePreviewRoute.build({
+              chatId: CHAT_GROUP,
+              locale: previewCase.locale,
+            }),
+          ),
+        ),
+      {telegram: [{method: 'editMessageText', to: USER_A, text: new RegExp(expected)}]},
+    )
+
+    expect(String(e2e.tg.last('editMessageText')?.text)).toContain(expected)
+    expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
+      chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    ])
+    expectNoErrors(e2e.logs)
+  })
+}
+
+for (const locale of ['ru', 'en'] as const) {
+  test(`reset ${locale.toUpperCase()} preserves the other language`, async () => {
+    await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+    await seedChat(e2e, {
+      id: CHAT_GROUP,
+      ownerId: USER_A,
+      status: 'active',
+      customMessageRu: 'Сохранённый RU',
+      customMessageEn: 'Saved EN',
+    })
+    const changes = locale === 'ru' ? {customMessageRu: null} : {customMessageEn: null}
+
+    await expectDelta(
+      e2e,
+      () =>
+        e2e.send(privateCallback(chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale}))),
+      {
+        db: {
+          chats: {changed: 1, match: rows => expectOnlyChatChanges(rows, changes)},
+        },
+        telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}],
+      },
+    )
+
+    const chat = await e2e.container.chats.getOrThrow(CHAT_GROUP)
+    expect(chat.customMessageRu).toBe(locale === 'ru' ? null : 'Сохранённый RU')
+    expect(chat.customMessageEn).toBe(locale === 'en' ? null : 'Saved EN')
+    expect(callbackDataOf(e2e.tg.last('editMessageText'))).not.toContain(
+      chatCustomMessageResetRoute.build({chatId: CHAT_GROUP, locale}),
+    )
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('legacy edit callback opens the new language selector without starting a conversation', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
   await seedChat(e2e, {id: CHAT_GROUP, ownerId: USER_A, status: 'active'})
 
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}))),
-    {
-      db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Enter a custom message in Russian/},
-      ],
-    },
+    {telegram: [{method: 'editMessageText', to: USER_A, text: /Join request message/}]},
   )
-  e2e.tg.reset()
-
-  await expectDelta(e2e, () => e2e.send(privateText('Особое приветствие')), {
-    db: {conversations: {changed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
-    ],
-  })
-  e2e.tg.reset()
-
-  await expectDelta(e2e, () => e2e.send(privateText('A special welcome')), {
-    db: {
-      chats: {
-        changed: 1,
-        match: rows =>
-          expectOnlyChatChanges(rows, {
-            customMessageRu: 'Особое приветствие',
-            customMessageEn: 'A special welcome',
-          }),
-      },
-      conversations: {removed: 1},
-    },
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Custom message has been updated/},
-      {method: 'sendMessage', to: USER_A, text: /E2E paid chat/},
-    ],
-  })
 
   await expectNoConversations(e2e.db)
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(
+    chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'}),
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -504,14 +810,14 @@ for (const customJoin of [
           }),
         ),
       {
-        telegram: [{method: 'sendMessage', to: USER_B, text: customJoin.selected}],
+        telegram: [{method: 'sendRichMessage', to: USER_B, text: customJoin.selected}],
       },
     )
 
-    const notification = String(e2e.tg.last('sendMessage')?.text)
+    const notification = richHtmlOf(e2e.tg.last('sendRichMessage'))
     expect(notification).not.toContain(customJoin.other)
     expect(notification).not.toContain('Access to private community')
-    expect(notification).toMatch(/Choose a payment method|Выбери способ оплаты/)
+    expect(notification).toMatch(/Choose how you want to pay|Выбери, чем платить/)
     expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
     expectLedgerBalanced(beforeJoin, await snapshot(e2e))
     expectNoErrors(e2e.logs)
@@ -562,14 +868,18 @@ test('removing a custom message restores the default join copy', async () => {
       ),
     {
       telegram: [
-        {method: 'sendMessage', to: USER_B, text: /Access to private community "E2E paid chat"/},
+        {
+          method: 'sendRichMessage',
+          to: USER_B,
+          text: /Access to private community "E2E paid chat"/,
+        },
       ],
     },
   )
 
-  const joinText = String(e2e.tg.last('sendMessage')?.text)
+  const joinText = richHtmlOf(e2e.tg.last('sendRichMessage'))
   expect(joinText).not.toContain('Old custom welcome')
-  expect(joinText).toMatch(/Choose a payment method/)
+  expect(joinText).toMatch(/Choose how you want to pay/)
   expect(await e2e.db.query.subscriptionPaymentsTable.findMany()).toEqual([])
   expectLedgerBalanced(beforeJoin, await snapshot(e2e))
   expectNoErrors(e2e.logs)
@@ -577,50 +887,50 @@ test('removing a custom message restores the default join copy', async () => {
 
 // --- Pagination ---
 
-test('/chats with one accessible chat has no page controls', async () => {
+test('the paid-chats menu with one accessible chat has no page controls', async () => {
   const chats = await seedOwnedChats(1)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
-  expect(chatCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([
+  expect(chatCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([
     chatRoute.build({chatId: requiredChat(chats, 0).id}),
   ])
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 
-test('/chats with exactly ten accessible chats has no next page', async () => {
+test('the paid-chats menu with exactly ten accessible chats has no next page', async () => {
   const chats = await seedOwnedChats(10)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
-  const callbacks = chatCallbacksOf(e2e.tg.last('sendMessage'))
+  const callbacks = chatCallbacksOf(e2e.tg.last('editMessageText'))
   expect(callbacks).toHaveLength(10)
   expect(new Set(callbacks)).toEqual(new Set(chats.map(chat => chatRoute.build({chatId: chat.id}))))
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 
-test('/chats with eleven accessible chats exposes a second page after ten rows', async () => {
+test('the paid-chats menu with eleven accessible chats exposes a second page after ten rows', async () => {
   const chats = await seedOwnedChats(11)
 
-  await expectDelta(e2e, () => e2e.send(privateCommand('/chats')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Your chats with the ability/}],
+  await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 1}))), {
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
-  const firstPageChats = chatCallbacksOf(e2e.tg.last('sendMessage'))
+  const firstPageChats = chatCallbacksOf(e2e.tg.last('editMessageText'))
   expect(firstPageChats).toHaveLength(10)
   expect(new Set(firstPageChats)).toEqual(
     new Set(chats.slice(0, 10).map(chat => chatRoute.build({chatId: chat.id}))),
   )
-  expect(pageCallbacksOf(e2e.tg.last('sendMessage'))).toEqual([chatsPageRoute.build({page: 2})])
-  expectAddChatButton(e2e.tg.last('sendMessage'))
+  expect(pageCallbacksOf(e2e.tg.last('editMessageText'))).toEqual([chatsPageRoute.build({page: 2})])
+  expectAddChatButton(e2e.tg.last('editMessageText'))
   expectNoErrors(e2e.logs)
 })
 
@@ -628,7 +938,7 @@ test('the last page edits the list with one row and a previous-page button', asy
   const chats = await seedOwnedChats(11)
 
   await expectDelta(e2e, () => e2e.send(privateCallback(chatsPageRoute.build({page: 2}))), {
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Your chats with the ability/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /<b>👥 Chats<\/b>/}],
   })
 
   expectEditedNotSent(e2e.tg)
@@ -671,9 +981,7 @@ async function enterChangingPrice(): Promise<void> {
     {
       db: {conversations: {added: 1}},
       telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Changing the price of paid access/},
-        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
+        {method: 'editMessageText', to: USER_A, text: /Changing the price of paid access/},
       ],
     },
   )
@@ -755,10 +1063,22 @@ function expectAddChatButton(payload: Record<string, unknown> | undefined): void
   expect(urlsOf(payload)).toContain('https://t.me/zap_gram_bot?startgroup=true')
 }
 
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}
+
 function requiredChat(chats: Chat[], index: number): Chat {
   const chat = chats[index]
   if (!chat) throw new Error(`Expected chat fixture at index ${index}`)
   return chat
+}
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -772,4 +1092,25 @@ function errorMessages(): string[] {
   return e2e.logs
     .filter(log => log.level === 'error' || log.level === 50)
     .map(log => String(log.msg ?? ''))
+}
+
+/**
+ * Temp-message cleanup runs on a timer, so poll instead of racing the configured delay. With
+ * `expected`, wait for that exact id — an earlier hint's timer can otherwise satisfy the wait.
+ */
+async function waitForDeletedMessages(mark: number, expected?: number): Promise<number[]> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const deleted = deletedMessageIdsSince(mark)
+    if (expected === undefined ? deleted.length > 0 : deleted.includes(expected)) return deleted
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary message was never deleted')
+}
+
+function deletedMessageIdsSince(mark: number): number[] {
+  return e2e.tg.calls
+    .slice(mark)
+    .filter(call => call.method === 'deleteMessages')
+    .flatMap(call => (Array.isArray(call.payload.message_ids) ? call.payload.message_ids : []))
+    .map(Number)
 }

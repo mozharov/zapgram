@@ -39,7 +39,7 @@ import {
   formatFeatureRequestAdminMeta,
 } from '@modules/feature-requests/submit.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
-import {createTelegramNotifier, type Notifier} from '@modules/notifications/notifier.js'
+import type {Notifier} from '@modules/notifications/notifier.js'
 import {
   type CompleteOnchainJoinService,
   createCompleteOnchainJoinService,
@@ -78,6 +78,12 @@ import {createSettleService, type SettleService} from '@modules/subscriptions/se
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
+import {
+  createChromeNotifier,
+  createNotificationChrome,
+  type NotificationChrome,
+  parseBaseMarkup,
+} from '@telegram/helpers/notification-chrome.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import type {Bot} from 'grammy'
 import type pino from 'pino'
@@ -94,6 +100,7 @@ export type AppContainer = {
   masterWallet: MasterWalletInstance
   rates: RateService
   notifier: Notifier
+  notificationChrome: NotificationChrome
   users: UserRepository
   chats: ChatRepository
   subscriptions: SubscriptionRepository
@@ -135,7 +142,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
-  await masterWallet.checkStatus()
+  const health = await masterWallet.checkStatus()
+  log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
 
   const rates = createRateService({
     fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
@@ -147,11 +155,19 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     config.botInfo,
     config.BOT_API_ROOT ? {apiRoot: config.BOT_API_ROOT} : undefined,
   )
-  const notifier = createTelegramNotifier(bot.api, log)
-
   const users = createUserRepository(db, {
     defaultDonationPercent: config.DONATION_DEFAULT_PERCENT,
+    log,
   })
+  const notificationChrome = createNotificationChrome({
+    findUser: id => users.findById(id),
+    updateUser: (id, data) => users.update(id, data),
+    editMessageReplyMarkup: (chatId, messageId, extra) =>
+      bot.api.editMessageReplyMarkup(chatId, messageId, extra),
+    deleteMessage: (chatId, messageId) => bot.api.deleteMessage(chatId, messageId),
+    log,
+  })
+  const notifier = createChromeNotifier(bot.api, log, notificationChrome)
   const donations = createDonationRepository(db)
   const chats = createChatRepository(db)
   const subscriptions = createSubscriptionRepository(db)
@@ -165,6 +181,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       subscriptionIntents.releaseAttemptReservation(intentId, reservationId),
     createInvoice: (sats, expirySeconds) => masterWallet.createInvoice(sats, expirySeconds),
     invoiceExpirySeconds: INVOICE_EXPIRY,
+    log,
   })
   const payments = createSubscriptionPaymentRepository(db)
   const invoices = createInvoiceRepository(db)
@@ -217,9 +234,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const broadcastService = createBroadcastService({
     broadcasts,
     users,
-    copyMessage: async (toUserId, fromChatId, messageId) => {
+    copyMessage: async (toUserId, fromChatId, messageId, sourceReplyMarkup) => {
       try {
-        await bot.api.copyMessage(toUserId, fromChatId, messageId)
+        await notificationChrome.deliver(
+          toUserId,
+          parseBaseMarkup(sourceReplyMarkup) ?? undefined,
+          markup => bot.api.copyMessage(toUserId, fromChatId, messageId, {reply_markup: markup}),
+        )
         return 'sent'
       } catch (error) {
         if (isTelegramUserUnreachableError(error)) {
@@ -321,6 +342,9 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     notifier,
     editTelegramMessage: async (telegramChatId, telegramMessageId, text) => {
       await bot.api.editMessageText(telegramChatId, telegramMessageId, text)
+      // Settled: that message is the member's proof of access now, not a payment screen. The next
+      // menu must leave it alone, so the join pointer lets go of it here.
+      await notificationChrome.forgetJoinScreen(telegramChatId, telegramMessageId)
     },
     log,
     translate,
@@ -337,6 +361,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     masterWallet,
     rates,
     notifier,
+    notificationChrome,
     users,
     chats,
     subscriptions,

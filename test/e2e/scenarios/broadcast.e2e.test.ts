@@ -1,8 +1,12 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {broadcastsTable} from '@infra/db/schema.js'
-import {broadcastConfirmRoute, broadcastLocaleRoute} from '@telegram/callback-data.js'
+import {
+  broadcastConfirmRoute,
+  broadcastLocaleRoute,
+  staticCallback,
+} from '@telegram/callback-data.js'
 import {eq} from 'drizzle-orm'
-import {expectNoErrors} from '../asserts.js'
+import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedUser} from '../fixtures/seed.js'
 import {
@@ -28,6 +32,21 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
+test('canceling a broadcast returns to Wallet', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'owner', languageCode: 'en'})
+  const from = {id: OWNER, username: 'owner'}
+
+  await e2e.send(privateCommand('/broadcast', {from}))
+  await e2e.send(
+    privateCallback(staticCallback.cancel, {from, messageId: requiredPromptMessageId()}),
+  )
+
+  await expectNoConversations(e2e.db)
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
+  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
+  expectNoErrors(e2e.logs)
+})
+
 test('admin /broadcast en: copyMessage to en users only, excludes admin', async () => {
   await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner', languageCode: 'en'})
   await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'A', languageCode: 'en'})
@@ -41,6 +60,7 @@ test('admin /broadcast en: copyMessage to en users only, excludes admin', async 
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
 
@@ -53,6 +73,7 @@ test('admin /broadcast en: copyMessage to en users only, excludes admin', async 
   await e2e.send(
     privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
 
@@ -92,6 +113,57 @@ test('non-admin /broadcast is silent', async () => {
   expect(e2e.tg.of('copyMessage').length).toBe(0)
 })
 
+test('text on broadcast confirmation cancels the action and returns to Wallet', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'owner', languageCode: 'en'})
+  await seedUser(e2e, {id: USER_A, username: 'user_a', languageCode: 'en'})
+  const from = {id: OWNER, username: 'owner'}
+
+  await e2e.send(privateCommand('/broadcast', {from}))
+  await e2e.send(
+    privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
+      from,
+      messageId: requiredPromptMessageId(),
+    }),
+  )
+
+  const source = privateText('Broadcast after retries', {from})
+  await e2e.send(source)
+  const cancellation = privateText('yes', {from})
+  await e2e.send(cancellation)
+  if (!source.message || !cancellation.message) throw new Error('Expected broadcast text updates')
+
+  await expectNoConversations(e2e.db)
+  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
+  expect(richHtmlOf(e2e.tg.last('sendRichMessage'))).toMatch(/Wallet|Кошелёк/)
+  const deletedIds = e2e.tg.of('deleteMessage').map(call => Number(call.message_id))
+  expect(deletedIds).toContain(source.message.message_id)
+  expect(deletedIds).toContain(cancellation.message.message_id)
+  expectNoErrors(e2e.logs)
+})
+
+test('help callback from another message interrupts broadcast and still opens help', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'owner', languageCode: 'en'})
+  const from = {id: OWNER, username: 'owner'}
+
+  await e2e.send(privateCommand('/broadcast', {from}))
+  const promptMessageId = requiredPromptMessageId()
+  await e2e.send(
+    privateCallback(staticCallback.help, {
+      from,
+      messageId: promptMessageId + 1000,
+    }),
+  )
+
+  await expectNoConversations(e2e.db)
+  const edits = e2e.tg.of('editMessageText')
+  expect(edits.some(call => Number(call.message_id) === promptMessageId)).toBe(true)
+  expect(String((edits.at(-1)?.rich_message as {html?: string} | undefined)?.html)).toMatch(
+    /Bitcoin|Биткоин/i,
+  )
+  expect(await e2e.db.select().from(broadcastsTable)).toEqual([])
+  expectNoErrors(e2e.logs)
+})
+
 test('private my_chat_member block/unblock toggles users.bot_blocked', async () => {
   await seedUser(e2e, {id: USER_A, username: 'user_a', languageCode: 'en'})
 
@@ -115,12 +187,14 @@ test('blocked users are not snapshotted into a new broadcast', async () => {
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.send(privateText('hi', {from: {id: OWNER, username: 'owner'}}))
   await e2e.send(
     privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.jobs.processBroadcasts()
@@ -144,12 +218,14 @@ test('copyMessage chat not found marks user bot_blocked and skips next broadcast
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.send(privateText('hi', {from: {id: OWNER, username: 'owner'}}))
   await e2e.send(
     privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.jobs.processBroadcasts()
@@ -167,12 +243,14 @@ test('copyMessage chat not found marks user bot_blocked and skips next broadcast
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.send(privateText('again', {from: {id: OWNER, username: 'owner'}}))
   await e2e.send(
     privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.jobs.processBroadcasts()
@@ -199,12 +277,14 @@ test('private command clears bot_blocked so user can receive broadcasts again', 
   await e2e.send(
     privateCallback(broadcastLocaleRoute.build({locale: 'en'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.send(privateText('welcome back', {from: {id: OWNER, username: 'owner'}}))
   await e2e.send(
     privateCallback(broadcastConfirmRoute.build({action: 'yes'}), {
       from: {id: OWNER, username: 'owner'},
+      messageId: requiredPromptMessageId(),
     }),
   )
   await e2e.jobs.processBroadcasts()
@@ -223,3 +303,15 @@ test('private callback clears bot_blocked', async () => {
   await e2e.send(privateCallback('wallet', {from: {id: USER_A, username: 'user_a'}}))
   expect((await e2e.container.users.findById(USER_A))?.botBlocked).toBe(false)
 })
+
+function requiredPromptMessageId(): number {
+  const messageId = e2e.tg.lastMessageId('sendMessage')
+  if (messageId === undefined) throw new Error('Expected an outbound prompt message ID')
+  return messageId
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}

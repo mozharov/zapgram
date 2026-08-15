@@ -22,6 +22,7 @@ export function createBroadcastRepository(database: AppDatabase) {
       locale: AppLocale
       sourceChatId: number
       sourceMessageId: number
+      sourceReplyMarkup?: string | null
       recipientUserIds: readonly number[]
       now?: Date
     }): Promise<Broadcast> {
@@ -38,6 +39,7 @@ export function createBroadcastRepository(database: AppDatabase) {
             locale: input.locale,
             sourceChatId: input.sourceChatId,
             sourceMessageId: input.sourceMessageId,
+            sourceReplyMarkup: input.sourceReplyMarkup ?? null,
             status: 'sending',
             totalCount,
             sentCount: 0,

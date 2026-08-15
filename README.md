@@ -94,7 +94,7 @@ Make the bot an admin (delete messages is enough) so owner-bound tips work clean
 
 ZapGram is free to use. You can optionally support the bot author:
 
-- **Voluntary % on top of payments** — new accounts default to **5%** on tips and invoice pays (scope **all**). Change percent, scope (**tips only** / **all payments**), or turn off in `/settings` → Support the project.
+- **Voluntary % on top of payments** — new accounts default to **5% on tips only**. Change percent, scope (**tips only** / **all payments**), or turn off from the donation screen in the main menu.
 - **Auto-% never blocks your payment** — the main tip or invoice pay settles first; the support tip is best-effort. Success is silent (totals update on `/donate`); failure only notifies you in private chat.
 - **`/donate` hub** — your personal stats, **community totals** (all-time + last 30 days), one-shot amounts (**21 · 100 · 1 000 · 10 000 · 100 000** or custom), and in-bot **monthly** auto-donate (charges every 30 days; first charge when you enable).
 - **Outside the bot** — Lightning address `zapgram@getalby.com`.
@@ -115,7 +115,7 @@ Turn a private group or channel into a sat-gated community — **Lightning and/o
 **For owners**
 
 1. Add `@zap_gram_bot` with **invite users** and **ban users** rights
-2. Open `/chats` → enable paid access
+2. Open **Chats** in the main menu → enable paid access
 3. Set price (sats), payment type (**one-time** permanent access or **monthly**), optional custom join message (RU + EN)
 4. Optional: **Enable on-chain pay** and paste an account-level **zpub / xpub** (receive account). Members can then pay on-chain; funds go to addresses derived from your key. Platform Lightning fee does **not** apply to the on-chain rail.
 
@@ -128,7 +128,7 @@ Turn a private group or channel into a sat-gated community — **Lightning and/o
 **Subscriptions**
 
 - Monthly renewals auto-debit the ZapGram wallet first, then NWC if connected and the internal balance is short
-- Manage auto-renew and status via `/subscriptions`
+- Manage auto-renew and status through **My subscriptions** in the main menu
 - Manual renewal invoices when auto-renew is off or both wallets cannot pay
 - Lightning joins: owners are paid automatically (minus a small platform fee); duplicate payments are refunded safely
 - On-chain joins: sats go straight to the owner’s wallet (xpub); no Lightning fee split
@@ -151,11 +151,7 @@ Useful commands:
 | Command | |
 |---|---|
 | `/wallet` | Balance, receive, send |
-| `/settings` | NWC, tips source, group help, optional support % |
 | `/donate` | One-shot / monthly support, your stats, community totals |
-| `/feature` | Request a feature; optionally attach sats as a priority tip |
-| `/chats` | Paid groups & channels you own |
-| `/subscriptions` | Your paid-chat subscriptions |
 | `/help` | Bitcoin, Lightning, supported wallets |
 
 ---
@@ -201,7 +197,7 @@ bun run ci
 bun run start:dev
 ```
 
-**Feature requests (`/feature`):** set `ADMIN_TELEGRAM_IDS` (comma-separated Telegram user ids) so new requests are DMed to you. Optional sats tips use the same rails as `/donate`. Events land in PostHog as `feature_requested` (filter Activity / build an insight). Without admin ids, requests still capture analytics only.
+**Feature requests:** users submit them from the main menu. Set `ADMIN_TELEGRAM_IDS` (comma-separated Telegram user ids) so new requests are DMed to you. Optional sats tips use the same rails as `/donate`. Events land in PostHog as `feature_requested` (filter Activity / build an insight). Without admin ids, requests still capture analytics only.
 
 ### On-chain pay (self-host / ops)
 
@@ -215,7 +211,7 @@ Requires LNbits extensions **Watch Only** + **SatsPay** on the same instance as 
 | `HOST` | Public HTTPS origin of the bot (SatsPay POSTs `${HOST}/satspay/webhook/${BOT_WEBHOOK_SECRET}`) |
 | `LNBITS_ADMIN_KEY` | Bot wallet admin key (creates WO wallets under that user) |
 
-Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-chain in `/chats`, smoke: paste account zpub → member join → Pay on-chain → pay ≥ price → grant.
+Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-chain in the Chats menu, smoke: paste account zpub → member join → Pay on-chain → pay ≥ price → grant.
 
 ---
 

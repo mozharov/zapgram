@@ -12,6 +12,10 @@ export function parseMode(mode: ParseMode): Transformer {
       return prev(method, payload, signal)
     }
 
+    // Rich messages define their own HTML/Markdown inside `rich_message`; Bot API methods that
+    // carry this field do not accept the ordinary text `parse_mode` alongside it.
+    if ('rich_message' in payload) return prev(method, payload, signal)
+
     switch (method) {
       case 'editMessageMedia': {
         if (
@@ -42,11 +46,15 @@ export function parseMode(mode: ParseMode): Transformer {
         }
         return prev(method, payload, signal)
       }
-      // copy/forward have no text to parse; injecting parse_mode can 400 on Bot API.
+      // These methods have no text to parse; injecting parse_mode can 400 on Bot API.
       case 'copyMessage':
       case 'forwardMessage':
       case 'copyMessages':
       case 'forwardMessages':
+      case 'deleteMessage':
+      case 'deleteMessages':
+      case 'deleteEphemeralMessage':
+      case 'editMessageReplyMarkup':
         return prev(method, payload, signal)
       default:
         return prev(method, {...payload, parse_mode: mode}, signal)

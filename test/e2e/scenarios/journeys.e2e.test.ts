@@ -3,8 +3,8 @@ import {ONE_MONTH_IN_MS} from '@core/subscriptions/policy.js'
 import type {Subscription, SubscriptionPayment} from '@infra/db/types.js'
 import {
   chatChangePriceRoute,
+  chatCustomMessageEditRoute,
   chatCustomMessageRoute,
-  chatEditCustomMessageRoute,
   chatPaidAccessRoute,
   chatPaymentTypeRoute,
   chatRemoveCustomMessageRoute,
@@ -61,23 +61,24 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   await expectDelta(e2e, () => e2e.send(privateCommand('/start')), {
     db: {users: {added: 1}},
     lnbits: {balances: {[userWalletName(USER_A)]: 0}},
-    telegram: [
-      {method: 'sendMessage', to: USER_A, text: /Bitcoin Lightning wallet in Telegram/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /How it works/}],
+  })
+  expect(callbackDataOf(e2e.tg.last('sendRichMessage'))).toEqual([
+    staticCallback.wallet,
+    staticCallback.help,
+  ])
+  expect(await e2e.container.users.findById(USER_A)).toMatchObject({
+    donationPercent: 5,
+    donationScope: 'tips',
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:<\/b> 0 sats/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
     db: {conversations: {added: 1}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Creating Lightning invoice/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
@@ -85,20 +86,34 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
+      {
+        method: 'editMessageMedia',
+        to: USER_A,
+        text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
+      },
     ],
   })
 
-  // Leave the optional Add memo step: cancel keeps the invoice and ends the conversation.
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
-  })
+  // Leave the optional Add memo step: Wallet keeps the invoice and opens the menu as a new message.
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(staticCallback.wallet, {
+          messageId: requiredMessageId('editMessageMedia'),
+        }),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
 
   const pending = await onlyPendingInvoice()
   payFromOutside(pending.paymentRequest, PRICE)
@@ -109,7 +124,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 1\D?000 sats/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:<\/b> 1\D?000 sats/}],
   })
 
   const beforeTip = await snapshot(e2e)
@@ -199,7 +214,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     {
       db: {chats: {changed: 1}},
       lnbits: {balances: {[userWalletName(OWNER)]: 0}},
-      telegram: [{method: 'editMessageText', to: OWNER, text: /Paid access: <b>enabled/}],
+      telegram: [{method: 'editMessageText', to: OWNER, text: /🟢 <b>Paid access enabled/}],
     },
   )
 
@@ -211,11 +226,7 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
       ),
     {
       db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: OWNER},
-        {method: 'sendMessage', to: OWNER, text: /Changing the price of paid access/},
-        {method: 'sendMessage', to: OWNER, text: /Enter the amount of sats/},
-      ],
+      telegram: [{method: 'editMessageText', to: OWNER, text: /Changing the price of paid access/}],
     },
   )
 
@@ -223,10 +234,10 @@ test('a one-time paid chat runs from administrator grant through repeat admissio
     db: {conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: OWNER},
-      {method: 'sendMessage', to: OWNER, text: /set to 1\D?000 sats/},
-      {method: 'sendMessage', to: OWNER, text: /Price: <b>1\D?000 sats/},
+      {method: 'editMessageText', to: OWNER, text: /set to 1\D?000 sats/},
     ],
   })
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>1\D?000 sats/)
 
   creditExternal(USER_A, PRICE)
   const payment = await requestJoin('one_time')
@@ -366,7 +377,7 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   })
 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
   const rejoinChooser = e2e.tg.last('sendMessage')
   await expectDelta(
@@ -414,7 +425,7 @@ test('private keyboard navigation keeps one world through screens and conversati
   })
 
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.settings, /Settings/)
+  await expectEditedScreen(staticCallback.settings, /NWC/)
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.connectNwc)
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
   await expectEditedScreen(staticCallback.sendMenu, /Send payment/)
@@ -422,22 +433,24 @@ test('private keyboard navigation keeps one world through screens and conversati
 
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendToUser)), {
     db: {conversations: {added: 1}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Sending sats to a Telegram user/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the username/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Sending sats to a Telegram user/}],
   })
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Wallet/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(staticCallback.cancel, {messageId: requiredMessageId('editMessageText')}),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageText', to: USER_A, text: /Send payment/},
+      ],
+    },
+  )
 
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectEditedScreen(chatsPageRoute.build({page: 1}), /<b>👥 Chats<\/b>/)
   await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
 
   await expectDelta(
@@ -445,26 +458,28 @@ test('private keyboard navigation keeps one world through screens and conversati
     () => e2e.send(privateCallback(chatChangePriceRoute.build({chatId: CHAT_GROUP}))),
     {
       db: {conversations: {added: 1}},
-      telegram: [
-        {method: 'deleteMessage', to: USER_A},
-        {method: 'sendMessage', to: USER_A, text: /Changing the price/},
-        {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-      ],
+      telegram: [{method: 'editMessageText', to: USER_A, text: /Changing the price/}],
     },
   )
   await expectDelta(e2e, () => e2e.send(privateText('1234')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /set to 1\D?234 sats/},
-      {method: 'sendMessage', to: USER_A, text: /Price: <b>1\D?234 sats/},
+      {method: 'editMessageText', to: USER_A, text: /set to 1\D?234 sats/},
     ],
   })
+  expect(richHtmlOf(e2e.tg.last('editMessageText'))).toMatch(/Price: <b>1\D?234 sats/)
 
-  await expectEditedScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Current message/)
+  await expectEditedScreen(
+    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    /Join request message/,
+  )
   await expectDelta(
     e2e,
-    () => e2e.send(privateCallback(chatEditCustomMessageRoute.build({chatId: CHAT_GROUP}))),
+    () =>
+      e2e.send(
+        privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'ru'})),
+      ),
     {
       db: {conversations: {added: 1}},
       telegram: [
@@ -474,21 +489,42 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
   await expectDelta(e2e, () => e2e.send(privateText('Особое приветствие')), {
-    db: {conversations: {changed: 1}},
+    db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
+      {method: 'sendMessage', to: USER_A, text: /RU custom message has been updated/},
+      {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
+  // The confirmation clears itself on a timer; drain it here so it cannot land mid-assertion later.
+  await waitForTempCleanup()
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(chatCustomMessageEditRoute.build({chatId: CHAT_GROUP, locale: 'en'})),
+      ),
+    {
+      db: {conversations: {added: 1}},
+      telegram: [
+        {method: 'deleteMessage', to: USER_A},
+        {method: 'sendMessage', to: USER_A, text: /Enter a custom message in English/},
+      ],
+    },
+  )
   await expectDelta(e2e, () => e2e.send(privateText('A special welcome')), {
     db: {chats: {changed: 1}, conversations: {removed: 1}},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Custom message has been updated/},
-      {method: 'sendMessage', to: USER_A, text: /E2E paid chat/},
+      {method: 'sendMessage', to: USER_A, text: /EN custom message has been updated/},
+      {method: 'sendMessage', to: USER_A, text: /Join request message/},
     ],
   })
-  await expectEditedScreen(chatCustomMessageRoute.build({chatId: CHAT_GROUP}), /Current message/)
+  await waitForTempCleanup()
+  await expectEditedScreen(
+    chatCustomMessageRoute.build({chatId: CHAT_GROUP}),
+    /Join request message/,
+  )
   await expectDelta(
     e2e,
     () => e2e.send(privateCallback(chatRemoveCustomMessageRoute.build({chatId: CHAT_GROUP}))),
@@ -498,7 +534,7 @@ test('private keyboard navigation keeps one world through screens and conversati
     },
   )
   await expectEditedScreen(chatRoute.build({chatId: CHAT_GROUP}), /E2E paid chat/)
-  await expectEditedScreen(chatsPageRoute.build({page: 1}), /Your chats with the ability/)
+  await expectEditedScreen(chatsPageRoute.build({page: 1}), /<b>👥 Chats<\/b>/)
 
   await expectEditedScreen(subscriptionsPageRoute.build({page: 1}), /Your subscriptions/)
   await expectEditedScreen(
@@ -532,11 +568,7 @@ test('an invoice conversation survives a container restart on the same database'
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
     db: {users: {added: 1}, conversations: {added: 1}},
     lnbits: {balances: {[userWalletName(USER_A)]: 0}},
-    telegram: [
-      {method: 'deleteMessage', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Creating Lightning invoice/},
-      {method: 'sendMessage', to: USER_A, text: /Enter the amount of sats/},
-    ],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
   })
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
@@ -544,8 +576,13 @@ test('an invoice conversation survives a container restart on the same database'
     lnbits: {payments: [{out: false, sats: PRICE, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'sendPhoto', to: USER_A, text: /Amount: <b>1\D?000 sats(?: \(~\$[^)]+\))?<\/b>/},
+      {
+        method: 'editMessageMedia',
+        to: USER_A,
+        text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
+      },
     ],
   })
 
@@ -554,14 +591,23 @@ test('an invoice conversation survives a container restart on the same database'
   expect(await snapshot(e2e)).toEqual(beforeRestart)
 
   // Conversation is still open on the optional Add memo step after restart.
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.cancel)), {
-    db: {conversations: {removed: 1}},
-    telegram: [
-      {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'sendMessage', to: USER_A, text: /Action canceled/},
-      {method: 'sendMessage', to: USER_A, text: /Balance:<\/b> 0 sats/},
-    ],
-  })
+  await expectDelta(
+    e2e,
+    () =>
+      e2e.send(
+        privateCallback(staticCallback.wallet, {
+          messageId: requiredMessageId('editMessageMedia'),
+        }),
+      ),
+    {
+      db: {conversations: {removed: 1}},
+      telegram: [
+        {method: 'answerCallbackQuery'},
+        {method: 'editMessageReplyMarkup', to: USER_A},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+      ],
+    },
+  )
 
   expect(await e2e.db.query.pendingInvoicesTable.findMany()).toHaveLength(1)
   await expectNoConversations(e2e.db)
@@ -576,7 +622,7 @@ async function requestJoin(
     db: {
       ...(options.userAdded === false ? {} : {users: {added: 1}}),
     },
-    telegram: [{method: 'sendMessage', to: USER_A, text: /Choose a payment method/}],
+    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
   const chooser = e2e.tg.last('sendMessage')
   await expectDelta(
@@ -691,6 +737,16 @@ async function settleJoin(
   expectPayouts(payoutTimes)
 }
 
+/** Temp-message cleanup runs on a timer; wait it out so it cannot leak into the next delta. */
+async function waitForTempCleanup(): Promise<void> {
+  const before = e2e.tg.of('deleteMessages').length
+  for (let attempt = 0; attempt < 200; attempt++) {
+    if (e2e.tg.of('deleteMessages').length > before) return
+    await Bun.sleep(5)
+  }
+  throw new Error('The temporary message was never deleted')
+}
+
 async function expectEditedScreen(data: string, text: RegExp): Promise<void> {
   await expectDelta(e2e, () => e2e.send(privateCallback(data)), {
     telegram: [{method: 'editMessageText', to: USER_A, text}],
@@ -803,4 +859,18 @@ function callbackDataOf(payload: Record<string, unknown> | undefined): string[] 
     | {inline_keyboard?: {callback_data?: string}[][]}
     | undefined
   return (markup?.inline_keyboard ?? []).flat().flatMap(button => button.callback_data ?? [])
+}
+
+function richHtmlOf(payload: Record<string, unknown> | undefined): string {
+  const richMessage = payload?.rich_message
+  if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
+  return String(Reflect.get(richMessage, 'html') ?? '')
+}
+
+function requiredMessageId(
+  method: 'sendMessage' | 'sendPhoto' | 'editMessageText' | 'editMessageMedia',
+): number {
+  const messageId = e2e.tg.lastMessageId(method)
+  if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)
+  return messageId
 }
