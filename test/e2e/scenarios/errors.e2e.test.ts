@@ -530,6 +530,45 @@ test('every AppErrorCode has a real e2e path in this file', () => {
   expect([...covered].sort()).toEqual([...ALL_CODES].sort())
 })
 
+for (const {description, code, captured} of [
+  {description: "Bad Request: message can't be deleted", code: 400, captured: false},
+  {description: 'Bad Request: message to edit not found', code: 400, captured: false},
+  {description: 'Forbidden: bot was blocked by the user', code: 403, captured: false},
+  {description: 'Forbidden: user is deactivated', code: 403, captured: false},
+  {description: 'Bad Request: chat not found', code: 400, captured: false},
+  {description: 'Bad Request: invalid entities', code: 400, captured: true},
+]) {
+  test(`Error Tracking filters Telegram response: ${description}`, async () => {
+    const exceptions: unknown[] = []
+    const captures: {event: string}[] = []
+    Reflect.set(e2e.container, 'posthog', {
+      capture: (event: {event: string}) => captures.push(event),
+      captureException: (error: unknown) => exceptions.push(error),
+      withContext: (_context: unknown, callback: () => unknown) => callback(),
+    })
+    e2e.tg.fail('sendRichMessage', {error_code: code, description})
+
+    await e2e.send(privateCommand('/wallet'))
+
+    expect(exceptions).toHaveLength(captured ? 1 : 0)
+    expect(captures.some(event => event.event === 'command_wallet')).toBe(true)
+    expect(captures.some(event => event.event === 'app_error')).toBe(false)
+  })
+}
+
+test('expected tip refusals remain app_error events', async () => {
+  const captures: {event: string}[] = []
+  const exceptions: unknown[] = []
+  Reflect.set(e2e.container, 'posthog', {
+    capture: (event: {event: string}) => captures.push(event),
+    captureException: (error: unknown) => exceptions.push(error),
+    withContext: (_context: unknown, callback: () => unknown) => callback(),
+  })
+  await e2e.send(groupText('/tip 21 @user_a'))
+  expect(captures.filter(event => event.event === 'app_error')).toHaveLength(1)
+  expect(exceptions).toHaveLength(0)
+})
+
 // --- helpers ---
 
 async function seedOwnerAndChat(): Promise<void> {

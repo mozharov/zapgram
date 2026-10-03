@@ -1,18 +1,20 @@
-import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test'
 import {createRouter} from '@http/router.js'
 import {
   onchainChatPaymentsTable,
   subscriptionPaymentsTable,
   subscriptionsTable,
 } from '@infra/db/schema.js'
+import {enablingOnchain} from '@modules/chats/telegram/conversations/enabling-onchain.js'
 import {handleSatsPayWebhook} from '@modules/onchain/handle-satspay-webhook.js'
 import {payLightningRoute, payOnchainRoute} from '@telegram/callback-data.js'
 import {eq} from 'drizzle-orm'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
-import {seedUser} from '../fixtures/seed.js'
-import {chatJoinRequest, privateCallback, privateCommand} from '../fixtures/updates.js'
+import {seedChat, seedUser} from '../fixtures/seed.js'
+import {chatJoinRequest, privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {replayWizard} from '../replay-wizard.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -50,6 +52,35 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await e2e.dispose()
+})
+
+test('replaying on-chain enable does not repeat LNbits requests or the database write', async () => {
+  await seedChat(e2e, {ownerId: USER_A})
+  const update = spyOn(e2e.container.chats, 'update')
+  try {
+    await replayWizard(
+      e2e,
+      (conversation, ctx) => enablingOnchain(conversation, ctx, CHAT_GROUP),
+      privateText(MASTERPUB),
+      () => {
+        expect(
+          e2e.ln.requests.filter(
+            request => request.path === '/watchonly/api/v1/wallet' && request.method === 'GET',
+          ),
+        ).toHaveLength(1)
+        expect(
+          e2e.ln.requests.filter(
+            request => request.path === '/watchonly/api/v1/wallet' && request.method === 'POST',
+          ),
+        ).toHaveLength(1)
+        expect(update.mock.calls.filter(([, data]) => data.onchainEnabled === true)).toHaveLength(1)
+      },
+    )
+    expectNoErrors(e2e.logs)
+    expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+  } finally {
+    update.mockRestore()
+  }
 })
 
 test('enable on-chain, pay on-chain, webhook grants access with zero LN payouts', async () => {
