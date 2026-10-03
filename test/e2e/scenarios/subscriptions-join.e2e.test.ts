@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, setSystemTime, test} from 'bun:test'
 import {subscriptionIntentsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import type {SubscriptionPayment} from '@infra/db/types.js'
-import {payJoinBalanceRoute, payLightningRoute} from '@telegram/callback-data.js'
+import {payJoinBalanceRoute, payLightningRoute, payOnchainRoute} from '@telegram/callback-data.js'
 import {eq} from 'drizzle-orm'
 import {expectNoErrors, expectPayoutsExactly, expectWorldUnchanged} from '../asserts.js'
 import {decodeMintedInvoice} from '../fakes/bolt11.js'
@@ -67,6 +67,121 @@ test('a fresh join request sends a method chooser without minting an invoice', a
   expect(await e2e.db.select().from(subscriptionPaymentsTable)).toEqual([])
   expect(await e2e.db.select().from(subscriptionIntentsTable)).toEqual([])
 })
+
+for (const method of ['lightning', 'onchain', 'balance'] as const) {
+  for (const failInvoice of [false, true]) {
+    test(`${method} records the choice before handler I/O, including invoice failure=${failInvoice}`, async () => {
+      await seedActiveChat()
+      creditApplicant(PRICE * 1000)
+      if (method === 'onchain') {
+        const enabled = await e2e.container.onchainEnableService.enable(
+          await e2e.container.chats.getOrThrow(CHAT_GROUP),
+          'xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz',
+        )
+        expect(enabled.status).toBe('enabled')
+      }
+
+      const captures: Record<string, unknown>[] = []
+      let networkMark = 0
+      let telegramMark = 0
+      let requestsAtChoice: string[] = []
+      let telegramCallsAtChoice = -1
+      Reflect.set(e2e.container, 'posthog', {
+        capture: (input: Record<string, unknown>) => {
+          captures.push(input)
+          if (input.event === 'subscription_join_method_chosen') {
+            requestsAtChoice = e2e.ln.requests
+              .slice(networkMark)
+              .map(request => `${request.method} ${request.path}`)
+            telegramCallsAtChoice = e2e.tg.calls.length - telegramMark
+          }
+        },
+        withContext: (_context: unknown, callback: () => unknown) => callback(),
+        captureException: () => {},
+      })
+
+      await e2e.send(joinUpdate())
+      expect(
+        captures.filter(input => input.event === 'subscription_join_method_chooser_sent'),
+      ).toHaveLength(1)
+      const outcomes = [
+        'subscription_join_lightning_shown',
+        'subscription_join_onchain_invoice_sent',
+        'subscription_paid',
+      ]
+      // Receiving the chooser without clicking is neither a choice nor a shown invoice.
+      expect(captures.filter(input => input.event === 'subscription_join_method_chosen')).toEqual(
+        [],
+      )
+      expect(captures.filter(input => outcomes.includes(String(input.event)))).toEqual([])
+
+      const invoicePath = method === 'onchain' ? '/satspay/api/v1/charge' : '/api/v1/payments'
+      if (failInvoice) {
+        e2e.ln.state.failAlways(
+          {method: 'POST', path: invoicePath},
+          {status: 400, body: {detail: 'Invoice creation failed'}},
+        )
+      }
+      networkMark = e2e.ln.requests.length
+      telegramMark = e2e.tg.calls.length
+      const data =
+        method === 'lightning'
+          ? payLightningRoute.build({chatId: CHAT_GROUP})
+          : method === 'onchain'
+            ? payOnchainRoute.build({chatId: CHAT_GROUP})
+            : payJoinBalanceRoute.build({chatId: CHAT_GROUP, from: 'wallet'})
+      await e2e.send(
+        privateCallback(data, {
+          from: applicantFrom('en'),
+          messageId: requiredMessageId(),
+        }),
+      )
+
+      const chosen = captures.filter(input => input.event === 'subscription_join_method_chosen')
+      expect(chosen).toEqual([
+        {
+          event: 'subscription_join_method_chosen',
+          properties: {payment_method: method},
+          groups: {telegram_chat: String(CHAT_GROUP)},
+        },
+      ])
+      // Only wallet-loading middleware ran before the handler. No invoice, rate, or Bot API I/O.
+      expect(requestsAtChoice).toHaveLength(2)
+      expect(requestsAtChoice[0]).toBe('GET /users/api/v1/user')
+      expect(requestsAtChoice[1]).toMatch(/^GET \/users\/api\/v1\/user\/[^/]+\/wallet$/)
+      expect(telegramCallsAtChoice).toBe(0)
+      expect(
+        e2e.ln.requests
+          .slice(networkMark)
+          .some(request => request.method === 'POST' && request.path === invoicePath),
+      ).toBe(true)
+
+      const completed = captures.filter(input => outcomes.includes(String(input.event)))
+      if (failInvoice) {
+        expect(completed).toEqual([])
+        expect(
+          e2e.tg.calls.slice(telegramMark).filter(call => call.method === 'editMessageText'),
+        ).toEqual([])
+      } else {
+        expect(completed).toHaveLength(1)
+        expect(completed[0]?.event).toBe(
+          method === 'lightning'
+            ? 'subscription_join_lightning_shown'
+            : method === 'onchain'
+              ? 'subscription_join_onchain_invoice_sent'
+              : 'subscription_paid',
+        )
+        expect(
+          captures.findIndex(input => input.event === 'subscription_join_method_chosen'),
+        ).toBeLessThan(captures.findIndex(input => outcomes.includes(String(input.event))))
+        expectNoErrors(e2e.logs)
+      }
+      expectPayoutsExactly(e2e.ln, {toWallet: String(OWNER), sats: PRICE, times: 0})
+      expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: PRICE, times: 0})
+      expectPayoutsExactly(e2e.ln, {toWallet: String(USER_A), sats: PRICE, times: 0})
+    })
+  }
+}
 
 test('choosing Lightning mints one linked one-time invoice with no balance button', async () => {
   const {payment, telegram} = await issueJoinInvoice({

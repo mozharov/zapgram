@@ -19,6 +19,12 @@ export const payLightningCallback = async (
   ctx: CallbackQueryContext<BotContext>,
 ): Promise<void> => {
   const {chatId} = payLightningRoute.parse(ctx.match)
+  captureBotEvent(
+    getRuntime().posthog,
+    'subscription_join_method_chosen',
+    {payment_method: 'lightning'},
+    {chatId},
+  )
   const chat = await getAccessibleChat(chatId)
   if (chat?.status !== 'active') {
     await ctx.answerCallbackQuery({text: ctx.t('chat.not-found')})
