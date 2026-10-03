@@ -59,22 +59,24 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   await deleteMessageSafely(urlContext)
   await clearPromptControls(conversation, prompt)
   await ctx.replyWithChatAction('typing')
-  await new NostrWallet(nwcUrl).getBalance().catch((error: unknown) => {
-    ctx.log.error({error}, 'Error while validating NWC connection')
-    throw new NWCConnectionError()
-  })
-  await updateUser(ctx.user.id, {nwcUrl})
-  // The NWC URL itself is a wallet credential — never log it.
-  ctx.log.info('NWC wallet connected')
-  const {posthog} = getRuntime()
-  // Merge with Telegram person fields so a local $set does not drop name / $name.
-  posthog?.capture({
-    event: 'wallet_connected',
-    properties: {
-      ...mergePersonProperties(ctx.from ? personPropertiesFromTelegram(ctx.from) : undefined, {
-        $set: {nwc_connected: true},
-      }),
-    },
+  await conversation.external(async () => {
+    await new NostrWallet(nwcUrl).getBalance().catch((error: unknown) => {
+      ctx.log.error({error}, 'Error while validating NWC connection')
+      throw new NWCConnectionError()
+    })
+    await updateUser(ctx.user.id, {nwcUrl})
+    // The NWC URL itself is a wallet credential — never log it.
+    ctx.log.info('NWC wallet connected')
+    const {posthog} = getRuntime()
+    // Merge with Telegram person fields so a local $set does not drop name / $name.
+    posthog?.capture({
+      event: 'wallet_connected',
+      properties: {
+        ...mergePersonProperties(ctx.from ? personPropertiesFromTelegram(ctx.from) : undefined, {
+          $set: {nwc_connected: true},
+        }),
+      },
+    })
   })
 
   ctx.user.nwcUrl = nwcUrl

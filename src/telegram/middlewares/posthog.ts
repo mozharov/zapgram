@@ -1,5 +1,7 @@
 import {captureBotError} from '@infra/posthog.js'
+import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import type {BotContext} from '@telegram/context.js'
+import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
 import type {Middleware} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 import {
@@ -45,7 +47,9 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
         return await next()
       } catch (error) {
         // AppError → product event `app_error` (expected). Real bugs → $exception.
-        captureBotError(posthog, error, distinctId)
+        if (!isVanishedTelegramMessageError(error) && !isTelegramUserUnreachableError(error)) {
+          captureBotError(posthog, error, distinctId)
+        }
         throw error
       } finally {
         // After next(): attachUser may have filled ctx.user for private / tip paths.

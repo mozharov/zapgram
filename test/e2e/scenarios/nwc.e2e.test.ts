@@ -1,6 +1,7 @@
-import {afterAll, afterEach, beforeEach, expect, mock, test} from 'bun:test'
+import {afterAll, afterEach, beforeEach, expect, mock, spyOn, test} from 'bun:test'
 import {conversationsTable, subscriptionPaymentsTable} from '@infra/db/schema.js'
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
+import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors} from '../asserts.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -13,6 +14,7 @@ import {
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {replayWizard} from '../replay-wizard.js'
 import {expectDelta, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -147,6 +149,22 @@ test('connecting NWC validates the wallet and stores only nwc_url', async () => 
 
   expect(nwcCalls.filter(call => call.method === 'getBalance').length).toBeGreaterThanOrEqual(1)
   expectNoErrors(e2e.logs)
+})
+
+test('replaying NWC connection does not validate or write the wallet twice', async () => {
+  const update = spyOn(e2e.container.users, 'update')
+  try {
+    await replayWizard(e2e, connectingNWC, privateText(NWC_URL), () => {
+      expect(nwcCalls.filter(call => call.method === 'getBalance')).toHaveLength(1)
+      expect(update.mock.calls.filter(([, data]) => data.nwcUrl === NWC_URL)).toHaveLength(1)
+      expect(
+        e2e.tg.of('editMessageText').filter(call => /Wallet connected/.test(String(call.text))),
+      ).toHaveLength(1)
+    })
+    expectNoErrors(e2e.logs)
+  } finally {
+    update.mockRestore()
+  }
 })
 
 test('an invalid NWC URL keeps the prompt active and can be corrected', async () => {

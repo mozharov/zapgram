@@ -58,15 +58,16 @@ export async function enablingOnchain(
       continue
     }
 
-    const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
-    if (!owned) {
+    const result = await conversation.external(async () => {
+      const owned = await getAccessibleChatForOwner(chatId, ctx.user.id)
+      if (!owned) return null
+      return getRuntime().onchainEnableService.enable(owned, masterpub)
+    })
+    if (!result) {
       await clearPromptControls(conversation, prompt)
       await replyWithConversationTempMessage(conversation, next, next.t('chat.not-found'))
       return
     }
-
-    const {onchainEnableService, posthog} = getRuntime()
-    const result = await onchainEnableService.enable(owned, masterpub)
 
     if (result.status === 'invalid_masterpub' || result.status === 'watchonly_error') {
       // Keep the original prompt + Cancel; user can paste another key or cancel.
@@ -76,16 +77,19 @@ export async function enablingOnchain(
 
     await clearPromptControls(conversation, prompt)
 
-    if (posthog) setTelegramChatGroup(posthog, result.chat, String(ctx.user.id))
-    captureBotEvent(
-      posthog,
-      'chat_onchain_enabled',
-      {
-        chat_title: result.chat.title,
-        fingerprint: result.fingerprint,
-      },
-      {chatId},
-    )
+    await conversation.external(() => {
+      const {posthog} = getRuntime()
+      if (posthog) setTelegramChatGroup(posthog, result.chat, String(ctx.user.id))
+      captureBotEvent(
+        posthog,
+        'chat_onchain_enabled',
+        {
+          chat_title: result.chat.title,
+          fingerprint: result.fingerprint,
+        },
+        {chatId},
+      )
+    })
 
     // Both the pasted key and the confirmation clear themselves after the temp-message delay: the
     // chat card below already reports the fingerprint, and an extended public key is not something
