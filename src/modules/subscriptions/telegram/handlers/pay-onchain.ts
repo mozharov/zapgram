@@ -12,6 +12,12 @@ import {getRuntime} from '../../../../runtime.js'
 
 export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>): Promise<void> => {
   const {chatId} = payOnchainRoute.parse(ctx.match)
+  captureBotEvent(
+    getRuntime().posthog,
+    'subscription_join_method_chosen',
+    {payment_method: 'onchain'},
+    {chatId},
+  )
   const chat = await getAccessibleChat(chatId)
   if (chat?.status !== 'active') {
     await ctx.answerCallbackQuery({text: ctx.t('chat.not-found')})
