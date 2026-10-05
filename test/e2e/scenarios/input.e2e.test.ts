@@ -165,7 +165,10 @@ for (const {label, text} of textCases) {
   test(`${label} falls back to the wallet like any other text`, async () => {
     await expectDelta(e2e, () => e2e.send(privateText(text)), {
       ...FIRST_TOUCH,
-      telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
+      telegram: [
+        {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
+        {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+      ],
     })
     expectNoErrors(e2e.logs)
   })

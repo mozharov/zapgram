@@ -20,7 +20,6 @@ import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {privateMyChatMemberHandler} from '@modules/users/telegram/handlers/private-my-chat-member.js'
 import {register as registerWallet} from '@modules/wallet/register.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
-import {walletCommand} from '@modules/wallet/telegram/handlers/wallet-command.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
@@ -29,6 +28,7 @@ import {helpCommand} from '@telegram/handlers/help.js'
 import {helpCallback} from '@telegram/handlers/help-callback.js'
 import {startCommand, startGroupCommand} from '@telegram/handlers/start.js'
 import {unknownCallback} from '@telegram/handlers/unknown-callback.js'
+import {unrecognizedPrivateMessage} from '@telegram/handlers/unrecognized-private-message.js'
 import {attachUser} from '@telegram/middlewares/attach-user.js'
 import {conversations} from '@telegram/middlewares/conversations.js'
 import {i18n} from '@telegram/middlewares/i18n.js'
@@ -107,5 +107,8 @@ export function registerHandlers(bot: Bot<BotContext>): void {
   const privateFallback = composer.chatType('private')
   privateFallback.callbackQuery(staticCallback.cancel, replyWithWallet)
   privateFallback.on('callback_query', unknownCallback)
-  privateFallback.on('message', walletCommand)
+  // Text that no command, hears, or conversation claimed still ends on the wallet menu.
+  // The hint goes out first — reopening the menu alone reads as silence. Non-text messages
+  // (stickers, photos) keep the previous wallet-only fallback.
+  privateFallback.on('message', unrecognizedPrivateMessage)
 }

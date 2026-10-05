@@ -247,6 +247,12 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <hr/>
     <footer>Open source: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Support: @vmozharov · Suggest a feature from the main menu</footer>
 
+dm-unrecognized = <b>⚡️ This is a Lightning wallet.</b>
+    To receive sats, press <b>Receive</b> and enter an amount.
+dm-unrecognized-onchain = <b>⚡️ This is a Lightning wallet.</b>
+    This bot does not take an on-chain address in a private chat as a send destination.
+    To receive sats, press <b>Receive</b> and enter an amount — you'll get a Lightning invoice.
+
 wallet = <h1>👛 Wallet</h1>
     {$nwcBalance ->
     [no] <p><b>Balance:</b> {$balance} sats{$usdSuffix}</p>
