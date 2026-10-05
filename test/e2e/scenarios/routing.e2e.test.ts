@@ -67,8 +67,8 @@ const commandCases: {command: string; telegram: {method: string; to: number; tex
       {method: 'sendRichMessage', to: USER_A, text: /Lightning Network/},
     ],
   },
-  // /wallet is the one command whose output cannot distinguish routing from the fallback: the
-  // terminal on('message') handler IS walletCommand.
+  // /wallet has its own handler. Free text hits the fallback, which adds a hint first,
+  // so this screen is wallet-only.
   {
     command: '/wallet',
     telegram: [
@@ -106,10 +106,12 @@ for (const command of ['/settings', '/chats', '/subscriptions', '/feature']) {
     await expectDelta(e2e, () => e2e.send(privateCommand(command)), {
       ...FIRST_TOUCH,
       telegram: [
+        {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
         {method: 'deleteMessage', to: USER_A},
         {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
       ],
     })
+    expect(e2e.tg.last('sendMessage')?.text).not.toMatch(/on-chain address/)
     expectNoErrors(e2e.logs)
   })
 }
@@ -564,11 +566,33 @@ test('a refused deleteMessage does not abort callback cleanup or raise a bot err
   expect(e2e.tg.of('sendMessage')).toHaveLength(0)
 })
 
-test('plain private text falls back to the wallet', async () => {
+test('plain private text shows a hint and the wallet', async () => {
   await expectDelta(e2e, () => e2e.send(privateText('hello there')), {
     ...FIRST_TOUCH,
-    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
   })
+  expect(e2e.tg.last('sendMessage')?.text).not.toMatch(/on-chain address/)
+  expectNoErrors(e2e.logs)
+})
+
+test('a 42-character bc1q paste explains on-chain and does not pay', async () => {
+  const address = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
+  expect(address).toHaveLength(42)
+
+  await expectDelta(e2e, () => e2e.send(privateText(address)), {
+    ...FIRST_TOUCH,
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /on-chain address/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
+  })
+  expect(e2e.tg.last('sendMessage')?.text).toMatch(/send destination/)
+  expect(e2e.tg.last('sendMessage')?.text).toMatch(/Lightning invoice/)
+  // The address is not echoed and no LNbits payment was attempted (empty payment delta above).
+  expect(joinedOutput()).not.toContain(address)
   expectNoErrors(e2e.logs)
 })
 
@@ -578,6 +602,7 @@ test('pasted bolt11 invoice reaches the invoices module', async () => {
     telegram: ['sendMessage'],
   })
   expect(joinedOutput()).toMatch(/Invalid Lightning invoice/)
+  expect(joinedOutput()).not.toMatch(/This is a Lightning wallet/)
   // The invoice is unparseable on purpose: routing is proven by the invoice-input conversation
   // returning its localized correction rather than falling through to the wallet.
   expect(e2e.logs).toHaveLength(0)
@@ -621,7 +646,10 @@ for (const [type, chat] of [
 test('/tip in a private chat does not reach the group tipping handler', async () => {
   await expectDelta(e2e, () => e2e.send(privateCommand('/tip 21')), {
     ...FIRST_TOUCH,
-    telegram: [{method: 'sendRichMessage', to: USER_A, text: /Wallet/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
   })
   expectNoErrors(e2e.logs)
 })

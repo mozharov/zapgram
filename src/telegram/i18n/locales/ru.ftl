@@ -247,6 +247,12 @@ help = <img src="https://zapgram.mozharov.me/assets/bot-description-ru.png"/>
     <hr/>
     <footer>Открытый код: <a href="https://github.com/v-mozharov/zapgram">GitHub</a> · Поддержка: @vmozharov · Предложить идею в главном меню</footer>
 
+dm-unrecognized = <b>⚡️ Это Lightning-кошелёк.</b>
+    Чтобы получить сатоши, нажми <b>Получить</b> и введи сумму.
+dm-unrecognized-onchain = <b>⚡️ Это Lightning-кошелёк.</b>
+    Бот не принимает on-chain адрес в личке как адрес, куда слать.
+    Чтобы получить сатоши, нажми <b>Получить</b> и введи сумму — получишь Lightning-счёт.
+
 wallet = <h1>👛 Кошелёк</h1>
     {$nwcBalance ->
     [no] <p><b>Баланс:</b> {$balance} сат{$usdSuffix}</p>
