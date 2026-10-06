@@ -14,6 +14,7 @@ import {
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
 import {replayWizard} from '../replay-wizard.js'
 import {expectDelta, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -397,6 +398,29 @@ test('a group tip with nwc_tips pays through NWC and leaves the sender LNbits ba
   const payCall = [...nwcCalls].reverse().find(call => call.method === 'payInvoice')
   const paidInvoice = String(payCall?.args[0] ?? '')
   expect(paidInvoice.startsWith('lnbc')).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('a private send through NWC emits one dm_transfer_sent', async () => {
+  const events = recordPosthog(e2e)
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  // The internal balance is empty, so NWC is the only wallet that can pay.
+  await connectNwc()
+  e2e.tg.reply('getChat', {id: USER_B, type: 'private', username: 'user_b', first_name: 'User B'})
+
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
+    {
+      event: 'dm_transfer_sent',
+      distinctId: String(USER_A),
+      properties: {amount_sats: TIP_SATS, payment_method: 'nwc'},
+    },
+  ])
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
+  expect(internalBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
   expectNoErrors(e2e.logs)
 })
 
