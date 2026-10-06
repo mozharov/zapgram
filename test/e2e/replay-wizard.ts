@@ -10,11 +10,14 @@ import type {Update} from 'grammy/types'
 import {privateText} from './fixtures/updates.js'
 import type {E2E} from './harness.js'
 
-/** Run the real wizard, then force a replay after completion with one extra wait. */
+/**
+ * Run the real wizard, then force a replay after completion with one extra wait.
+ * Pass several inputs for a wizard that waits more than once.
+ */
 export async function replayWizard(
   e2e: E2E,
   wizard: (conversation: BotConversation, ctx: ConversationContext) => Promise<void>,
-  input: Update,
+  input: Update | Update[],
   assertOnce: () => void,
 ) {
   const builder = async (conversation: BotConversation, ctx: ConversationContext) => {
@@ -45,9 +48,13 @@ export async function replayWizard(
   )
   expect(entered.status).toBe('handled')
   if (entered.status !== 'handled') throw new Error('Wizard did not wait for input')
-  const completed = await resumeConversation(builder, base(input), entered, options)
-  expect(completed.status).toBe('handled')
-  if (completed.status !== 'handled') throw new Error('Wizard did not reach the extra wait')
+  let completed = entered
+  for (const update of Array.isArray(input) ? input : [input]) {
+    const resumed = await resumeConversation(builder, base(update), completed, options)
+    expect(resumed.status).toBe('handled')
+    if (resumed.status !== 'handled') throw new Error('Wizard did not wait for the next input')
+    completed = resumed
+  }
   assertOnce()
   const replayed = await resumeConversation(
     builder,

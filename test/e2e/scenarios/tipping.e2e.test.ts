@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {usersTable} from '@infra/db/schema.js'
+import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -16,6 +17,8 @@ import {
   type TestUpdate,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
+import {replayWizard} from '../replay-wizard.js'
 import {
   expectDelta,
   expectLedgerBalanced,
@@ -135,6 +138,93 @@ test('an invalid private-send amount can be corrected without restarting the flo
     {conversationRemoved: true},
   )
   expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
+  expectNoErrors(e2e.logs)
+})
+
+test('a successful internal DM transfer emits one dm_transfer_sent', async () => {
+  const events = recordPosthog(e2e)
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
+    {
+      event: 'dm_transfer_sent',
+      distinctId: String(USER_A),
+      properties: {amount_sats: TIP_SATS, payment_method: 'internal'},
+    },
+  ])
+  expect(walletBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
+  expectNoErrors(e2e.logs)
+})
+
+test('replaying a finished internal DM transfer does not emit dm_transfer_sent again', async () => {
+  const events = recordPosthog(e2e)
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+
+  await replayWizard(
+    e2e,
+    sendingToUser,
+    [privateText('@user_b'), privateText(String(TIP_SATS))],
+    () => {
+      expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
+        {
+          event: 'dm_transfer_sent',
+          distinctId: String(USER_A),
+          properties: {amount_sats: TIP_SATS, payment_method: 'internal'},
+        },
+      ])
+    },
+  )
+})
+
+test('a failed internal DM transfer does not emit dm_transfer_sent', async () => {
+  const events = recordPosthog(e2e)
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => typeof body === 'object' && body !== null && Reflect.get(body, 'out') === true,
+    },
+    {status: 520, body: {status: 'failed', detail: 'Payment failed.'}},
+  )
+
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  expect(errorMessages()).toContain('Error paying invoice')
+  expect(capturesOf(events, 'dm_transfer_sent')).toEqual([])
+  expect(walletBalanceMsat(USER_A)).toBe(STARTING_BALANCE_SATS * 1000)
+  expect(walletBalanceMsat(USER_B)).toBe(0)
+})
+
+test('a PostHog failure does not undo a completed internal DM transfer', async () => {
+  recordPosthog(e2e)
+  const posthog = e2e.container.posthog
+  if (!posthog) throw new Error('Expected a recording PostHog client')
+  const capture = posthog.capture.bind(posthog)
+  posthog.capture = payload => {
+    if (payload.event === 'dm_transfer_sent') throw new Error('posthog down')
+    capture(payload)
+  }
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  expect(e2e.tg.of('editMessageText').some(call => sentConfirmation.test(String(call.text)))).toBe(
+    true,
+  )
+  expect(walletBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
   expectNoErrors(e2e.logs)
 })
 
@@ -648,6 +738,24 @@ function groupConfirmation(): Record<string, unknown> | undefined {
     .find(
       payload => Number(payload.chat_id) === CHAT_GROUP && String(payload.text).includes('sent'),
     )
+}
+
+const sentConfirmation = /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/
+
+function replyWithRecipient(): void {
+  e2e.tg.reply('getChat', {
+    id: USER_B,
+    type: 'private',
+    username: 'user_b',
+    first_name: 'User B',
+  })
+}
+
+function walletBalanceMsat(userId: number): number {
+  const lnUser = e2e.ln.state.getUserByUsername(String(userId))
+  const wallet = lnUser ? e2e.ln.state.walletsOfUser(lnUser.id)[0] : undefined
+  if (!wallet) throw new Error(`Fake LNbits wallet not found for user ${userId}`)
+  return wallet.balanceMsat
 }
 
 function credit(userId: number, sats: number): void {

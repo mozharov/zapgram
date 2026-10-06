@@ -6,6 +6,7 @@ import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
 import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
+import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   disabledLinkPreview,
@@ -51,6 +52,23 @@ export async function sendingToUser(conversation: BotConversation, ctx: Conversa
     if (!ctx.user.nwc) throw new NWCConnectionError()
     await ctx.user.nwc.payInvoice(invoice.bolt11)
   }
+
+  // Cached across replays, and a capture failure must not unwind a settled transfer.
+  await conversation.external(() => {
+    try {
+      captureBotEvent(
+        getRuntime().posthog,
+        'dm_transfer_sent',
+        {
+          amount_sats: sats,
+          payment_method: usedNwc ? 'nwc' : 'internal',
+        },
+        {distinctId: String(ctx.user.id)},
+      )
+    } catch {
+      // Analytics must never throw into the money path.
+    }
+  })
 
   // Best-effort voluntary platform donation — never blocks the transfer.
   await getRuntime().donationCollect.tryCollect({
