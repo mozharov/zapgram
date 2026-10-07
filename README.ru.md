@@ -213,6 +213,8 @@ bun run start:dev
 
 В compose: `LNBITS_ONCHAIN_NETWORK` (по умолчанию `Mainnet`). Smoke: zpub в меню «Чаты» → join → Pay on-chain → оплата ≥ price → grant.
 
+**Персистентность:** compose задаёт `LNBITS_EXTENSIONS_PATH=/app/data/extensions`, поэтому код установленных расширений LNbits лежит на volume `lnbits-data` (`/app/data/extensions/extensions/<id>`) рядом с БД и переживает пересоздание контейнера. Без этого LNbits 1.x ставит расширения в `/app/lnbits/extensions` внутри контейнера: после редеплоя в БД они числятся установленными, а файлов нет — отсюда `Extension 'satspay' disabled` и 500 при включении. При переходе существующего инстанса на эту настройку один раз переустанови Watch Only и SatsPay (Admin → Extensions); их данные в БД сохраняются.
+
 ---
 
 ## Ссылки

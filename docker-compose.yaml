@@ -65,6 +65,9 @@ services:
       PORT: "5000"
       LNBITS_ADMIN_UI: ${LNBITS_ADMIN_UI:-true}
       LNBITS_DATA_FOLDER: "/app/data"
+      # Installed extension code goes to $LNBITS_EXTENSIONS_PATH/extensions. Image default is
+      # "lnbits" → /app/lnbits/extensions (not persisted), so keep it on the lnbits-data volume (#18).
+      LNBITS_EXTENSIONS_PATH: "/app/data/extensions"
       LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?}
     volumes:
