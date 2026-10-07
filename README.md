@@ -213,6 +213,8 @@ Requires LNbits extensions **Watch Only** + **SatsPay** on the same instance as 
 
 Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-chain in the Chats menu, smoke: paste account zpub → member join → Pay on-chain → pay ≥ price → grant.
 
+**Persistence:** compose sets `LNBITS_EXTENSIONS_PATH=/app/data/extensions`, so installed LNbits extension code lives on the `lnbits-data` volume (`/app/data/extensions/extensions/<id>`) next to the DB and survives container recreates. Without it LNbits 1.x installs extensions into `/app/lnbits/extensions` inside the container: after a redeploy the DB still lists them, the files are gone, and you get `Extension 'satspay' disabled` / 500 on enable. When upgrading an existing instance to this setting, reinstall Watch Only and SatsPay once (Admin → Extensions); their data in the DB is kept.
+
 ---
 
 ## Links
