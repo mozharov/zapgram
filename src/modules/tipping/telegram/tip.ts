@@ -14,7 +14,7 @@ import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
 import {getUserFromChatCreator} from '@telegram/helpers/chat-creator.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {replyOnlyToSender} from '@telegram/helpers/ephemeral-message.js'
+import {replyOnlyToSenderOrDm} from '@telegram/helpers/ephemeral-message.js'
 import type {ChatTypeContext} from 'grammy'
 import {getRuntime} from '../../../runtime.js'
 
@@ -35,7 +35,7 @@ type ResolvedTipRecipient = {
 
 export const tipInvalidCommand = async (ctx: Context) => {
   await deleteMessageSafely(ctx)
-  return replyOnlyToSender(ctx, ctx.t('tip.invalid-command'))
+  return replyOnlyToSenderOrDm(ctx, ctx.t('tip.invalid-command'))
 }
 
 export const tipCommand = async (ctx: Context) => {

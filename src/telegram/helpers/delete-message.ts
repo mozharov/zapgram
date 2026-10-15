@@ -1,5 +1,6 @@
 import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
+import {isBotNotAdminError} from '@telegram/errors/bot-not-admin.js'
 import type {Context} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
@@ -33,7 +34,9 @@ export async function deleteMessageSafely(
     return
   }
   await ctx.deleteMessage().catch((error: unknown) => {
-    ctx.log.warn({error}, 'Failed to delete message')
+    // No delete rights is an expected group setup, not a failure worth a warning.
+    if (isBotNotAdminError(error)) ctx.log.debug('No rights to delete the message, keeping it')
+    else ctx.log.warn({error}, 'Failed to delete message')
   })
 }
 

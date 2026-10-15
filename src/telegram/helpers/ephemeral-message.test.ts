@@ -13,16 +13,29 @@ function grammyReplyError() {
   )
 }
 
+function botNotAdminError() {
+  return new GrammyError(
+    "Call to 'sendMessage' failed! (400: Bad Request: BOT_NOT_ADMIN)",
+    {ok: false, error_code: 400, description: 'Bad Request: BOT_NOT_ADMIN'},
+    'sendMessage',
+    {},
+  )
+}
+
 function ctxWithLog(partial: {
+  message?: {message_id: number; ephemeral_message_id?: number}
   from?: {id: number; is_bot?: boolean}
   msg?: {sender_chat?: {id: number; type: string; title: string}}
   reply?: Context['reply']
   deleteMessages?: Context['deleteMessages']
   api?: {deleteEphemeralMessage?: Context['api']['deleteEphemeralMessage']}
-  log?: Pick<AppLogger, 'warn'>
+  log?: Partial<Pick<AppLogger, 'warn' | 'info'>>
 }) {
-  const {log = {warn: mock(() => {})}, ...rest} = partial
-  return {log, ...rest} as unknown as Context & {log: AppLogger}
+  const {log = {}, ...rest} = partial
+  return {
+    log: {warn: mock(() => {}), info: mock(() => {}), ...log},
+    ...rest,
+  } as unknown as Context & {log: AppLogger}
 }
 
 function sentMessage(messageId: number) {
@@ -140,4 +153,59 @@ test('a bot from skips ephemeral and uses the public temp message', async () => 
   expect(reply).toHaveBeenCalledWith('nope', undefined)
   await Bun.sleep(20)
   expect(deleteMessages).toHaveBeenCalledWith([13])
+})
+
+test('without admin rights the notice is a plain reply to the command', async () => {
+  const info = mock(() => {})
+  const warn = mock(() => {})
+  const reply = mock((_text: string, other?: {receiver_user_id?: number}) =>
+    other?.receiver_user_id === undefined ? sentMessage(8) : Promise.reject(botNotAdminError()),
+  ) as unknown as Context['reply']
+  const deleteMessages = mock(() => Promise.resolve(true as const))
+
+  const delivered = await replyOnlyToSender(
+    ctxWithLog({
+      from: {id: 42},
+      message: {message_id: 5},
+      reply,
+      deleteMessages,
+      log: {info, warn},
+    }),
+    'nope',
+    {delayMs: 1},
+  )
+
+  expect(delivered).toBe(true)
+  expect(reply).toHaveBeenLastCalledWith('nope', {
+    reply_parameters: {message_id: 5, allow_sending_without_reply: true},
+  })
+  expect(warn).not.toHaveBeenCalled()
+  expect(info).toHaveBeenCalled()
+})
+
+test('an ephemeral command has no anchor for the fallback reply', async () => {
+  const reply = mock((_text: string, other?: {receiver_user_id?: number}) =>
+    other?.receiver_user_id === undefined ? sentMessage(8) : Promise.reject(botNotAdminError()),
+  ) as unknown as Context['reply']
+
+  await replyOnlyToSender(
+    ctxWithLog({
+      from: {id: 42},
+      message: {message_id: 0, ephemeral_message_id: 3},
+      reply,
+      deleteMessages: mock(() => Promise.resolve(true as const)),
+    }),
+    'nope',
+    {delayMs: 1},
+  )
+
+  expect(reply).toHaveBeenLastCalledWith('nope', undefined)
+})
+
+test('when every reply is refused the helper reports it instead of throwing', async () => {
+  const reply = mock(() => Promise.reject(botNotAdminError())) as unknown as Context['reply']
+
+  const delivered = await replyOnlyToSender(ctxWithLog({from: {id: 42}, reply}), 'nope')
+
+  expect(delivered).toBe(false)
 })

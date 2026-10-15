@@ -103,6 +103,7 @@ callback-answer =
 
 error = 
     .unknown = <b>⚠️ Unknown error occurred.</b>
+    .bot-not-admin = <i>Couldn't reply in the group: make the bot an admin there so it can show hints and clean up commands.</i>
     .nwc-connection = <b>⚠️ Failed to connect to the wallet by NWC.</b>
         This is why the request took a while. Check your NWC wallet connection settings.
     .nwc-timeout = <b>⚠️ NWC connection timed out.</b>

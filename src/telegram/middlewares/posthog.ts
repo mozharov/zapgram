@@ -1,6 +1,7 @@
 import {captureBotError} from '@infra/posthog.js'
 import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import type {BotContext} from '@telegram/context.js'
+import {isBotNotAdminError} from '@telegram/errors/bot-not-admin.js'
 import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
 import type {Middleware} from 'grammy'
 import {getRuntime} from '../../runtime.js'
@@ -47,7 +48,11 @@ export const posthogMiddleware: Middleware<BotContext> = (ctx, next) => {
         return await next()
       } catch (error) {
         // AppError → product event `app_error` (expected). Real bugs → $exception.
-        if (!isVanishedTelegramMessageError(error) && !isTelegramUserUnreachableError(error)) {
+        if (
+          !isVanishedTelegramMessageError(error) &&
+          !isTelegramUserUnreachableError(error) &&
+          !isBotNotAdminError(error)
+        ) {
           captureBotError(posthog, error, distinctId)
         }
         throw error
