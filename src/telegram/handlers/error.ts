@@ -3,7 +3,7 @@ import type {BotContext} from '@telegram/context.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
 import {scheduleMessageDelete} from '@telegram/helpers/delete-message.js'
-import {replyOnlyToSender} from '@telegram/helpers/ephemeral-message.js'
+import {replyOnlyToSenderOrDm} from '@telegram/helpers/ephemeral-message.js'
 import type {ErrorHandler} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
@@ -36,9 +36,7 @@ export const errorHandler: ErrorHandler = async err => {
   if (ctx.chat?.type === 'channel') return
   if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
     // Nobody but the sender needs to see a failed transfer.
-    return replyOnlyToSender(ctx, errorResponse).catch((error: unknown) => {
-      ctx.log.error({error}, 'Failed to reply about error in group')
-    })
+    return replyOnlyToSenderOrDm(ctx, errorResponse)
   }
   // Through the notifier so the error joins the open-menu chain: it carries the "Open wallet"
   // button and strips it off the previous notification. That button *is* the recovery path — the
