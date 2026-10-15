@@ -78,7 +78,8 @@ services:
       # Ofelia: graceful recycle every 4 days (PID 1 TERM → Docker restarts)
       ofelia.enabled: "true"
       ofelia.job-exec.lnbits-restart.schedule: "@every 96h"
-      ofelia.job-exec.lnbits-restart.command: "kill -TERM 1"
+      # Image has no `kill` binary (exit 127); use Python, which the healthcheck already relies on.
+      ofelia.job-exec.lnbits-restart.command: "python -c 'import os,signal; os.kill(1, signal.SIGTERM)'"
     healthcheck:
       test:
         [
