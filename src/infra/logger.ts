@@ -4,7 +4,10 @@ import {serializeError} from 'serialize-error'
 
 export type AppLogger = Pick<pino.Logger, 'info' | 'error' | 'warn' | 'debug'>
 
-export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pino.Logger {
+export function createLogger(
+  cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>,
+  destination?: pino.DestinationStream,
+): pino.Logger {
   const options: pino.LoggerOptions = {
     level: cfg.LOG_LEVEL,
     formatters: {
@@ -28,5 +31,5 @@ export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pi
     }
   }
 
-  return pino(options)
+  return destination ? pino(options, destination) : pino(options)
 }
