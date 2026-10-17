@@ -386,6 +386,14 @@ export const scenarioCoverage = {
     jobs: ['check-onchain-charges'],
     errors: [],
   },
+  'satspay-availability': {
+    routes: [],
+    commands: [],
+    updates: [],
+    writes: [],
+    jobs: ['probe-satspay'],
+    errors: [],
+  },
   'subscriptions-renewal': {
     routes: ['pay-subscription'],
     commands: [],

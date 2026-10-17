@@ -1,7 +1,6 @@
 import type {Chat} from '@infra/db/types.js'
 import {getChat} from '@modules/chats/repository.js'
 import {richCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
-import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getSubscriptionByUserAndChat} from '@modules/subscriptions/repository.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
 import {buildJoinMethodKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
@@ -65,8 +64,8 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
  * Invoice/address appear after the member taps Lightning or Bitcoin (edit in place).
  */
 async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
-  const {posthog} = getRuntime()
-  const showOnchain = chatAllowsOnchain(chat)
+  const {posthog, satspayGate} = getRuntime()
+  const showOnchain = await satspayGate.onchainOffered(chat)
   // NWC failures must not block the chooser — getJoinBalanceAvailability swallows them.
   const balanceAvailability = await getJoinBalanceAvailability(ctx, chat.price)
 

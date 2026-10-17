@@ -37,7 +37,12 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
     return
   }
 
-  const {onchainJoinPaymentService, onchainPayments, posthog, log} = getRuntime()
+  const {onchainJoinPaymentService, onchainPayments, posthog, log, satspayGate} = getRuntime()
+  if ((await satspayGate.beforeCharge()) === 'extension-down') {
+    await ctx.answerCallbackQuery({text: ctx.t('onchain-invoice.extension-down')})
+    return
+  }
+
   let result: Awaited<ReturnType<typeof onchainJoinPaymentService.createOrReuse>>
   try {
     result = await onchainJoinPaymentService.createOrReuse({
@@ -45,8 +50,17 @@ export const payOnchainCallback = async (ctx: CallbackQueryContext<BotContext>):
       userId: ctx.user.id,
     })
   } catch (error) {
-    log.error({error, chatId}, 'Failed to create on-chain join payment')
-    await ctx.answerCallbackQuery({text: ctx.t('onchain-invoice.create-failed')})
+    const failure = await satspayGate.chargeFailed(error)
+    if (failure === 'other') {
+      log.error({error, chatId}, 'Failed to create on-chain join payment')
+    }
+    await ctx.answerCallbackQuery({
+      text: ctx.t(
+        failure === 'extension-down'
+          ? 'onchain-invoice.extension-down'
+          : 'onchain-invoice.create-failed',
+      ),
+    })
     return
   }
 

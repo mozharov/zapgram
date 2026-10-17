@@ -245,6 +245,10 @@ function route({
     return new Response(null, {status: 204})
   }
 
+  if (method === 'GET' && path === '/satspay/api/v1') {
+    return json({message: 'SatsPay API enabled.'})
+  }
+
   if (method === 'POST' && path === '/satspay/api/v1/charge') {
     if (!hasAdminKey(request, opts.adminKey)) return json({detail: 'Unauthorized.'}, 401)
     const onchainwallet = bodyValue(body, 'onchainwallet')

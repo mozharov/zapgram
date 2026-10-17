@@ -542,6 +542,7 @@ onchain-invoice =
         }
     .disabled = On-chain pay is not available for this chat.
     .create-failed = Could not create an on-chain payment. Please try again later.
+    .extension-down = On-chain is temporarily unavailable. You can pay with Lightning.
     .expired = <b>⚠️ This on-chain payment request has expired.</b>
         Tap <b>Pay on-chain</b> again (or send a new join request) for a fresh address.
     .grace = <b>⚠️ The time to pay this address has ended.</b>

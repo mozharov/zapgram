@@ -8,6 +8,7 @@ import {processBroadcasts} from '@modules/broadcast/jobs/process-broadcasts.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
+import {probeSatspay} from '@modules/onchain/jobs/probe-satspay.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
@@ -34,6 +35,7 @@ export type E2E = {
     expiredInvoices(): Promise<void>
     subscriptionPayments(): Promise<void>
     onchainCharges(): Promise<void>
+    probeSatspay(): Promise<void>
     expiredSubscriptions(): Promise<void>
     expiringSubscriptions(): Promise<void>
     processBroadcasts(): Promise<void>
@@ -108,6 +110,7 @@ export async function createE2E(opts?: {
       expiredInvoices: deleteExpiredInvoices,
       subscriptionPayments: checkSubscriptionPayments,
       onchainCharges: checkOnchainCharges,
+      probeSatspay,
       expiredSubscriptions: checkExpiredSubscriptions,
       expiringSubscriptions: processExpiringSubscriptions,
       processBroadcasts: processBroadcasts,

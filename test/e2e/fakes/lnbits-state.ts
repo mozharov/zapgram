@@ -307,6 +307,10 @@ export class LnbitsState {
     this.failures.push({...failure, match, once: false})
   }
 
+  clearFailures(): void {
+    this.failures.length = 0
+  }
+
   takeFailure(method: string, path: string, body?: unknown): FakeFailure | undefined {
     const index = this.failures.findIndex(rule => matches(rule.match, method, path, body))
     if (index === -1) return undefined
