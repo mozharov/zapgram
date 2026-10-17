@@ -2,6 +2,7 @@ import type {AppConfig} from '@config'
 import {AppError} from '@core/errors/app-error.js'
 import {PostHog} from 'posthog-node'
 import {serializeError} from 'serialize-error'
+import {loggedHttpError, redactLoggedError, scrubCaptureError} from './redact-http-error.js'
 
 /** PostHog group type for Telegram chats (groups, supergroups, channels). */
 export const TELEGRAM_CHAT_GROUP_TYPE = 'telegram_chat' as const
@@ -32,6 +33,21 @@ export function createPostHog(config: AppConfig): PostHog | undefined {
     host,
     enableExceptionAutocapture: true,
   })
+  const captureException = client.captureException.bind(client)
+  client.captureException = (error, distinctId, additionalProperties, uuid, flags) => {
+    const safe = loggedHttpError(error)
+    if (!safe) return captureException(error, distinctId, additionalProperties, uuid, flags)
+    return captureException(
+      scrubCaptureError(error),
+      distinctId,
+      {
+        ...additionalProperties,
+        error: safe,
+      },
+      uuid,
+      flags,
+    )
+  }
 
   void client.register({
     app: 'zapgram',
@@ -76,7 +92,9 @@ export function captureUserEvent(
 /** Flatten Error (and unknown) into event properties for product + exception captures. */
 export function errorProperties(error: unknown): Record<string, unknown> {
   if (error === undefined || error === null) return {}
-  const serialized = serializeError(error) as Record<string, unknown>
+  const serialized = (
+    error instanceof Error ? redactLoggedError(error) : serializeError(error)
+  ) as Record<string, unknown>
   const analytics =
     typeof error === 'object' &&
     error !== null &&
@@ -132,7 +150,7 @@ export function captureBotError(
     }
     if (!posthog.captureException) return
     posthog.captureException(
-      error,
+      scrubCaptureError(error),
       distinctId !== undefined ? telegramUserDistinctId(distinctId) : undefined,
       {
         expected: false,

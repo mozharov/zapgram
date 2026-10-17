@@ -1,10 +1,13 @@
 import type {AppConfig} from '@config'
 import pino from 'pino'
-import {serializeError} from 'serialize-error'
+import {redactLoggedError} from './redact-http-error.js'
 
 export type AppLogger = Pick<pino.Logger, 'info' | 'error' | 'warn' | 'debug'>
 
-export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pino.Logger {
+export function createLogger(
+  cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>,
+  destination?: pino.DestinationStream,
+): pino.Logger {
   const options: pino.LoggerOptions = {
     level: cfg.LOG_LEVEL,
     formatters: {
@@ -12,7 +15,7 @@ export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pi
       bindings: () => ({}),
       log: (object: Record<string, unknown>) => {
         const result = {...object}
-        if (result.error instanceof Error) result.error = serializeError(result.error)
+        if ('error' in result) result.error = redactLoggedError(result.error)
         return result
       },
     },
@@ -28,5 +31,5 @@ export function createLogger(cfg: Pick<AppConfig, 'LOG_LEVEL' | 'NODE_ENV'>): pi
     }
   }
 
-  return pino(options)
+  return destination ? pino(options, destination) : pino(options)
 }
