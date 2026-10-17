@@ -77,7 +77,11 @@ describe('failed LNbits HTTP errors', () => {
     captureUserException(
       {
         capture: () => undefined,
-        captureException: (err, _distinctId, props) => {
+        captureException: (
+          err: unknown,
+          _distinctId: string | undefined,
+          props?: Record<string, unknown>,
+        ) => {
           captured = {error: err, props}
         },
       } as never,
@@ -89,11 +93,19 @@ describe('failed LNbits HTTP errors', () => {
     const posthog = JSON.stringify({error: captured?.error, props: captured?.props})
     assertSafePayload(logged)
     assertSafePayload(posthog)
+    const line = JSON.parse(lines[0] ?? '{}') as {error?: Record<string, unknown>}
+    expect(line.error).toMatchObject({
+      method: 'POST',
+      statusCode: 500,
+      responseBody: {detail: responseDetail},
+    })
+    expect(line.error).not.toHaveProperty('options')
     expect(errorProperties(error).error).toMatchObject({
       method: 'POST',
       statusCode: 500,
       responseBody: {detail: responseDetail},
     })
+    expect(errorProperties(error).error).not.toHaveProperty('options')
   })
 
   test('wrapped invoice errors do not leak the cause request', async () => {

@@ -1,6 +1,6 @@
 import type {AppConfig} from '@config'
 import pino from 'pino'
-import {serializeError} from 'serialize-error'
+import {redactLoggedError} from './redact-http-error.js'
 
 export type AppLogger = Pick<pino.Logger, 'info' | 'error' | 'warn' | 'debug'>
 
@@ -15,7 +15,7 @@ export function createLogger(
       bindings: () => ({}),
       log: (object: Record<string, unknown>) => {
         const result = {...object}
-        if (result.error instanceof Error) result.error = serializeError(result.error)
+        if ('error' in result) result.error = redactLoggedError(result.error)
         return result
       },
     },
