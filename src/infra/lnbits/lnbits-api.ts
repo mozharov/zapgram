@@ -28,7 +28,12 @@ export class LNBitsAPI {
     if (adminKey) this.headers['X-Api-Key'] = adminKey
   }
 
-  protected async fetch(path: string, init?: OptionsOfJSONResponseBody) {
+  protected async fetch(
+    path: string,
+    init?: OptionsOfJSONResponseBody,
+    options?: {logHttpError?: boolean},
+  ) {
+    const logHttpError = options?.logHttpError ?? true
     const headers = {...this.headers, ...init?.headers}
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
@@ -37,7 +42,7 @@ export class LNBitsAPI {
         responseType: 'json',
         timeout: {request: 15000},
       }).catch((error: unknown) => {
-        if (error instanceof HTTPError)
+        if (logHttpError && error instanceof HTTPError)
           this.log?.error(
             {
               body: error.response.body as unknown,

@@ -36,7 +36,7 @@ export class SatsPayClient extends LNBitsAPI {
 
   async probeExtension(): Promise<SatspayProbe> {
     try {
-      const response = await this.fetch(SATSPAY_PROBE_PATH)
+      const response = await this.fetch(SATSPAY_PROBE_PATH, undefined, {logHttpError: false})
       return response.statusCode === 200 ? 'up' : 'inconclusive'
     } catch (error) {
       if (isSatspayExtensionDisabled(error)) return 'down'

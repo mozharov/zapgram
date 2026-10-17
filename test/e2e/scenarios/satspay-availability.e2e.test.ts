@@ -5,6 +5,7 @@ import {CHAT_GROUP, OWNER, USER_A} from '../fixtures/ids.js'
 import {seedActivePaidChat, seedUser} from '../fixtures/seed.js'
 import {chatJoinRequest, privateCallback} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
 import {scenarioCoverage} from './coverage.js'
 
 export const COVERS = scenarioCoverage['satspay-availability']
@@ -97,6 +98,61 @@ test('a charge 500 keeps the create-failed toast and the Bitcoin button', async 
 
   await e2e.send(joinUpdate())
   expect(buttonRows(e2e.tg.last('sendRichMessage'))).toEqual([['⚡ Lightning', '⛓ Bitcoin']])
+})
+
+test('chooser analytics sets onchain_shown true when Bitcoin is on the keyboard', async () => {
+  const captures = recordPosthog(e2e)
+  await seedOnchainChat()
+  await e2e.send(joinUpdate())
+  const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_shown).toBe(true)
+})
+
+test('chooser analytics sets onchain_shown false when SatsPay is down', async () => {
+  const captures = recordPosthog(e2e)
+  await seedOnchainChat()
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: '/satspay/api/v1'},
+    {status: 404, body: DISABLED_BODY},
+  )
+  await e2e.send(joinUpdate())
+  const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_shown).toBe(false)
+})
+
+test('chooser analytics sets onchain_shown false for a chat without on-chain', async () => {
+  const captures = recordPosthog(e2e)
+  await seedActivePaidChat(e2e, {
+    id: CHAT_GROUP,
+    ownerId: OWNER,
+    title: 'E2E lightning chat',
+    price: PRICE,
+  })
+  await e2e.send(joinUpdate())
+  const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_shown).toBe(false)
+})
+
+test('the hourly probe does not HTTP-error-log when SatsPay is disabled', async () => {
+  await useAdmins()
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: '/satspay/api/v1'},
+    {status: 404, body: DISABLED_BODY},
+  )
+  const mark = e2e.logs.length
+  await e2e.jobs.probeSatspay()
+  await e2e.jobs.probeSatspay()
+  const probeHttpErrors = e2e.logs
+    .slice(mark)
+    .filter(
+      log =>
+        (log.level === 'error' || log.level === 50) &&
+        String(log.msg ?? '').includes('/satspay/api/v1'),
+    )
+  expect(probeHttpErrors).toEqual([])
 })
 
 test('the hourly probe tells admins once when SatsPay goes down and once when it returns', async () => {

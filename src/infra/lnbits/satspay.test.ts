@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, test} from 'bun:test'
 import {HTTPError} from 'got'
+import type {AppLogger} from '../logger.js'
 import {SatsPayClient, SatspayExtensionDisabledError} from './satspay.js'
 
 describe('SatsPayClient', () => {
@@ -108,6 +109,24 @@ describe('SatsPayClient', () => {
     )
   })
 
+  test('probeExtension does not log HTTP errors for the disabled-extension 404', async () => {
+    const httpErrors: string[] = []
+    const log = {
+      error(_obj: unknown, msg?: string) {
+        if (msg?.includes('HTTP error')) httpErrors.push(msg)
+      },
+      debug() {},
+    } as unknown as AppLogger
+    await withClient(
+      () => Response.json({detail: "Extension 'satspay' disabled"}, {status: 404}),
+      async client => {
+        expect(await client.probeExtension()).toBe('down')
+      },
+      log,
+    )
+    expect(httpErrors).toEqual([])
+  })
+
   test('probeExtension treats a generic Not Found as inconclusive', async () => {
     await withClient(
       () => Response.json({detail: 'Not Found'}, {status: 404}),
@@ -164,6 +183,7 @@ describe('SatsPayClient', () => {
 async function withClient(
   handler: (request: Request) => Response | Promise<Response>,
   run: (client: SatsPayClient) => Promise<void>,
+  log?: AppLogger,
 ) {
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -174,6 +194,7 @@ async function withClient(
     const client = new SatsPayClient({
       baseUrl: `http://127.0.0.1:${server.port}`,
       adminKey: 'k',
+      log,
     })
     await run(client)
   } finally {

@@ -121,6 +121,7 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
       payment_type: chat.paymentType,
       price_sats: chat.price,
       onchain_offered: showOnchain,
+      onchain_shown: showOnchain,
       wallet_covers: balanceAvailability.walletCovers,
       nwc_covers: balanceAvailability.nwcCovers,
     },
