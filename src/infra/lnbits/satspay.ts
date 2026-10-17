@@ -1,6 +1,19 @@
+import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
 import {type SatsPayCharge, satsPayChargeSchema} from './schemas.js'
+
+const SATSPAY_PROBE_PATH = '/satspay/api/v1'
+const SATSPAY_DISABLED_DETAIL = "Extension 'satspay' disabled"
+
+export type SatspayProbe = 'up' | 'down' | 'inconclusive'
+
+export class SatspayExtensionDisabledError extends Error {
+  readonly code = 'satspay_extension_disabled' as const
+  constructor() {
+    super('SatsPay extension is disabled')
+  }
+}
 
 export type CreateSatsPayChargeParams = {
   /** Watch-Only wallet id that receives on-chain funds. */
@@ -21,22 +34,37 @@ export class SatsPayClient extends LNBitsAPI {
     super({baseUrl, adminKey, log})
   }
 
+  async probeExtension(): Promise<SatspayProbe> {
+    try {
+      const response = await this.fetch(SATSPAY_PROBE_PATH, undefined, {logHttpError: false})
+      return response.statusCode === 200 ? 'up' : 'inconclusive'
+    } catch (error) {
+      if (isSatspayExtensionDisabled(error)) return 'down'
+      return 'inconclusive'
+    }
+  }
+
   /**
    * Create an on-chain-only charge. Omits `lnbitswallet` so SatsPay only watches the address.
    */
   async createCharge(params: CreateSatsPayChargeParams): Promise<SatsPayCharge> {
-    return this.fetchWithSchema('/satspay/api/v1/charge', satsPayChargeSchema, {
-      method: 'POST',
-      body: JSON.stringify({
-        onchainwallet: params.onchainwallet,
-        amount: params.amount,
-        time: params.time,
-        description: params.description,
-        zeroconf: params.zeroconf ?? false,
-        ...(params.webhook ? {webhook: params.webhook} : {}),
-        ...(params.name ? {name: params.name} : {}),
-      }),
-    })
+    try {
+      return await this.fetchWithSchema('/satspay/api/v1/charge', satsPayChargeSchema, {
+        method: 'POST',
+        body: JSON.stringify({
+          onchainwallet: params.onchainwallet,
+          amount: params.amount,
+          time: params.time,
+          description: params.description,
+          zeroconf: params.zeroconf ?? false,
+          ...(params.webhook ? {webhook: params.webhook} : {}),
+          ...(params.name ? {name: params.name} : {}),
+        }),
+      })
+    } catch (error) {
+      if (isSatspayExtensionDisabled(error)) throw new SatspayExtensionDisabledError()
+      throw error
+    }
   }
 
   async getCharge(chargeId: string): Promise<SatsPayCharge> {
@@ -66,4 +94,12 @@ export function createSatsPayClient(cfg: {
   log?: AppLogger
 }): SatsPayClient {
   return new SatsPayClient(cfg)
+}
+
+function isSatspayExtensionDisabled(error: unknown): boolean {
+  if (!(error instanceof HTTPError)) return false
+  if (error.response.statusCode !== 404) return false
+  const body = error.response.body
+  if (typeof body !== 'object' || body === null) return false
+  return 'detail' in body && body.detail === SATSPAY_DISABLED_DETAIL
 }

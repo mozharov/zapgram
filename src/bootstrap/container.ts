@@ -56,6 +56,7 @@ import {
   createOnchainPaymentRepository,
   type OnchainPaymentRepository,
 } from '@modules/onchain/repository.js'
+import {createSatspayGate, type SatspayGate} from '@modules/onchain/satspay-gate.js'
 import {createGrantSubscriptionAccess} from '@modules/subscriptions/access.js'
 import {
   createSubscriptionIntentRepository,
@@ -115,6 +116,7 @@ export type AppContainer = {
   renewalService: RenewalService
   watchOnly: WatchOnlyClient
   satsPay: SatsPayClient
+  satspayGate: SatspayGate
   onchainPayments: OnchainPaymentRepository
   onchainEnableService: OnchainEnableService
   onchainJoinPaymentService: OnchainJoinPaymentService
@@ -311,6 +313,12 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     adminKey: config.LNBITS_ADMIN_KEY,
     log,
   })
+  const satspayGate = createSatspayGate({
+    probe: () => satsPay.probeExtension(),
+    notifier,
+    adminTelegramIds: config.ADMIN_TELEGRAM_IDS,
+    log,
+  })
   const onchainPayments = createOnchainPaymentRepository(db)
   const onchainEnableService = createOnchainEnableService({
     watchOnly,
@@ -376,6 +384,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     renewalService,
     watchOnly,
     satsPay,
+    satspayGate,
     onchainPayments,
     onchainEnableService,
     onchainJoinPaymentService,

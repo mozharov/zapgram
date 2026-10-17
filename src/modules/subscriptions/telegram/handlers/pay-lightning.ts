@@ -1,6 +1,5 @@
 import {getAccessibleChat} from '@modules/chats/repository.js'
 import {richCustomMessage} from '@modules/chats/telegram/messages/custom-message.js'
-import {chatAllowsOnchain} from '@modules/onchain/complete.service.js'
 import {getJoinBalanceAvailability} from '@modules/subscriptions/telegram/join-balance.js'
 import {editJoinScreen} from '@modules/subscriptions/telegram/join-screen.js'
 import {buildSubscriptionPaymentKeyboard} from '@modules/subscriptions/telegram/keyboards/subscription-payment.js'
@@ -51,9 +50,10 @@ export const payLightningCallback = async (
   }
 
   const balanceAvailability = await getJoinBalanceAvailability(ctx, chat.price)
+  const showOnchain = await getRuntime().satspayGate.onchainOffered(chat)
   const keyboard = buildSubscriptionPaymentKeyboard(ctx.t, {
     paymentId: invoice.attempt.id,
-    onchainChatId: chatAllowsOnchain(chat) ? chat.id : undefined,
+    onchainChatId: showOnchain ? chat.id : undefined,
     balanceAvailability,
     chatIdForBalancePay: chat.id,
   })

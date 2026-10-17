@@ -1,5 +1,7 @@
 import {afterEach, describe, expect, test} from 'bun:test'
-import {SatsPayClient} from './satspay.js'
+import {HTTPError} from 'got'
+import type {AppLogger} from '../logger.js'
+import {SatsPayClient, SatspayExtensionDisabledError} from './satspay.js'
 
 describe('SatsPayClient', () => {
   let stop: (() => void) | undefined
@@ -83,7 +85,122 @@ describe('SatsPayClient', () => {
     expect((await client.getCharge('ch-1')).paid).toBe(true)
     expect((await client.checkChargeBalance('ch-1')).balance).toBe(1000)
   })
+
+  test('probeExtension GETs /satspay/api/v1 and treats 200 as up', async () => {
+    const calls: {method: string; path: string}[] = []
+    await withClient(
+      request => {
+        calls.push({method: request.method, path: new URL(request.url).pathname})
+        return Response.json({message: 'SatsPay API enabled.'})
+      },
+      async client => {
+        expect(await client.probeExtension()).toBe('up')
+      },
+    )
+    expect(calls).toEqual([{method: 'GET', path: '/satspay/api/v1'}])
+  })
+
+  test('probeExtension treats the disabled-extension 404 as down', async () => {
+    await withClient(
+      () => Response.json({detail: "Extension 'satspay' disabled"}, {status: 404}),
+      async client => {
+        expect(await client.probeExtension()).toBe('down')
+      },
+    )
+  })
+
+  test('probeExtension does not log HTTP errors for the disabled-extension 404', async () => {
+    const httpErrors: string[] = []
+    const log = {
+      error(_obj: unknown, msg?: string) {
+        if (msg?.includes('HTTP error')) httpErrors.push(msg)
+      },
+      debug() {},
+    } as unknown as AppLogger
+    await withClient(
+      () => Response.json({detail: "Extension 'satspay' disabled"}, {status: 404}),
+      async client => {
+        expect(await client.probeExtension()).toBe('down')
+      },
+      log,
+    )
+    expect(httpErrors).toEqual([])
+  })
+
+  test('probeExtension treats a generic Not Found as inconclusive', async () => {
+    await withClient(
+      () => Response.json({detail: 'Not Found'}, {status: 404}),
+      async client => {
+        expect(await client.probeExtension()).toBe('inconclusive')
+      },
+    )
+  })
+
+  test('probeExtension treats 401 and 403 as inconclusive', async () => {
+    for (const status of [401, 403]) {
+      await withClient(
+        () => Response.json({detail: 'Unauthorized.'}, {status}),
+        async client => {
+          expect(await client.probeExtension()).toBe('inconclusive')
+        },
+      )
+    }
+  })
+
+  test('createCharge throws SatspayExtensionDisabledError for the disabled body', async () => {
+    await withClient(
+      () => Response.json({detail: "Extension 'satspay' disabled"}, {status: 404}),
+      async client => {
+        await expect(
+          client.createCharge({
+            onchainwallet: 'wo-1',
+            amount: 1000,
+            time: 1440,
+            description: 'ZapGram',
+          }),
+        ).rejects.toBeInstanceOf(SatspayExtensionDisabledError)
+      },
+    )
+  })
+
+  test('createCharge rethrows other charge errors unchanged', async () => {
+    await withClient(
+      () => Response.json({detail: 'nope'}, {status: 500}),
+      async client => {
+        await expect(
+          client.createCharge({
+            onchainwallet: 'wo-1',
+            amount: 1000,
+            time: 1440,
+            description: 'ZapGram',
+          }),
+        ).rejects.toBeInstanceOf(HTTPError)
+      },
+    )
+  })
 })
+
+async function withClient(
+  handler: (request: Request) => Response | Promise<Response>,
+  run: (client: SatsPayClient) => Promise<void>,
+  log?: AppLogger,
+) {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: handler,
+  })
+  try {
+    const client = new SatsPayClient({
+      baseUrl: `http://127.0.0.1:${server.port}`,
+      adminKey: 'k',
+      log,
+    })
+    await run(client)
+  } finally {
+    server.stop(true)
+  }
+}
 
 function paidCharge() {
   return {

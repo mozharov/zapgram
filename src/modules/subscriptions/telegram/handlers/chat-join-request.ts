@@ -65,8 +65,9 @@ export const chatJoinRequestHandler = async (ctx: Context) => {
  * Invoice/address appear after the member taps Lightning or Bitcoin (edit in place).
  */
 async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
-  const {posthog} = getRuntime()
-  const showOnchain = chatAllowsOnchain(chat)
+  const {posthog, satspayGate} = getRuntime()
+  const onchainOffered = chatAllowsOnchain(chat)
+  const showOnchain = await satspayGate.onchainOffered(chat)
   // NWC failures must not block the chooser — getJoinBalanceAvailability swallows them.
   const balanceAvailability = await getJoinBalanceAvailability(ctx, chat.price)
 
@@ -121,7 +122,8 @@ async function replyWithJoinMethodChooser(ctx: Context, chat: Chat) {
       chat_type: chat.type,
       payment_type: chat.paymentType,
       price_sats: chat.price,
-      onchain_offered: showOnchain,
+      onchain_offered: onchainOffered,
+      onchain_shown: showOnchain,
       wallet_covers: balanceAvailability.walletCovers,
       nwc_covers: balanceAvailability.nwcCovers,
     },

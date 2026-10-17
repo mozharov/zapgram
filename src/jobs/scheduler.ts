@@ -5,6 +5,7 @@ import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-d
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
+import {probeSatspay} from '@modules/onchain/jobs/probe-satspay.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
@@ -58,6 +59,12 @@ export function defaultJobDefinitions(): JobDefinition[] {
       cronTime: '0 */3 * * * *',
       runOnInit: false,
       tick: checkOnchainCharges,
+    },
+    {
+      name: 'probe-satspay',
+      cronTime: '0 45 * * * *',
+      runOnInit: false,
+      tick: probeSatspay,
     },
     {
       name: 'check-expired-subscriptions',
