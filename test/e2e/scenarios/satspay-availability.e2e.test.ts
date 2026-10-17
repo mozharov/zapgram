@@ -106,6 +106,7 @@ test('chooser analytics sets onchain_shown true when Bitcoin is on the keyboard'
   await e2e.send(joinUpdate())
   const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
   expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_offered).toBe(true)
   expect(sent[0]?.properties?.onchain_shown).toBe(true)
 })
 
@@ -119,6 +120,7 @@ test('chooser analytics sets onchain_shown false when SatsPay is down', async ()
   await e2e.send(joinUpdate())
   const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
   expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_offered).toBe(true)
   expect(sent[0]?.properties?.onchain_shown).toBe(false)
 })
 
@@ -133,6 +135,7 @@ test('chooser analytics sets onchain_shown false for a chat without on-chain', a
   await e2e.send(joinUpdate())
   const sent = capturesOf(captures, 'subscription_join_method_chooser_sent')
   expect(sent).toHaveLength(1)
+  expect(sent[0]?.properties?.onchain_offered).toBe(false)
   expect(sent[0]?.properties?.onchain_shown).toBe(false)
 })
 
