@@ -117,13 +117,15 @@ describe('SatsPayClient', () => {
     )
   })
 
-  test('probeExtension treats 401 as up', async () => {
-    await withClient(
-      () => Response.json({detail: 'Unauthorized.'}, {status: 401}),
-      async client => {
-        expect(await client.probeExtension()).toBe('up')
-      },
-    )
+  test('probeExtension treats 401 and 403 as inconclusive', async () => {
+    for (const status of [401, 403]) {
+      await withClient(
+        () => Response.json({detail: 'Unauthorized.'}, {status}),
+        async client => {
+          expect(await client.probeExtension()).toBe('inconclusive')
+        },
+      )
+    }
   })
 
   test('createCharge throws SatspayExtensionDisabledError for the disabled body', async () => {

@@ -8,7 +8,6 @@ const SATSPAY_DISABLED_DETAIL = "Extension 'satspay' disabled"
 
 export type SatspayProbe = 'up' | 'down' | 'inconclusive'
 
-/** Domain signal. No status code and no body. */
 export class SatspayExtensionDisabledError extends Error {
   readonly code = 'satspay_extension_disabled' as const
   constructor() {
@@ -41,13 +40,6 @@ export class SatsPayClient extends LNBitsAPI {
       return response.statusCode === 200 ? 'up' : 'inconclusive'
     } catch (error) {
       if (isSatspayExtensionDisabled(error)) return 'down'
-      // A rejected admin key still means the extension is mounted.
-      if (
-        error instanceof HTTPError &&
-        (error.response.statusCode === 401 || error.response.statusCode === 403)
-      ) {
-        return 'up'
-      }
       return 'inconclusive'
     }
   }

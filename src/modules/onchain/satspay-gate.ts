@@ -35,7 +35,6 @@ type SatspayEvent =
 type Notice = 'down' | 'back'
 
 export type SatspayGateDeps = {
-  /** Resolves a reading. A throw is treated as inconclusive so the commit still runs. */
   probe: () => Promise<SatspayProbe>
   notifier: Pick<Notifier, 'send'>
   adminTelegramIds: readonly number[]
@@ -100,7 +99,6 @@ export function createSatspayGate(deps: SatspayGateDeps): SatspayGate {
     if (!armed) return null
     if (deliveringToken === armed.token) return deliveryPromise
     if (deps.adminTelegramIds.length === 0) {
-      // Nobody to tell. Ack anyway, or the next tick would retry this notice forever.
       slot = fold(slot, {kind: 'ack', token: armed.token}, now())
       deps.log.info({notice: armed.notice, delivered: false}, 'SatsPay availability notice skipped')
       return null
@@ -128,7 +126,6 @@ export function createSatspayGate(deps: SatspayGateDeps): SatspayGate {
         deps.log.error({error}, 'SatsPay availability notice failed')
       }
     }
-    // A late send must not clear a notice armed after this one started.
     if (!delivered || !noticeStill(token)) return
     await exclusive(async () => {
       const next = fold(slot, {kind: 'ack', token}, now())
@@ -161,8 +158,6 @@ export function createSatspayGate(deps: SatspayGateDeps): SatspayGate {
         apply({kind: 'inconclusive'})
         return detach(null)
       }
-      // This GET started before a charge failure. An up from it must not paint the button back.
-      // A down still folds. An outage does not lose to an older up.
       if (reading === 'up' && seenEpoch !== epoch) return detach(null)
       apply({kind: 'probe', reading, token: nextToken()})
       epoch += 1
@@ -187,7 +182,6 @@ export function createSatspayGate(deps: SatspayGateDeps): SatspayGate {
       if (!(error instanceof SatspayExtensionDisabledError)) return 'other'
       const held = await exclusive(async () => {
         apply({kind: 'charge-disabled', token: nextToken()})
-        // Bump even when the phase was already down, so an in-flight up is dropped.
         epoch += 1
         return detach(planDelivery())
       })
