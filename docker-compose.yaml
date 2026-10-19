@@ -58,7 +58,15 @@ services:
           memory: 500M
 
   lnbits:
-    image: lnbits/lnbits:v1.5.6
+    # ops/lnbits wraps lnbits/lnbits:v1.5.6. The entrypoint runs the image
+    # command and, every LNBITS_RESTART_INTERVAL_HOURS (default 96, 0 disables),
+    # SIGTERMs LNbits and exits 1. restart below starts a new container.
+    # The clock starts with the container, so a deploy resets it.
+    build:
+      context: ./ops/lnbits
+      dockerfile: Dockerfile
+      args:
+        LNBITS_IMAGE: lnbits/lnbits:v1.5.6
     restart: unless-stopped
     environment:
       HOST: "0.0.0.0"
@@ -70,16 +78,12 @@ services:
       LNBITS_EXTENSIONS_PATH: "/app/data/extensions"
       LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?}
+      # Read by the entrypoint only. LNbits does not use this.
+      LNBITS_RESTART_INTERVAL_HOURS: ${LNBITS_RESTART_INTERVAL_HOURS:-96}
     volumes:
       - lnbits-data:/app/data
     expose:
       - "5000"
-    labels:
-      # Ofelia: graceful recycle every 4 days (PID 1 TERM → Docker restarts)
-      ofelia.enabled: "true"
-      ofelia.job-exec.lnbits-restart.schedule: "@every 96h"
-      # Image has no `kill` binary (exit 127); use Python, which the healthcheck already relies on.
-      ofelia.job-exec.lnbits-restart.command: "python -c 'import os,signal; os.kill(1, signal.SIGTERM)'"
     healthcheck:
       test:
         [
@@ -98,16 +102,6 @@ services:
         limits:
           cpus: "0.3"
           memory: 1G
-
-  # Scheduled restart for LNbits (needs docker.sock).
-  ofelia:
-    image: mcuadros/ofelia:latest
-    restart: unless-stopped
-    depends_on:
-      - lnbits
-    command: daemon --docker
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   landing:
     build:
