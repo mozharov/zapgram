@@ -78,6 +78,9 @@ services:
       LNBITS_EXTENSIONS_PATH: "/app/data/extensions"
       LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?}
+      # File logs under /app/data/logs/ (ENABLE_LOG_TO_FILE defaults on). Daily rotation; keep 7 days.
+      LOG_ROTATION: ${LOG_ROTATION:-00:00}
+      LOG_RETENTION: ${LOG_RETENTION:-7 days}
       # Read by the entrypoint only. LNbits does not use this.
       LNBITS_RESTART_INTERVAL_HOURS: ${LNBITS_RESTART_INTERVAL_HOURS:-96}
     volumes:
