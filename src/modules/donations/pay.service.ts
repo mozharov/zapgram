@@ -68,23 +68,22 @@ export function createDonationPayService(deps: DonationPayDeps) {
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
-    // A short balance is expected (full-balance transfer, empty NWC). It is not an exception.
     const failedPay = (
       error: unknown,
       stage: 'pay_internal' | 'pay_nwc',
       logMessage: string,
     ): PayDonationResult => {
-      if (error instanceof InsufficientFundsError) {
-        return {status: 'failed', error, reason: 'no_funds'}
-      }
       deps.log.error({error, userId, amountSats}, logMessage)
-      captureUserException(deps.posthog, error, userId, {
-        feature: 'donations',
-        stage,
-        amount_sats: amountSats,
-        requested_rail: input.rail,
-        invoice_payment_hash: invoice.payment_hash,
-      })
+      // Short balance is expected. Keep the pay_failed reason; do not open an exception.
+      if (!(error instanceof InsufficientFundsError)) {
+        captureUserException(deps.posthog, error, userId, {
+          feature: 'donations',
+          stage,
+          amount_sats: amountSats,
+          requested_rail: input.rail,
+          invoice_payment_hash: invoice.payment_hash,
+        })
+      }
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
@@ -136,9 +135,8 @@ export function createDonationPayService(deps: DonationPayDeps) {
         return {status: 'failed', error, reason: 'pay_failed'}
       }
       const result = await tryInternal()
-      // null is only the second balance check coming up short.
       return (
-        result ?? {status: 'failed', error: new Error('insufficient funds'), reason: 'no_funds'}
+        result ?? {status: 'failed', error: new Error('internal pay failed'), reason: 'pay_failed'}
       )
     }
 
@@ -227,7 +225,11 @@ export function createDonationPayService(deps: DonationPayDeps) {
         reason: result.reason,
         ...errorProperties(result.error),
       })
-      if (result.reason === 'pay_failed' && result.error) {
+      if (
+        result.reason === 'pay_failed' &&
+        result.error &&
+        !(result.error instanceof InsufficientFundsError)
+      ) {
         captureUserException(deps.posthog, result.error, input.userId, {
           ...baseProps,
           stage: 'pay_donation',

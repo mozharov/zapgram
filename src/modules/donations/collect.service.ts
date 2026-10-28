@@ -170,8 +170,8 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
         reason: payResult.reason,
         ...errorProperties(payResult.error),
       })
-      // Short balance after a full transfer is expected. Keep the analytics event,
-      // but do not open an Error Tracking issue or tell the user the donation failed.
+      // Short balance after a full transfer is expected. donation_failed (reason no_funds)
+      // stays as-is; only the Error Tracking issue and the user-facing failure notice go away.
       const fundsShort =
         payResult.reason === 'no_funds' || payResult.error instanceof InsufficientFundsError
       if (!fundsShort && payResult.error) {

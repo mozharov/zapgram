@@ -75,9 +75,10 @@ describe('payDonation', () => {
   })
 
   test('fails with no_funds when neither rail works', async () => {
+    const capture = mock(() => undefined)
     const captureException = mock(() => undefined)
     const {deps} = makeDeps({
-      posthog: {capture: () => undefined, captureException} as never,
+      posthog: {capture, captureException} as never,
       getUserWallet: mock(async () => ({
         balance: 0,
         payInvoice: mock(async () => ({payment_hash: 'x'})),
@@ -87,9 +88,16 @@ describe('payDonation', () => {
     expect(result.status).toBe('failed')
     if (result.status === 'failed') expect(result.reason).toBe('no_funds')
     expect(captureException).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'donation_failed',
+        distinctId: '1',
+        properties: expect.objectContaining({reason: 'no_funds', status: 'failed'}),
+      }),
+    )
   })
 
-  test('wallet insufficient-funds is no_funds and is not captured', async () => {
+  test('wallet insufficient-funds stays pay_failed and is not captured', async () => {
     const captureException = mock(() => undefined)
     const {deps} = makeDeps({
       posthog: {capture: () => undefined, captureException} as never,
@@ -105,8 +113,36 @@ describe('payDonation', () => {
       amountSats: 50,
       rail: 'internal',
     })
-    expect(result).toMatchObject({status: 'failed', reason: 'no_funds'})
+    expect(result).toMatchObject({status: 'failed', reason: 'pay_failed'})
     expect(captureException).not.toHaveBeenCalled()
+  })
+
+  test('explicit donation keeps donation_failed reason when the wallet is short', async () => {
+    const capture = mock(() => undefined)
+    const captureException = mock(() => undefined)
+    const {deps} = makeDeps({
+      posthog: {capture, captureException} as never,
+      getUserWallet: mock(async () => ({
+        balance: 100_000,
+        payInvoice: mock(async () => {
+          throw new InsufficientFundsError()
+        }),
+      })),
+    })
+    const result = await deps.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot',
+      rail: 'internal',
+    })
+    expect(result).toMatchObject({status: 'failed', reason: 'pay_failed'})
+    expect(captureException).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'donation_failed',
+        properties: expect.objectContaining({reason: 'pay_failed', status: 'failed'}),
+      }),
+    )
   })
 
   test('unexpected pay errors are captured as exceptions', async () => {

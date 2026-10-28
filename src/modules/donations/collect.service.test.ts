@@ -143,7 +143,12 @@ describe('tryCollect', () => {
     expect(result.status).toBe('failed')
     expect(notifyDonationFailed).not.toHaveBeenCalled()
     expect(captureException).not.toHaveBeenCalled()
-    expect(capture).toHaveBeenCalledWith(expect.objectContaining({event: 'donation_failed'}))
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'donation_failed',
+        properties: expect.objectContaining({reason: 'pay_failed', status: 'failed'}),
+      }),
+    )
   })
 
   test('other pay failures notify the user and capture an exception', async () => {
