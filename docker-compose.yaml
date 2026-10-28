@@ -12,9 +12,9 @@ services:
       PORT: "8443"
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Public origin for Telegram + LNbits webhooks (https preferred; bare host is upgraded)
-      HOST: ${HOST:?}
-      BOT_TOKEN: ${BOT_TOKEN:?}
-      BOT_WEBHOOK_SECRET: ${BOT_WEBHOOK_SECRET:?}
+      HOST: ${HOST}
+      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_WEBHOOK_SECRET: ${BOT_WEBHOOK_SECRET}
       BOT_ID: ${BOT_ID:-8171167670}
       BOT_NAME: ${BOT_NAME:-ZapGram}
       BOT_USERNAME: ${BOT_USERNAME:-zap_gram_bot}
@@ -22,8 +22,8 @@ services:
       DB_MIGRATE: ${DB_MIGRATE:-true}
       # Internal compose DNS; use public URL only if you split LNbits out
       LNBITS_URL: ${LNBITS_URL:-http://lnbits:5000}
-      LNBITS_ADMIN_KEY: ${LNBITS_ADMIN_KEY:?}
-      LNBITS_FEE_COLLECTION_INVOICE_KEY: ${LNBITS_FEE_COLLECTION_INVOICE_KEY:?}
+      LNBITS_ADMIN_KEY: ${LNBITS_ADMIN_KEY}
+      LNBITS_FEE_COLLECTION_INVOICE_KEY: ${LNBITS_FEE_COLLECTION_INVOICE_KEY}
       LNBITS_BEARER_TOKEN: ${LNBITS_BEARER_TOKEN:-}
       # Watch-Only / SatsPay network label (must match LNbits extensions + key type)
       LNBITS_ONCHAIN_NETWORK: ${LNBITS_ONCHAIN_NETWORK:-Mainnet}
@@ -77,7 +77,7 @@ services:
       # "lnbits" → /app/lnbits/extensions (not persisted), so keep it on the lnbits-data volume (#18).
       LNBITS_EXTENSIONS_PATH: "/app/data/extensions"
       LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
-      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY}
       # File logs under /app/data/logs/ (ENABLE_LOG_TO_FILE defaults on). Daily rotation; keep 7 days.
       LOG_ROTATION: ${LOG_ROTATION:-00:00}
       LOG_RETENTION: ${LOG_RETENTION:-7 days}
