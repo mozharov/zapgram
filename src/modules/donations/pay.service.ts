@@ -1,3 +1,4 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import type {DonationLedgerKind} from '@core/money/donation.js'
 import {isValidDonationAmountSats} from '@core/money/donation.js'
 import {satsToMsats} from '@core/money/sats.js'
@@ -67,6 +68,26 @@ export function createDonationPayService(deps: DonationPayDeps) {
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
+    // A short balance is expected (full-balance transfer, empty NWC). It is not an exception.
+    const failedPay = (
+      error: unknown,
+      stage: 'pay_internal' | 'pay_nwc',
+      logMessage: string,
+    ): PayDonationResult => {
+      if (error instanceof InsufficientFundsError) {
+        return {status: 'failed', error, reason: 'no_funds'}
+      }
+      deps.log.error({error, userId, amountSats}, logMessage)
+      captureUserException(deps.posthog, error, userId, {
+        feature: 'donations',
+        stage,
+        amount_sats: amountSats,
+        requested_rail: input.rail,
+        invoice_payment_hash: invoice.payment_hash,
+      })
+      return {status: 'failed', error, reason: 'pay_failed'}
+    }
+
     const tryInternal = async (): Promise<PayDonationResult | null> => {
       try {
         const wallet = await deps.getUserWallet(userId)
@@ -78,15 +99,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
           rail: 'internal',
         }
       } catch (error) {
-        deps.log.error({error, userId, amountSats}, 'Internal donation pay failed')
-        captureUserException(deps.posthog, error, userId, {
-          feature: 'donations',
-          stage: 'pay_internal',
-          amount_sats: amountSats,
-          requested_rail: input.rail,
-          invoice_payment_hash: invoice.payment_hash,
-        })
-        return {status: 'failed', error, reason: 'pay_failed'}
+        return failedPay(error, 'pay_internal', 'Internal donation pay failed')
       }
     }
 
@@ -102,15 +115,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
           rail: 'nwc',
         }
       } catch (error) {
-        deps.log.error({error, userId, amountSats}, 'NWC donation pay failed')
-        captureUserException(deps.posthog, error, userId, {
-          feature: 'donations',
-          stage: 'pay_nwc',
-          amount_sats: amountSats,
-          requested_rail: input.rail,
-          invoice_payment_hash: invoice.payment_hash,
-        })
-        return {status: 'failed', error, reason: 'pay_failed'}
+        return failedPay(error, 'pay_nwc', 'NWC donation pay failed')
       }
     }
 
@@ -131,8 +136,9 @@ export function createDonationPayService(deps: DonationPayDeps) {
         return {status: 'failed', error, reason: 'pay_failed'}
       }
       const result = await tryInternal()
+      // null is only the second balance check coming up short.
       return (
-        result ?? {status: 'failed', error: new Error('internal pay failed'), reason: 'pay_failed'}
+        result ?? {status: 'failed', error: new Error('insufficient funds'), reason: 'no_funds'}
       )
     }
 

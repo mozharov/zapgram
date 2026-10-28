@@ -1,4 +1,5 @@
 import {describe, expect, mock, test} from 'bun:test'
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {createDonationCollectService} from './collect.service.js'
 
 function makeCollect(
@@ -30,14 +31,25 @@ function makeCollect(
     }))
   const insertDonation = mock(async () => ({}))
   const notifyDonationFailed = mock(async () => undefined)
+  const capture = mock(() => undefined)
+  const captureException = mock(() => undefined)
   const service = createDonationCollectService({
     payService: {payToFeeCollection},
     insertDonation,
     getUser: mock(async () => user as never),
     notifyDonationFailed,
     log: {error: mock(() => {}), info: mock(() => {})} as never,
+    posthog: {capture, captureException} as never,
   })
-  return {service, payToFeeCollection, insertDonation, notifyDonationFailed, user}
+  return {
+    service,
+    payToFeeCollection,
+    insertDonation,
+    notifyDonationFailed,
+    capture,
+    captureException,
+    user,
+  }
 }
 
 describe('tryCollect', () => {
@@ -85,13 +97,65 @@ describe('tryCollect', () => {
     expect(notifyDonationFailed).not.toHaveBeenCalled()
   })
 
-  test('notifies on pay failure and never throws', async () => {
+  test('no_funds keeps donation_failed and skips exception and user notice', async () => {
     const payToFeeCollection = mock(async () => ({
       status: 'failed' as const,
-      error: new Error('nope'),
+      error: new Error('insufficient funds'),
       reason: 'no_funds' as const,
     }))
-    const {service, notifyDonationFailed, insertDonation} = makeCollect({payToFeeCollection})
+    const {service, notifyDonationFailed, insertDonation, capture, captureException} = makeCollect({
+      payToFeeCollection,
+    })
+    const result = await service.tryCollect({
+      userId: 1,
+      baseAmountSats: 100,
+      kind: 'tip',
+      preferredRail: 'internal',
+    })
+    expect(result.status).toBe('failed')
+    expect(notifyDonationFailed).not.toHaveBeenCalled()
+    expect(insertDonation).not.toHaveBeenCalled()
+    expect(captureException).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'donation_failed',
+        distinctId: '1',
+        properties: expect.objectContaining({reason: 'no_funds', status: 'failed'}),
+      }),
+    )
+  })
+
+  test('insufficient-funds error is not an exception even if the rail said pay_failed', async () => {
+    const payToFeeCollection = mock(async () => ({
+      status: 'failed' as const,
+      error: new InsufficientFundsError(),
+      reason: 'pay_failed' as const,
+    }))
+    const {service, notifyDonationFailed, captureException, capture} = makeCollect({
+      payToFeeCollection,
+    })
+    const result = await service.tryCollect({
+      userId: 1,
+      baseAmountSats: 20,
+      kind: 'tip',
+      preferredRail: 'internal',
+    })
+    expect(result.status).toBe('failed')
+    expect(notifyDonationFailed).not.toHaveBeenCalled()
+    expect(captureException).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalledWith(expect.objectContaining({event: 'donation_failed'}))
+  })
+
+  test('other pay failures notify the user and capture an exception', async () => {
+    const error = new Error('lnbits down')
+    const payToFeeCollection = mock(async () => ({
+      status: 'failed' as const,
+      error,
+      reason: 'pay_failed' as const,
+    }))
+    const {service, notifyDonationFailed, insertDonation, captureException} = makeCollect({
+      payToFeeCollection,
+    })
     const result = await service.tryCollect({
       userId: 1,
       baseAmountSats: 100,
@@ -101,5 +165,11 @@ describe('tryCollect', () => {
     expect(result.status).toBe('failed')
     expect(notifyDonationFailed).toHaveBeenCalledWith(1, 5, 'en')
     expect(insertDonation).not.toHaveBeenCalled()
+    expect(captureException).toHaveBeenCalledTimes(1)
+    expect(captureException).toHaveBeenCalledWith(
+      error,
+      '1',
+      expect.objectContaining({stage: 'try_collect_pay', expected: false}),
+    )
   })
 })

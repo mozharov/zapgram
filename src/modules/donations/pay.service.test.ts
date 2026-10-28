@@ -1,4 +1,5 @@
 import {describe, expect, mock, test} from 'bun:test'
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {createDonationPayService} from './pay.service.js'
 
 function makeDeps(overrides: Partial<Parameters<typeof createDonationPayService>[0]> = {}) {
@@ -74,7 +75,9 @@ describe('payDonation', () => {
   })
 
   test('fails with no_funds when neither rail works', async () => {
+    const captureException = mock(() => undefined)
     const {deps} = makeDeps({
+      posthog: {capture: () => undefined, captureException} as never,
       getUserWallet: mock(async () => ({
         balance: 0,
         payInvoice: mock(async () => ({payment_hash: 'x'})),
@@ -83,5 +86,52 @@ describe('payDonation', () => {
     const result = await deps.payDonation({userId: 1, amountSats: 50, kind: 'one_shot'})
     expect(result.status).toBe('failed')
     if (result.status === 'failed') expect(result.reason).toBe('no_funds')
+    expect(captureException).not.toHaveBeenCalled()
+  })
+
+  test('wallet insufficient-funds is no_funds and is not captured', async () => {
+    const captureException = mock(() => undefined)
+    const {deps} = makeDeps({
+      posthog: {capture: () => undefined, captureException} as never,
+      getUserWallet: mock(async () => ({
+        balance: 100_000,
+        payInvoice: mock(async () => {
+          throw new InsufficientFundsError()
+        }),
+      })),
+    })
+    const result = await deps.payToFeeCollection({
+      userId: 1,
+      amountSats: 50,
+      rail: 'internal',
+    })
+    expect(result).toMatchObject({status: 'failed', reason: 'no_funds'})
+    expect(captureException).not.toHaveBeenCalled()
+  })
+
+  test('unexpected pay errors are captured as exceptions', async () => {
+    const captureException = mock(() => undefined)
+    const boom = new Error('lnbits 500')
+    const {deps} = makeDeps({
+      posthog: {capture: () => undefined, captureException} as never,
+      getUserWallet: mock(async () => ({
+        balance: 100_000,
+        payInvoice: mock(async () => {
+          throw boom
+        }),
+      })),
+    })
+    const result = await deps.payToFeeCollection({
+      userId: 1,
+      amountSats: 50,
+      rail: 'internal',
+    })
+    expect(result).toMatchObject({status: 'failed', reason: 'pay_failed', error: boom})
+    expect(captureException).toHaveBeenCalledTimes(1)
+    expect(captureException).toHaveBeenCalledWith(
+      boom,
+      '1',
+      expect.objectContaining({stage: 'pay_internal', expected: false}),
+    )
   })
 })
