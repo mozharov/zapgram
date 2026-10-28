@@ -1,3 +1,4 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {
   computeDonationSats,
   type DonationPaymentKind,
@@ -169,7 +170,11 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
         reason: payResult.reason,
         ...errorProperties(payResult.error),
       })
-      if (payResult.error) {
+      // Short balance after a full transfer is expected. donation_failed (reason no_funds)
+      // stays as-is; only the Error Tracking issue and the user-facing failure notice go away.
+      const fundsShort =
+        payResult.reason === 'no_funds' || payResult.error instanceof InsufficientFundsError
+      if (!fundsShort && payResult.error) {
         captureUserException(deps.posthog, payResult.error, input.userId, {
           ...collectProps,
           stage: 'try_collect_pay',
@@ -177,13 +182,17 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
         })
       }
 
-      await deps.notifyDonationFailed(input.userId, amountSats, user.languageCode).catch(error => {
-        deps.log.error({error, userId: input.userId}, 'tryCollect: fail notify failed')
-        captureUserException(deps.posthog, error, input.userId, {
-          ...collectProps,
-          stage: 'fail_notify',
-        })
-      })
+      if (!fundsShort) {
+        await deps
+          .notifyDonationFailed(input.userId, amountSats, user.languageCode)
+          .catch(error => {
+            deps.log.error({error, userId: input.userId}, 'tryCollect: fail notify failed')
+            captureUserException(deps.posthog, error, input.userId, {
+              ...collectProps,
+              stage: 'fail_notify',
+            })
+          })
+      }
 
       return {status: 'failed', amountSats, error: payResult.error}
     } catch (error) {
