@@ -15,6 +15,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {closeLivingMenu, showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -32,7 +33,8 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   let urlContext: ConversationContext
   let nwcUrl: string
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
     if (kind === 'cancel') {

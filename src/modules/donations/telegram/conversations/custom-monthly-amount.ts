@@ -13,6 +13,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
@@ -37,7 +38,8 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
   let sats: number
   let input: ConversationContext | undefined
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {
       await next.answerCallbackQuery()

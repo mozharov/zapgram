@@ -53,6 +53,8 @@ button =
     .add-invoice-memo = 🔡 Добавить описание
     .copy-invoice = Скопировать счёт
     .pay-invoice = ⚡️ Оплатить Lightning счёт
+    .pay-pasted = ⚡️ Оплатить
+    .pasted-payment-back = ↩️ Вернуться к шагу
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
@@ -100,6 +102,7 @@ callback-answer =
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
     .nwc-tip-disabled = 🤖 Теперь донаты отправляются из кошелька {bot-name}
     .unknown = ⚠️ Неизвестная кнопка
+    .pasted-payment-back = Вернуться к шагу
 
 error = 
     .unknown = <b>⚠️ Произошла неизвестная ошибка.</b>
@@ -322,6 +325,15 @@ send-menu = <b>✉️ Отправить платёж</b>
 
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+
+pasted-payment =
+    {$kind ->
+        [lightning-address] <b>⚡️ Это Lightning-адрес.</b>
+        [lnurl] <b>⚡️ Это LNURL.</b>
+        *[other] <b>⚡️ Это Lightning-счёт.</b>
+    }
+
+    Оплатить его или вернуться к шагу.
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>

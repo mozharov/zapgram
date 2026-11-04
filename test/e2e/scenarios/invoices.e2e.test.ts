@@ -820,6 +820,140 @@ for (const {label, reach, input, error, correct} of invalidCases) {
   })
 }
 
+test('a pasted invoice on the recipient step offers to pay and does not reset the wizard', async () => {
+  await enterSendToUserAtUsername()
+  const invoice = foreignInvoice()
+  const pasted = `  Lightning:${invoice.bolt11.toUpperCase()}  `
+
+  await e2e.send(privateText(pasted))
+
+  const offer = e2e.tg.last('sendMessage')
+  expect(String(offer?.text)).toMatch(/This is a Lightning invoice/)
+  expect(String(offer?.text)).not.toMatch(/Invalid username/)
+  const [payData, backData] = keyboardOf(offer)
+  expect(payData).toMatch(/^pay-pasted:[0-9a-f]{16}$/)
+  expect(backData).toMatch(/^pay-pasted-back:[0-9a-f]{16}$/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expect(await conversationVersion()).toEqual([0, 0])
+
+  const offerId = requiredResultMessageId('sendMessage')
+  await e2e.send(privateCallback(backData ?? '', {messageId: offerId}))
+
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expect(await conversationVersion()).toEqual([0, 0])
+  await e2e.send(privateText('not-a-user'))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid username/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+
+  await e2e.send(privateText(invoice.bolt11))
+  const again = e2e.tg.last('sendMessage')
+  const payAgain = keyboardOf(again)[0]
+  credit(USER_A, 1000)
+  await e2e.send(
+    privateCallback(payAgain ?? '', {messageId: requiredResultMessageId('sendMessage')}),
+  )
+
+  expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expect(await conversationVersion()).toEqual([0, 0])
+  expectNoErrors(e2e.logs)
+})
+
+test('a Lightning address or LNURL on the recipient step is offered, not rejected as a username', async () => {
+  await enterSendToUserAtUsername()
+
+  await e2e.send(privateText('  Alice@GetAlby.com '))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Lightning address/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(/Invalid username/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+
+  await e2e.send(privateText('LNURL1DP68GURN8GHJ7CTS'))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/This is an LNURL/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expect(await conversationVersion()).toEqual([0, 0])
+
+  await e2e.send(privateText('pay lnbc1pabcdef please'))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid username/)
+  expectNoErrors(e2e.logs)
+})
+
+test('Pay on a pasted Lightning address opens the existing pay-invoice flow', async () => {
+  await enterSendToUserAtUsername()
+  await e2e.send(privateText('alice@getalby.com'))
+  const offer = e2e.tg.last('sendMessage')
+  const payData = keyboardOf(offer)[0]
+  await e2e.send(
+    privateCallback(payData ?? '', {messageId: requiredResultMessageId('sendMessage')}),
+  )
+
+  expect(joinedInvoiceText()).toMatch(/Send or forward a message with a Lightning invoice/)
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expectNoErrors(e2e.logs)
+})
+
+test('a pasted invoice on the amount step offers to pay instead of rejecting the amount', async () => {
+  await enterSendToUserAtAmount()
+  const invoice = foreignInvoice()
+
+  await e2e.send(privateText(`lightning:${invoice.bolt11}`))
+
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/This is a Lightning invoice/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(/Invalid amount/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+
+  const offer = e2e.tg.last('sendMessage')
+  const backData = keyboardOf(offer)[1]
+  await e2e.send(
+    privateCallback(backData ?? '', {messageId: requiredResultMessageId('sendMessage')}),
+  )
+  await e2e.send(privateText('nope'))
+
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid amount/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expect(await conversationVersion()).toEqual([0, 0])
+  expectNoErrors(e2e.logs)
+})
+
+test('outside a wizard a lightning address is offered and a lightning: invoice still pays', async () => {
+  await e2e.send(privateText('  bob@walletofsatoshi.com  '))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Lightning address/)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))[0]).toMatch(/^pay-pasted:/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(/This is a Lightning wallet/)
+
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+  await e2e.send(privateText(`LIGHTNING:${invoice.bolt11.toUpperCase()}`))
+  expect(joinedInvoiceText()).toMatch(/Invoice review/)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))).not.toContain(
+    expect.stringMatching(/^pay-pasted:/),
+  )
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expectNoErrors(e2e.logs)
+})
+
+async function conversationNames(): Promise<string[]> {
+  const rows = await e2e.db.select().from(conversationsTable)
+  expect(rows).toHaveLength(1)
+  const state = rows[0]?.state
+  if (!state || typeof state !== 'object') throw new Error('conversation state missing')
+  return Object.keys(state)
+}
+
+async function conversationVersion(): Promise<unknown> {
+  const rows = await e2e.db.select().from(conversationsTable)
+  return rows[0]?.version
+}
+
+function requiredResultMessageId(method: string): number {
+  const messageId = e2e.tg.lastMessageId(method)
+  if (messageId === undefined) throw new Error(`No ${method} result`)
+  return messageId
+}
+
+function joinedInvoiceText(): string {
+  return e2e.tg.calls.map(call => String(call.payload.text ?? '')).join('\n')
+}
+
 async function expectTempMessagesDeleted(mark: number, messageIds: number[]): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt++) {
     const deleted = tempDeletedIdsSince(mark)

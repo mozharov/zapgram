@@ -109,6 +109,8 @@ export const scenarioCoverage = {
       'create-invoice',
       'add-invoice-memo',
       'pay-invoice',
+      'pay-pasted',
+      'pay-pasted-back',
       'cancel',
       'connect-nwc',
       'send-to-user',

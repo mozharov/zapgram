@@ -15,6 +15,7 @@ import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
@@ -37,7 +38,13 @@ export async function payingInvoice(
   lnInvoice?: string,
 ) {
   const title = ctx.t('paying-invoice')
+  // Pay on the pasted-payment offer arrives as a callback on that offer. The offer is not
+  // the wizard host: a bolt11 skips straight to review, and an address or LNURL opens the
+  // invoice field. Either way the offer is removed and the screen is a new message, so the
+  // step the user left is not kept as a second menu with a live Cancel button.
+  const fromPastedPay = payPastedRoute.pattern.test(ctx.callbackQuery?.data ?? '')
   let host: ConversationHost | undefined = hostFromCallback(ctx)
+  if (lnInvoice || fromPastedPay) host = undefined
   const restoreParent = async (target?: ConversationHost) => {
     const dest = target ?? host
     if (!dest) return
@@ -45,9 +52,10 @@ export async function payingInvoice(
     else await editHostWithSendMenu(ctx, dest)
   }
 
-  if (!lnInvoice) {
+  if (!lnInvoice && !fromPastedPay) {
     host ??= await ensureHost(ctx, joinWizardHtml(title, ctx.t('wait-for-invoice')))
   }
+  if (fromPastedPay && !lnInvoice) await deleteMessageSafely(ctx)
   const paymentRequest =
     lnInvoice ??
     (await waitForInvoice(conversation, ctx, {

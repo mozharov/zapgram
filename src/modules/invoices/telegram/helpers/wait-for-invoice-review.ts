@@ -19,6 +19,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {copyableText} from '@telegram/helpers/copy-text.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {usdSuffixesForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
 import {invoiceReviewHtml} from './invoice-review.js'
@@ -68,7 +69,8 @@ export async function waitForInvoiceReview(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     if (next.callbackQuery?.data === payCallback && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()
       await clearPromptControls(conversation, prompt)

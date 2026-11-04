@@ -281,6 +281,21 @@ export const broadcastConfirmRoute = defineCallback(
   ({action}) => `broadcast:confirm:${action}`,
 )
 
+/** Pay the payment request stashed when the offer was shown. The bolt11 itself does not fit. */
+export const payPastedRoute = defineCallback(
+  'pay-pasted',
+  /^pay-pasted:([0-9a-f]{16})$/,
+  match => ({token: requireGroup(match, 1, 'pay-pasted')}),
+  ({token}) => `pay-pasted:${token}`,
+)
+
+export const payPastedBackRoute = defineCallback(
+  'pay-pasted-back',
+  /^pay-pasted-back:([0-9a-f]{16})$/,
+  match => ({token: requireGroup(match, 1, 'pay-pasted-back')}),
+  ({token}) => `pay-pasted-back:${token}`,
+)
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
@@ -310,6 +325,8 @@ export const parameterizedRoutes = [
   featureFundAmountRoute,
   broadcastLocaleRoute,
   broadcastConfirmRoute,
+  payPastedRoute,
+  payPastedBackRoute,
 ] as const
 
 /** Static callback_data strings (no parse params). */

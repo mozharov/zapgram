@@ -17,6 +17,7 @@ import {
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
 import {type FundedWallets, fundedWalletsForAmount, readWalletBalances} from './funded-wallets.js'
@@ -226,7 +227,8 @@ async function pickWallet(
 
   let wallet: 'internal' | 'nwc'
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     const data = next.callbackQuery?.data
     if ((data === 'internal' || data === 'nwc') && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()

@@ -11,6 +11,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
@@ -41,7 +42,8 @@ export async function waitForUser(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
     if (kind === 'cancel') {

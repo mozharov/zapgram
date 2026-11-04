@@ -22,6 +22,7 @@ import {
 } from '@telegram/helpers/conversation-prompt.js'
 import {deleteMessageSafely, deleteMessagesSafely} from '@telegram/helpers/delete-message.js'
 import {closeLivingMenu} from '@telegram/helpers/living-menu.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {InlineKeyboard} from 'grammy'
@@ -127,7 +128,8 @@ async function waitForFeatureText(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   while (true) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
     if (kind === 'cancel') {
@@ -191,7 +193,8 @@ async function waitForFundChoice(
 ): Promise<FundChoice> {
   const cancelled = cancelledPromptState(ctx, prompt)
   while (true) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation)
+    if (!next) continue
 
     const data = next.callbackQuery?.data
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
