@@ -38,10 +38,9 @@ export async function payingInvoice(
   lnInvoice?: string,
 ) {
   const title = ctx.t('paying-invoice')
-  // Pay on the pasted-payment offer arrives as a callback on that offer. The offer is not
-  // the wizard host: a bolt11 skips straight to review, and an address or LNURL opens the
-  // invoice field. Either way the offer is removed and the screen is a new message, so the
-  // step the user left is not kept as a second menu with a live Cancel button.
+  // Pay on a pasted bolt11 arrives as a callback on that offer. The offer is not the
+  // wizard host: the invoice skips straight to review, the offer is removed, and the
+  // screen is a new message. The step the user left must not keep a live Cancel button.
   const fromPastedPay = payPastedRoute.pattern.test(ctx.callbackQuery?.data ?? '')
   let host: ConversationHost | undefined = hostFromCallback(ctx)
   if (lnInvoice || fromPastedPay) host = undefined
@@ -55,7 +54,9 @@ export async function payingInvoice(
   if (!lnInvoice && !fromPastedPay) {
     host ??= await ensureHost(ctx, joinWizardHtml(title, ctx.t('wait-for-invoice')))
   }
-  if (fromPastedPay && !lnInvoice) await deleteMessageSafely(ctx)
+  // Before decode. A shape-valid bolt11 that does not decode halts on the next lines, and
+  // the offer must not stay behind as a Pay button with nothing listening.
+  if (fromPastedPay) await deleteMessageSafely(ctx)
   const paymentRequest =
     lnInvoice ??
     (await waitForInvoice(conversation, ctx, {
@@ -71,7 +72,7 @@ export async function payingInvoice(
     await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
     return conversation.halt()
   }
-  if (lnInvoice) await deleteMessageSafely(ctx)
+  if (lnInvoice && !fromPastedPay) await deleteMessageSafely(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
     'Decoded invoice to pay',

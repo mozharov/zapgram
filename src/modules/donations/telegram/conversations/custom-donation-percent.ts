@@ -41,7 +41,7 @@ export async function customDonationPercent(
   let raw: number
   let input: ConversationContext | undefined
   for (;;) {
-    const next = await waitForStepInput(conversation)
+    const next = await waitForStepInput(conversation, prompt)
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {

@@ -36,7 +36,7 @@ export async function waitForSats(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await waitForStepInput(conversation)
+    const next = await waitForStepInput(conversation, prompt)
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 

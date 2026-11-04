@@ -227,7 +227,7 @@ async function pickWallet(
 
   let wallet: 'internal' | 'nwc'
   for (;;) {
-    const next = await waitForStepInput(conversation)
+    const next = await waitForStepInput(conversation, prompt)
     if (!next) continue
     const data = next.callbackQuery?.data
     if ((data === 'internal' || data === 'nwc') && isCallbackFromPrompt(next, prompt)) {

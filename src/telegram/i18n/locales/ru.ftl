@@ -326,14 +326,11 @@ send-menu = <b>✉️ Отправить платёж</b>
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
 
-pasted-payment =
-    {$kind ->
-        [lightning-address] <b>⚡️ Это Lightning-адрес.</b>
-        [lnurl] <b>⚡️ Это LNURL.</b>
-        *[other] <b>⚡️ Это Lightning-счёт.</b>
-    }
+pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
 
     Оплатить его или вернуться к шагу.
+
+pasted-payment-unsupported = <b>⚠️ Оплата на Lightning-адрес и LNURL пока не поддерживается — попросите у получателя инвойс и пришлите его.</b>
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>

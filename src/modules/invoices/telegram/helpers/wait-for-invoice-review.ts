@@ -69,7 +69,7 @@ export async function waitForInvoiceReview(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await waitForStepInput(conversation)
+    const next = await waitForStepInput(conversation, prompt)
     if (!next) continue
     if (next.callbackQuery?.data === payCallback && isCallbackFromPrompt(next, prompt)) {
       await next.answerCallbackQuery()

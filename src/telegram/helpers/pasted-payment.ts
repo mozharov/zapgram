@@ -3,7 +3,11 @@ import {type PaymentRequest, recognizePaymentRequest} from '@core/lightning/paym
 import {payPastedBackRoute, payPastedRoute} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
+import {getRuntime} from '../../runtime.js'
 import {disabledLinkPreview} from './conversation-host.js'
+import {removeInlineKeyboardById} from './keyboard.js'
+
+type StepPrompt = {chatId: number; messageId: number}
 
 const TOKEN_HEX = 16
 
@@ -44,38 +48,37 @@ function forgetPastedPayment(userId: number, token: string): void {
   if (tokenByUser.get(userId) === token) tokenByUser.delete(userId)
 }
 
-function offerKeyboard(ctx: ConversationContext, token: string): InlineKeyboard {
+function bolt11Keyboard(ctx: ConversationContext, token: string): InlineKeyboard {
   return new InlineKeyboard()
     .text(ctx.t('button.pay-pasted'), payPastedRoute.build({token}))
     .row()
     .text(ctx.t('button.pasted-payment-back'), payPastedBackRoute.build({token}))
 }
 
-function offerHtml(ctx: Pick<ConversationContext, 't'>, request: PaymentRequest): string {
-  return ctx.t('pasted-payment', {kind: request.kind})
-}
-
-/** Outside any wizard: the offer is an extra message, not a new living menu. */
-export async function replyWithPastedPaymentOffer(
-  ctx: BotContext,
-  request: PaymentRequest,
-): Promise<void> {
-  const userId = ctx.from?.id
-  if (userId === undefined) return
-  const token = rememberPastedPayment(userId, request)
-  await ctx.reply(offerHtml(ctx, request), {
-    reply_markup: offerKeyboard(ctx, token),
-    ...disabledLinkPreview,
-  })
+function backKeyboard(ctx: ConversationContext, token: string): InlineKeyboard {
+  return new InlineKeyboard().text(
+    ctx.t('button.pasted-payment-back'),
+    payPastedBackRoute.build({token}),
+  )
 }
 
 /**
- * `conversation.wait()`, then the pasted-payment offer when the text is a BOLT11,
- * Lightning address, or LNURL.
+ * Outside a wizard there is no step to return to. Address and LNURL have no pay
+ * button: paying them is a later task, and Pay used to open an invoice dialog
+ * that then rejected the same paste.
+ */
+export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void> {
+  await ctx.reply(ctx.t('pasted-payment-unsupported'), {...disabledLinkPreview})
+}
+
+/**
+ * `conversation.wait()`, then a notice when the text is a BOLT11, Lightning address, or LNURL.
  *
- * Returns undefined when the user chose Back: the step is unchanged and the caller
- * waits again. Pay never returns — the conversation halts and the button falls
- * through to the existing pay-invoice flow. Any other update is returned as-is.
+ * A bolt11 gets Pay and Back. Pay never returns: the conversation halts and the button
+ * falls through to the existing pay-invoice flow. An address or LNURL gets the
+ * unsupported note and Back only — paying those is a later task.
+ * Back returns undefined so the caller waits again on the same step. Any other update
+ * is returned as-is.
  *
  * A step that already expects a payment request (the invoice field) must keep
  * calling `conversation.wait()` directly. Normal input makes no extra API call,
@@ -83,6 +86,7 @@ export async function replyWithPastedPaymentOffer(
  */
 export async function waitForStepInput(
   conversation: BotConversation,
+  prompt: StepPrompt,
 ): Promise<ConversationContext | undefined> {
   let current = await conversation.wait()
   for (;;) {
@@ -91,9 +95,11 @@ export async function waitForStepInput(
       userId === undefined ? null : recognizePaymentRequest(current.message?.text ?? '')
     if (!request || userId === undefined) return current
 
-    const token = rememberPastedPayment(userId, request)
-    const offer = await current.reply(offerHtml(current, request), {
-      reply_markup: offerKeyboard(current, token),
+    const token = tokenFor(userId, request.value)
+    if (request.kind === 'bolt11') rememberPastedPayment(userId, request)
+    const offer = await current.reply(noticeHtml(current, request), {
+      reply_markup:
+        request.kind === 'bolt11' ? bolt11Keyboard(current, token) : backKeyboard(current, token),
       ...disabledLinkPreview,
     })
     const choice = await conversation.wait()
@@ -105,7 +111,11 @@ export async function waitForStepInput(
       message.message_id === offer.message_id &&
       message.chat.id === offer.chat.id
 
-    if (fromOffer && data === payPastedRoute.build({token})) {
+    if (fromOffer && request.kind === 'bolt11' && data === payPastedRoute.build({token})) {
+      // Drop the step's buttons before the wizard ends. Pay can still fail inside the
+      // existing flow (bad bolt11, not enough balance) before that flow has a screen of
+      // its own. The step must not stay tappable with no conversation behind it.
+      await conversation.external(() => clearPromptKeyboard(prompt))
       return conversation.halt({next: true})
     }
     if (fromOffer && data === payPastedBackRoute.build({token})) {
@@ -119,4 +129,19 @@ export async function waitForStepInput(
     forgetPastedPayment(userId, token)
     current = choice
   }
+}
+
+function noticeHtml(ctx: Pick<ConversationContext, 't'>, request: PaymentRequest): string {
+  if (request.kind === 'bolt11') return ctx.t('pasted-payment')
+  return ctx.t('pasted-payment-unsupported')
+}
+
+/** Clears the step keyboard only. The message stays until a later screen replaces it. */
+async function clearPromptKeyboard(prompt: StepPrompt): Promise<void> {
+  await removeInlineKeyboardById(prompt.chatId, prompt.messageId).catch((error: unknown) => {
+    getRuntime().log.warn(
+      {error, chatId: prompt.chatId, messageId: prompt.messageId},
+      'Failed to clear wizard prompt before pay',
+    )
+  })
 }

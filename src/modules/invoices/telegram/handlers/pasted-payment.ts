@@ -2,15 +2,14 @@ import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import {payPastedBackRoute, payPastedRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {replyWithPastedPaymentOffer, takePastedPayment} from '@telegram/helpers/pasted-payment.js'
+import {replyWithUnsupportedPayment, takePastedPayment} from '@telegram/helpers/pasted-payment.js'
 import type {NextFunction} from 'grammy'
 import {payingInvoice} from '../conversations/paying-invoice.js'
 
 /**
  * Private text no wizard claimed. A whole-message bolt11 starts the existing pay-invoice
  * flow (same as the lnbc hears handler, plus case and a `lightning:` prefix). A Lightning
- * address or LNURL has no settlement of its own, so the offer is shown and Pay opens that
- * same flow at the invoice field.
+ * address or LNURL is named and left unpaid — there is no button, and no invoice dialog.
  */
 export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Promise<void> {
   const text = ctx.message?.text
@@ -21,7 +20,7 @@ export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Pr
     await ctx.conversation.enter(payingInvoice.name, request.value)
     return
   }
-  await replyWithPastedPaymentOffer(ctx, request)
+  await replyWithUnsupportedPayment(ctx)
 }
 
 export async function payPastedCallback(ctx: BotContext): Promise<void> {
@@ -29,19 +28,14 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
   const data = ctx.callbackQuery?.data ?? ''
   const {token} = payPastedRoute.parse(data)
   const request = userId === undefined ? undefined : takePastedPayment(userId, token)
-  if (!request) {
+  // Only a stashed bolt11 is payable. Address and LNURL never get this button.
+  if (request?.kind !== 'bolt11') {
     await deleteMessageSafely(ctx)
     await ctx.answerCallbackQuery({text: ctx.t('callback-answer.unknown')})
     return
   }
   await ctx.answerCallbackQuery()
-  // Only a bolt11 can skip the paste step. Address and LNURL open the same flow
-  // the Pay Invoice button does — this bot does not resolve them into an invoice.
-  if (request.kind === 'bolt11') {
-    await ctx.conversation.enter(payingInvoice.name, request.value)
-    return
-  }
-  await ctx.conversation.enter(payingInvoice.name)
+  await ctx.conversation.enter(payingInvoice.name, request.value)
 }
 
 /** Back outside a wizard just dismisses the offer. Inside a wizard the step handles it. */
