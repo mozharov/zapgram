@@ -38,7 +38,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
   let sats: number
   let input: ConversationContext | undefined
   for (;;) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {

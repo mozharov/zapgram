@@ -942,7 +942,8 @@ test('Pay on an undecodable invoice drops the offer and the step buttons', async
   await e2e.send(payCallback(payData ?? '', offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid Lightning invoice/)
-  expect(clearedMarkup(promptId)).toEqual({inline_keyboard: []})
+  expect(editedPromptText(promptId)).toMatch(/Action canceled/)
+  expect(editedPromptKeyboard(promptId)).toEqual([])
   expect(deletedMessageIds()).toContain(offerId)
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
@@ -959,13 +960,19 @@ test('Pay on an unaffordable invoice drops the offer and the step buttons', asyn
   await e2e.send(payCallback(payData ?? '', offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Insufficient funds/)
-  expect(clearedMarkup(promptId)).toEqual({inline_keyboard: []})
+  expect(editedPromptText(promptId)).toMatch(/Action canceled/)
+  expect(editedPromptKeyboard(promptId)).toEqual([])
   expect(deletedMessageIds()).toContain(offerId)
   await expectNoConversations(e2e.db)
   expect(errorMessages()).toEqual(['Bot error'])
 })
 
-test('Pay opens the invoice after a restart, from the message it replies to', async () => {
+test('Pay still opens the invoice after the process restarts', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    mode: 'file',
+    env: {BOT_USERNAME: 'zap_gram_bot'},
+  })
   await enterSendToUserAtUsername()
   const invoice = foreignInvoice()
   const pasted = privateText(`  Lightning:${invoice.bolt11.toUpperCase()}  `)
@@ -979,17 +986,133 @@ test('Pay opens the invoice after a restart, from the message it replies to', as
   const payData = keyboardOf(offer)[0]
   const offerId = requiredResultMessageId('sendMessage')
   credit(USER_A, 1000)
-  // A restart drops process memory. The button does not consult any: Telegram still
-  // delivers the paste as reply_to_message, and the token is checked against that text.
+  // New process, same database and the same Telegram. The invoice is only in the reply.
+  await e2e.restart()
   await e2e.send(payCallback(payData ?? '', offerId, pasted))
 
   expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
   expect(await conversationNames()).toEqual(['payingInvoice'])
+  const pastedId = pasted.message?.message_id
+  if (pastedId === undefined) throw new Error('pasted invoice has no message id')
+  expect(deletedMessageIds()).toContain(pastedId)
   expectNoErrors(e2e.logs)
+})
 
-  await e2e.send(payCallback(payData ?? '', offerId, pasted))
+test('two Pay clicks at once open the invoice once', async () => {
+  await enterSendToUserAtUsername()
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+  const pasted = privateText(invoice.bolt11)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredResultMessageId('sendMessage')
+
+  await Promise.all([
+    e2e.send(payCallback(payData, offerId, pasted)),
+    e2e.send(payCallback(payData, offerId, pasted)),
+  ])
+
+  const reviews = e2e.tg
+    .of('sendMessage')
+    .map(call => String(call.text))
+    .filter(text => /Paying from your ZapGram wallet/.test(text))
+  expect(reviews).toHaveLength(1)
+  expect(
+    e2e.tg.of('answerCallbackQuery').some(call => /no longer active/.test(String(call.text ?? ''))),
+  ).toBe(true)
   expect(await conversationNames()).toEqual(['payingInvoice'])
-  expect(joinedInvoiceText().match(/Paying from your ZapGram wallet/g)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('an email is stored as the invoice description', async () => {
+  await enterCreateInvoiceAtMemo()
+  await e2e.send(privateText('shop@example.com'))
+
+  expect(lastInvoiceMemo()).toContain('shop@example.com')
+  expect(lastInvoiceCaption()).toContain('shop@example.com')
+  expect(joinedInvoiceText()).not.toMatch(/isn't supported yet|This is a Lightning invoice/)
+  expectNoErrors(e2e.logs)
+})
+
+test('Pay then confirm sends one payment, and Pay again sends none', async () => {
+  await enterSendToUserAtUsername()
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+  const pasted = privateText(invoice.bolt11)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredResultMessageId('sendMessage')
+  const before = await snapshot(e2e)
+  expect(outgoingBolt11(invoice.bolt11)).toHaveLength(0)
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+
+  expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
+  expect(outgoingBolt11(invoice.bolt11)).toHaveLength(0)
+  const pastedId = pasted.message?.message_id
+  if (pastedId === undefined) throw new Error('pasted invoice has no message id')
+  expect(deletedMessageIds()).toContain(pastedId)
+  expect(deletedMessageIds()).toContain(offerId)
+  // The review is a new message. The step prompt was edited to "canceled" first,
+  // so the usual "last edited prompt" is not this screen.
+  const reviewId = requiredResultMessageId('sendMessage')
+
+  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+
+  expect(outgoingBolt11(invoice.bolt11)).toHaveLength(1)
+  expect(outgoingBolt11(invoice.bolt11)[0]?.amountMsat).toBe(FOREIGN_SATS * 1000)
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(1)
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+
+  expect(outgoingBolt11(invoice.bolt11)).toHaveLength(1)
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(1)
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/no longer active/)
+  expectLedgerBalanced(before, await snapshot(e2e))
+  expectNoErrors(e2e.logs)
+})
+
+test('Pay on the wallet screen switches to the pasted invoice', async () => {
+  credit(USER_A, 5000)
+  const first = foreignInvoice()
+  await e2e.send(privateText(first.bolt11))
+  expect(joinedInvoiceText()).toMatch(/issued elsewhere/)
+
+  const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
+  if (!master) throw new Error('Fake LNbits master wallet not found')
+  const second = e2e.ln.state.createInvoice({
+    wallet: master,
+    sats: 250,
+    memo: 'invoice B',
+    expirySec: 3600,
+  })
+  const pasted = privateText(second.bolt11)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredResultMessageId('sendMessage')
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+
+  expect(joinedInvoiceText()).toMatch(/invoice B/)
+  expect(joinedInvoiceText()).toMatch(/250 sats/)
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expect(outgoingBolt11(second.bolt11)).toHaveLength(0)
+  const reviewId = requiredResultMessageId('sendMessage')
+
+  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+
+  expect(outgoingBolt11(second.bolt11)).toHaveLength(1)
+  expect(outgoingBolt11(first.bolt11)).toHaveLength(0)
+  expectNoErrors(e2e.logs)
+})
+
+test('an old Pay button inside a wizard answers with a toast', async () => {
+  await enterSendToUserAtUsername()
+  await e2e.send(privateCallback('pay-pasted:0123456789abcdef', {messageId: 999_999}))
+
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/no longer active/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expectNoErrors(e2e.logs)
 })
 
 test('Pay without the invoice message stays on the step and explains', async () => {
@@ -1041,17 +1164,26 @@ function requiredResultMessageId(method: string): number {
   return messageId
 }
 
-function clearedMarkup(messageId: number): unknown {
+function editedPromptText(messageId: number): string {
+  return String(editedPrompt(messageId)?.text ?? '')
+}
+
+function editedPromptKeyboard(messageId: number): string[] {
+  return keyboardOf(editedPrompt(messageId))
+}
+
+function editedPrompt(messageId: number): Record<string, unknown> | undefined {
   for (let index = e2e.tg.calls.length - 1; index >= 0; index--) {
     const call = e2e.tg.calls[index]
-    if (
-      call?.method === 'editMessageReplyMarkup' &&
-      Number(call.payload.message_id) === messageId
-    ) {
-      return call.payload.reply_markup
+    if (call?.method === 'editMessageText' && Number(call.payload.message_id) === messageId) {
+      return call.payload
     }
   }
   return undefined
+}
+
+function outgoingBolt11(bolt11: string) {
+  return e2e.ln.state.payments.filter(payment => payment.out && payment.bolt11 === bolt11)
 }
 
 function deletedMessageIds(): number[] {

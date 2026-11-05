@@ -104,6 +104,8 @@ callback-answer =
     .unknown = ⚠️ Unknown button
     .pasted-payment-back = Back to this step
     .pasted-payment-missing = The invoice message is gone. Send it again.
+    .pasted-payment-stale = This offer is no longer active.
+    .pasted-payment-closed = Closed.
 
 error = 
     .unknown = <b>⚠️ Unknown error occurred.</b>

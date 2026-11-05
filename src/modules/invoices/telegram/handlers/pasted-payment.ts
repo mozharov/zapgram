@@ -4,6 +4,7 @@ import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {
   bolt11MatchingToken,
+  claimPastedOffer,
   releasePastedPay,
   repliedText,
   replyWithUnsupportedPayment,
@@ -32,8 +33,17 @@ export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Pr
 export async function payPastedCallback(ctx: BotContext): Promise<void> {
   const userId = ctx.from?.id
   const {token} = payPastedRoute.parse(ctx.callbackQuery?.data ?? '')
-  // Before any await. Two taps otherwise both see "no payment in progress" and both enter.
-  if (userId === undefined || !reservePastedPay(userId, token)) {
+  if (userId === undefined) {
+    await ctx.answerCallbackQuery()
+    return
+  }
+  // The delete is the claim shared by every process and a restart. The set
+  // only skips a repeat in this process after that claim has already landed.
+  if (!(await claimPastedOffer(ctx))) {
+    await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-stale')})
+    return
+  }
+  if (!reservePastedPay(userId, token)) {
     await ctx.answerCallbackQuery()
     return
   }
@@ -45,7 +55,6 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
     }
     const bolt11 = bolt11MatchingToken(userId, token, repliedText(ctx))
     if (!bolt11) {
-      await deleteMessageSafely(ctx)
       await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-missing')})
       return
     }
@@ -60,5 +69,5 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
 export async function payPastedBackCallback(ctx: BotContext): Promise<void> {
   payPastedBackRoute.parse(ctx.callbackQuery?.data ?? '')
   await deleteMessageSafely(ctx)
-  await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-back')})
+  await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-closed')})
 }

@@ -518,7 +518,7 @@ const parameterizedCases: {
     route: 'pay-pasted-back',
     data: () => 'pay-pasted-back:0123456789abcdef',
     methods: ['deleteMessage', 'answerCallbackQuery'],
-    text: /Back to this step/,
+    text: /Closed/,
   },
 ]
 

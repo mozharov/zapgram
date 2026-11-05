@@ -33,7 +33,7 @@ export async function connectingNWC(conversation: BotConversation, ctx: Conversa
   let urlContext: ConversationContext
   let nwcUrl: string
   for (;;) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 

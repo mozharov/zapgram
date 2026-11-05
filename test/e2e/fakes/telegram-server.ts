@@ -31,6 +31,7 @@ export async function startFakeTelegram(opts?: {
   const calls: TgCall[] = []
   const results: TgResult[] = []
   const responses = new Map<string, QueuedResponse[]>()
+  const deletedIds = new Set<string>()
   let messageId = 0
   let stopped = false
 
@@ -51,6 +52,19 @@ export async function startFakeTelegram(opts?: {
       const queued = responses.get(method)?.shift()
       if (responses.get(method)?.length === 0) responses.delete(method)
       if (queued?.type === 'error') return failure(queued.error)
+
+      // A message can be deleted once. The second delete is the same 400 Telegram
+      // returns, so two Pay clicks cannot both claim the offer.
+      if (method === 'deleteMessage') {
+        const id = `${String(payload.chat_id)}:${String(payload.message_id)}`
+        if (deletedIds.has(id)) {
+          return failure({
+            error_code: 400,
+            description: 'Bad Request: message to delete not found',
+          })
+        }
+        deletedIds.add(id)
+      }
 
       const result =
         queued?.type === 'success'
@@ -90,6 +104,7 @@ export async function startFakeTelegram(opts?: {
       calls.length = 0
       results.length = 0
       responses.clear()
+      deletedIds.clear()
     },
     stop() {
       if (stopped) return

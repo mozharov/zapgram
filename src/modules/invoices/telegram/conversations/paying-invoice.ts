@@ -54,9 +54,6 @@ export async function payingInvoice(
   if (!lnInvoice && !fromPastedPay) {
     host ??= await ensureHost(ctx, joinWizardHtml(title, ctx.t('wait-for-invoice')))
   }
-  // Before decode. A shape-valid bolt11 that does not decode halts on the next lines, and
-  // the offer must not stay behind as a Pay button with nothing listening.
-  if (fromPastedPay) await deleteMessageSafely(ctx)
   const paymentRequest =
     lnInvoice ??
     (await waitForInvoice(conversation, ctx, {
@@ -73,6 +70,7 @@ export async function payingInvoice(
     return conversation.halt()
   }
   if (lnInvoice && !fromPastedPay) await deleteMessageSafely(ctx)
+  if (fromPastedPay) await deleteRepliedInvoice(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
     'Decoded invoice to pay',
@@ -202,6 +200,14 @@ export async function payingInvoice(
       }),
     paidKeyboard(ctx, invoice.paymentRequest),
   )
+}
+
+async function deleteRepliedInvoice(ctx: ConversationContext): Promise<void> {
+  const message = ctx.callbackQuery?.message
+  if (!message || !('reply_to_message' in message)) return
+  const replied = message.reply_to_message
+  if (!replied || !('message_id' in replied) || ctx.chat?.id === undefined) return
+  await ctx.api.deleteMessage(ctx.chat.id, replied.message_id).catch(() => undefined)
 }
 
 function paidKeyboard(ctx: ConversationContext, paymentRequest: string): InlineKeyboard {

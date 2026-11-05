@@ -96,7 +96,7 @@ async function waitForLocale(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
     const data = next.callbackQuery?.data
 
@@ -138,7 +138,7 @@ async function waitForSourceMessage(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'none'})
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
@@ -178,7 +178,7 @@ async function waitForConfirm(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
     const data = next.callbackQuery?.data
 

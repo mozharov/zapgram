@@ -128,7 +128,7 @@ async function waitForFeatureText(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   while (true) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'none'})
     if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
@@ -193,7 +193,7 @@ async function waitForFundChoice(
 ): Promise<FundChoice> {
   const cancelled = cancelledPromptState(ctx, prompt)
   while (true) {
-    const next = await waitForStepInput(conversation, prompt)
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
 
     const data = next.callbackQuery?.data

@@ -104,6 +104,8 @@ callback-answer =
     .unknown = ⚠️ Неизвестная кнопка
     .pasted-payment-back = Вернуться к шагу
     .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
+    .pasted-payment-stale = Это предложение больше не действует.
+    .pasted-payment-closed = Закрыто.
 
 error = 
     .unknown = <b>⚠️ Произошла неизвестная ошибка.</b>

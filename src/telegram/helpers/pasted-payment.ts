@@ -3,11 +3,12 @@ import {type PaymentRequest, recognizePaymentRequest} from '@core/lightning/paym
 import {payPastedBackRoute, payPastedRoute} from '@telegram/callback-data.js'
 import type {BotContext, BotConversation, ConversationContext} from '@telegram/context.js'
 import {InlineKeyboard} from 'grammy'
-import {getRuntime} from '../../runtime.js'
+import {isVanishedTelegramMessageError} from '../errors/vanished-message.js'
 import {disabledLinkPreview} from './conversation-host.js'
-import {removeInlineKeyboardById} from './keyboard.js'
+import {type ActivePrompt, cancelledPromptState, deactivatePrompt} from './conversation-prompt.js'
 
-type StepPrompt = {chatId: number; messageId: number}
+/** Which pasted payment requests a step should intercept. Free text uses `none`. */
+export type PaymentIntercept = 'bolt11' | 'all' | 'none'
 
 const TOKEN_HEX = 16
 
@@ -84,30 +85,34 @@ export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void
 }
 
 /**
- * `conversation.wait()`, then a notice when the text is a BOLT11, Lightning address, or LNURL.
+ * `conversation.wait()`, then a notice when the text is a payment request this step intercepts.
+ *
+ * `intercept: 'none'` returns the text unchanged and makes no extra API call, so a
+ * free-text field (memo, feature text, custom message, broadcast source) accepts an
+ * email, an address, an LNURL, or a bolt11 as ordinary input and replays like before.
+ * `all` notices every recognized request. `bolt11` notices only an invoice.
  *
  * A bolt11 gets Pay and Back, sent as a reply to the paste so the invoice can be read
- * back from that reply after a restart. Pay never returns: the conversation halts and
- * the button falls through to the existing pay-invoice flow. An address or LNURL gets
- * the unsupported note and Back only.
- * Back returns undefined so the caller waits again on the same step. Any other update
- * is returned as-is.
+ * back from that reply after a restart. Pay never returns: the step is marked
+ * cancelled, the conversation halts, and the button falls through to the existing
+ * pay-invoice flow. An address or LNURL gets the unsupported note and Back only.
+ * Back returns undefined so the caller waits again on the same step.
  *
- * A repeated Pay click on an offer this step is not showing is answered and ignored,
- * so it cannot fall through and start a second payment.
+ * A Pay or Back click on an offer this step is not showing gets a toast and is
+ * ignored, so it cannot fall through and start a second payment.
  *
  * A step that already expects a payment request (the invoice field) must keep
- * calling `conversation.wait()` directly. Normal input makes no extra API call,
- * so an in-progress wizard replays the same way it did before this check existed.
+ * calling `conversation.wait()` directly.
  */
 export async function waitForStepInput(
   conversation: BotConversation,
-  prompt: StepPrompt,
+  prompt: ActivePrompt,
+  opts: {intercept: PaymentIntercept},
 ): Promise<ConversationContext | undefined> {
   let current = await conversation.wait()
   for (;;) {
     if (isOfferButton(current)) {
-      await current.answerCallbackQuery()
+      await current.answerCallbackQuery({text: current.t('callback-answer.pasted-payment-stale')})
       current = await conversation.wait()
       continue
     }
@@ -115,7 +120,7 @@ export async function waitForStepInput(
     const userId = current.from?.id
     const request =
       userId === undefined ? null : recognizePaymentRequest(current.message?.text ?? '')
-    if (!request || userId === undefined) return current
+    if (!request || userId === undefined || !intercepts(opts.intercept, request)) return current
 
     const token = pastedPaymentToken(userId, request.value)
     const sourceId = current.message?.message_id
@@ -139,10 +144,9 @@ export async function waitForStepInput(
       data === payPastedRoute.build({token}) &&
       bolt11MatchingToken(userId, token, repliedText(choice)) === request.value
     ) {
-      // Drop the step's buttons before the wizard ends. Pay can still fail inside the
-      // existing flow (bad bolt11, not enough balance) before that flow has a screen of
-      // its own. The step must not stay tappable with no conversation behind it.
-      await conversation.external(() => clearPromptKeyboard(prompt))
+      // Same cleanup as leaving the step: cancelled mark and no live buttons. The helper
+      // halts, so the caller never reaches its own cancel path.
+      await deactivatePrompt(conversation, prompt, cancelledPromptState(choice, prompt))
       return conversation.halt({next: true})
     }
     if (fromOffer && data === payPastedRoute.build({token})) {
@@ -159,6 +163,12 @@ export async function waitForStepInput(
     await current.api.deleteMessage(offer.chat.id, offer.message_id).catch(() => undefined)
     current = choice
   }
+}
+
+function intercepts(mode: PaymentIntercept, request: PaymentRequest): boolean {
+  if (mode === 'none') return false
+  if (mode === 'bolt11') return request.kind === 'bolt11'
+  return true
 }
 
 function noticeHtml(ctx: Pick<ConversationContext, 't'>, request: PaymentRequest): string {
@@ -189,12 +199,18 @@ export function repliedText(ctx: {
   return typeof replied?.text === 'string' ? replied.text : undefined
 }
 
-/** Clears the step keyboard only. The message stays until a later screen replaces it. */
-async function clearPromptKeyboard(prompt: StepPrompt): Promise<void> {
-  await removeInlineKeyboardById(prompt.chatId, prompt.messageId).catch((error: unknown) => {
-    getRuntime().log.warn(
-      {error, chatId: prompt.chatId, messageId: prompt.messageId},
-      'Failed to clear wizard prompt before pay',
-    )
-  })
+/**
+ * Deletes the offer. The first delete wins across processes: Telegram answers the
+ * second with "message to delete not found". The in-memory set is only a fast path.
+ */
+export async function claimPastedOffer(ctx: BotContext): Promise<boolean> {
+  const message = ctx.callbackQuery?.message
+  if (!message || !('message_id' in message) || ctx.chat?.id === undefined) return false
+  try {
+    await ctx.api.deleteMessage(ctx.chat.id, message.message_id)
+    return true
+  } catch (error) {
+    if (isVanishedTelegramMessageError(error)) return false
+    throw error
+  }
 }

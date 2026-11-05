@@ -20,6 +20,19 @@ describe('recognizePaymentRequest', () => {
       kind: 'bolt11',
       value: BOLT11,
     })
+    expect(recognizePaymentRequest(`lightning://${BOLT11}`)).toEqual({
+      kind: 'bolt11',
+      value: BOLT11,
+    })
+    expect(
+      recognizePaymentRequest(
+        `bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh?lightning=${BOLT11.toUpperCase()}`,
+      ),
+    ).toEqual({kind: 'bolt11', value: BOLT11})
+    expect(recognizePaymentRequest(`BITCOIN:bc1qtest?amount=0.001&lightning=${BOLT11}`)).toEqual({
+      kind: 'bolt11',
+      value: BOLT11,
+    })
   })
 
   test('recognizes an LNURL the same way', () => {
@@ -29,6 +42,14 @@ describe('recognizePaymentRequest', () => {
       value: LNURL,
     })
     expect(recognizePaymentRequest(`  ${LNURL}  `)).toEqual({kind: 'lnurl', value: LNURL})
+    expect(recognizePaymentRequest(`lnurlp://${LNURL}`)).toEqual({
+      kind: 'lnurl',
+      value: `lnurlp://${LNURL}`,
+    })
+    expect(recognizePaymentRequest(`LNURLW://${LNURL.toUpperCase()}`)).toEqual({
+      kind: 'lnurl',
+      value: `lnurlw://${LNURL}`,
+    })
   })
 
   test('recognizes a Lightning address', () => {
@@ -65,6 +86,22 @@ describe('recognizePaymentRequest', () => {
       kind: 'lightning-address',
       value: 'satoshi@localhost',
     })
+    expect(recognizePaymentRequest('.alice@example.com')).toEqual({
+      kind: 'lightning-address',
+      value: '.alice@example.com',
+    })
+    expect(recognizePaymentRequest('alice.@example.com')).toEqual({
+      kind: 'lightning-address',
+      value: 'alice.@example.com',
+    })
+    expect(recognizePaymentRequest('-alice@example.com')).toEqual({
+      kind: 'lightning-address',
+      value: '-alice@example.com',
+    })
+    expect(recognizePaymentRequest('alice-@example.com')).toEqual({
+      kind: 'lightning-address',
+      value: 'alice-@example.com',
+    })
   })
 
   test('rejects garbage, usernames, amounts, and payment requests buried in a sentence', () => {
@@ -87,6 +124,10 @@ describe('recognizePaymentRequest', () => {
       `see ${ADDRESS}`,
       `use ${LNURL}`,
       'lnbc',
+      'lnbcrt1pabcdef',
+      'lightning:lnbcrt1pabcdef',
+      'LIGHTNING://LNBCRT1PABCDEF',
+      'bitcoin:bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh?lightning=lnbcrt1pabcdef',
       'lnurl',
       'lightning:',
       'nostr+walletconnect://relay?secret=1',

@@ -281,7 +281,7 @@ export const broadcastConfirmRoute = defineCallback(
   ({action}) => `broadcast:confirm:${action}`,
 )
 
-/** Pay the payment request stashed when the offer was shown. The bolt11 itself does not fit. */
+/** Pay the bolt11 in the offer's reply. The invoice does not fit in callback_data. */
 export const payPastedRoute = defineCallback(
   'pay-pasted',
   /^pay-pasted:([0-9a-f]{16})$/,
