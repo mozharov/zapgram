@@ -10,8 +10,19 @@
 const LIGHTNING_SCHEME = /^lightning:\s*/i
 const BOLT11 = /^lnbc[0-9a-z]+$/i
 const LNURL = /^lnurl[0-9a-z]+$/i
-/** LUD-16 internet identifier. A dot and a real TLD keep `a@b` from matching. */
-const LIGHTNING_ADDRESS = /^[a-z0-9._+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i
+/**
+ * LUD-16: `<username>@<domainname>`. The username is `a-z0-9-_.` plus an optional
+ * `+tag`. The domain is a hostname and does not need a dot (`localhost`, a single
+ * label, or `.onion`). LUD-16 does not put a port in the identifier.
+ * A leading `@` is a Telegram username, not an address.
+ */
+const LN_ADDRESS_NAME = '[a-z0-9_](?:[a-z0-9._-]*[a-z0-9_])?'
+const LN_ADDRESS_HOST =
+  '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*'
+const LIGHTNING_ADDRESS = new RegExp(
+  `^${LN_ADDRESS_NAME}(?:\\+${LN_ADDRESS_NAME})*@${LN_ADDRESS_HOST}$`,
+  'i',
+)
 
 export type PaymentRequestKind = 'bolt11' | 'lightning-address' | 'lnurl'
 

@@ -18,7 +18,7 @@ import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {decodeMintedInvoice, mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
-import {privateCallback, privateCommand, privateText} from '../fixtures/updates.js'
+import {privateCallback, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
@@ -845,13 +845,12 @@ test('a pasted invoice on the recipient step offers to pay and does not reset th
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid username/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
 
-  await e2e.send(privateText(invoice.bolt11))
+  const againPaste = privateText(invoice.bolt11)
+  await e2e.send(againPaste)
   const again = e2e.tg.last('sendMessage')
   const payAgain = keyboardOf(again)[0]
   credit(USER_A, 1000)
-  await e2e.send(
-    privateCallback(payAgain ?? '', {messageId: requiredResultMessageId('sendMessage')}),
-  )
+  await e2e.send(payCallback(payAgain ?? '', requiredResultMessageId('sendMessage'), againPaste))
 
   expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
   expect(await conversationNames()).toEqual(['payingInvoice'])
@@ -935,11 +934,12 @@ test('outside a wizard a lightning address is explained and a lightning: invoice
 test('Pay on an undecodable invoice drops the offer and the step buttons', async () => {
   await enterSendToUserAtUsername()
   const promptId = requiredPromptMessageId()
-  await e2e.send(privateText('lnbcnotavalidinvoice'))
+  const pasted = privateText('lnbcnotavalidinvoice')
+  await e2e.send(pasted)
   const payData = keyboardOf(e2e.tg.last('sendMessage'))[0]
   const offerId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback(payData ?? '', {messageId: offerId}))
+  await e2e.send(payCallback(payData ?? '', offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid Lightning invoice/)
   expect(clearedMarkup(promptId)).toEqual({inline_keyboard: []})
@@ -951,17 +951,58 @@ test('Pay on an undecodable invoice drops the offer and the step buttons', async
 test('Pay on an unaffordable invoice drops the offer and the step buttons', async () => {
   await enterSendToUserAtUsername()
   const promptId = requiredPromptMessageId()
-  await e2e.send(privateText(foreignInvoice().bolt11))
+  const pasted = privateText(foreignInvoice().bolt11)
+  await e2e.send(pasted)
   const payData = keyboardOf(e2e.tg.last('sendMessage'))[0]
   const offerId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback(payData ?? '', {messageId: offerId}))
+  await e2e.send(payCallback(payData ?? '', offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Insufficient funds/)
   expect(clearedMarkup(promptId)).toEqual({inline_keyboard: []})
   expect(deletedMessageIds()).toContain(offerId)
   await expectNoConversations(e2e.db)
   expect(errorMessages()).toEqual(['Bot error'])
+})
+
+test('Pay opens the invoice after a restart, from the message it replies to', async () => {
+  await enterSendToUserAtUsername()
+  const invoice = foreignInvoice()
+  const pasted = privateText(`  Lightning:${invoice.bolt11.toUpperCase()}  `)
+  await e2e.send(pasted)
+
+  const offer = e2e.tg.last('sendMessage')
+  expect(offer?.reply_parameters).toEqual({
+    message_id: pasted.message?.message_id,
+    allow_sending_without_reply: true,
+  })
+  const payData = keyboardOf(offer)[0]
+  const offerId = requiredResultMessageId('sendMessage')
+  credit(USER_A, 1000)
+  // A restart drops process memory. The button does not consult any: Telegram still
+  // delivers the paste as reply_to_message, and the token is checked against that text.
+  await e2e.send(payCallback(payData ?? '', offerId, pasted))
+
+  expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expectNoErrors(e2e.logs)
+
+  await e2e.send(payCallback(payData ?? '', offerId, pasted))
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+  expect(joinedInvoiceText().match(/Paying from your ZapGram wallet/g)).toHaveLength(1)
+})
+
+test('Pay without the invoice message stays on the step and explains', async () => {
+  await enterSendToUserAtUsername()
+  await e2e.send(privateText('lnbc1pabcdef'))
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0]
+  const offerId = requiredResultMessageId('sendMessage')
+
+  await e2e.send(privateCallback(payData ?? '', {messageId: offerId}))
+
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/invoice message is gone/)
+  expect(await conversationNames()).toEqual(['sendingToUser'])
+  expectNoErrors(e2e.logs)
 })
 
 async function conversationNames(): Promise<string[]> {
@@ -975,6 +1016,23 @@ async function conversationNames(): Promise<string[]> {
 async function conversationVersion(): Promise<unknown> {
   const rows = await e2e.db.select().from(conversationsTable)
   return rows[0]?.version
+}
+
+function payCallback(data: string, offerId: number, pasted: TestUpdate): TestUpdate {
+  const update = privateCallback(data, {messageId: offerId})
+  const message = update.callback_query?.message
+  const source = pasted.message
+  if (!message || !source?.text) throw new Error('pay callback is missing its invoice reply')
+  Object.assign(message, {
+    reply_to_message: {
+      message_id: source.message_id,
+      date: source.date,
+      text: source.text,
+      from: source.from,
+      chat: source.chat,
+    },
+  })
+  return update
 }
 
 function requiredResultMessageId(method: string): number {

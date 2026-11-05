@@ -103,6 +103,7 @@ callback-answer =
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
     .unknown = ⚠️ Unknown button
     .pasted-payment-back = Back to this step
+    .pasted-payment-missing = The invoice message is gone. Send it again.
 
 error = 
     .unknown = <b>⚠️ Unknown error occurred.</b>

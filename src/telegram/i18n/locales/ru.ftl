@@ -103,6 +103,7 @@ callback-answer =
     .nwc-tip-disabled = 🤖 Теперь донаты отправляются из кошелька {bot-name}
     .unknown = ⚠️ Неизвестная кнопка
     .pasted-payment-back = Вернуться к шагу
+    .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
 
 error = 
     .unknown = <b>⚠️ Произошла неизвестная ошибка.</b>

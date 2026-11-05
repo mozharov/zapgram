@@ -2,7 +2,11 @@ import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import {payPastedBackRoute, payPastedRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
-import {replyWithUnsupportedPayment, takePastedPayment} from '@telegram/helpers/pasted-payment.js'
+import {
+  bolt11MatchingToken,
+  repliedText,
+  replyWithUnsupportedPayment,
+} from '@telegram/helpers/pasted-payment.js'
 import type {NextFunction} from 'grammy'
 import {payingInvoice} from '../conversations/paying-invoice.js'
 
@@ -25,25 +29,25 @@ export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Pr
 
 export async function payPastedCallback(ctx: BotContext): Promise<void> {
   const userId = ctx.from?.id
-  const data = ctx.callbackQuery?.data ?? ''
-  const {token} = payPastedRoute.parse(data)
-  const request = userId === undefined ? undefined : takePastedPayment(userId, token)
-  // Only a stashed bolt11 is payable. Address and LNURL never get this button.
-  if (request?.kind !== 'bolt11') {
+  const {token} = payPastedRoute.parse(ctx.callbackQuery?.data ?? '')
+  // The click already opened this payment. A second delivery must not start another.
+  if (userId !== undefined && (await ctx.conversation.active(payingInvoice.name)) > 0) {
+    await ctx.answerCallbackQuery()
+    return
+  }
+  const bolt11 = bolt11MatchingToken(userId, token, repliedText(ctx))
+  if (!bolt11) {
     await deleteMessageSafely(ctx)
-    await ctx.answerCallbackQuery({text: ctx.t('callback-answer.unknown')})
+    await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-missing')})
     return
   }
   await ctx.answerCallbackQuery()
-  await ctx.conversation.enter(payingInvoice.name, request.value)
+  await ctx.conversation.enter(payingInvoice.name, bolt11)
 }
 
 /** Back outside a wizard just dismisses the offer. Inside a wizard the step handles it. */
 export async function payPastedBackCallback(ctx: BotContext): Promise<void> {
-  const userId = ctx.from?.id
-  const data = ctx.callbackQuery?.data ?? ''
-  const {token} = payPastedBackRoute.parse(data)
-  if (userId !== undefined) takePastedPayment(userId, token)
+  payPastedBackRoute.parse(ctx.callbackQuery?.data ?? '')
   await deleteMessageSafely(ctx)
   await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-back')})
 }

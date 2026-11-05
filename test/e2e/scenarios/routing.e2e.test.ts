@@ -512,7 +512,7 @@ const parameterizedCases: {
     route: 'pay-pasted',
     data: () => 'pay-pasted:0123456789abcdef',
     methods: ['deleteMessage', 'answerCallbackQuery'],
-    text: /Unknown button/,
+    text: /invoice message is gone/,
   },
   {
     route: 'pay-pasted-back',

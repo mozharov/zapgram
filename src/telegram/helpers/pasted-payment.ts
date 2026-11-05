@@ -11,41 +11,30 @@ type StepPrompt = {chatId: number; messageId: number}
 
 const TOKEN_HEX = 16
 
-type Pending = {userId: number; request: PaymentRequest}
-
-const byToken = new Map<string, Pending>()
-const tokenByUser = new Map<number, string>()
-
 /**
- * Stable for a user and a request, so a conversation replay rebuilds the same
- * callback_data the offer was sent with. A random token would miss the replay log.
+ * Bound to the user and the canonical request, and stable across a conversation
+ * replay: the same paste always rebuilds the same callback_data. Nothing about
+ * the invoice is kept in process memory — after a restart the button reads it
+ * back from the message it replies to.
  */
-function tokenFor(userId: number, value: string): string {
+export function pastedPaymentToken(userId: number, value: string): string {
   return createHash('sha256').update(`${userId}\n${value}`).digest('hex').slice(0, TOKEN_HEX)
 }
 
-export function rememberPastedPayment(userId: number, request: PaymentRequest): string {
-  const token = tokenFor(userId, request.value)
-  const previous = tokenByUser.get(userId)
-  if (previous && previous !== token) byToken.delete(previous)
-  byToken.set(token, {userId, request})
-  tokenByUser.set(userId, token)
-  return token
-}
-
-export function takePastedPayment(userId: number, token: string): PaymentRequest | undefined {
-  const pending = byToken.get(token)
-  if (!pending || pending.userId !== userId) return undefined
-  byToken.delete(token)
-  if (tokenByUser.get(userId) === token) tokenByUser.delete(userId)
-  return pending.request
-}
-
-function forgetPastedPayment(userId: number, token: string): void {
-  const pending = byToken.get(token)
-  if (!pending || pending.userId !== userId) return
-  byToken.delete(token)
-  if (tokenByUser.get(userId) === token) tokenByUser.delete(userId)
+/**
+ * The bolt11 the Pay button was built for, or undefined when the replied message
+ * is missing, is not that invoice, or belongs to another user.
+ */
+export function bolt11MatchingToken(
+  userId: number | undefined,
+  token: string,
+  text: string | undefined,
+): string | undefined {
+  if (userId === undefined || text === undefined) return undefined
+  const request = recognizePaymentRequest(text)
+  if (request?.kind !== 'bolt11') return undefined
+  if (pastedPaymentToken(userId, request.value) !== token) return undefined
+  return request.value
 }
 
 function bolt11Keyboard(ctx: ConversationContext, token: string): InlineKeyboard {
@@ -64,8 +53,7 @@ function backKeyboard(ctx: ConversationContext, token: string): InlineKeyboard {
 
 /**
  * Outside a wizard there is no step to return to. Address and LNURL have no pay
- * button: paying them is a later task, and Pay used to open an invoice dialog
- * that then rejected the same paste.
+ * button: paying them is a later task.
  */
 export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void> {
   await ctx.reply(ctx.t('pasted-payment-unsupported'), {...disabledLinkPreview})
@@ -74,11 +62,15 @@ export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void
 /**
  * `conversation.wait()`, then a notice when the text is a BOLT11, Lightning address, or LNURL.
  *
- * A bolt11 gets Pay and Back. Pay never returns: the conversation halts and the button
- * falls through to the existing pay-invoice flow. An address or LNURL gets the
- * unsupported note and Back only — paying those is a later task.
+ * A bolt11 gets Pay and Back, sent as a reply to the paste so the invoice can be read
+ * back from that reply after a restart. Pay never returns: the conversation halts and
+ * the button falls through to the existing pay-invoice flow. An address or LNURL gets
+ * the unsupported note and Back only.
  * Back returns undefined so the caller waits again on the same step. Any other update
  * is returned as-is.
+ *
+ * A repeated Pay click on an offer this step is not showing is answered and ignored,
+ * so it cannot fall through and start a second payment.
  *
  * A step that already expects a payment request (the invoice field) must keep
  * calling `conversation.wait()` directly. Normal input makes no extra API call,
@@ -90,43 +82,57 @@ export async function waitForStepInput(
 ): Promise<ConversationContext | undefined> {
   let current = await conversation.wait()
   for (;;) {
+    if (isOfferButton(current)) {
+      await current.answerCallbackQuery()
+      current = await conversation.wait()
+      continue
+    }
+
     const userId = current.from?.id
     const request =
       userId === undefined ? null : recognizePaymentRequest(current.message?.text ?? '')
     if (!request || userId === undefined) return current
 
-    const token = tokenFor(userId, request.value)
-    if (request.kind === 'bolt11') rememberPastedPayment(userId, request)
+    const token = pastedPaymentToken(userId, request.value)
+    const sourceId = current.message?.message_id
     const offer = await current.reply(noticeHtml(current, request), {
+      ...(sourceId === undefined
+        ? {}
+        : {
+            reply_parameters: {message_id: sourceId, allow_sending_without_reply: true},
+          }),
       reply_markup:
         request.kind === 'bolt11' ? bolt11Keyboard(current, token) : backKeyboard(current, token),
       ...disabledLinkPreview,
     })
     const choice = await conversation.wait()
     const data = choice.callbackQuery?.data
-    const message = choice.callbackQuery?.message
-    const fromOffer =
-      message !== undefined &&
-      'message_id' in message &&
-      message.message_id === offer.message_id &&
-      message.chat.id === offer.chat.id
+    const fromOffer = callbackFromMessage(choice, offer.chat.id, offer.message_id)
 
-    if (fromOffer && request.kind === 'bolt11' && data === payPastedRoute.build({token})) {
+    if (
+      fromOffer &&
+      request.kind === 'bolt11' &&
+      data === payPastedRoute.build({token}) &&
+      bolt11MatchingToken(userId, token, repliedText(choice)) === request.value
+    ) {
       // Drop the step's buttons before the wizard ends. Pay can still fail inside the
       // existing flow (bad bolt11, not enough balance) before that flow has a screen of
       // its own. The step must not stay tappable with no conversation behind it.
       await conversation.external(() => clearPromptKeyboard(prompt))
       return conversation.halt({next: true})
     }
+    if (fromOffer && data === payPastedRoute.build({token})) {
+      await choice.answerCallbackQuery({text: choice.t('callback-answer.pasted-payment-missing')})
+      await choice.api.deleteMessage(offer.chat.id, offer.message_id).catch(() => undefined)
+      return undefined
+    }
     if (fromOffer && data === payPastedBackRoute.build({token})) {
       await choice.answerCallbackQuery()
       await choice.api.deleteMessage(offer.chat.id, offer.message_id).catch(() => undefined)
-      forgetPastedPayment(userId, token)
       return undefined
     }
 
     await current.api.deleteMessage(offer.chat.id, offer.message_id).catch(() => undefined)
-    forgetPastedPayment(userId, token)
     current = choice
   }
 }
@@ -134,6 +140,29 @@ export async function waitForStepInput(
 function noticeHtml(ctx: Pick<ConversationContext, 't'>, request: PaymentRequest): string {
   if (request.kind === 'bolt11') return ctx.t('pasted-payment')
   return ctx.t('pasted-payment-unsupported')
+}
+
+function isOfferButton(ctx: ConversationContext): boolean {
+  const data = ctx.callbackQuery?.data
+  if (!data) return false
+  return payPastedRoute.pattern.test(data) || payPastedBackRoute.pattern.test(data)
+}
+
+function callbackFromMessage(ctx: ConversationContext, chatId: number, messageId: number): boolean {
+  const message = ctx.callbackQuery?.message
+  return (
+    message !== undefined &&
+    'message_id' in message &&
+    message.message_id === messageId &&
+    message.chat.id === chatId
+  )
+}
+
+export function repliedText(ctx: {
+  callbackQuery?: {message?: {reply_to_message?: {text?: string}}}
+}): string | undefined {
+  const replied = ctx.callbackQuery?.message?.reply_to_message
+  return typeof replied?.text === 'string' ? replied.text : undefined
 }
 
 /** Clears the step keyboard only. The message stays until a later screen replaces it. */
