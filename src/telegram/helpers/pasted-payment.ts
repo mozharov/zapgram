@@ -12,6 +12,37 @@ type StepPrompt = {chatId: number; messageId: number}
 const TOKEN_HEX = 16
 
 /**
+ * Same-process dedupe of Pay clicks. This does not store the invoice: the bolt11
+ * still comes from the replied message, so a restart can pay. The sets only stop
+ * two overlapping clicks — the active-conversation check is after an await, so
+ * without this both would pass it and open two payments.
+ */
+const payStarting = new Set<string>()
+const payStarted = new Set<string>()
+
+function payKey(userId: number, token: string): string {
+  return `${userId}:${token}`
+}
+
+/** True for the single click that may open payment. Synchronous: call before any await. */
+export function reservePastedPay(userId: number, token: string): boolean {
+  const key = payKey(userId, token)
+  if (payStarted.has(key) || payStarting.has(key)) return false
+  payStarting.add(key)
+  return true
+}
+
+export function commitPastedPay(userId: number, token: string): void {
+  const key = payKey(userId, token)
+  payStarting.delete(key)
+  payStarted.add(key)
+}
+
+export function releasePastedPay(userId: number, token: string): void {
+  payStarting.delete(payKey(userId, token))
+}
+
+/**
  * Bound to the user and the canonical request, and stable across a conversation
  * replay: the same paste always rebuilds the same callback_data. Nothing about
  * the invoice is kept in process memory — after a restart the button reads it

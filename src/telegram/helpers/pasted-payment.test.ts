@@ -1,9 +1,29 @@
 import {describe, expect, test} from 'bun:test'
-import {bolt11MatchingToken, pastedPaymentToken} from './pasted-payment.js'
+import {
+  bolt11MatchingToken,
+  commitPastedPay,
+  pastedPaymentToken,
+  releasePastedPay,
+  reservePastedPay,
+} from './pasted-payment.js'
 
 const USER = 100001
 const INVOICE = 'lnbc1pabcdef'
 const PASTE = `  Lightning:${INVOICE.toUpperCase()}  `
+
+describe('reservePastedPay', () => {
+  test('only the first click for a user and token may open payment', () => {
+    const token = pastedPaymentToken(42, 'lnbc1prace')
+    expect(reservePastedPay(42, token)).toBe(true)
+    expect(reservePastedPay(42, token)).toBe(false)
+    releasePastedPay(42, token)
+    expect(reservePastedPay(42, token)).toBe(true)
+    commitPastedPay(42, token)
+    releasePastedPay(42, token)
+    expect(reservePastedPay(42, token)).toBe(false)
+    expect(reservePastedPay(43, token)).toBe(true)
+  })
+})
 
 describe('bolt11MatchingToken', () => {
   test('accepts the same user and the canonical invoice, including lightning: and case', () => {
