@@ -4,7 +4,6 @@ import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {
   bolt11MatchingToken,
-  commitPastedPay,
   releasePastedPay,
   repliedText,
   replyWithUnsupportedPayment,
@@ -39,24 +38,21 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
     return
   }
   try {
+    // Still open from an earlier click. Do not start a second one.
     if ((await ctx.conversation.active(payingInvoice.name)) > 0) {
-      commitPastedPay(userId, token)
       await ctx.answerCallbackQuery()
       return
     }
     const bolt11 = bolt11MatchingToken(userId, token, repliedText(ctx))
     if (!bolt11) {
-      releasePastedPay(userId, token)
       await deleteMessageSafely(ctx)
       await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-missing')})
       return
     }
     await ctx.answerCallbackQuery()
     await ctx.conversation.enter(payingInvoice.name, bolt11)
-    commitPastedPay(userId, token)
-  } catch (error) {
+  } finally {
     releasePastedPay(userId, token)
-    throw error
   }
 }
 

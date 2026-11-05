@@ -1,7 +1,6 @@
 import {describe, expect, test} from 'bun:test'
 import {
   bolt11MatchingToken,
-  commitPastedPay,
   pastedPaymentToken,
   releasePastedPay,
   reservePastedPay,
@@ -17,11 +16,9 @@ describe('reservePastedPay', () => {
     expect(reservePastedPay(42, token)).toBe(true)
     expect(reservePastedPay(42, token)).toBe(false)
     releasePastedPay(42, token)
+    // The same invoice can be offered again after the first click's handler returns.
     expect(reservePastedPay(42, token)).toBe(true)
-    commitPastedPay(42, token)
     releasePastedPay(42, token)
-    expect(reservePastedPay(42, token)).toBe(false)
-    expect(reservePastedPay(43, token)).toBe(true)
   })
 })
 

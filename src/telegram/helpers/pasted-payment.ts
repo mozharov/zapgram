@@ -12,30 +12,23 @@ type StepPrompt = {chatId: number; messageId: number}
 const TOKEN_HEX = 16
 
 /**
- * Same-process dedupe of Pay clicks. This does not store the invoice: the bolt11
- * still comes from the replied message, so a restart can pay. The sets only stop
- * two overlapping clicks — the active-conversation check is after an await, so
- * without this both would pass it and open two payments.
+ * Same-process dedupe of Pay clicks that overlap inside one handler. This does not
+ * store the invoice and does not stick after the handler returns: a later paste of
+ * the same bolt11 can pay again. While one click is inside the handler, a second
+ * tap loses the race instead of opening another payment.
  */
 const payStarting = new Set<string>()
-const payStarted = new Set<string>()
 
 function payKey(userId: number, token: string): string {
   return `${userId}:${token}`
 }
 
-/** True for the single click that may open payment. Synchronous: call before any await. */
+/** True for the click that may open payment. Synchronous: call before any await. */
 export function reservePastedPay(userId: number, token: string): boolean {
   const key = payKey(userId, token)
-  if (payStarted.has(key) || payStarting.has(key)) return false
+  if (payStarting.has(key)) return false
   payStarting.add(key)
   return true
-}
-
-export function commitPastedPay(userId: number, token: string): void {
-  const key = payKey(userId, token)
-  payStarting.delete(key)
-  payStarted.add(key)
 }
 
 export function releasePastedPay(userId: number, token: string): void {
