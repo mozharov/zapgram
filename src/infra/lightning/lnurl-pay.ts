@@ -189,7 +189,12 @@ async function getJson(url: string): Promise<{json: unknown; hosts: string[]}> {
 }
 
 async function fetchText(start: string): Promise<{status: number; body: string; hosts: string[]}> {
-  const signal = AbortSignal.timeout(LNURL_PAY_TIMEOUT_MS)
+  // One budget for every hop of this fetch. A fresh AbortSignal.timeout per hop
+  // would let 8s + 8s succeed, and removing the last abort listener has cleared
+  // that timer on CI. This timer is ours and stays until the chain returns.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), LNURL_PAY_TIMEOUT_MS)
+  const signal = controller.signal
   const hosts: string[] = []
   let current = start
   try {
@@ -208,6 +213,8 @@ async function fetchText(start: string): Promise<{status: number; body: string; 
     if (error instanceof LnurlPayError) throw error
     if (isTimeout(error)) throw new LnurlPayError('timeout')
     throw new LnurlPayError('server')
+  } finally {
+    clearTimeout(timer)
   }
   throw new LnurlPayError('bad-response')
 }
