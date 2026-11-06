@@ -1,5 +1,9 @@
 import type {Context} from 'grammy'
 import {resolveUpdateEventName} from './analytics.js'
+import {registeredCommandName} from './bot-commands.js'
+import {callbackDataForAnalytics} from './callback-data.js'
+import type {TextKind} from './text-kind.js'
+import {dmUnrecognizedTextProperties} from './unrecognized-text.js'
 
 /**
  * Child-logger bindings for one Telegram update. Every line written while the update is being
@@ -20,11 +24,17 @@ export type UpdateLogContext = {
   callbackData?: string
   command?: string
   textLength?: number
+  /** Class of the message text. The text itself is never a binding. */
+  textKind?: TextKind
+  looksLikeOnchain?: boolean
+  /** True when `dm_unrecognized_text` would send only the first 4000 code points. */
+  textTruncated?: boolean
 }
 
 /**
- * Message text is deliberately absent: users paste NWC connection secrets, invoices and other
- * sensitive strings into the bot. Only the shape (length) and the command name are recorded.
+ * The message body is deliberately absent. `dm_unrecognized_text` is the PostHog event that
+ * stores it. This binding keeps only length, kind, the on-chain flag, and whether that event
+ * truncates — never the text, a fragment, a normalized form, or a hash.
  */
 export function describeUpdate(ctx: Context): UpdateLogContext {
   const description: UpdateLogContext = {action: resolveUpdateEventName(ctx)}
@@ -46,12 +56,16 @@ export function describeUpdate(ctx: Context): UpdateLogContext {
   }
 
   const callbackData = ctx.callbackQuery?.data
-  if (callbackData !== undefined) description.callbackData = callbackData
+  if (callbackData !== undefined) description.callbackData = callbackDataForAnalytics(callbackData)
 
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text !== undefined) {
-    description.textLength = text.length
-    const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]?.split('@')[0]
+    const shape = dmUnrecognizedTextProperties(text)
+    description.textLength = shape.text_length
+    description.looksLikeOnchain = shape.looks_like_onchain
+    description.textKind = shape.text_kind
+    description.textTruncated = shape.text_truncated
+    const command = registeredCommandName(text)
     if (command) description.command = command
   }
 
