@@ -276,6 +276,13 @@ export async function lnurlPinnedGet(
     else callback(null, address, family)
   }
   return await new Promise((resolve, reject) => {
+    let settled = false
+    const settle = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      fn()
+    }
     const req = lib.request(
       {
         protocol: url.protocol,
@@ -294,29 +301,41 @@ export async function lnurlPinnedGet(
         const declared = Number(response.headers['content-length'])
         if (Number.isFinite(declared) && declared > MAX_BYTES) {
           req.destroy()
-          reject(new LnurlPayError('bad-response'))
+          settle(() => reject(new LnurlPayError('bad-response')))
           return
         }
         response.on('data', (chunk: Buffer) => {
           total += chunk.length
           if (total > MAX_BYTES) {
             req.destroy()
-            reject(new LnurlPayError('bad-response'))
+            settle(() => reject(new LnurlPayError('bad-response')))
             return
           }
           chunks.push(chunk)
         })
         response.on('end', () => {
           const location = response.headers.location
-          resolve({
-            status: response.statusCode ?? 0,
-            body: Buffer.concat(chunks).toString('utf8'),
-            location: Array.isArray(location) ? location[0] : location,
-          })
+          settle(() =>
+            resolve({
+              status: response.statusCode ?? 0,
+              body: Buffer.concat(chunks).toString('utf8'),
+              location: Array.isArray(location) ? location[0] : location,
+            }),
+          )
         })
+        response.on('error', error => settle(() => reject(error)))
       },
     )
-    req.on('error', reject)
+    // Passing `signal` is not enough on every runtime: a custom lookup can leave
+    // the socket open after the deadline, and the test runner then never moves on.
+    const onAbort = () => {
+      const error = new Error('The operation was aborted')
+      error.name = 'AbortError'
+      req.destroy(error)
+    }
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, {once: true})
+    req.on('error', error => settle(() => reject(error)))
     req.end()
   })
 }
