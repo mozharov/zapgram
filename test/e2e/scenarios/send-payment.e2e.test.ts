@@ -6,6 +6,9 @@ import {staticCallback} from '@telegram/callback-data.js'
 import {encode, toWords} from 'bech32'
 import {expectNoConversations, expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {USER_A, USER_B} from '../fixtures/ids.js'
+
+const USER_C = 100004
+
 import {seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
@@ -81,7 +84,7 @@ test('text on the confirm screen waits for the button and does not pay', async (
   expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(/Nothing is sent until you confirm/)
   expect(await conversationNames()).toEqual(['sendingPayment'])
 
-  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+  await e2e.send(confirm(confirmId))
 
   expect(outgoing()).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 1})
@@ -128,15 +131,74 @@ test('a second confirm and a confirm after restart pay once', async () => {
   expect(outgoing()).toHaveLength(0)
 
   await e2e.restart()
-  const first = privateCallback('confirm-send', {messageId: confirmId})
-  const second = privateCallback('confirm-send', {messageId: confirmId})
+  const data = confirmData()
+  const first = privateCallback(data, {messageId: confirmId})
+  const second = privateCallback(data, {messageId: confirmId})
   await Promise.all([e2e.send(first), e2e.send(second)])
 
   expect(outgoing()).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 1})
 
-  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
   expect(outgoing()).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('a username reused before confirm still pays the snapshotted recipient', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({mode: 'file'})
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  const confirmId = requiredMessageId()
+  const data = confirmData()
+
+  await e2e.container.users.update(USER_B, {username: 'user_b_was'})
+  await seedUser(e2e, {id: USER_C, username: 'user_b', firstName: 'User C'})
+  e2e.tg.reply('getChat', {id: USER_C, type: 'private', username: 'user_b', first_name: 'User C'})
+
+  await e2e.restart()
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: '100004 wallet', sats: AMOUNT, times: 0})
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('an old confirm nonce does not pay a reopened send, including another chat', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  const oldId = requiredMessageId()
+  const oldData = confirmData()
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: oldId}))
+  expect(outgoing()).toHaveLength(0)
+
+  e2e.tg.reply('getChat', {id: USER_C, type: 'private', username: 'user_c', first_name: 'User C'})
+  await seedUser(e2e, {id: USER_C, username: 'user_c', firstName: 'User C'})
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_c'))
+  await e2e.send(privateText(String(AMOUNT)))
+  const newId = requiredMessageId()
+  const newData = confirmData()
+  expect(newData).not.toBe(oldData)
+
+  await e2e.send(privateCallback(oldData, {messageId: newId}))
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/no longer active/)
+  await e2e.send(privateCallback(oldData, {messageId: oldId}))
+  await e2e.send(privateCallback(newData, {messageId: newId, chat: {id: USER_C}}))
+  expect(outgoing()).toHaveLength(0)
+
+  await e2e.send(privateCallback(newData, {messageId: newId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: '100004 wallet', sats: AMOUNT, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 0})
+  await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
 
@@ -334,8 +396,20 @@ function outgoing() {
   return e2e.ln.state.payments.filter(payment => payment.out)
 }
 
-function confirm(): TestUpdate {
-  return privateCallback('confirm-send', {messageId: requiredMessageId()})
+function confirmData(payload = e2e.tg.last('editMessageText')): string {
+  const markup = payload?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith('confirm-send:'))
+  if (!data) throw new Error('Expected a confirm-send nonce on the screen')
+  return data
+}
+
+function confirm(messageId = requiredMessageId()): TestUpdate {
+  return privateCallback(confirmData(), {messageId})
 }
 
 function requiredMessageId(): number {

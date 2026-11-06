@@ -1,5 +1,4 @@
-import {classifySendTarget} from '@core/lightning/send-target.js'
-import {getUserByUsername} from '@modules/users/repository.js'
+import {snapshotSendTarget} from '@modules/tipping/telegram/snapshot-send-target.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
@@ -58,14 +57,7 @@ export async function waitForUser(
       return interruptConversation(conversation, prompt, cancelled)
     }
 
-    const result = await classifySendTarget(next.message?.text ?? '', {
-      selfUsername: next.user.username,
-      findUser: username => getUserByUsername(username),
-      telegramUsername: async userId => {
-        const chat = await next.api.getChat(userId)
-        return chat.username
-      },
-    })
+    const result = await snapshotSendTarget(conversation, next, next.message?.text ?? '')
     if (result.kind !== 'user') {
       const key =
         result.kind === 'self'
@@ -80,6 +72,6 @@ export async function waitForUser(
     await clearPromptControls(conversation, prompt)
     // The report echoes the selected username, so the typed @handle itself is noise.
     if (opts?.deleteInput) await deleteMessageSafely(next)
-    return result.user
+    return {id: result.userId, username: result.username}
   }
 }

@@ -109,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Back to this step
     .pasted-payment-missing = The invoice message is gone. Send it again.
     .pasted-payment-stale = This offer is no longer active.
+    .confirm-stale = This confirmation is no longer active.
     .pasted-payment-retry = Telegram did not answer. Try again.
     .pasted-payment-closed = Closed.
 

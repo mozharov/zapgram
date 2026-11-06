@@ -109,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Вернуться к шагу
     .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
     .pasted-payment-stale = Это предложение больше не действует.
+    .confirm-stale = Это подтверждение уже не действует.
     .pasted-payment-retry = Telegram не ответил. Попробуйте ещё раз.
     .pasted-payment-closed = Закрыто.
 

@@ -181,7 +181,7 @@ test('replaying a finished internal DM transfer does not emit dm_transfer_sent a
     [
       privateText('@user_b'),
       privateText(String(TIP_SATS)),
-      privateCallback('confirm-send', {messageId: 7}),
+      () => privateCallback(confirmSendData(), {messageId: 7}),
     ],
     () => {
       expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
@@ -760,10 +760,22 @@ function groupConfirmation(): Record<string, unknown> | undefined {
 
 const sentConfirmation = /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/
 
+function confirmSendData(payload = e2e.tg.last('editMessageText')): string {
+  const markup = payload?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith('confirm-send:'))
+  if (!data) throw new Error('Expected a confirm-send nonce on the screen')
+  return data
+}
+
 function confirmSendUpdate(): TestUpdate {
   const messageId = e2e.tg.lastMessageId('editMessageText')
   if (messageId === undefined) throw new Error('Expected the send confirmation')
-  return privateCallback('confirm-send', {messageId})
+  return privateCallback(confirmSendData(), {messageId})
 }
 
 function replyWithRecipient(): void {

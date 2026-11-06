@@ -30,8 +30,12 @@ export async function waitForTransferConfirm(
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ): Promise<ConversationHost> {
+  // Stable for replays of this attempt, new after cancel and a new send.
+  // The amount and the recipient are not in the payload.
+  const nonce = await conversation.now()
+  const confirmData = `${CONFIRM_SEND}:${nonce}`
   const keyboard = new InlineKeyboard()
-    .text(ctx.t('button.confirm-send'), CONFIRM_SEND)
+    .text(ctx.t('button.confirm-send'), confirmData)
     .row()
     .text(ctx.t('button.cancel'), staticCallback.cancel)
   const message = await showHostOrReply(ctx, opts.html, keyboard, opts.host)
@@ -46,10 +50,21 @@ export async function waitForTransferConfirm(
   for (;;) {
     const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
-    if (next.callbackQuery?.data === CONFIRM_SEND && isCallbackFromPrompt(next, prompt)) {
-      await next.answerCallbackQuery()
-      await clearPromptControls(conversation, prompt)
-      return confirmHost
+    const data = next.callbackQuery?.data
+    if (
+      typeof data === 'string' &&
+      (data === CONFIRM_SEND || data.startsWith(`${CONFIRM_SEND}:`))
+    ) {
+      const sameScreen =
+        isCallbackFromPrompt(next, prompt) && next.callbackQuery?.message?.chat.id === prompt.chatId
+      if (sameScreen && data === confirmData) {
+        await next.answerCallbackQuery()
+        await clearPromptControls(conversation, prompt)
+        return confirmHost
+      }
+      // Old attempt, or a confirm button whose message belongs to another chat.
+      await next.answerCallbackQuery({text: next.t('callback-answer.confirm-stale')})
+      continue
     }
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)

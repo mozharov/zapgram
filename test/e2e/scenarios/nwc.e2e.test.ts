@@ -414,7 +414,7 @@ test('a private send through NWC emits one dm_transfer_sent', async () => {
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   const confirmId = e2e.tg.lastMessageId('editMessageText')
   if (confirmId === undefined) throw new Error('Expected the send confirmation')
-  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+  await e2e.send(nwcConfirm(confirmId))
 
   expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
     {
@@ -453,7 +453,7 @@ test('choosing a wallet does not pay until the send is confirmed', async () => {
   const confirmId = e2e.tg.lastMessageId('editMessageText')
   if (confirmId === undefined) throw new Error('Expected the send confirmation')
 
-  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+  await e2e.send(nwcConfirm(confirmId))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
   expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
@@ -688,6 +688,18 @@ async function connectNwc(opts: {nwcTips?: boolean} = {}): Promise<void> {
     nwcUrl: NWC_URL,
     nwcTips: opts.nwcTips ?? false,
   })
+}
+
+function nwcConfirm(messageId: number) {
+  const markup = e2e.tg.last('editMessageText')?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith('confirm-send:'))
+  if (!data) throw new Error('Expected a confirm-send nonce on the screen')
+  return privateCallback(data, {messageId})
 }
 
 function creditInternal(userId: number, sats: number): void {

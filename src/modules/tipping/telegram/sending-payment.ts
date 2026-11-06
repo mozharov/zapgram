@@ -1,8 +1,7 @@
-import {classifySendTarget} from '@core/lightning/send-target.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
 import {payingLnurl} from '@modules/invoices/telegram/conversations/paying-lnurl.js'
 import {payResolvedUser} from '@modules/tipping/telegram/sending-to-user.js'
-import {getUserByUsername} from '@modules/users/repository.js'
+import {snapshotSendTarget} from '@modules/tipping/telegram/snapshot-send-target.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
@@ -53,14 +52,8 @@ export async function sendingPayment(conversation: BotConversation, ctx: Convers
     }
     if (updateKind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
 
-    const result = await classifySendTarget(next.message?.text ?? '', {
-      selfUsername: next.user.username,
-      findUser: username => getUserByUsername(username),
-      telegramUsername: async userId => {
-        const chat = await next.api.getChat(userId)
-        return chat.username
-      },
-    })
+    // One snapshot for this text. Replay returns it instead of resolving @username again.
+    const result = await snapshotSendTarget(conversation, next, next.message?.text ?? '')
     if (result.kind === 'invalid' || result.kind === 'self' || result.kind === 'unknown') {
       const key =
         result.kind === 'self'
@@ -99,11 +92,16 @@ export async function sendingPayment(conversation: BotConversation, ctx: Convers
       return
     }
     if (result.kind !== 'user') return
-    await payResolvedUser(conversation, next, result.user, {
-      host,
-      title: ctx.t('sending-to-user'),
-      onCancel: restoreWallet,
-    })
+    await payResolvedUser(
+      conversation,
+      next,
+      {id: result.userId, username: result.username},
+      {
+        host,
+        title: ctx.t('sending-to-user'),
+        onCancel: restoreWallet,
+      },
+    )
     // The receipt is this screen now. Staying in the loop would take the next
     // message — including Open wallet — as another send and paint over the receipt.
     return
