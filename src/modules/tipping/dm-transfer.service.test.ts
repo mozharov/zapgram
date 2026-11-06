@@ -176,6 +176,16 @@ test('reconciliation collects the donation for a pay that landed before the time
   expect(world.payCalls).toBe(2)
 })
 
+test('a notice that did not send stays in flight so recovery can continue', async () => {
+  const world = await worldFor({donationPercent: 0})
+  await world.transfers.reserve({...send, id: send.attemptId, createdAt: new Date()})
+  await world.transfers.markSettled(send.attemptId)
+  world.notify = async () => false
+  expect(await world.service.reconcile(send.attemptId)).toBe('in_flight')
+  world.notify = async () => true
+  expect(await world.service.reconcile(send.attemptId)).toBe('settled')
+})
+
 test('a settled notice is listed before a stuck unknown pay', async () => {
   const world = await worldFor({donationPercent: 0})
   const created = new Date('2026-01-01T00:00:00Z')

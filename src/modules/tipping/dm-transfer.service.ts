@@ -345,15 +345,11 @@ export function createDmTransferService(deps: DmTransferDeps) {
     if (row.phase === 'abandoned') return 'abandoned'
     if (row.providerAccepted || row.phase === 'provider_accepted') {
       await settleMark(row.id)
-      if (row.status === 'settled' || (await deps.transfers.get(id)).status === 'settled') {
-        await finishSettled(row)
-      }
-      return 'settled'
+      const latest = await deps.transfers.get(id)
+      if (latest.status !== 'settled') return 'in_flight'
+      return finishSettled(latest)
     }
-    if (row.status === 'settled') {
-      await finishSettled(row)
-      return 'settled'
-    }
+    if (row.status === 'settled') return finishSettled(row)
     if (!row.invoiceHash) {
       if (ageMs(row) > graceMs) {
         await deps.transfers.markAbandoned(row.id)
@@ -373,8 +369,8 @@ export function createDmTransferService(deps: DmTransferDeps) {
       await deps.transfers.markProviderAccepted(row.id, row.providerPaymentHash ?? undefined)
       await settleMark(row.id)
       const latest = await deps.transfers.get(id)
-      if (latest.status === 'settled') await finishSettled(latest)
-      return 'settled'
+      if (latest.status !== 'settled') return 'in_flight'
+      return finishSettled(latest)
     }
     if (state === 'retryable' && ageMs(row) > reviewMs) {
       await deps.transfers.markAbandoned(row.id)
@@ -398,19 +394,26 @@ export function createDmTransferService(deps: DmTransferDeps) {
     return 'in_flight'
   }
 
-  /** Fee and notice, in that order. The wizard does this after a live pay. Recovery is the only caller left once that result was cached as in flight. */
-  async function finishSettled(row: DmTransfer): Promise<void> {
+  /**
+   * Fee, then the recipient notice. `in_flight` means the notice is still due, so
+   * recovery does not treat the row as gone and can read the rows after it.
+   */
+  async function finishSettled(row: DmTransfer): Promise<'settled' | 'in_flight'> {
     await settleFee({attemptId: row.id, fromUserId: row.fromUserId}).catch(error => {
       deps.log.error({error, fromUserId: row.fromUserId}, 'DM transfer fee failed')
     })
-    await settleNotice({
-      attemptId: row.id,
-      toUserId: row.toUserId,
-      fromUserId: row.fromUserId,
-      sats: row.sats,
-    }).catch(error => {
+    try {
+      const notice = await settleNotice({
+        attemptId: row.id,
+        toUserId: row.toUserId,
+        fromUserId: row.fromUserId,
+        sats: row.sats,
+      })
+      return notice === 'sent' ? 'settled' : 'in_flight'
+    } catch (error) {
       deps.log.error({error, transferId: row.id}, 'DM transfer notice failed')
-    })
+      return 'in_flight'
+    }
   }
 
   function ageMs(row: DmTransfer): number {
