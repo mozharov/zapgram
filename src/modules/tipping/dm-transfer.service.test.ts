@@ -61,6 +61,52 @@ test('two workers settling one attempt pay the recipient once', async () => {
   expect(world.payCalls).toBe(1)
 })
 
+test('a lost notice claim does not report the notice as sent', async () => {
+  const world = await worldFor({donationPercent: 0})
+  let release: (sent: boolean) => void = () => {}
+  const gate = new Promise<boolean>(resolve => {
+    release = resolve
+  })
+  let calls = 0
+  const input = {
+    attemptId: '1:250',
+    fromUserId: 1,
+    toUserId: 2,
+    sats: 21,
+    payInvoice: world.pay,
+    notify: () => {
+      calls += 1
+      return gate
+    },
+  }
+  const winner = world.service.settle(input)
+  await Bun.sleep(50)
+  expect(calls).toBe(1)
+  const loser = await world.service.settle({
+    ...input,
+    notify: async () => {
+      calls += 1
+      return true
+    },
+  })
+  expect(loser).toMatchObject({outcome: 'settled', notice: 'failed'})
+  expect(calls).toBe(1)
+  release(false)
+  expect(await winner).toMatchObject({outcome: 'settled', notice: 'failed'})
+  expect(world.payCalls).toBe(1)
+
+  const retried = await world.service.settle({
+    ...input,
+    notify: async () => {
+      calls += 1
+      return true
+    },
+  })
+  expect(retried).toMatchObject({outcome: 'settled', notice: 'sent'})
+  expect(calls).toBe(2)
+  expect(world.payCalls).toBe(1)
+})
+
 test('a failed notice does not pay the recipient again', async () => {
   const world = await worldFor({donationPercent: 0})
   const base = {

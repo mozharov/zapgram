@@ -405,6 +405,8 @@ export const dmTransfersTable = sqliteTable(
     /** Fee-collection invoice, persisted before that pay. Null until a fee is attempted. */
     feeHash: text('fee_hash'),
     feeBolt11: text('fee_bolt11'),
+    /** True while one worker is sending the recipient notice. Not the same as delivered. */
+    noticeClaimed: integer('notice_claimed', {mode: 'boolean'}).notNull().default(false),
     noticeSent: integer('notice_sent', {mode: 'boolean'}).notNull().default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },

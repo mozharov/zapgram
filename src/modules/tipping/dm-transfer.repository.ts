@@ -66,24 +66,37 @@ export function createDmTransferRepository(database: AppDatabase) {
     },
 
     /**
-     * Claim the recipient notice. Only the caller that flips `noticeSent` from false
-     * may send. A second worker sees the flag already set and must not send again.
+     * One worker may send. The claim is not delivery: `noticeSent` flips only after
+     * Telegram accepts the message. A second worker loses this update.
      */
     async claimNotice(id: string): Promise<boolean> {
       const [row] = await database
         .update(dmTransfersTable)
-        .set({noticeSent: true})
-        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
+        .set({noticeClaimed: true})
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.noticeSent, false),
+            eq(dmTransfersTable.noticeClaimed, false),
+          ),
+        )
         .returning()
       return row !== undefined
+    },
+
+    async markNoticeSent(id: string) {
+      await database
+        .update(dmTransfersTable)
+        .set({noticeSent: true})
+        .where(eq(dmTransfersTable.id, id))
     },
 
     /** The send did not land. Clear the claim so a later settle can try once more. */
     async releaseNotice(id: string) {
       await database
         .update(dmTransfersTable)
-        .set({noticeSent: false})
-        .where(eq(dmTransfersTable.id, id))
+        .set({noticeClaimed: false})
+        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
     },
   }
 }

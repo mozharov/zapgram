@@ -210,14 +210,19 @@ export function createDmTransferService(deps: DmTransferDeps) {
     attemptId: string
     notify: () => Promise<boolean>
   }): Promise<'sent' | 'failed'> {
+    const row = await deps.transfers.get(input.attemptId)
+    if (row.noticeSent) return 'sent'
     const claimed = await deps.transfers.claimNotice(input.attemptId)
-    if (!claimed) return 'sent'
+    // Another worker is still sending. Do not cache `sent`: their notify can fail,
+    // and this conversation would then skip the warning and the retry.
+    if (!claimed) return 'failed'
     try {
       const sent = await input.notify()
       if (!sent) {
         await deps.transfers.releaseNotice(input.attemptId)
         return 'failed'
       }
+      await deps.transfers.markNoticeSent(input.attemptId)
       return 'sent'
     } catch (error) {
       await deps.transfers.releaseNotice(input.attemptId)
