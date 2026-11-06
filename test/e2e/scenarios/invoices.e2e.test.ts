@@ -238,7 +238,7 @@ test('a message containing a bolt11 opens invoice details and the payment confir
   expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).not.toMatch(/Expires:[\s\S]*?<\/b>\n{3,}<blockquote/)
   expect(review?.link_preview_options).toEqual({is_disabled: true})
-  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
@@ -261,7 +261,7 @@ test('an invoice pasted from Send is deleted and folded into the host review', a
   expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(review?.link_preview_options).toEqual({is_disabled: true})
-  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
@@ -441,7 +441,7 @@ const cancelCases: {
     step: 'invoice',
     reach: enterPayInvoiceAtInvoice,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: payingInvoice.name,
@@ -464,14 +464,14 @@ const cancelCases: {
     step: 'username',
     reach: enterSendToUserAtUsername,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: sendingToUser.name,
     step: 'amount',
     reach: enterSendToUserAtAmount,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: changingPrice.name,
@@ -549,7 +549,7 @@ test('cancelling the memo step keeps the QR as the receipt with an Open wallet b
   expectNoErrors(e2e.logs)
 })
 
-test('the shared registry contains all twelve conversations', () => {
+test('the shared registry contains every installed conversation', () => {
   expect(registeredConversations.map(conversation => conversation.name).sort()).toEqual(
     [
       'broadcasting',
@@ -562,7 +562,9 @@ test('the shared registry contains all twelve conversations', () => {
       'editCustomMessage',
       'enablingOnchain',
       'payingInvoice',
+      'payingLnurl',
       'requestingFeature',
+      'sendingPayment',
       'sendingToUser',
     ].sort(),
   )
@@ -858,26 +860,28 @@ test('a pasted invoice on the recipient step offers to pay and does not reset th
   expectNoErrors(e2e.logs)
 })
 
-test('a Lightning address or LNURL on the recipient step is explained, not paid', async () => {
+test('a Lightning address or LNURL on the recipient step offers to pay and can return to the step', async () => {
   await enterSendToUserAtUsername()
 
   await e2e.send(privateText('  Alice@GetAlby.com '))
   const addressNotice = e2e.tg.last('sendMessage')
-  expect(String(addressNotice?.text)).toMatch(/isn't supported yet/)
+  expect(String(addressNotice?.text)).toMatch(/Lightning address or LNURL/)
   expect(String(addressNotice?.text)).not.toMatch(/Invalid username/)
-  expect(keyboardOf(addressNotice)).toHaveLength(1)
-  expect(keyboardOf(addressNotice)[0]).toMatch(/^pay-pasted-back:/)
+  expect(keyboardOf(addressNotice)).toHaveLength(2)
+  expect(keyboardOf(addressNotice)[0]).toMatch(/^pay-pasted:/)
+  expect(keyboardOf(addressNotice)[1]).toMatch(/^pay-pasted-back:/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
 
   await e2e.send(privateText('LNURL1DP68GURN8GHJ7CTS'))
   const lnurlNotice = e2e.tg.last('sendMessage')
-  expect(String(lnurlNotice?.text)).toMatch(/isn't supported yet/)
-  expect(keyboardOf(lnurlNotice)).toHaveLength(1)
-  expect(keyboardOf(lnurlNotice)[0]).toMatch(/^pay-pasted-back:/)
+  expect(String(lnurlNotice?.text)).toMatch(/Lightning address or LNURL/)
+  expect(keyboardOf(lnurlNotice)).toHaveLength(2)
+  expect(keyboardOf(lnurlNotice)[0]).toMatch(/^pay-pasted:/)
+  expect(keyboardOf(lnurlNotice)[1]).toMatch(/^pay-pasted-back:/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
   expect(await conversationVersion()).toEqual([0, 0])
 
-  const backData = keyboardOf(lnurlNotice)[0]
+  const backData = keyboardOf(lnurlNotice)[1]
   await e2e.send(
     privateCallback(backData ?? '', {messageId: requiredResultMessageId('sendMessage')}),
   )
@@ -910,15 +914,20 @@ test('a pasted invoice on the amount step offers to pay instead of rejecting the
   expectNoErrors(e2e.logs)
 })
 
-test('outside a wizard a lightning address is explained and a lightning: invoice still pays', async () => {
+test('outside a wizard a lightning address offers Pay and a lightning: invoice still pays', async () => {
   await e2e.send(privateText('  bob@walletofsatoshi.com  '))
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/isn't supported yet/)
-  expect(keyboardOf(e2e.tg.last('sendMessage'))).toEqual([])
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Lightning address or LNURL/)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))).toHaveLength(1)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))[0]).toMatch(/^pay-pasted:/)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))).not.toContain(
+    expect.stringMatching(/^pay-pasted-back:/),
+  )
   expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(/This is a Lightning wallet/)
 
   await e2e.send(privateText('LNURL1DP68GURN8GHJ7CTS'))
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/isn't supported yet/)
-  expect(keyboardOf(e2e.tg.last('sendMessage'))).toEqual([])
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Lightning address or LNURL/)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))).toHaveLength(1)
+  expect(keyboardOf(e2e.tg.last('sendMessage'))[0]).toMatch(/^pay-pasted:/)
 
   credit(USER_A, 1000)
   const invoice = foreignInvoice()
@@ -1127,7 +1136,9 @@ test('an email is stored as the invoice description', async () => {
 
   expect(lastInvoiceMemo()).toContain('shop@example.com')
   expect(lastInvoiceCaption()).toContain('shop@example.com')
-  expect(joinedInvoiceText()).not.toMatch(/isn't supported yet|This is a Lightning invoice/)
+  expect(joinedInvoiceText()).not.toMatch(
+    /isn't supported yet|This is a Lightning invoice|Lightning address or LNURL/,
+  )
   expectNoErrors(e2e.logs)
 })
 
@@ -1154,7 +1165,7 @@ test('Pay then confirm sends one payment, and Pay again sends none', async () =>
   // so the usual "last edited prompt" is not this screen.
   const reviewId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(confirmWalletOn(reviewId))
 
   expect(outgoingBolt11(invoice.bolt11)).toHaveLength(1)
   expect(outgoingBolt11(invoice.bolt11)[0]?.amountMsat).toBe(FOREIGN_SATS * 1000)
@@ -1196,7 +1207,7 @@ test('Pay on the wallet screen switches to the pasted invoice', async () => {
   expect(outgoingBolt11(second.bolt11)).toHaveLength(0)
   const reviewId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(confirmWalletOn(reviewId))
 
   expect(outgoingBolt11(second.bolt11)).toHaveLength(1)
   expect(outgoingBolt11(first.bolt11)).toHaveLength(0)
@@ -1631,7 +1642,22 @@ function credit(userId: number, sats: number): void {
 
 /** The wallet picker button that now both chooses the rail and pays. */
 function confirmWallet(): Update {
-  return privateCallback('internal', {messageId: requiredPromptMessageId()})
+  return confirmWalletOn(requiredPromptMessageId())
+}
+
+function confirmWalletOn(messageId: number): Update {
+  let data: string | undefined
+  for (const call of e2e.tg.calls) {
+    if (call.method !== 'editMessageText' && call.method !== 'sendMessage') continue
+    const button = keyboardOf(call.payload).find(item => item.startsWith('internal:'))
+    if (button) data = button
+  }
+  if (!data) throw new Error('Expected the invoice confirm')
+  return privateCallback(data, {messageId})
+}
+
+function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
+  return keyboardOf(payload).map(data => data.replace(/^(internal|nwc):.+$/, '$1'))
 }
 
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {

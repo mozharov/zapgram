@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = ввод суммы
+    .enter-lnurl-amount = ввод суммы для Lightning-адреса
     .enter-invoice = ввод Lightning-счёта
     .connect-nwc = подключение NWC-кошелька
     .select-recipient = выбор получателя
@@ -18,6 +19,8 @@ conversation-action =
     .edit-message-en = редактирование сообщения на английском
     .select-wallet = выбор кошелька
     .confirm-invoice-payment = подтверждение оплаты счёта
+    .enter-send-target = ввод получателя
+    .confirm-send = подтверждение отправки
     .invoice-memo-options = добавление описания счёта
     .enter-invoice-memo = ввод описания счёта
     .enable-onchain = включение on-chain оплаты
@@ -59,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Оплатить счёт
+    .confirm-send = ✅ Отправить
     .skip = ➡️ Пропустить
     .chat-settings = ⚙️ Настройки чата
     .prev = ⬅️
@@ -105,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Вернуться к шагу
     .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
     .pasted-payment-stale = Это предложение больше не действует.
+    .confirm-stale = Это подтверждение уже не действует.
     .pasted-payment-retry = Telegram не ответил. Попробуйте ещё раз.
     .pasted-payment-closed = Закрыто.
 
@@ -325,16 +330,67 @@ settings-donation = ⚡️ <b>Авто % с платежей</b>
 
 send-menu = <b>✉️ Отправить платёж</b>
 
-    Оплати Lightning счёт или отправь сатоши другому пользователю Telegram.
+    Пришли Lightning-счёт, Lightning-адрес, LNURL или <code>@username</code> того, кто уже пользуется {bot-name}.
+    .invalid = <b>⚠️ Нужен Lightning-счёт, Lightning-адрес, LNURL или @username.</b>
 
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
+    .confirm = <b>✅ Подтверди отправку</b>
+
+        Получатель: <b>@{$username}</b>
+        Сумма: <b>{$amount} сат{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Кошелёк: <b>NWC</b>
+           *[other] Кошелёк: <b>{bot-name}</b>
+        }
+
+        Ничего не спишется, пока не подтвердишь.
+    .use-button = <b>⚠️ Нажми кнопку на сообщении выше.</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+    .completed-warning = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+
+        Отправка прошла. Следующий шаг не завершился. Не отправляй эту сумму ещё раз.
+    .still-confirming = <b>⏳ Это подтверждение ещё проверяется.</b>
+
+        По нему больше ничего не спишется. Не начинай новую отправку, пока эта не разрешится.
 
 pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
 
     Оплатить его или вернуться к шагу.
 
-pasted-payment-unsupported = <b>⚠️ Оплата на Lightning-адрес и LNURL пока не поддерживается — попросите у получателя инвойс и пришлите его.</b>
+pasted-payment-lnurl = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+    Оплатить или вернуться к шагу.
+
+pasted-payment-lnurl-outside = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+lnurl-pay-address = Платим на <code>{$address}</code>
+lnurl-pay-host = Платим хосту <code>{$host}</code>
+lnurl-pay-route = Через {$route}
+lnurl-pay-invoice-from = Счёт с <code>{$host}</code>
+lnurl-pay-service-note = Их текст: {$note}
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 Получатель просит {$min} сат.</b>
+        Введи эту сумму, чтобы продолжить.
+   *[other] <b>🔢 Введи сумму в сатах.</b>
+        Получатель принимает от <b>{$min}</b> до <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Введи целое число сат от {$min} до {$max}.</b>
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ Сервер получателя не ответил вовремя.</b>
+        Ничего не оплачено.
+    [server] <b>⚠️ Сервер получателя не смог провести оплату.</b>
+        Ничего не оплачено.
+    [amount] <b>⚠️ Сумма в счёте не совпадает с той, что ты ввёл.</b>
+        Ничего не оплачено.
+    [description-hash] <b>⚠️ Счёт не совпадает с данными получателя.</b>
+        Ничего не оплачено.
+    [no-whole-sat] <b>⚠️ Этот получатель не принимает целые саты.</b>
+        Ничего не оплачено.
+   *[other] <b>⚠️ Сервер получателя прислал неожиданный ответ.</b>
+        Ничего не оплачено.
+    }
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>

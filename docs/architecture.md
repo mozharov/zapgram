@@ -74,6 +74,18 @@ Enforced by Biome `noRestrictedImports` overrides and `test/architecture/layers.
 2. Paid → claim row (delete returning) then notify. Claim is shared by LNbits webhook, internal bot pay (`paying-invoice`), and `check-pending-invoices` cron so internal→internal cannot double-notify.
 3. Tips/transfers mint invoices without a pending row; they notify via their own path (`notifySatsReceived`). A webhook for those hashes is a no-op.
 
+## Money path (send)
+
+Wallet **Send** is one prompt (`sendingPayment`). `classifySendTarget` is the only reader of that text:
+
+- BOLT11 → existing `payingInvoice` (amount from the invoice, wallet, confirm, then pay).
+- Lightning address or LNURL → existing `payingLnurl` (payee metadata, min/max, no comment, withdraw refused, then the same invoice confirm). The HTTP client pins the vetted DNS address to the socket and checks every redirect again.
+- `@username` → an already registered ZapGram user (`findByUsername` plus the current Telegram username). No wallet is created for an unknown handle. Self-sends are refused. Amount, wallet, then an explicit confirm; only then an internal transfer, or — for NWC — a new invoice on the recipient and `payInvoice`. The recipient is that same user.
+
+Cancel returns to the wallet. A Lightning invoice, address, or LNURL pasted **outside** the wizard still uses the existing offer. `@username` is not handled outside the wizard, so it cannot swallow commands or another conversation. Group `/tip` is unchanged and does not ask for this confirm.
+
+Logs and `send_target_accepted` carry only the kind (`bolt11`, `lightning-address`, `lnurl`, `username`). They do not carry the payment request, LNURL metadata, or the handle.
+
 ## Group messages
 
 The group tip trigger is matched per update by `matchTipRequest`
@@ -128,5 +140,6 @@ update says nothing, so the transport line lives at `debug`
 - **Levels.** `error` = we are broken. `warn` = someone else is broken or a request was rejected
   (bad webhook secret, unhandled callback, unreachable user). `info` = a fact worth reconstructing
   later. `debug` = transport and timing detail.
-- **Never log:** raw message text, NWC URLs, admin keys, or whole `ctx.user` / wallet objects —
-  the user's NWC secret lives on that row. Log ids, amounts, and lengths instead.
+- **Never log:** raw message text, payment requests, LNURL metadata, NWC URLs, admin keys, or
+  whole `ctx.user` / wallet objects — the user's NWC secret lives on that row. Log ids, amounts,
+  kinds, and lengths instead.

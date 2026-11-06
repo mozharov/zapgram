@@ -10,12 +10,12 @@ export async function notifySatsReceived(
   toUserId: User['id'],
   sats: number,
   fromUsername?: User['username'],
-): Promise<void> {
+): Promise<boolean> {
   const toUser = await getUserOrThrow(toUserId)
   const wallet = await getUserWallet(toUser.id)
   const balance = msatsToSats(wallet.balance)
   const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([sats, balance])
-  await notifier.send(
+  return notifier.send(
     toUser.id,
     translate('sats-received', toUser.languageCode, {
       amount: sats,

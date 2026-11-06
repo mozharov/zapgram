@@ -13,13 +13,13 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
   disabledLinkPreview,
+  editHost,
   ensureHost,
   hostFromCallback,
   joinWizardHtml,
@@ -36,19 +36,33 @@ export async function payingInvoice(
   conversation: BotConversation,
   ctx: ConversationContext,
   lnInvoice?: string,
+  options?: {
+    /** Shown above the invoice review. BOLT11 leaves this unset. */
+    reviewPrefix?: string
+    /**
+     * Edit this message for the review and the receipt. A second living menu would
+     * be adopted again on replay and delete the receipt the payment just wrote.
+     */
+    host?: ConversationHost
+    /** LNURL invoices can expire while the confirm button is on screen. */
+    recheckExpiry?: boolean
+    /** The send wizard stays open so the user can correct the paste or cancel. */
+    invalid?: 'return'
+  },
 ) {
+  const reviewPrefix = options?.reviewPrefix
   const title = ctx.t('paying-invoice')
   // Pay on a pasted bolt11 arrives as a callback on that offer. The offer is not the
   // wizard host: the invoice skips straight to review, the offer is removed, and the
   // screen is a new message. The step the user left must not keep a live Cancel button.
+  // An explicit host (the LNURL amount screen) is that one message instead.
   const fromPastedPay = payPastedRoute.pattern.test(ctx.callbackQuery?.data ?? '')
-  let host: ConversationHost | undefined = hostFromCallback(ctx)
-  if (lnInvoice || fromPastedPay) host = undefined
+  let host: ConversationHost | undefined = options?.host ?? hostFromCallback(ctx)
+  if (!options?.host && (lnInvoice || fromPastedPay)) host = undefined
   const restoreParent = async (target?: ConversationHost) => {
     const dest = target ?? host
     if (!dest) return
-    if (lnInvoice) await editHostWithWallet(ctx, dest)
-    else await editHostWithSendMenu(ctx, dest)
+    await editHostWithWallet(ctx, dest)
   }
 
   if (!lnInvoice && !fromPastedPay) {
@@ -67,9 +81,13 @@ export async function payingInvoice(
   } catch {
     if (!lnInvoice) throw new Error('Validated invoice could not be decoded')
     await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
+    if (options?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
-  if (lnInvoice && !fromPastedPay) await deleteMessageSafely(ctx)
+  // A pasted bolt11 is the message under the cursor. LNURL already deleted the amount
+  // text and passes the amount screen as `host`; deleting `ctx` would target that
+  // screen once the update is the confirm click.
+  if (lnInvoice && !fromPastedPay && !options?.host) await deleteMessageSafely(ctx)
   if (fromPastedPay) await deleteRepliedInvoice(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
@@ -79,16 +97,26 @@ export async function payingInvoice(
   const [previewUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi]),
   )
-  const details = invoiceReviewHtml(ctx, invoice, {
-    usdSuffix: previewUsdSuffix,
-    fee: 'no',
-    feeUsdSuffix: '',
-  })
+  const details = joinWizardHtml(
+    reviewPrefix,
+    invoiceReviewHtml(ctx, invoice, {
+      usdSuffix: previewUsdSuffix,
+      fee: 'no',
+      feeUsdSuffix: '',
+    }),
+  )
 
-  if (invoice.hasExpired()) {
+  // Freeze the open-time answer for an LNURL invoice. A live check here would take a
+  // different branch when the confirm click replays the conversation after expiry,
+  // and grammY would throw instead of reaching the click. The pay itself is refused
+  // after that click, below.
+  const expiredAtOpen = options?.recheckExpiry
+    ? await conversation.external(() => invoice.hasExpired())
+    : invoice.hasExpired()
+  if (expiredAtOpen) {
     await waitForInvoiceReview(conversation, ctx, invoice, true, {
       host,
-      prefixHtml: host ? title : undefined,
+      prefixHtml: joinWizardHtml(reviewPrefix, host ? title : undefined) || undefined,
       onCancel: restoreParent,
     })
     return
@@ -109,6 +137,22 @@ export async function payingInvoice(
   })
   const {wallet} = selection
   host = host ?? selection.host
+  if (options?.recheckExpiry && invoice.hasExpired()) {
+    const expiredHtml = joinWizardHtml(
+      reviewPrefix,
+      invoiceReviewHtml(ctx, invoice, {
+        usdSuffix: previewUsdSuffix,
+        fee: 'no',
+        feeUsdSuffix: '',
+      }),
+    )
+    // The confirm button was on this message. Take it off so the expired invoice
+    // cannot be clicked again; the conversation is halted either way.
+    const expiredKeyboard = new InlineKeyboard()
+    if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
+    else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
+    return conversation.halt()
+  }
   const isInternalWallet = wallet === 'internal'
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
@@ -200,6 +244,7 @@ export async function payingInvoice(
       }),
     paidKeyboard(ctx, invoice.paymentRequest),
   )
+  return undefined
 }
 
 async function deleteRepliedInvoice(ctx: ConversationContext): Promise<void> {

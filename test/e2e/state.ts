@@ -4,6 +4,7 @@ import type {
   BroadcastRecipient,
   Chat,
   Conversation,
+  DmTransfer,
   Donation,
   DonationPlatformStats,
   OnchainChatPayment,
@@ -30,6 +31,7 @@ export type WorldState = {
     pendingInvoices: PendingInvoice[]
     conversations: Conversation[]
     onchainChatPayments: OnchainChatPayment[]
+    dmTransfers: DmTransfer[]
     donations: Donation[]
     donationPlatformStats: DonationPlatformStats[]
     broadcasts: Broadcast[]
@@ -109,6 +111,11 @@ export async function expectDelta(
       payments?: {out: boolean; sats: number; times: number}[]
     }
     telegram?: string[] | TelegramCallExpectation[]
+    /**
+     * Methods a timer may add during the action. They stay in the raw call log
+     * and are left out of this comparison.
+     */
+    ignoreTelegramMethods?: string[]
   },
 ): Promise<void> {
   const before = await snapshot(e2e)
@@ -118,7 +125,7 @@ export async function expectDelta(
   assertDbDelta(before, after, expected.db ?? {})
   assertBalanceDelta(before, after, expected.lnbits?.balances ?? {})
   assertPaymentDelta(before, after, expected.lnbits?.payments ?? [])
-  assertTelegramDelta(before, after, expected.telegram ?? [])
+  assertTelegramDelta(before, after, expected.telegram ?? [], expected.ignoreTelegramMethods ?? [])
 }
 
 export function expectLedgerBalanced(before: WorldState, after: WorldState): void {
@@ -234,12 +241,15 @@ function assertTelegramDelta(
   before: WorldState,
   after: WorldState,
   expected: string[] | TelegramCallExpectation[],
+  ignoreMethods: string[],
 ): void {
   const prefix = after.telegram.slice(0, before.telegram.length)
   if (!Bun.deepEquals(prefix, before.telegram)) {
     throw new Error(`Telegram history changed before the action: ${format({before, after})}`)
   }
-  const calls = chromeCalls(after.telegram.slice(before.telegram.length), expected)
+  const calls = chromeCalls(after.telegram.slice(before.telegram.length), expected).filter(
+    call => !ignoreMethods.includes(call.method),
+  )
   if (expected.every(item => typeof item === 'string')) {
     const methods = calls.map(call => call.method)
     if (!Bun.deepEquals(methods, expected)) {
@@ -389,6 +399,7 @@ function emptyDbState(): WorldState['db'] {
     pendingInvoices: [],
     conversations: [],
     onchainChatPayments: [],
+    dmTransfers: [],
     donations: [],
     donationPlatformStats: [],
     broadcasts: [],
@@ -406,6 +417,7 @@ function dbKey(tableName: string): DbKey {
     pending_invoices: 'pendingInvoices',
     conversations: 'conversations',
     onchain_chat_payments: 'onchainChatPayments',
+    dm_transfers: 'dmTransfers',
     donations: 'donations',
     donation_platform_stats: 'donationPlatformStats',
     broadcasts: 'broadcasts',

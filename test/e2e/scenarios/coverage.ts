@@ -150,6 +150,7 @@ export const scenarioCoverage = {
       'check-expired-subscriptions',
       'process-expiring-subscriptions',
       'process-monthly-donations',
+      'recover-dm-transfers',
     ],
     errors: [],
   },
@@ -279,6 +280,14 @@ export const scenarioCoverage = {
     writes: ['users.insert', 'users.update', 'chats.insert', 'conversations.insert'],
     jobs: [],
     errors: ['invoice_parsing'],
+  },
+  'lnurl-pay': {
+    routes: ['pay-pasted', 'pay-pasted-back', 'send-to-user'],
+    commands: [],
+    updates: ['message', 'callback_query'],
+    writes: ['users.insert', 'users.update', 'conversations.insert', 'conversations.delete'],
+    jobs: [],
+    errors: [],
   },
   nwc: {
     routes: [
@@ -454,6 +463,14 @@ export const scenarioCoverage = {
       'to_yourself',
       'user_has_no_wallet',
     ],
+  },
+  'send-payment': {
+    routes: ['send-menu', 'cancel', 'create-invoice'],
+    commands: ['/wallet'],
+    updates: ['message', 'callback_query'],
+    writes: ['users.insert', 'conversations.insert', 'conversations.delete'],
+    jobs: [],
+    errors: ['insufficient_funds', 'to_yourself', 'user_has_no_wallet'],
   },
   wallet: {
     routes: [

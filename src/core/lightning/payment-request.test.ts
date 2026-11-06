@@ -50,6 +50,16 @@ describe('recognizePaymentRequest', () => {
       kind: 'lnurl',
       value: `lnurlw://${LNURL}`,
     })
+    expect(recognizePaymentRequest('LNURLP://Pay.Example/LnUrlP/Alice?token=AbC')).toEqual({
+      kind: 'lnurl',
+      value: 'lnurlp://pay.example/LnUrlP/Alice?token=AbC',
+    })
+    expect(
+      recognizePaymentRequest('lightning:LNURLW://Pay.Example:8443/Pay/Alice?token=AbC#Keep'),
+    ).toEqual({
+      kind: 'lnurl',
+      value: 'lnurlw://pay.example:8443/Pay/Alice?token=AbC#Keep',
+    })
   })
 
   test('recognizes a Lightning address', () => {

@@ -17,8 +17,9 @@ import type {E2E} from './harness.js'
 export async function replayWizard(
   e2e: E2E,
   wizard: (conversation: BotConversation, ctx: ConversationContext) => Promise<void>,
-  input: Update | Update[],
+  input: Update | Array<Update | ((e2e: E2E) => Update)>,
   assertOnce: () => void,
+  entry: Update = privateText('start'),
 ) {
   const builder = async (conversation: BotConversation, ctx: ConversationContext) => {
     await wizard(conversation, ctx)
@@ -43,13 +44,14 @@ export async function replayWizard(
   }
   const entered = await enterConversation<BotContext, ConversationContext>(
     builder,
-    base(privateText('start')),
+    base(entry),
     options,
   )
   expect(entered.status).toBe('handled')
   if (entered.status !== 'handled') throw new Error('Wizard did not wait for input')
   let completed = entered
-  for (const update of Array.isArray(input) ? input : [input]) {
+  for (const item of Array.isArray(input) ? input : [input]) {
+    const update = typeof item === 'function' ? item(e2e) : item
     const resumed = await resumeConversation(builder, base(update), completed, options)
     expect(resumed.status).toBe('handled')
     if (resumed.status !== 'handled') throw new Error('Wizard did not wait for the next input')

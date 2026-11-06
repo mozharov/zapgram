@@ -14,8 +14,10 @@ import {requestingFeature} from '@modules/feature-requests/telegram/conversation
 import {register as registerInvoices} from '@modules/invoices/register.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
 import {payingInvoice} from '@modules/invoices/telegram/conversations/paying-invoice.js'
+import {payingLnurl} from '@modules/invoices/telegram/conversations/paying-lnurl.js'
 import {register as registerSubscriptions} from '@modules/subscriptions/register.js'
 import {register as registerTipping} from '@modules/tipping/register.js'
+import {sendingPayment} from '@modules/tipping/telegram/sending-payment.js'
 import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {privateMyChatMemberHandler} from '@modules/users/telegram/handlers/private-my-chat-member.js'
 import {register as registerWallet} from '@modules/wallet/register.js'
@@ -43,7 +45,9 @@ export const shellCommands = ['start', 'help'] as const
 export const registeredConversations = [
   connectingNWC,
   sendingToUser,
+  sendingPayment,
   payingInvoice,
+  payingLnurl,
   creatingInvoice,
   changingPrice,
   editCustomMessage,
