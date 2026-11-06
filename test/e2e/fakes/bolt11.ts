@@ -15,11 +15,14 @@ export type MintedInvoice = {
 export function mintInvoice({
   sats,
   description = '',
+  descriptionHash,
   expirySec = DEFAULT_EXPIRY_SEC,
   timestampSec = Math.floor(Date.now() / 1000),
 }: {
   sats: number
   description?: string
+  /** BOLT11 `h` tag, hex SHA-256. Omitted invoices have no description hash. */
+  descriptionHash?: string
   expirySec?: number
   /** Issue time. Backdate it past `expirySec` to mint an invoice that is already expired. */
   timestampSec?: number
@@ -31,6 +34,7 @@ export function mintInvoice({
     tags: [
       {tagName: 'payment_hash', data: paymentHash},
       {tagName: 'description', data: description},
+      ...(descriptionHash ? [{tagName: 'purpose_commit_hash', data: descriptionHash}] : []),
       {tagName: 'expire_time', data: expirySec},
       {tagName: 'min_final_cltv_expiry', data: 18},
     ],

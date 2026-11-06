@@ -18,7 +18,8 @@ export function register(composer: Composer<BotContext>): void {
   privateChat.callbackQuery(payPastedRoute.pattern, payPastedCallback)
   privateChat.callbackQuery(payPastedBackRoute.pattern, payPastedBackCallback)
   // Whole-message bolt11 / address / LNURL before the substring hears, so
-  // `LIGHTNING:LNBC…` reaches the same pay flow as a bare `lnbc…`.
+  // `LIGHTNING:LNBC…` reaches the same pay flow as a bare `lnbc…`. An address or
+  // LNURL is offered Pay here; the amount step is payingLnurl.
   privateChat.on('message:text', pastedPaymentText)
   privateChat.hears(/(lnbc[a-z0-9]+)/).use(lnInvoiceHears)
 }

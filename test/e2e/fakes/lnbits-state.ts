@@ -170,14 +170,16 @@ export class LnbitsState {
     memo,
     expirySec,
     webhook,
+    descriptionHash,
   }: {
     wallet: FakeWallet
     sats: number
     memo: string
     expirySec: number
     webhook?: string
+    descriptionHash?: string
   }): FakePayment {
-    const minted = mintInvoice({sats, description: memo, expirySec})
+    const minted = mintInvoice({sats, description: memo, expirySec, descriptionHash})
     const payment: FakePayment = {
       paymentHash: minted.paymentHash,
       bolt11: minted.bolt11,

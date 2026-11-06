@@ -280,6 +280,14 @@ export const scenarioCoverage = {
     jobs: [],
     errors: ['invoice_parsing'],
   },
+  'lnurl-pay': {
+    routes: ['pay-pasted', 'pay-pasted-back', 'send-to-user'],
+    commands: [],
+    updates: ['message', 'callback_query'],
+    writes: ['users.insert', 'users.update', 'conversations.insert', 'conversations.delete'],
+    jobs: [],
+    errors: [],
+  },
   nwc: {
     routes: [
       'connect-nwc',

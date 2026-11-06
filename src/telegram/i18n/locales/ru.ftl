@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = ввод суммы
+    .enter-lnurl-amount = ввод суммы для Lightning-адреса
     .enter-invoice = ввод Lightning-счёта
     .connect-nwc = подключение NWC-кошелька
     .select-recipient = выбор получателя
@@ -334,7 +335,34 @@ pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
 
     Оплатить его или вернуться к шагу.
 
-pasted-payment-unsupported = <b>⚠️ Оплата на Lightning-адрес и LNURL пока не поддерживается — попросите у получателя инвойс и пришлите его.</b>
+pasted-payment-lnurl = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+    Оплатить или вернуться к шагу.
+
+pasted-payment-lnurl-outside = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 Получатель просит {$min} сат.</b>
+        Введи эту сумму, чтобы продолжить.
+   *[other] <b>🔢 Введи сумму в сатах.</b>
+        Получатель принимает от <b>{$min}</b> до <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Введи целое число сат от {$min} до {$max}.</b>
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ Сервер получателя не ответил вовремя.</b>
+        Ничего не оплачено.
+    [server] <b>⚠️ Сервер получателя не смог провести оплату.</b>
+        Ничего не оплачено.
+    [amount] <b>⚠️ Сумма в счёте не совпадает с той, что ты ввёл.</b>
+        Ничего не оплачено.
+    [description-hash] <b>⚠️ Счёт не совпадает с данными получателя.</b>
+        Ничего не оплачено.
+    [no-whole-sat] <b>⚠️ Этот получатель не принимает целые саты.</b>
+        Ничего не оплачено.
+   *[other] <b>⚠️ Сервер получателя прислал неожиданный ответ.</b>
+        Ничего не оплачено.
+    }
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>

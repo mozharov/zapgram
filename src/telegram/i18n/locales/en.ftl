@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = entering an amount
+    .enter-lnurl-amount = entering an amount for a Lightning address
     .enter-invoice = entering a Lightning invoice
     .connect-nwc = connecting an NWC wallet
     .select-recipient = selecting a recipient
@@ -334,7 +335,34 @@ pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
 
     Pay it, or go back to this step.
 
-pasted-payment-unsupported = <b>⚠️ Paying a Lightning address or LNURL isn't supported yet — ask the recipient for an invoice and send it.</b>
+pasted-payment-lnurl = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+    Pay it, or go back to this step.
+
+pasted-payment-lnurl-outside = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 The recipient asks for {$min} sats.</b>
+        Enter that amount to continue.
+   *[other] <b>🔢 Enter the amount in sats.</b>
+        The recipient accepts from <b>{$min}</b> to <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Enter a whole number of sats from {$min} to {$max}.</b>
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ The recipient's server did not answer in time.</b>
+        Nothing was paid.
+    [server] <b>⚠️ The recipient's server could not complete the payment.</b>
+        Nothing was paid.
+    [amount] <b>⚠️ The invoice amount does not match the amount you entered.</b>
+        Nothing was paid.
+    [description-hash] <b>⚠️ The invoice does not match the recipient.</b>
+        Nothing was paid.
+    [no-whole-sat] <b>⚠️ This recipient does not accept a whole number of sats.</b>
+        Nothing was paid.
+   *[other] <b>⚠️ The recipient's server sent an unexpected response.</b>
+        Nothing was paid.
+    }
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>
