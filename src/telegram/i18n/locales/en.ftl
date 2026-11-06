@@ -343,6 +343,7 @@ sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
         }
 
         Nothing is sent until you confirm.
+    .use-button = <b>⚠️ Use the buttons on the message above.</b>
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>

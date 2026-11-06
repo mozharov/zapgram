@@ -343,6 +343,7 @@ sending-to-user = <b>✉️ Отправка сат пользователю Tel
         }
 
         Ничего не спишется, пока не подтвердишь.
+    .use-button = <b>⚠️ Нажми кнопку на сообщении выше.</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
 
 pasted-payment = <b>⚡️ Это Lightning-счёт.</b>

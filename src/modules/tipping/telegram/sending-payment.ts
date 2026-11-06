@@ -104,5 +104,8 @@ export async function sendingPayment(conversation: BotConversation, ctx: Convers
       title: ctx.t('sending-to-user'),
       onCancel: restoreWallet,
     })
+    // The receipt is this screen now. Staying in the loop would take the next
+    // message — including Open wallet — as another send and paint over the receipt.
+    return
   }
 }

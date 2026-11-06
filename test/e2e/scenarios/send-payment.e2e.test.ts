@@ -66,6 +66,55 @@ test('an existing user is paid only after confirm, and cancel pays nothing', asy
   expectNoErrors(e2e.logs)
 })
 
+test('text on the confirm screen waits for the button and does not pay', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  const confirmId = requiredMessageId()
+
+  await e2e.send(privateText('yes'))
+
+  expect(outgoing()).toHaveLength(0)
+  expect(joinedText()).toMatch(/Use the buttons/)
+  expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(/Nothing is sent until you confirm/)
+  expect(await conversationNames()).toEqual(['sendingPayment'])
+
+  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+
+  expect(outgoing()).toHaveLength(1)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 1})
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('a finished username send does not take another username or cover the receipt', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  await e2e.send(confirm())
+
+  const receiptId = requiredMessageId()
+  expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(/You sent/)
+  await expectNoConversations(e2e.db)
+
+  await e2e.send(privateText('@user_b'))
+  expect(outgoing()).toHaveLength(1)
+
+  await e2e.send(privateCallback(staticCallback.openMenu, {messageId: receiptId}))
+
+  const receiptEdits = e2e.tg
+    .of('editMessageText')
+    .filter(call => Number(call.message_id) === receiptId)
+  expect(visibleHtml(receiptEdits.at(-1))).toMatch(/You sent/)
+  expect(e2e.tg.isDeleted(USER_A, receiptId)).toBe(false)
+  expect(outgoing()).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
 test('a second confirm and a confirm after restart pay once', async () => {
   await e2e.dispose()
   e2e = await createE2E({mode: 'file'})

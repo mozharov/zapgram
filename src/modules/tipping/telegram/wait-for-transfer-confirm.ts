@@ -10,8 +10,8 @@ import {
   interruptConversation,
   isCallbackFromPrompt,
 } from '@telegram/helpers/conversation-prompt.js'
-import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
+import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 
 /** In-conversation only. Not a routed callback: a click after the wizard ends cannot pay. */
@@ -61,9 +61,7 @@ export async function waitForTransferConfirm(
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)
 
-    if (opts.onCancel) await opts.onCancel(opts.host ?? confirmHost)
-    else await deactivatePrompt(conversation, prompt, cancelled)
-    if (next.message) await deleteMessageSafely(next)
-    return conversation.halt()
+    // A stray message is not a cancel. The amount step keeps waiting the same way.
+    await replyWithConversationTempMessage(conversation, next, next.t('sending-to-user.use-button'))
   }
 }
