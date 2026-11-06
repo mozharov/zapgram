@@ -1,5 +1,7 @@
 import type {Context} from 'grammy'
 import {resolveUpdateEventName} from './analytics.js'
+import {registeredCommandName} from './bot-commands.js'
+import {callbackDataForAnalytics} from './callback-data.js'
 import type {TextKind} from './text-kind.js'
 import {dmUnrecognizedTextProperties} from './unrecognized-text.js'
 
@@ -54,7 +56,7 @@ export function describeUpdate(ctx: Context): UpdateLogContext {
   }
 
   const callbackData = ctx.callbackQuery?.data
-  if (callbackData !== undefined) description.callbackData = callbackData
+  if (callbackData !== undefined) description.callbackData = callbackDataForAnalytics(callbackData)
 
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text !== undefined) {
@@ -63,7 +65,7 @@ export function describeUpdate(ctx: Context): UpdateLogContext {
     description.looksLikeOnchain = shape.looks_like_onchain
     description.textKind = shape.text_kind
     description.textTruncated = shape.text_truncated
-    const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]?.split('@')[0]
+    const command = registeredCommandName(text)
     if (command) description.command = command
   }
 

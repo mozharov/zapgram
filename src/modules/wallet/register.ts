@@ -1,3 +1,4 @@
+import {botCommand} from '@telegram/bot-commands.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import type {Composer} from 'grammy'
@@ -11,7 +12,7 @@ import {settingsCallback} from './telegram/handlers/settings-callback.js'
 import {walletCallback} from './telegram/handlers/wallet-callback.js'
 import {walletCommand} from './telegram/handlers/wallet-command.js'
 
-export const walletCommands = ['wallet'] as const
+export const walletCommands = [botCommand.wallet] as const
 
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')
