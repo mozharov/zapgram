@@ -1,6 +1,7 @@
 import {describe, expect, test} from 'bun:test'
 import {createHash} from 'node:crypto'
 import {decode, encode, fromWords, toWords} from 'bech32'
+import {decode as decodeBolt11} from 'bolt11'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import {bolt11DescriptionHash, decodeLnurl} from './bech32.js'
 import {LnurlPayError, lnurlInvoiceProblem, lnurlPayEndpoint, payableSatRange} from './lnurl-pay.js'
@@ -95,14 +96,17 @@ describe('payableSatRange', () => {
 describe('lnurlInvoiceProblem', () => {
   const hash = createHash('sha256').update(METADATA).digest('hex')
 
-  test('accepts the requested amount when the description hash matches the metadata', () => {
-    const invoice = mintInvoice({sats: 30, description: 'Pay Alice', descriptionHash: hash})
+  test('accepts the requested amount when the description hash matches and there is no d tag', () => {
+    const invoice = mintInvoice({sats: 30, description: '', descriptionHash: hash})
+    const tags = decodeBolt11(invoice.bolt11).tags.map(tag => tag.tagName)
+    expect(tags).toContain('purpose_commit_hash')
+    expect(tags).not.toContain('description')
     expect(lnurlInvoiceProblem(invoice.bolt11, 30, METADATA)).toBeUndefined()
   })
 
-  test('accepts an invoice that has no description hash', () => {
+  test('refuses an invoice that has no description hash', () => {
     const invoice = mintInvoice({sats: 30, description: 'Pay Alice'})
-    expect(lnurlInvoiceProblem(invoice.bolt11, 30, METADATA)).toBeUndefined()
+    expect(lnurlInvoiceProblem(invoice.bolt11, 30, METADATA)).toBe('description-hash')
   })
 
   test('refuses a different amount even when the hash matches', () => {

@@ -516,14 +516,15 @@ test('repeated Lightning picks reuse one invoice and report remaining time', asy
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
     telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
-  const secondChooser = e2e.tg.last('sendRichMessage')
+  const secondChooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (secondChooserId === undefined) throw new Error('second join chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: applicantFrom('en'),
-          messageId: Number(secondChooser?.message_id ?? 1),
+          messageId: secondChooserId,
         }),
       ),
     {
@@ -598,14 +599,15 @@ test('an invoice with exactly one hour remaining is reused and reports one hour'
   const requestMark = e2e.ln.requests.length
 
   await e2e.send(joinUpdate())
-  const chooser = e2e.tg.last('sendRichMessage')
+  const chooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (chooserId === undefined) throw new Error('join chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: applicantFrom('en'),
-          messageId: Number(chooser?.message_id ?? 1),
+          messageId: chooserId,
         }),
       ),
     {
@@ -635,14 +637,15 @@ test('an invoice below one hour is replaced without deleting the previous attemp
   const requestMark = e2e.ln.requests.length
 
   await e2e.send(joinUpdate())
-  const chooser = e2e.tg.last('sendRichMessage')
+  const chooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (chooserId === undefined) throw new Error('join chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: applicantFrom('en'),
-          messageId: Number(chooser?.message_id ?? 1),
+          messageId: chooserId,
         }),
       ),
     {
@@ -698,14 +701,15 @@ test('a restart after mint and failed Lightning edit reuses the persisted attemp
   await e2e.restart()
 
   await e2e.send(joinUpdate({locale: 'ru'}))
-  const secondChooser = e2e.tg.last('sendRichMessage')
+  const secondChooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (secondChooserId === undefined) throw new Error('second join chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: applicantFrom('ru'),
-          messageId: Number(secondChooser?.message_id ?? 1),
+          messageId: secondChooserId,
         }),
       ),
     {

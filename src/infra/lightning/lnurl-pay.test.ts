@@ -4,7 +4,13 @@ import {LnurlPayError} from '@core/lightning/lnurl-pay.js'
 import type {PaymentRequest} from '@core/lightning/payment-request.js'
 import {encode, toWords} from 'bech32'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
-import {fetchLnurlPay, requestLnurlInvoice, withDeadline} from './lnurl-pay.js'
+import {
+  fetchLnurlPay,
+  lnurlIpAllowed,
+  lnurlPinnedGet,
+  requestLnurlInvoice,
+  withDeadline,
+} from './lnurl-pay.js'
 
 const METADATA = JSON.stringify([
   ['text/plain', 'Pay Alice'],
@@ -27,25 +33,49 @@ function payDocument(callback: string, min = 1_000, max = 100_000) {
   }
 }
 
+describe('lnurlIpAllowed', () => {
+  test('blocks loopback and private addresses unless NODE_ENV is exactly test', () => {
+    expect(lnurlIpAllowed('127.0.0.1', 'production')).toBe(false)
+    expect(lnurlIpAllowed('10.1.2.3', 'production')).toBe(false)
+    expect(lnurlIpAllowed('192.168.1.1', 'development')).toBe(false)
+    expect(lnurlIpAllowed('127.0.0.1', 'test')).toBe(true)
+    expect(lnurlIpAllowed('10.1.2.3', 'test')).toBe(true)
+    expect(lnurlIpAllowed('8.8.8.8', 'production')).toBe(true)
+  })
+
+  test('blocks link-local, NAT64, and 6to4 that embeds a private address', () => {
+    expect(lnurlIpAllowed('169.254.169.254', 'test')).toBe(false)
+    expect(lnurlIpAllowed('::ffff:169.254.169.254', 'test')).toBe(false)
+    expect(lnurlIpAllowed('64:ff9b::7f00:1', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2002:7f00:1::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2002:0808:0808::', 'production')).toBe(true)
+    expect(lnurlIpAllowed('2001:0:0:0::', 'production')).toBe(false)
+  })
+})
+
 describe('fetchLnurlPay', () => {
-  test('loads a lightning address from the recipient and not from the Alby proxy', async () => {
-    const calls: string[] = []
-    const original = globalThis.fetch
-    globalThis.fetch = (async (input: string | URL | Request) => {
-      const url = String(input)
-      calls.push(url)
-      return Response.json(payDocument('https://localhost/.well-known/lnurlp/alice/callback'))
-    }) as typeof fetch
+  test('connects to the checked address even when the hostname does not resolve', async () => {
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    if (server.port === undefined) throw new Error('no port')
+    port = server.port
     try {
-      const quote = await fetchLnurlPay({kind: 'lightning-address', value: 'alice@localhost'})
-      expect(calls).toEqual(['https://localhost/.well-known/lnurlp/alice'])
-      expect(calls.some(url => url.includes('api.getalby.com'))).toBe(false)
-      expect(quote.minSats).toBe(1)
-      expect(quote.maxSats).toBe(100)
-      expect(quote.metadata).toBe(METADATA)
-      expect(quote.description).toBe('Pay Alice')
+      const response = await lnurlPinnedGet(
+        new URL(`http://pinned.invalid:${server.port}/pay`),
+        '127.0.0.1',
+        4,
+        AbortSignal.timeout(2_000),
+      )
+      expect(response.status).toBe(200)
+      expect(response.body).toContain('payRequest')
     } finally {
-      globalThis.fetch = original
+      server.stop(true)
     }
   })
 
@@ -84,27 +114,16 @@ describe('fetchLnurlPay', () => {
     }
   })
 
-  test('does not call a link-local or private address', async () => {
-    const calls: string[] = []
-    const original = globalThis.fetch
-    globalThis.fetch = (async (input: string | URL | Request) => {
-      calls.push(String(input))
-      return new Response('no', {status: 500})
-    }) as typeof fetch
-    try {
-      await expect(
-        fetchLnurlPay({
-          kind: 'lnurl',
-          value: encodeLnurl('http://169.254.169.254/latest'),
-        }),
-      ).rejects.toMatchObject({code: 'bad-response'})
-      await expect(
-        fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('http://10.1.2.3/pay')}),
-      ).rejects.toMatchObject({code: 'bad-response'})
-      expect(calls).toEqual([])
-    } finally {
-      globalThis.fetch = original
-    }
+  test('does not connect to a metadata address or to clearnet http', async () => {
+    await expect(
+      fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl('http://169.254.169.254/latest'),
+      }),
+    ).rejects.toMatchObject({code: 'bad-response'})
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('http://example.com/pay')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
   })
 
   test('reports a timeout, a server error, and a body that is not a pay request', async () => {
@@ -171,7 +190,7 @@ describe('requestLnurlInvoice', () => {
         const hash = mode === 'hash' ? createHash('sha256').update('nope').digest('hex') : HASH
         const invoice = mintInvoice({
           sats,
-          description: 'Pay Alice',
+          description: '',
           descriptionHash: mode === 'plain' ? undefined : hash,
         })
         return Response.json({pr: invoice.bolt11})
@@ -184,19 +203,21 @@ describe('requestLnurlInvoice', () => {
       minSats: 1,
       maxSats: 100,
       metadata: METADATA,
-      description: 'Pay Alice',
-      identifier: 'alice@example.com',
+      serviceText: 'Pay Alice',
+      metadataHosts: ['127.0.0.1'],
       callback: callback('ok'),
     }
     try {
-      const pr = await requestLnurlInvoice(quote, 30)
-      expect(pr.startsWith('lnbc')).toBe(true)
+      const paid = await requestLnurlInvoice(quote, 30)
+      expect(paid.bolt11.startsWith('lnbc')).toBe(true)
+      expect(paid.callbackHosts[0]).toContain('127.0.0.1')
       expect(seen[0]).toContain('amount=30000')
       expect(seen[0]).toContain('keep=1')
       expect(seen[0]).not.toContain('comment')
 
-      const plain = await requestLnurlInvoice({...quote, callback: callback('plain')}, 30)
-      expect(plain.startsWith('lnbc')).toBe(true)
+      await expect(
+        requestLnurlInvoice({...quote, callback: callback('plain')}, 30),
+      ).rejects.toMatchObject({code: 'description-hash'})
 
       await expect(
         requestLnurlInvoice({...quote, callback: callback('amount')}, 30),

@@ -75,9 +75,9 @@ export function lnurlPayEndpoint(request: PaymentRequest): string {
 
 /**
  * Why this bolt11 must not be paid, or undefined when it may.
- * The amount has to be the sats we asked for. A description hash, when the invoice has one,
- * has to be SHA-256 of the metadata string the recipient published. No hash is allowed:
- * the check runs only when the tag is there. `commentAllowed` is not part of this.
+ * The amount has to be the sats we asked for. LUD-06 requires the `h` tag to be
+ * SHA-256 of the raw metadata string. A missing hash is not a payable invoice.
+ * `commentAllowed` is not part of this. The metadata string itself is not rewritten.
  */
 export function lnurlInvoiceProblem(
   paymentRequest: string,
@@ -98,7 +98,7 @@ export function lnurlInvoiceProblem(
   } catch {
     return 'bad-response'
   }
-  if (hash === undefined) return undefined
+  if (hash === undefined) return 'description-hash'
   const expected = createHash('sha256').update(metadata).digest('hex')
   if (hash !== expected) return 'description-hash'
   return undefined

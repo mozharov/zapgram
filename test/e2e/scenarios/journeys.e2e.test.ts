@@ -379,14 +379,15 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
     telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
-  const rejoinChooser = e2e.tg.last('sendMessage')
+  const rejoinChooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (rejoinChooserId === undefined) throw new Error('rejoin chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: subscriberProfile(),
-          messageId: Number(rejoinChooser?.message_id ?? 1),
+          messageId: rejoinChooserId,
         }),
       ),
     {

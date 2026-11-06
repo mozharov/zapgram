@@ -33,7 +33,11 @@ export function mintInvoice({
     timestamp: timestampSec,
     tags: [
       {tagName: 'payment_hash', data: paymentHash},
-      {tagName: 'description', data: description},
+      // A description hash is the LNURL commitment. An empty `d` tag next to it
+      // hides whether the parser read `h` or the plain description.
+      ...(description !== '' || !descriptionHash
+        ? [{tagName: 'description', data: description}]
+        : []),
       ...(descriptionHash ? [{tagName: 'purpose_commit_hash', data: descriptionHash}] : []),
       {tagName: 'expire_time', data: expirySec},
       {tagName: 'min_final_cltv_expiry', data: 18},

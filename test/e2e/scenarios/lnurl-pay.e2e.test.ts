@@ -21,15 +21,19 @@ import {expectLedgerBalanced, snapshot} from '../state.js'
  * Nothing is paid until the existing invoice confirmation.
  */
 
-const METADATA = JSON.stringify([
-  ['text/plain', 'Pay Alice'],
-  ['text/identifier', 'alice@example.com'],
-])
-const HASH = createHash('sha256').update(METADATA).digest('hex')
 const NWC_URL = `nostr+walletconnect://${'aa'.repeat(32)}?relay=wss://relay.example&secret=${'bb'.repeat(32)}`
 const AMOUNT = 30
 
-type Mode = 'ok' | 'bad-json' | 'http-error' | 'timeout' | 'amount' | 'hash' | 'callback-error'
+type Mode =
+  | 'ok'
+  | 'bad-json'
+  | 'http-error'
+  | 'timeout'
+  | 'amount'
+  | 'hash'
+  | 'callback-error'
+  | 'long'
+  | 'expires'
 
 type NwcCall = {method: string; args: unknown[]}
 
@@ -121,8 +125,9 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
   await e2e.send(payCallback(payData, offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/from <b>10<\/b> to <b>100<\/b>/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/127\.0\.0\.1/)
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Pay Alice/)
-  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/alice@example\.com/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).not.toMatch(/not-the-address@evil\.test/)
   expect(server.hits.metadata).toBe(1)
   expect(server.hits.callback).toBe(0)
   expect(outgoing()).toHaveLength(0)
@@ -134,19 +139,21 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
 
   await e2e.send(privateText(String(AMOUNT)))
 
-  const review = String(e2e.tg.last('sendMessage')?.text)
-  expect(review).toMatch(/Pay Alice/)
-  expect(review).toMatch(/alice@example\.com/)
-  expect(review).toMatch(/Confirm the payment/)
+  const review = editedScreen()
+  expect(review.text).toMatch(/127\.0\.0\.1/)
+  expect(review.text).toMatch(/Pay Alice/)
+  expect(review.text).not.toMatch(/not-the-address@evil\.test/)
+  expect(review.text).toMatch(/Confirm the payment/)
   expect(server.hits.callback).toBe(1)
   expect(server.hits.comments).toBe(0)
   expect(outgoing()).toHaveLength(0)
-  const reviewId = requiredMessageId('sendMessage')
+  const reviewId = review.id
 
   await e2e.send(privateCallback('internal', {messageId: reviewId}))
 
   expect(outgoing()).toHaveLength(1)
   expect(outgoing()[0]?.amountMsat).toBe(AMOUNT * 1000)
+  expectReceiptAlive()
   expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 1})
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
   expectLedgerBalanced(before, await snapshot(e2e))
@@ -170,15 +177,17 @@ test('the same LNURL pays once from NWC after confirmation', async () => {
   await e2e.send(payCallback(payData, offerId, pasted))
   await e2e.send(privateText(String(AMOUNT)))
 
-  expect(joinedText()).toMatch(/NWC wallet/)
+  const review = editedScreen()
+  expect(review.text).toMatch(/NWC wallet/)
   expect(outgoing()).toHaveLength(0)
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
-  const reviewId = requiredMessageId('sendMessage')
+  const reviewId = review.id
 
   await e2e.send(privateCallback('nwc', {messageId: reviewId}))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
   expect(nwcCalls.filter(call => call.method === 'lookupInvoice')).toHaveLength(1)
+  expectReceiptAlive()
   expect(outgoing()).toHaveLength(0)
   expect(e2e.ln.state.payments.filter(payment => payment.paid && !payment.out)).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
@@ -210,16 +219,88 @@ test('Pay still loads the LNURL after a restart, then one confirmation pays once
   await e2e.send(privateText(String(AMOUNT)))
   expect(server.hits.callback).toBe(1)
   expect(outgoing()).toHaveLength(0)
-  const reviewId = requiredMessageId('sendMessage')
+  const reviewId = editedScreen().id
 
   await e2e.send(privateCallback('internal', {messageId: reviewId}))
 
   expect(outgoing()).toHaveLength(1)
+  expectReceiptAlive()
   expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 1})
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
   expectLedgerBalanced(before, await snapshot(e2e))
   expectNoErrors(e2e.logs)
 })
+
+test('a 5000-character service note still reaches confirmation and does not pay early', async () => {
+  server = startServer('long')
+  credit(USER_A, 1_000)
+  const pasted = privateText(server.lnurl)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredMessageId('sendMessage')
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+  const prompt = String(e2e.tg.last('sendMessage')?.text)
+  expect(prompt).toMatch(/Enter the amount/)
+  expect(prompt).not.toContain('N'.repeat(5000))
+  expect(prompt.endsWith('…') || prompt.includes('…')).toBe(true)
+  expect(outgoing()).toHaveLength(0)
+
+  await e2e.send(privateText(String(AMOUNT)))
+  expect(editedScreen().text).toMatch(/Confirm the payment/)
+  expect(outgoing()).toHaveLength(0)
+  expectNoErrors(e2e.logs)
+})
+
+test('an invoice that expires before confirmation is not paid', async () => {
+  server = startServer('expires')
+  credit(USER_A, 1_000)
+  const pasted = privateText(server.lnurl)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredMessageId('sendMessage')
+  await e2e.send(payCallback(payData, offerId, pasted))
+  // The fake bot and these updates share one id space. The amount text must not
+  // reuse the screen's id, or deleting it looks like the screen itself was deleted.
+  await e2e.send(privateText(String(AMOUNT), {messageId: 50_000}))
+  const reviewId = editedScreen().id
+  expect(editedScreen().text).toMatch(/Confirm the payment/)
+  expect(e2e.tg.isDeleted(USER_A, reviewId)).toBe(false)
+  expect(outgoing()).toHaveLength(0)
+
+  await Bun.sleep(2_500)
+  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+
+  expect(outgoing()).toHaveLength(0)
+  expect(expiredScreenAlive(reviewId)).toBe(true)
+  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  expect(outgoing()).toHaveLength(0)
+  expectNoErrors(e2e.logs)
+}, 15_000)
+
+test('an invoice that expires before an NWC confirmation is not paid', async () => {
+  server = startServer('expires')
+  await e2e.container.users.update(USER_A, {nwcUrl: NWC_URL})
+  const pasted = privateText(server.lnurl)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredMessageId('sendMessage')
+  await e2e.send(payCallback(payData, offerId, pasted))
+  await e2e.send(privateText(String(AMOUNT), {messageId: 50_001}))
+  const reviewId = editedScreen().id
+  expect(e2e.tg.isDeleted(USER_A, reviewId)).toBe(false)
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+
+  await Bun.sleep(2_500)
+  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expect(outgoing()).toHaveLength(0)
+  expect(expiredScreenAlive(reviewId)).toBe(true)
+  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expectNoErrors(e2e.logs)
+}, 15_000)
 
 test('two Pay clicks open one amount prompt and pay nothing', async () => {
   server = startServer('ok')
@@ -341,6 +422,9 @@ function startServer(mode: Mode): LnurlServer {
   const http = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
+    // Bun's default 10s idle timeout races our client deadline and turns a hang
+    // into a dropped socket. Leave the request open so the client is what gives up.
+    idleTimeout: 0,
     async fetch(request) {
       const url = new URL(request.url)
       if (url.pathname === '/pay') {
@@ -359,12 +443,13 @@ function startServer(mode: Mode): LnurlServer {
         }
         if (mode === 'http-error') return new Response('down', {status: 500})
         if (mode === 'bad-json') return Response.json({nope: true})
+        const published = publishedMetadata(mode)
         return Response.json({
           tag: 'payRequest',
           callback: `http://127.0.0.1:${port}/invoice`,
           minSendable: 10_000,
           maxSendable: 100_000,
-          metadata: METADATA,
+          metadata: published.metadata,
           commentAllowed: 40,
         })
       }
@@ -374,14 +459,16 @@ function startServer(mode: Mode): LnurlServer {
       const asked = Number(url.searchParams.get('amount')) / 1000
       const sats = mode === 'amount' ? asked + 1 : asked
       const descriptionHash =
-        mode === 'hash' ? createHash('sha256').update('nope').digest('hex') : HASH
+        mode === 'hash'
+          ? createHash('sha256').update('nope').digest('hex')
+          : publishedMetadata(mode).hash
       const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
       if (!master) throw new Error('Fake LNbits master wallet not found')
       const invoice = e2e.ln.state.createInvoice({
         wallet: master,
         sats,
         memo: '',
-        expirySec: 3600,
+        expirySec: mode === 'expires' ? 2 : 3600,
         descriptionHash,
       })
       return Response.json({pr: invoice.bolt11})
@@ -397,6 +484,49 @@ function startServer(mode: Mode): LnurlServer {
       http.stop(true)
     },
   }
+}
+
+function editedScreen(): {text: string; id: number} {
+  const edit = e2e.tg.last('editMessageText')
+  const id = Number(edit?.message_id)
+  if (!Number.isSafeInteger(id)) throw new Error('the amount screen was not edited')
+  return {text: String(edit?.text), id}
+}
+
+function publishedMetadata(mode: Mode): {metadata: string; hash: string} {
+  const plain = mode === 'long' ? 'N'.repeat(5000) : 'Pay Alice'
+  const metadata = JSON.stringify([
+    ['text/plain', plain],
+    ['text/identifier', 'not-the-address@evil.test'],
+  ])
+  return {metadata, hash: createHash('sha256').update(metadata).digest('hex')}
+}
+
+/** The refusal landed on the confirm message, and that message was not deleted. */
+function expiredScreenAlive(messageId: number): boolean {
+  const expired = e2e.tg.succeeded('editMessageText').find(result => {
+    if (!result || typeof result !== 'object') return false
+    return (
+      Reflect.get(result, 'message_id') === messageId &&
+      /Invoice expired/.test(String(Reflect.get(result, 'text')))
+    )
+  })
+  return expired !== undefined && !e2e.tg.isDeleted(USER_A, messageId)
+}
+
+/** The paid edit landed on a message Telegram can still edit. */
+function expectReceiptAlive(): void {
+  const paid = e2e.tg.succeeded('editMessageText').find(result => {
+    return (
+      !!result &&
+      typeof result === 'object' &&
+      /Invoice paid/.test(String(Reflect.get(result, 'text')))
+    )
+  })
+  expect(paid).toBeDefined()
+  const id = paid && typeof paid === 'object' ? Number(Reflect.get(paid, 'message_id')) : Number.NaN
+  expect(Number.isSafeInteger(id)).toBe(true)
+  expect(e2e.tg.isDeleted(USER_A, id)).toBe(false)
 }
 
 function payCallback(data: string, offerId: number, pasted: TestUpdate): TestUpdate {

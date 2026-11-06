@@ -24,7 +24,7 @@ import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
-import {lnurlPayeeHtml} from '../lnurl-payee.js'
+import {lnurlPayeeParts} from '../lnurl-payee.js'
 import {payingInvoice} from './paying-invoice.js'
 
 /**
@@ -65,10 +65,9 @@ export async function payingLnurl(
     return conversation.halt()
   }
   const quote: LnurlPayQuote = loaded.quote
-  const payee = lnurlPayeeHtml(
-    quote.description,
-    quote.identifier || (request.kind === 'lightning-address' ? request.value : ''),
-  )
+  const entered =
+    request.kind === 'lightning-address' ? request.value : (quote.metadataHosts[0] ?? '')
+  const enteredKind = request.kind === 'lightning-address' ? 'address' : 'host'
 
   const html = joinWizardHtml(
     ctx.t('lnurl-pay-amount', {
@@ -76,9 +75,18 @@ export async function payingLnurl(
       max: quote.maxSats,
       exact: quote.minSats === quote.maxSats ? 'yes' : 'no',
     }),
-    payee,
+    payeeHtml(ctx, {
+      entered,
+      enteredKind,
+      hosts: quote.metadataHosts,
+      serviceText: quote.serviceText,
+    }),
   )
+  // This message is the only living menu for the payment. The review and the receipt
+  // edit it. A second showLivingMenu would be adopted again when the confirm click
+  // replays this function, and that adoption deletes the receipt through bot.api.
   const message = await showHostOrReply(ctx, html, cancelKeyboard(ctx))
+  const screen = {chatId: message.chat.id, messageId: message.message_id}
   const prompt = createActivePrompt(message, {
     kind: 'text',
     html,
@@ -121,7 +129,7 @@ export async function payingLnurl(
     try {
       const invoice = await requestLnurlInvoice(quote, amount)
       ctx.log.info({kind: request.kind, sats: amount}, 'LNURL invoice accepted')
-      return {ok: true as const, invoice}
+      return {ok: true as const, bolt11: invoice.bolt11, callbackHosts: invoice.callbackHosts}
     } catch (error) {
       const code = lnurlFailureCode(error)
       ctx.log.info({kind: request.kind, sats: amount, code}, 'LNURL invoice refused')
@@ -132,12 +140,36 @@ export async function payingLnurl(
     await refuse(ctx, invoiced.code)
     return conversation.halt()
   }
-  const bolt11 = invoiced.invoice
 
-  // Confirmation and the wallet pay live here. This call does not pay by itself.
-  // The payee stays on that screen: a hash-only invoice has no description of its own,
-  // and the pasted address is deleted with the offer.
-  await payingInvoice(conversation, ctx, bolt11, payee)
+  const payee = payeeHtml(ctx, {
+    entered,
+    enteredKind,
+    hosts: [...quote.metadataHosts, ...invoiced.callbackHosts],
+    serviceText: quote.serviceText,
+  })
+  // Confirmation and the wallet pay edit `screen`. Nothing is paid before that button.
+  await payingInvoice(conversation, ctx, invoiced.bolt11, {
+    reviewPrefix: payee,
+    host: screen,
+    recheckExpiry: true,
+  })
+}
+
+function payeeHtml(
+  ctx: ConversationContext,
+  view: {entered: string; enteredKind: 'address' | 'host'; hosts: string[]; serviceText: string},
+): string {
+  const parts = lnurlPayeeParts(view)
+  const who =
+    view.enteredKind === 'address'
+      ? ctx.t('lnurl-pay-address', {address: parts.entered})
+      : ctx.t('lnurl-pay-host', {host: parts.entered})
+  return joinWizardHtml(
+    who,
+    parts.route ? ctx.t('lnurl-pay-route', {route: parts.route}) : undefined,
+    parts.invoiceHost ? ctx.t('lnurl-pay-invoice-from', {host: parts.invoiceHost}) : undefined,
+    parts.note ? ctx.t('lnurl-pay-service-note', {note: parts.note}) : undefined,
+  )
 }
 
 function cancelKeyboard(ctx: ConversationContext): InlineKeyboard {

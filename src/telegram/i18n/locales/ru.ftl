@@ -341,6 +341,12 @@ pasted-payment-lnurl = <b>⚡️ Это Lightning-адрес или LNURL.</b>
 
 pasted-payment-lnurl-outside = <b>⚡️ Это Lightning-адрес или LNURL.</b>
 
+lnurl-pay-address = Платим на <code>{$address}</code>
+lnurl-pay-host = Платим хосту <code>{$host}</code>
+lnurl-pay-route = Через {$route}
+lnurl-pay-invoice-from = Счёт с <code>{$host}</code>
+lnurl-pay-service-note = Их текст: {$note}
+
 lnurl-pay-amount = {$exact ->
     [yes] <b>🔢 Получатель просит {$min} сат.</b>
         Введи эту сумму, чтобы продолжить.
