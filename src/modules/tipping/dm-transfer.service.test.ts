@@ -29,11 +29,25 @@ test('two workers settling one attempt pay the recipient once', async () => {
     payInvoice: world.pay,
     notify: async () => true,
   }
+  let notices = 0
   const [first, second] = await Promise.all([
-    world.service.settle(input),
-    world.service.settle(input),
+    world.service.settle({
+      ...input,
+      notify: async () => {
+        notices += 1
+        return true
+      },
+    }),
+    world.service.settle({
+      ...input,
+      notify: async () => {
+        notices += 1
+        return true
+      },
+    }),
   ])
   expect(world.paid('user')).toHaveLength(1)
+  expect(notices).toBe(1)
   expect(first.outcome === 'settled' || second.outcome === 'settled').toBe(true)
   expect(
     [first.outcome, second.outcome].every(

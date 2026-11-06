@@ -65,10 +65,24 @@ export function createDmTransferRepository(database: AppDatabase) {
         .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.status, 'pending')))
     },
 
-    async markNoticeSent(id: string) {
-      await database
+    /**
+     * Claim the recipient notice. Only the caller that flips `noticeSent` from false
+     * may send. A second worker sees the flag already set and must not send again.
+     */
+    async claimNotice(id: string): Promise<boolean> {
+      const [row] = await database
         .update(dmTransfersTable)
         .set({noticeSent: true})
+        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
+        .returning()
+      return row !== undefined
+    },
+
+    /** The send did not land. Clear the claim so a later settle can try once more. */
+    async releaseNotice(id: string) {
+      await database
+        .update(dmTransfersTable)
+        .set({noticeSent: false})
         .where(eq(dmTransfersTable.id, id))
     },
   }

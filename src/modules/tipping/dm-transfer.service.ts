@@ -210,12 +210,19 @@ export function createDmTransferService(deps: DmTransferDeps) {
     attemptId: string
     notify: () => Promise<boolean>
   }): Promise<'sent' | 'failed'> {
-    const row = await deps.transfers.get(input.attemptId)
-    if (row.noticeSent) return 'sent'
-    const sent = await input.notify()
-    if (!sent) return 'failed'
-    await deps.transfers.markNoticeSent(input.attemptId)
-    return 'sent'
+    const claimed = await deps.transfers.claimNotice(input.attemptId)
+    if (!claimed) return 'sent'
+    try {
+      const sent = await input.notify()
+      if (!sent) {
+        await deps.transfers.releaseNotice(input.attemptId)
+        return 'failed'
+      }
+      return 'sent'
+    } catch (error) {
+      await deps.transfers.releaseNotice(input.attemptId)
+      throw error
+    }
   }
 
   return {settle}

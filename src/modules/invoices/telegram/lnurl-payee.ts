@@ -40,9 +40,14 @@ export function lnurlPayeeParts(view: LnurlPayeeView): {
   invoiceHost: string
   note: string
 } {
-  // Every hop, in the order we connected. A redirect back to an earlier host is
-  // still a hop: dropping repeats would hide A → B → A and name B as the invoice.
-  const hosts = view.hosts.filter(host => host.length > 0)
+  // Consecutive repeats are one hop: the metadata fetch and the callback are
+  // usually the same host, and that is not a redirect. A later return to an
+  // earlier host stays, so A → B → A is still the route and A is the invoice.
+  const hosts: string[] = []
+  for (const host of view.hosts) {
+    if (host.length === 0 || hosts.at(-1) === host) continue
+    hosts.push(host)
+  }
   return {
     entered: escapeTelegramHtml(clipLnurlDisplay(view.entered)),
     route:

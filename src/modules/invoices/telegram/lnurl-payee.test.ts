@@ -17,6 +17,17 @@ describe('lnurlPayeeParts', () => {
     expect(parts.note).not.toContain('identifier')
   })
 
+  test('the metadata host and the callback on that same host are not a redirect', () => {
+    const parts = lnurlPayeeParts({
+      entered: 'ln.example',
+      enteredKind: 'host',
+      hosts: ['ln.example', 'ln.example'],
+      serviceText: '',
+    })
+    expect(parts.route).toBe('')
+    expect(parts.invoiceHost).toBe('ln.example')
+  })
+
   test('keeps a redirect back to the first host, and the invoice is that last hop', () => {
     const parts = lnurlPayeeParts({
       entered: 'alice@a.example',
