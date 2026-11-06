@@ -1,5 +1,8 @@
-import {describe, expect, test} from 'bun:test'
+import {describe, expect, spyOn, test} from 'bun:test'
 import {createHash} from 'node:crypto'
+import * as dnsPromises from 'node:dns/promises'
+import http from 'node:http'
+import https from 'node:https'
 import {LnurlPayError} from '@core/lightning/lnurl-pay.js'
 import type {PaymentRequest} from '@core/lightning/payment-request.js'
 import {encode, toWords} from 'bech32'
@@ -110,6 +113,62 @@ describe('fetchLnurlPay', () => {
         }),
       ).rejects.toMatchObject({code: 'bad-response'})
     } finally {
+      server.stop(true)
+    }
+  })
+
+  test('a second DNS answer that is private is not the address we connect to', async () => {
+    const handed: string[] = []
+    const hosts: string[] = []
+    let calls = 0
+    const lookup = spyOn(dnsPromises, 'lookup').mockImplementation((() => {
+      calls += 1
+      if (calls === 1) return Promise.resolve([{address: '127.0.0.1', family: 4}])
+      return Promise.resolve([{address: '169.254.169.254', family: 4}])
+    }) as unknown as typeof dnsPromises.lookup)
+    const restore = watchHanded(handed, hosts)
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(request) {
+        if (new URL(request.url).pathname === '/go') {
+          return Response.redirect('http://169.254.169.254/latest', 302)
+        }
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    port = server.port ?? 0
+    try {
+      // https is allowed for a public name; the socket must still use the vetted loopback IP.
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`https://rebind.test:${port}/pay`),
+        }),
+      ).rejects.toBeInstanceOf(LnurlPayError)
+      expect(calls).toBe(1)
+      expect(handed.length).toBeGreaterThan(0)
+      expect(handed.every(ip => ip === '127.0.0.1')).toBe(true)
+      expect(hosts).toEqual(['rebind.test'])
+
+      lookup.mockImplementation((() =>
+        Promise.resolve([
+          {address: '169.254.169.254', family: 4},
+        ])) as unknown as typeof dnsPromises.lookup)
+      handed.length = 0
+      hosts.length = 0
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`http://127.0.0.1:${port}/go`),
+        }),
+      ).rejects.toMatchObject({code: 'bad-response'})
+      expect(handed.includes('169.254.169.254')).toBe(false)
+      expect(hosts.includes('169.254.169.254')).toBe(false)
+    } finally {
+      lookup.mockRestore()
+      restore()
       server.stop(true)
     }
   })
@@ -235,3 +294,36 @@ describe('requestLnurlInvoice', () => {
     }
   })
 })
+
+function watchHanded(handed: string[], hosts: string[]): () => void {
+  const originalHttp = http.request
+  const originalHttps = https.request
+  const wrap =
+    (original: typeof http.request) => (options: http.RequestOptions, callback?: () => void) => {
+      hosts.push(String(options.hostname ?? ''))
+      const userLookup = options.lookup
+      if (typeof userLookup === 'function') {
+        const inner = userLookup
+        options.lookup = ((hostname, opts, cb) => {
+          inner(hostname, opts, (err, address, family) => {
+            if (typeof address === 'string' && address) handed.push(address)
+            if (Array.isArray(address)) {
+              for (const item of address) handed.push(item.address)
+            }
+            cb(err, address, family)
+          })
+        }) as NonNullable<http.RequestOptions['lookup']>
+      }
+      const call = original as (
+        options: http.RequestOptions,
+        callback?: () => void,
+      ) => ReturnType<typeof http.request>
+      return call(options, callback)
+    }
+  http.request = wrap(originalHttp) as typeof http.request
+  https.request = wrap(originalHttps as unknown as typeof http.request) as typeof https.request
+  return () => {
+    http.request = originalHttp
+    https.request = originalHttps
+  }
+}

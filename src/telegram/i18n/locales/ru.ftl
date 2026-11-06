@@ -19,6 +19,8 @@ conversation-action =
     .edit-message-en = редактирование сообщения на английском
     .select-wallet = выбор кошелька
     .confirm-invoice-payment = подтверждение оплаты счёта
+    .enter-send-target = ввод получателя
+    .confirm-send = подтверждение отправки
     .invoice-memo-options = добавление описания счёта
     .enter-invoice-memo = ввод описания счёта
     .enable-onchain = включение on-chain оплаты
@@ -60,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Оплатить счёт
+    .confirm-send = ✅ Отправить
     .skip = ➡️ Пропустить
     .chat-settings = ⚙️ Настройки чата
     .prev = ⬅️
@@ -326,9 +329,20 @@ settings-donation = ⚡️ <b>Авто % с платежей</b>
 
 send-menu = <b>✉️ Отправить платёж</b>
 
-    Оплати Lightning счёт или отправь сатоши другому пользователю Telegram.
+    Пришли Lightning-счёт, Lightning-адрес, LNURL или <code>@username</code> того, кто уже пользуется {bot-name}.
+    .invalid = <b>⚠️ Нужен Lightning-счёт, Lightning-адрес, LNURL или @username.</b>
 
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
+    .confirm = <b>✅ Подтверди отправку</b>
+
+        Получатель: <b>@{$username}</b>
+        Сумма: <b>{$amount} сат{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Кошелёк: <b>NWC</b>
+           *[other] Кошелёк: <b>{bot-name}</b>
+        }
+
+        Ничего не спишется, пока не подтвердишь.
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
 
 pasted-payment = <b>⚡️ Это Lightning-счёт.</b>

@@ -441,7 +441,7 @@ const cancelCases: {
     step: 'invoice',
     reach: enterPayInvoiceAtInvoice,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: payingInvoice.name,
@@ -464,14 +464,14 @@ const cancelCases: {
     step: 'username',
     reach: enterSendToUserAtUsername,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: sendingToUser.name,
     step: 'amount',
     reach: enterSendToUserAtAmount,
     lifecyclePrompt: 'host',
-    parentText: /Send payment/,
+    parentText: /Wallet/,
   },
   {
     conversation: changingPrice.name,
@@ -549,7 +549,7 @@ test('cancelling the memo step keeps the QR as the receipt with an Open wallet b
   expectNoErrors(e2e.logs)
 })
 
-test('the shared registry contains all thirteen conversations', () => {
+test('the shared registry contains every installed conversation', () => {
   expect(registeredConversations.map(conversation => conversation.name).sort()).toEqual(
     [
       'broadcasting',
@@ -564,6 +564,7 @@ test('the shared registry contains all thirteen conversations', () => {
       'payingInvoice',
       'payingLnurl',
       'requestingFeature',
+      'sendingPayment',
       'sendingToUser',
     ].sort(),
   )

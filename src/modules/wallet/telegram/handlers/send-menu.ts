@@ -1,4 +1,6 @@
-import {editMessageWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
+import {sendingPayment} from '@modules/tipping/telegram/sending-payment.js'
 import type {BotContext} from '@telegram/context.js'
 
-export const sendMenuCallback = (ctx: BotContext) => editMessageWithSendMenu(ctx)
+export const sendMenuCallback = async (ctx: BotContext) => {
+  await ctx.conversation.enter(sendingPayment.name)
+}

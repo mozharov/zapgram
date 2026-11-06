@@ -411,6 +411,10 @@ test('a private send through NWC emits one dm_transfer_sent', async () => {
   await e2e.send(privateCallback(staticCallback.sendToUser))
   await e2e.send(privateText('@user_b'))
   await e2e.send(privateText(String(TIP_SATS)))
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
 
   expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
     {
@@ -420,6 +424,39 @@ test('a private send through NWC emits one dm_transfer_sent', async () => {
     },
   ])
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
+  expect(internalBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
+  expectNoErrors(e2e.logs)
+})
+
+test('choosing a wallet does not pay until the send is confirmed', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  await connectNwc()
+  creditInternal(USER_A, 1_000)
+  e2e.tg.reply('getChat', {id: USER_B, type: 'private', username: 'user_b', first_name: 'User B'})
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  const pickerId = e2e.tg.lastMessageId('editMessageText')
+  if (pickerId === undefined) throw new Error('Expected the wallet picker')
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(
+    expect.arrayContaining(['internal', 'nwc', 'cancel']),
+  )
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
+
+  await e2e.send(privateCallback('nwc', {messageId: pickerId}))
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Nothing is sent until you confirm/)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/NWC/)
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+
+  await e2e.send(privateCallback('confirm-send', {messageId: confirmId}))
+
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
+  expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
   expect(internalBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
   expectNoErrors(e2e.logs)
 })

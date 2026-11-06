@@ -429,13 +429,12 @@ test('private keyboard navigation keeps one world through screens and conversati
   await expectEditedScreen(staticCallback.settings, /NWC/)
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.connectNwc)
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.sendMenu, /Send payment/)
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.sendToUser)
-
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendToUser)), {
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendMenu)), {
     db: {conversations: {added: 1}},
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Sending sats to a Telegram user/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Send payment/}],
   })
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['cancel'])
+
   await expectDelta(
     e2e,
     () =>
@@ -446,7 +445,7 @@ test('private keyboard navigation keeps one world through screens and conversati
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageText', to: USER_A, text: /Send payment/},
+        {method: 'editMessageText', to: USER_A, text: /Wallet/},
       ],
     },
   )

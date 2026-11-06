@@ -13,7 +13,6 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -61,8 +60,7 @@ export async function payingInvoice(
   const restoreParent = async (target?: ConversationHost) => {
     const dest = target ?? host
     if (!dest) return
-    if (lnInvoice) await editHostWithWallet(ctx, dest)
-    else await editHostWithSendMenu(ctx, dest)
+    await editHostWithWallet(ctx, dest)
   }
 
   if (!lnInvoice && !fromPastedPay) {

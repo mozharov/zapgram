@@ -8,6 +8,7 @@ import {
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
+  type ConversationHost,
   disabledLinkPreview,
   joinWizardHtml,
   showHostOrReply,
@@ -36,6 +37,10 @@ export async function payingLnurl(
   conversation: BotConversation,
   ctx: ConversationContext,
   target: string,
+  opts?: {
+    host?: ConversationHost
+    onCancel?: (host: ConversationHost) => Promise<unknown>
+  },
 ) {
   const request = recognizePaymentRequest(target)
   if (!request || request.kind === 'bolt11') {
@@ -85,7 +90,8 @@ export async function payingLnurl(
   // This message is the only living menu for the payment. The review and the receipt
   // edit it. A second showLivingMenu would be adopted again when the confirm click
   // replays this function, and that adoption deletes the receipt through bot.api.
-  const message = await showHostOrReply(ctx, html, cancelKeyboard(ctx))
+  // The send wizard passes its own screen so we edit that instead of opening another.
+  const message = await showHostOrReply(ctx, html, cancelKeyboard(ctx), opts?.host)
   const screen = {chatId: message.chat.id, messageId: message.message_id}
   const prompt = createActivePrompt(message, {
     kind: 'text',
@@ -101,7 +107,9 @@ export async function payingLnurl(
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
     if (kind === 'cancel') {
       await next.answerCallbackQuery()
-      await deactivatePrompt(conversation, prompt, cancelled)
+      if (opts?.onCancel) {
+        await opts.onCancel(opts.host ?? {chatId: prompt.chatId, messageId: prompt.messageId})
+      } else await deactivatePrompt(conversation, prompt, cancelled)
       return conversation.halt()
     }
     if (kind === 'interrupt') return interruptConversation(conversation, prompt, cancelled)

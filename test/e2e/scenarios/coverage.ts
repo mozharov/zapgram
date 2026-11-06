@@ -463,6 +463,14 @@ export const scenarioCoverage = {
       'user_has_no_wallet',
     ],
   },
+  'send-payment': {
+    routes: ['send-menu', 'cancel', 'create-invoice'],
+    commands: ['/wallet'],
+    updates: ['message', 'callback_query'],
+    writes: ['users.insert', 'conversations.insert', 'conversations.delete'],
+    jobs: [],
+    errors: ['insufficient_funds', 'to_yourself', 'user_has_no_wallet'],
+  },
   wallet: {
     routes: [
       'wallet',

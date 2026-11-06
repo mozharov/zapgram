@@ -19,6 +19,8 @@ conversation-action =
     .edit-message-en = editing the English join message
     .select-wallet = selecting a wallet
     .confirm-invoice-payment = confirming an invoice payment
+    .enter-send-target = entering where to send
+    .confirm-send = confirming a send
     .invoice-memo-options = adding an invoice description
     .enter-invoice-memo = entering an invoice description
     .enable-onchain = enabling on-chain payments
@@ -60,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Pay Invoice
+    .confirm-send = ✅ Send
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
     .prev = ⬅️
@@ -326,9 +329,20 @@ settings-donation = ⚡️ <b>Auto % on payments</b>
 
 send-menu = <b>✉️ Send payment</b>
 
-        Pay a Lightning invoice or send payment to a Telegram user.
+    Send a Lightning invoice, a Lightning address, an LNURL, or the <code>@username</code> of someone who already uses {bot-name}.
+    .invalid = <b>⚠️ Send a Lightning invoice, a Lightning address, an LNURL, or @username.</b>
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
+    .confirm = <b>✅ Confirm this send</b>
+
+        Recipient: <b>@{$username}</b>
+        Amount: <b>{$amount} sats{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Wallet: <b>NWC</b>
+           *[other] Wallet: <b>{bot-name}</b>
+        }
+
+        Nothing is sent until you confirm.
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>

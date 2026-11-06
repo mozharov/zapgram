@@ -19,6 +19,7 @@ export async function replayWizard(
   wizard: (conversation: BotConversation, ctx: ConversationContext) => Promise<void>,
   input: Update | Update[],
   assertOnce: () => void,
+  entry: Update = privateText('start'),
 ) {
   const builder = async (conversation: BotConversation, ctx: ConversationContext) => {
     await wizard(conversation, ctx)
@@ -43,7 +44,7 @@ export async function replayWizard(
   }
   const entered = await enterConversation<BotContext, ConversationContext>(
     builder,
-    base(privateText('start')),
+    base(entry),
     options,
   )
   expect(entered.status).toBe('handled')
