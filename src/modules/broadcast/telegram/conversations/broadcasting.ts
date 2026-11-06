@@ -24,6 +24,7 @@ import {
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
 import {markupFromReplyMarkup, serializeBaseMarkup} from '@telegram/helpers/notification-chrome.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
@@ -95,7 +96,8 @@ async function waitForLocale(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
+    if (!next) continue
     const data = next.callbackQuery?.data
 
     if (data === staticCallback.cancel && isCallbackFromPrompt(next, prompt)) {
@@ -136,7 +138,8 @@ async function waitForSourceMessage(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'none'})
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
     if (kind === 'cancel') {
@@ -175,7 +178,8 @@ async function waitForConfirm(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
+    if (!next) continue
     const data = next.callbackQuery?.data
 
     if (data && broadcastConfirmRoute.pattern.test(data) && isCallbackFromPrompt(next, prompt)) {

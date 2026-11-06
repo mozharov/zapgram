@@ -1,0 +1,41 @@
+import {describe, expect, test} from 'bun:test'
+import {
+  bolt11MatchingToken,
+  pastedPaymentToken,
+  releasePastedPay,
+  reservePastedPay,
+} from './pasted-payment.js'
+
+const USER = 100001
+const INVOICE = 'lnbc1pabcdef'
+const PASTE = `  Lightning:${INVOICE.toUpperCase()}  `
+
+describe('reservePastedPay', () => {
+  test('only the first click for a user and token may open payment', () => {
+    const token = pastedPaymentToken(42, 'lnbc1prace')
+    expect(reservePastedPay(42, token)).toBe(true)
+    expect(reservePastedPay(42, token)).toBe(false)
+    releasePastedPay(42, token)
+    // The same invoice can be offered again after the first click's handler returns.
+    expect(reservePastedPay(42, token)).toBe(true)
+    releasePastedPay(42, token)
+  })
+})
+
+describe('bolt11MatchingToken', () => {
+  test('accepts the same user and the canonical invoice, including lightning: and case', () => {
+    const token = pastedPaymentToken(USER, INVOICE)
+    expect(bolt11MatchingToken(USER, token, PASTE)).toBe(INVOICE)
+    expect(bolt11MatchingToken(USER, token, INVOICE)).toBe(INVOICE)
+  })
+
+  test('rejects another user, another invoice, a missing message, and a non-bolt11', () => {
+    const token = pastedPaymentToken(USER, INVOICE)
+    expect(bolt11MatchingToken(USER + 1, token, INVOICE)).toBeUndefined()
+    expect(bolt11MatchingToken(USER, token, 'lnbc1pother')).toBeUndefined()
+    expect(bolt11MatchingToken(USER, token, undefined)).toBeUndefined()
+    expect(bolt11MatchingToken(undefined, token, INVOICE)).toBeUndefined()
+    expect(bolt11MatchingToken(USER, token, 'alice@localhost')).toBeUndefined()
+    expect(bolt11MatchingToken(USER, 'not-the-token', INVOICE)).toBeUndefined()
+  })
+})

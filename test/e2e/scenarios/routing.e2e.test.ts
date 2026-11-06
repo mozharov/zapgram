@@ -508,6 +508,18 @@ const parameterizedCases: {
     methods: ['deleteMessage', 'answerCallbackQuery'],
     text: /Unknown button/,
   },
+  {
+    route: 'pay-pasted',
+    data: () => 'pay-pasted:0123456789abcdef',
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /invoice message is gone/,
+  },
+  {
+    route: 'pay-pasted-back',
+    data: () => 'pay-pasted-back:0123456789abcdef',
+    methods: ['deleteMessage', 'answerCallbackQuery'],
+    text: /Closed/,
+  },
 ]
 
 for (const {route, data, methods, text, db, lnbits} of parameterizedCases) {
@@ -535,7 +547,7 @@ test('the tables above exercise every callback route the bot registers', () => {
     ]),
   ].sort()
 
-  expect(registry).toHaveLength(50)
+  expect(registry).toHaveLength(52)
   expect(covered).toEqual(registry)
 })
 

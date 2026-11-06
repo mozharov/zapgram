@@ -12,6 +12,7 @@ import {
   interruptConversation,
 } from '@telegram/helpers/conversation-prompt.js'
 import {showLivingMenu} from '@telegram/helpers/living-menu.js'
+import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import type {MessageEntity} from 'grammy/types'
@@ -52,7 +53,8 @@ export async function editCustomMessage(
   const cancelled = cancelledPromptState(ctx, prompt)
 
   for (;;) {
-    const next = await conversation.wait()
+    const next = await waitForStepInput(conversation, prompt, {intercept: 'none'})
+    if (!next) continue
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
 
     if (kind === 'cancel') {

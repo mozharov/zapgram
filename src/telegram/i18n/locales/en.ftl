@@ -53,6 +53,8 @@ button =
     .add-invoice-memo = 🔡 Add memo
     .copy-invoice = Copy invoice
     .pay-invoice = ⚡️ Pay Lightning Invoice
+    .pay-pasted = ⚡️ Pay
+    .pasted-payment-back = ↩️ Back to this step
     .send-to-user = 👤 Send payment to a user
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
@@ -100,6 +102,11 @@ callback-answer =
     .nwc-tip-enabled = ⚡️ Now tips are sent from the NWC wallet
     .nwc-tip-disabled = 🤖 Now tips are sent from the {bot-name} wallet
     .unknown = ⚠️ Unknown button
+    .pasted-payment-back = Back to this step
+    .pasted-payment-missing = The invoice message is gone. Send it again.
+    .pasted-payment-stale = This offer is no longer active.
+    .pasted-payment-retry = Telegram did not answer. Try again.
+    .pasted-payment-closed = Closed.
 
 error = 
     .unknown = <b>⚠️ Unknown error occurred.</b>
@@ -322,6 +329,12 @@ send-menu = <b>✉️ Send payment</b>
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+
+pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
+
+    Pay it, or go back to this step.
+
+pasted-payment-unsupported = <b>⚠️ Paying a Lightning address or LNURL isn't supported yet — ask the recipient for an invoice and send it.</b>
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>

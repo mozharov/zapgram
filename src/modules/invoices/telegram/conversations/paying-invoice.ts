@@ -15,6 +15,7 @@ import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
+import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
@@ -37,7 +38,12 @@ export async function payingInvoice(
   lnInvoice?: string,
 ) {
   const title = ctx.t('paying-invoice')
+  // Pay on a pasted bolt11 arrives as a callback on that offer. The offer is not the
+  // wizard host: the invoice skips straight to review, the offer is removed, and the
+  // screen is a new message. The step the user left must not keep a live Cancel button.
+  const fromPastedPay = payPastedRoute.pattern.test(ctx.callbackQuery?.data ?? '')
   let host: ConversationHost | undefined = hostFromCallback(ctx)
+  if (lnInvoice || fromPastedPay) host = undefined
   const restoreParent = async (target?: ConversationHost) => {
     const dest = target ?? host
     if (!dest) return
@@ -45,7 +51,7 @@ export async function payingInvoice(
     else await editHostWithSendMenu(ctx, dest)
   }
 
-  if (!lnInvoice) {
+  if (!lnInvoice && !fromPastedPay) {
     host ??= await ensureHost(ctx, joinWizardHtml(title, ctx.t('wait-for-invoice')))
   }
   const paymentRequest =
@@ -63,7 +69,8 @@ export async function payingInvoice(
     await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
     return conversation.halt()
   }
-  if (lnInvoice) await deleteMessageSafely(ctx)
+  if (lnInvoice && !fromPastedPay) await deleteMessageSafely(ctx)
+  if (fromPastedPay) await deleteRepliedInvoice(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
     'Decoded invoice to pay',
@@ -193,6 +200,14 @@ export async function payingInvoice(
       }),
     paidKeyboard(ctx, invoice.paymentRequest),
   )
+}
+
+async function deleteRepliedInvoice(ctx: ConversationContext): Promise<void> {
+  const message = ctx.callbackQuery?.message
+  if (!message || !('reply_to_message' in message)) return
+  const replied = message.reply_to_message
+  if (!replied || !('message_id' in replied) || ctx.chat?.id === undefined) return
+  await ctx.api.deleteMessage(ctx.chat.id, replied.message_id).catch(() => undefined)
 }
 
 function paidKeyboard(ctx: ConversationContext, paymentRequest: string): InlineKeyboard {

@@ -91,6 +91,8 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     // Invoice is already live. Any other update (command, bolt11, leftover text)
     // drops the memo buttons so the update can open Wallet or start payment. The invoice itself
     // keeps living, so re-render its terminal state instead of annotating it as cancelled.
+    // Pasted-payment intercept is off here: a bolt11 already starts the pay flow via this
+    // handoff, and offering first would add a confirmation the paste does not have today.
     await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
     return conversation.halt({next: true})
   }

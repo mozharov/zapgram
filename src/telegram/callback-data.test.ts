@@ -24,6 +24,8 @@ import {
   payJoinBalanceRoute,
   payLightningRoute,
   payOnchainRoute,
+  payPastedBackRoute,
+  payPastedRoute,
   paySubscriptionRoute,
   subscriptionRenewRoute,
   subscriptionRoute,
@@ -91,6 +93,8 @@ describe('callback-data routes', () => {
       {route: broadcastLocaleRoute, params: {locale: 'ru' as const}},
       {route: broadcastConfirmRoute, params: {action: 'yes' as const}},
       {route: broadcastConfirmRoute, params: {action: 'no' as const}},
+      {route: payPastedRoute, params: {token: '0123456789abcdef'}},
+      {route: payPastedBackRoute, params: {token: '0123456789abcdef'}},
     ] as const
 
     for (const {route, params} of samples) {
@@ -105,7 +109,7 @@ describe('callback-data routes', () => {
   })
 
   test('every parameterized route is listed in parameterizedRoutes', () => {
-    expect(parameterizedRoutes).toHaveLength(27)
+    expect(parameterizedRoutes).toHaveLength(29)
   })
 
   test('language-specific custom-message routes reject unsupported locales', () => {

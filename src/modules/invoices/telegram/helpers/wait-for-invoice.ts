@@ -36,6 +36,8 @@ export async function waitForInvoice(
   })
   const cancelled = cancelledPromptState(ctx, prompt)
 
+  // Intercept is off: this step is the payment-request field. A bolt11 is the input,
+  // not something to offer again. An address or LNURL still gets the invalid-invoice reply.
   for (;;) {
     const next = await conversation.wait()
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)

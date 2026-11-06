@@ -53,6 +53,8 @@ button =
     .add-invoice-memo = 🔡 Добавить описание
     .copy-invoice = Скопировать счёт
     .pay-invoice = ⚡️ Оплатить Lightning счёт
+    .pay-pasted = ⚡️ Оплатить
+    .pasted-payment-back = ↩️ Вернуться к шагу
     .send-to-user = 👤 Отправить сатоши пользователю
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
@@ -100,6 +102,11 @@ callback-answer =
     .nwc-tip-enabled = ⚡️ Теперь донаты отправляются из NWC-кошелька
     .nwc-tip-disabled = 🤖 Теперь донаты отправляются из кошелька {bot-name}
     .unknown = ⚠️ Неизвестная кнопка
+    .pasted-payment-back = Вернуться к шагу
+    .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
+    .pasted-payment-stale = Это предложение больше не действует.
+    .pasted-payment-retry = Telegram не ответил. Попробуйте ещё раз.
+    .pasted-payment-closed = Закрыто.
 
 error = 
     .unknown = <b>⚠️ Произошла неизвестная ошибка.</b>
@@ -322,6 +329,12 @@ send-menu = <b>✉️ Отправить платёж</b>
 
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+
+pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
+
+    Оплатить его или вернуться к шагу.
+
+pasted-payment-unsupported = <b>⚠️ Оплата на Lightning-адрес и LNURL пока не поддерживается — попросите у получателя инвойс и пришлите его.</b>
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>
