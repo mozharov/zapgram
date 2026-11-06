@@ -99,7 +99,7 @@ describe('classifyTextKind', () => {
   })
 })
 
-describe('text kind stays out of PostHog payloads and the update log', () => {
+describe('text kind on the event, and absent from the update capture and the log', () => {
   for (const [index, {text, kind, onchain}] of cases.entries()) {
     test(`${kind} [${index}]`, () => {
       const properties = dmUnrecognizedTextProperties(text)
@@ -107,17 +107,22 @@ describe('text kind stays out of PostHog payloads and the update log', () => {
         text_length: text.length,
         looks_like_onchain: onchain,
         text_kind: kind,
+        text,
+        text_truncated: false,
       })
-      expectNoTextOrHash(properties, text)
+      expect(properties.text).toBe(text)
 
       const update = buildUpdateProperties(ctx(text))
       expect(update.text_kind).toBe(kind)
       expect(update.text_length).toBe(text.length)
+      expect(update).not.toHaveProperty('text')
       expectNoTextOrHash(update, text)
 
       const log = describeUpdate(ctx(text))
       expect(log.textKind).toBe(kind)
       expect(log.textLength).toBe(text.length)
+      expect(log.looksLikeOnchain).toBe(onchain)
+      expect(log.textTruncated).toBe(false)
       expect(log).not.toHaveProperty('text')
       expectNoTextOrHash(log, text)
     })

@@ -32,6 +32,8 @@ describe('describeUpdate', () => {
       command: 'wallet',
       textLength: 7,
       textKind: 'other',
+      looksLikeOnchain: false,
+      textTruncated: false,
     })
   })
 
@@ -79,12 +81,17 @@ describe('describeUpdate', () => {
     expect(secretJson).not.toContain(secretDigest.slice(0, 16))
     expect(description.textLength).toBe(secret.length)
     expect(description.textKind).toBe('other')
+    expect(description.looksLikeOnchain).toBe(false)
+    expect(description.textTruncated).toBe(false)
+    expect(description).not.toHaveProperty('text')
     expect(description.command).toBeUndefined()
 
     const invoiceJson = JSON.stringify(invoiceLog)
     const invoiceDigest = createHash('sha256').update(invoice).digest('hex')
     const normalized = 'lnbc1puniquebodyzz'
     expect(invoiceLog.textKind).toBe('bolt11_invoice')
+    expect(invoiceLog.textTruncated).toBe(false)
+    expect(invoiceLog).not.toHaveProperty('text')
     expect(invoiceJson).not.toContain(normalized)
     expect(invoiceJson).not.toContain('LNBC1PUNIQUEBODYZZ')
     expect(invoiceJson).not.toContain(invoiceDigest)

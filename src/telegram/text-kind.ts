@@ -4,8 +4,8 @@ import {looksLikeOnchainAddress} from '@core/onchain/looks-like-address.js'
 /**
  * Label for a private message. Lightning kinds come only from
  * `recognizePaymentRequest`; on-chain comes only from `looksLikeOnchainAddress`.
- * This is the label alone: callers must not capture or log the text, a fragment,
- * the normalized form, or a hash of it.
+ * The return value is the label alone. Storing the message body is a separate
+ * decision on `dm_unrecognized_text`; this function does not hash or rewrite it.
  */
 export const TEXT_KINDS = [
   'bolt11_invoice',
