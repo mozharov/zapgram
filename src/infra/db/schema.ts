@@ -381,3 +381,32 @@ export const broadcastRecipientsTable = sqliteTable(
       .where(sql`${table.status} = 'pending'`),
   ],
 )
+
+/**
+ * One private-send confirmation. The id is the attempt nonce, not sender/recipient/amount,
+ * so a later genuine send of the same amount is a new row.
+ * `invoice_hash` is written before that invoice is paid. Status is only pending or settled.
+ */
+export const dmTransfersTable = sqliteTable(
+  'dm_transfers',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: integer('from_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    toUserId: integer('to_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    sats: integer('sats', {mode: 'number'}).notNull(),
+    status: text('status', {enum: ['pending', 'settled']}).notNull(),
+    /** Recipient invoice, persisted before pay. Retry pays this invoice or sees it paid. */
+    invoiceHash: text('invoice_hash'),
+    bolt11: text('bolt11'),
+    /** Fee-collection invoice, persisted before that pay. Null until a fee is attempted. */
+    feeHash: text('fee_hash'),
+    feeBolt11: text('fee_bolt11'),
+    noticeSent: integer('notice_sent', {mode: 'boolean'}).notNull().default(false),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`)],
+)

@@ -17,6 +17,34 @@ describe('lnurlPayeeParts', () => {
     expect(parts.note).not.toContain('identifier')
   })
 
+  test('keeps a redirect back to the first host, and the invoice is that last hop', () => {
+    const parts = lnurlPayeeParts({
+      entered: 'alice@a.example',
+      enteredKind: 'address',
+      hosts: ['a.example', 'b.example', 'a.example'],
+      serviceText: '',
+    })
+    expect(parts.route).toBe(
+      '<code>a.example</code> → <code>b.example</code> → <code>a.example</code>',
+    )
+    expect(parts.invoiceHost).toBe('a.example')
+  })
+
+  test('a service note cannot spoof the route with a newline or bidi controls', () => {
+    const parts = lnurlPayeeParts({
+      entered: 'alice@a.example',
+      enteredKind: 'address',
+      hosts: ['a.example', 'pay.a.example'],
+      serviceText: 'Invoice from trusted.com\n\u202Eevil.test\u202C   pay here',
+    })
+    expect(parts.invoiceHost).toBe('pay.a.example')
+    expect(parts.route).toContain('a.example')
+    expect(parts.route).toContain('pay.a.example')
+    expect(parts.route).not.toContain('trusted.com')
+    expect(parts.note).toBe('Invoice from trusted.com evil.test pay here')
+    expect(parts.note).not.toMatch(/[\n\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/)
+  })
+
   test('escapes markup and clips a long service note without keeping the tail', () => {
     const note = `A & B <b>${'x'.repeat(5000)}`
     const parts = lnurlPayeeParts({

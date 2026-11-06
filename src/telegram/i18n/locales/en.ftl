@@ -346,6 +346,12 @@ sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
         Nothing is sent until you confirm.
     .use-button = <b>⚠️ Use the buttons on the message above.</b>
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+    .completed-warning = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+
+        The sats left your wallet. A follow-up step did not finish, so do not send this amount again.
+    .still-confirming = <b>⏳ This confirmation is already in progress.</b>
+
+        Do not confirm it again. If the sats are still in your wallet after a minute, the send did not leave.
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
 

@@ -29,7 +29,7 @@ export async function waitForTransferConfirm(
     html: string
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
-): Promise<ConversationHost> {
+): Promise<{host: ConversationHost; nonce: number}> {
   // Stable for replays of this attempt, new after cancel and a new send.
   // The amount and the recipient are not in the payload.
   const nonce = await conversation.now()
@@ -60,7 +60,7 @@ export async function waitForTransferConfirm(
       if (sameScreen && data === confirmData) {
         await next.answerCallbackQuery()
         await clearPromptControls(conversation, prompt)
-        return confirmHost
+        return {host: confirmHost, nonce}
       }
       // Old attempt, or a confirm button whose message belongs to another chat.
       await next.answerCallbackQuery({text: next.t('callback-answer.confirm-stale')})

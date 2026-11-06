@@ -105,6 +105,13 @@ class MasterWallet extends LNBitsAPI {
     return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema)
   }
 
+  /** The fee invoice lives on the fee-collection wallet, not the admin wallet. */
+  async lookupFeePayment(paymentHash: string) {
+    return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema, {
+      headers: {'X-Api-Key': this.feeCollectionInvoiceKey},
+    })
+  }
+
   async createFeeCollectionInvoice(sats: number) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',

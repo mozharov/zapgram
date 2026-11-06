@@ -211,7 +211,7 @@ test('a BOLT11 in Send pays only from the invoice confirmation', async () => {
 
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Confirm the payment/)
   expect(outgoing()).toHaveLength(0)
-  await e2e.send(privateCallback('internal', {messageId: requiredMessageId()}))
+  await e2e.send(pressWallet('internal', requiredMessageId()))
 
   expect(outgoing()).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 1})
@@ -233,7 +233,7 @@ test('an LNURL custom amount and a fixed amount pay only after confirmation', as
   await e2e.send(privateText(String(AMOUNT)))
   expect(server.hits.callback).toBe(1)
   expect(outgoing()).toHaveLength(0)
-  await e2e.send(privateCallback('internal', {messageId: requiredMessageId()}))
+  await e2e.send(pressWallet('internal', requiredMessageId()))
   expect(outgoing()).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 1})
 
@@ -244,13 +244,78 @@ test('an LNURL custom amount and a fixed amount pay only after confirmation', as
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/asks for 20 sats/)
   await e2e.send(privateText('20'))
   expect(outgoing()).toHaveLength(1)
-  await e2e.send(privateCallback('internal', {messageId: requiredMessageId()}))
+  await e2e.send(pressWallet('internal', requiredMessageId()))
   expect(outgoing()).toHaveLength(2)
   expect(
     e2e.ln.state.payments.filter(
       payment => !payment.out && payment.paid && payment.amountMsat === 20_000,
     ),
   ).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('an old invoice confirm does not pay the invoice reopened on the same message', async () => {
+  credit(USER_A, 1_000)
+  const first = foreignInvoice(AMOUNT)
+  const second = foreignInvoice(50)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(first.bolt11))
+  const oldId = requiredMessageId()
+  const oldData = walletChoice('internal')
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: oldId}))
+  expect(outgoing()).toHaveLength(0)
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(second.bolt11))
+  const newId = requiredMessageId()
+  const newData = walletChoice('internal')
+  expect(newData).not.toBe(oldData)
+
+  await e2e.send(privateCallback(oldData, {messageId: newId}))
+  expect(outgoing()).toHaveLength(0)
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/no longer active/)
+
+  await e2e.send(privateCallback(newData, {messageId: newId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: 50, times: 1})
+  expect(
+    e2e.ln.state.payments.filter(payment => payment.out && payment.amountMsat === AMOUNT * 1000),
+  ).toHaveLength(0)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('an old LNURL confirm does not pay the amount reopened on the same message', async () => {
+  credit(USER_A, 1_000)
+  server = startServer({min: 10_000, max: 100_000})
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(server.lnurl))
+  await e2e.send(privateText(String(AMOUNT)))
+  const oldId = requiredMessageId()
+  const oldData = walletChoice('internal')
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: oldId}))
+  expect(outgoing()).toHaveLength(0)
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(server.lnurl))
+  await e2e.send(privateText('20'))
+  const newId = requiredMessageId()
+  const newData = walletChoice('internal')
+  expect(newData).not.toBe(oldData)
+
+  await e2e.send(privateCallback(oldData, {messageId: newId}))
+  expect(outgoing()).toHaveLength(0)
+  expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/no longer active/)
+
+  await e2e.send(privateCallback(newData, {messageId: newId}))
+  expect(
+    e2e.ln.state.payments.filter(
+      payment => payment.out && payment.paid && payment.amountMsat === 20_000,
+    ),
+  ).toHaveLength(1)
+  expect(
+    e2e.ln.state.payments.filter(payment => payment.out && payment.amountMsat === AMOUNT * 1000),
+  ).toHaveLength(0)
+  await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
 
@@ -410,6 +475,22 @@ function confirmData(payload = e2e.tg.last('editMessageText')): string {
 
 function confirm(messageId = requiredMessageId()): TestUpdate {
   return privateCallback(confirmData(), {messageId})
+}
+
+function walletChoice(which: 'internal' | 'nwc', payload = e2e.tg.last('editMessageText')): string {
+  const markup = payload?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith(`${which}:`))
+  if (!data) throw new Error(`Expected a ${which} nonce on the screen`)
+  return data
+}
+
+function pressWallet(which: 'internal' | 'nwc', messageId: number): TestUpdate {
+  return privateCallback(walletChoice(which), {messageId})
 }
 
 function requiredMessageId(): number {

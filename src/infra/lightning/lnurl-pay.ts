@@ -13,8 +13,11 @@ import type {PaymentRequest} from '@core/lightning/payment-request.js'
 import {isValidAmount, type LnUrlRawData, parseLnUrlPayResponse} from '@getalby/lightning-tools'
 
 /**
- * How long a recipient may stay silent before we stop and do not pay.
- * One budget covers DNS, the metadata fetch, every redirect, and the callback.
+ * How long one recipient chain may stay silent before we stop and do not pay.
+ * The metadata document, including every redirect, has this one budget.
+ * The callback that issues the bolt11 starts its own budget of the same length
+ * when that request starts. Time the user spends entering an amount is on neither
+ * clock. A redirect does not get a fresh budget.
  */
 export const LNURL_PAY_TIMEOUT_MS = 10_000
 

@@ -1,6 +1,7 @@
 import {type AppConfig, createConfig} from '@config'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
+import {classifyPayoutLookup} from '@core/payments/payout-state.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
@@ -76,6 +77,11 @@ import {
   type SubscriptionRepository,
 } from '@modules/subscriptions/repository.js'
 import {createSettleService, type SettleService} from '@modules/subscriptions/settle.service.js'
+import {createDmTransferRepository} from '@modules/tipping/dm-transfer.repository.js'
+import {
+  createDmTransferService,
+  type DmTransferService,
+} from '@modules/tipping/dm-transfer.service.js'
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
@@ -86,6 +92,7 @@ import {
   parseBaseMarkup,
 } from '@telegram/helpers/notification-chrome.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {HTTPError} from 'got'
 import type {Bot} from 'grammy'
 import type pino from 'pino'
 import {setRuntime} from '../runtime.js'
@@ -124,6 +131,7 @@ export type AppContainer = {
   donations: DonationRepository
   donationPay: DonationPayService
   donationCollect: DonationCollectService
+  dmTransfers: DmTransferService
   featureRequests: FeatureRequestService
   broadcasts: BroadcastRepository
   broadcastService: BroadcastService
@@ -205,6 +213,42 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     log,
     posthog,
     createNwc: nwcUrl => new NostrWallet(nwcUrl, config.memoFooter, log),
+  })
+
+  const dmTransfers = createDmTransferService({
+    transfers: createDmTransferRepository(db),
+    log,
+    createRecipientInvoice: async (toUserId, sats) => {
+      const wallet = await getUserWallet(toUserId)
+      return wallet.createInvoice({sats})
+    },
+    lookupRecipient: async (toUserId, hash) => {
+      try {
+        const wallet = await getUserWallet(toUserId)
+        return classifyPayoutLookup(await wallet.lookupPayment(hash))
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+        throw error
+      }
+    },
+    createFeeInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
+    lookupFee: async hash => {
+      try {
+        return classifyPayoutLookup(await masterWallet.lookupFeePayment(hash))
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+        throw error
+      }
+    },
+    getUser: id => users.getOrThrow(id),
+    findDonation: hash => donations.findByPaymentHash(hash),
+    insertDonation: input =>
+      donations.insertDonation({
+        userId: input.userId,
+        amountSats: input.amountSats,
+        kind: 'percent',
+        paymentHash: input.paymentHash,
+      }),
   })
 
   const donationCollect = createDonationCollectService({
@@ -392,6 +436,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     donations,
     donationPay,
     donationCollect,
+    dmTransfers,
     featureRequests,
     broadcasts,
     broadcastService,

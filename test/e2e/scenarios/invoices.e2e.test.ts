@@ -238,7 +238,7 @@ test('a message containing a bolt11 opens invoice details and the payment confir
   expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).not.toMatch(/Expires:[\s\S]*?<\/b>\n{3,}<blockquote/)
   expect(review?.link_preview_options).toEqual({is_disabled: true})
-  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
@@ -261,7 +261,7 @@ test('an invoice pasted from Send is deleted and folded into the host review', a
   expect(String(review?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
   expect(String(review?.text)).toContain('<blockquote expandable>')
   expect(review?.link_preview_options).toEqual({is_disabled: true})
-  expect(keyboardOf(review)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(review)).toEqual(['internal', 'cancel'])
   expectNoErrors(e2e.logs)
 })
 
@@ -1165,7 +1165,7 @@ test('Pay then confirm sends one payment, and Pay again sends none', async () =>
   // so the usual "last edited prompt" is not this screen.
   const reviewId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(confirmWalletOn(reviewId))
 
   expect(outgoingBolt11(invoice.bolt11)).toHaveLength(1)
   expect(outgoingBolt11(invoice.bolt11)[0]?.amountMsat).toBe(FOREIGN_SATS * 1000)
@@ -1207,7 +1207,7 @@ test('Pay on the wallet screen switches to the pasted invoice', async () => {
   expect(outgoingBolt11(second.bolt11)).toHaveLength(0)
   const reviewId = requiredResultMessageId('sendMessage')
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(confirmWalletOn(reviewId))
 
   expect(outgoingBolt11(second.bolt11)).toHaveLength(1)
   expect(outgoingBolt11(first.bolt11)).toHaveLength(0)
@@ -1642,7 +1642,22 @@ function credit(userId: number, sats: number): void {
 
 /** The wallet picker button that now both chooses the rail and pays. */
 function confirmWallet(): Update {
-  return privateCallback('internal', {messageId: requiredPromptMessageId()})
+  return confirmWalletOn(requiredPromptMessageId())
+}
+
+function confirmWalletOn(messageId: number): Update {
+  let data: string | undefined
+  for (const call of e2e.tg.calls) {
+    if (call.method !== 'editMessageText' && call.method !== 'sendMessage') continue
+    const button = keyboardOf(call.payload).find(item => item.startsWith('internal:'))
+    if (button) data = button
+  }
+  if (!data) throw new Error('Expected the invoice confirm')
+  return privateCallback(data, {messageId})
+}
+
+function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
+  return keyboardOf(payload).map(data => data.replace(/^(internal|nwc):\d+$/, '$1'))
 }
 
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {

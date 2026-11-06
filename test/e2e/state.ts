@@ -4,6 +4,7 @@ import type {
   BroadcastRecipient,
   Chat,
   Conversation,
+  DmTransfer,
   Donation,
   DonationPlatformStats,
   OnchainChatPayment,
@@ -30,6 +31,7 @@ export type WorldState = {
     pendingInvoices: PendingInvoice[]
     conversations: Conversation[]
     onchainChatPayments: OnchainChatPayment[]
+    dmTransfers: DmTransfer[]
     donations: Donation[]
     donationPlatformStats: DonationPlatformStats[]
     broadcasts: Broadcast[]
@@ -397,6 +399,7 @@ function emptyDbState(): WorldState['db'] {
     pendingInvoices: [],
     conversations: [],
     onchainChatPayments: [],
+    dmTransfers: [],
     donations: [],
     donationPlatformStats: [],
     broadcasts: [],
@@ -414,6 +417,7 @@ function dbKey(tableName: string): DbKey {
     pending_invoices: 'pendingInvoices',
     conversations: 'conversations',
     onchain_chat_payments: 'onchainChatPayments',
+    dm_transfers: 'dmTransfers',
     donations: 'donations',
     donation_platform_stats: 'donationPlatformStats',
     broadcasts: 'broadcasts',

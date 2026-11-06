@@ -6,6 +6,14 @@ export function escapeTelegramHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
+/** Bidi isolates and overrides. Left in a note, they can redraw "Invoice from …" over the route. */
+const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
+
+/** One line, no bidi controls. The note stays a note and cannot impersonate the route. */
+export function flattenServiceText(value: string): string {
+  return value.replace(BIDI_CONTROLS, '').replace(/\s+/g, ' ').trim()
+}
+
 export function clipLnurlDisplay(value: string, limit = LNURL_DISPLAY_LIMIT): string {
   const trimmed = value.trim()
   if (trimmed.length <= limit) return trimmed
@@ -32,9 +40,9 @@ export function lnurlPayeeParts(view: LnurlPayeeView): {
   invoiceHost: string
   note: string
 } {
-  const hosts = view.hosts.filter(
-    (host, index) => host.length > 0 && view.hosts.indexOf(host) === index,
-  )
+  // Every hop, in the order we connected. A redirect back to an earlier host is
+  // still a hop: dropping repeats would hide A → B → A and name B as the invoice.
+  const hosts = view.hosts.filter(host => host.length > 0)
   return {
     entered: escapeTelegramHtml(clipLnurlDisplay(view.entered)),
     route:
@@ -44,6 +52,6 @@ export function lnurlPayeeParts(view: LnurlPayeeView): {
             .join(' → ')
         : '',
     invoiceHost: escapeTelegramHtml(clipLnurlDisplay(hosts.at(-1) ?? '')),
-    note: escapeTelegramHtml(clipLnurlDisplay(view.serviceText)),
+    note: escapeTelegramHtml(clipLnurlDisplay(flattenServiceText(view.serviceText))),
   }
 }

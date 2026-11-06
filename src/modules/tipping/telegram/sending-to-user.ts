@@ -4,7 +4,6 @@ import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.
 import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {waitForTransferConfirm} from '@modules/tipping/telegram/wait-for-transfer-confirm.js'
 import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
-import {internalTransfer} from '@modules/tipping/transfer.service.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -20,16 +19,6 @@ import {usdSuffixForSats} from '@telegram/helpers/usd-suffix.js'
 import {getRuntime} from '../../../runtime.js'
 
 type ResolvedRecipient = {id: number; username: string | null}
-
-/** Overlapping confirms for the same send must not mint a second recipient invoice. */
-const userTransfers = new Set<string>()
-
-function reserveUserTransfer(fromId: number, toId: number, sats: number): string | undefined {
-  const key = `${fromId}:${toId}:${sats}`
-  if (userTransfers.has(key)) return undefined
-  userTransfers.add(key)
-  return key
-}
 
 export async function sendingToUser(conversation: BotConversation, ctx: ConversationContext) {
   const title = ctx.t('sending-to-user')
@@ -75,7 +64,7 @@ export async function payResolvedUser(
     onCancel: opts.onCancel,
   })
   const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
-  await waitForTransferConfirm(conversation, ctx, {
+  const confirmed = await waitForTransferConfirm(conversation, ctx, {
     host,
     html: joinWizardHtml(
       title,
@@ -88,75 +77,79 @@ export async function payResolvedUser(
     ),
     onCancel: opts.onCancel,
   })
-  const claim = reserveUserTransfer(ctx.user.id, toUser.id, sats)
-  if (!claim) return
-  try {
-    await settleConfirmedTransfer()
-  } finally {
-    userTransfers.delete(claim)
+  await ctx.replyWithChatAction('typing')
+
+  const usedNwc = wallet !== 'internal'
+  if (usedNwc && !ctx.user.nwc) throw new NWCConnectionError()
+  // The nonce was taken before this wait, so a replay of the click and a second
+  // process still holding the conversation reserve the same row. Fee and notice
+  // failures stay inside that row: they do not pay the recipient again.
+  const result = await conversation.external(() =>
+    getRuntime().dmTransfers.settle({
+      attemptId: `${ctx.user.id}:${confirmed.nonce}`,
+      fromUserId: ctx.user.id,
+      toUserId: toUser.id,
+      sats,
+      payInvoice: async bolt11 => {
+        if (!usedNwc) {
+          const fromWallet = await getUserWallet(ctx.user.id)
+          await fromWallet.payInvoice(bolt11)
+          return
+        }
+        if (!ctx.user.nwc) throw new NWCConnectionError()
+        await ctx.user.nwc.payInvoice(bolt11)
+      },
+      notify: () => notifySatsReceived(toUser.id, sats, ctx.user.username),
+    }),
+  )
+  if (result.outcome === 'in_flight') {
+    await closeLivingMenu(ctx, host.messageId, markup =>
+      ctx.api.editMessageText(
+        host.chatId,
+        host.messageId,
+        ctx.t('sending-to-user.still-confirming'),
+        {
+          reply_markup: markup,
+          ...disabledLinkPreview,
+        },
+      ),
+    )
+    return
   }
 
-  async function settleConfirmedTransfer(): Promise<void> {
-    await ctx.replyWithChatAction('typing')
+  await conversation.external(() => {
+    try {
+      captureBotEvent(
+        getRuntime().posthog,
+        'dm_transfer_sent',
+        {
+          amount_sats: sats,
+          payment_method: usedNwc ? 'nwc' : 'internal',
+        },
+        {distinctId: String(ctx.user.id)},
+      )
+    } catch {
+      // Analytics must never throw into the money path.
+    }
+  })
 
-    const usedNwc = wallet !== 'internal'
-    if (usedNwc && !ctx.user.nwc) throw new NWCConnectionError()
-    // Cached across replays: a finished wizard must not mint a second recipient invoice.
-    await conversation.external(async () => {
-      if (!usedNwc) {
-        await internalTransfer(ctx.user.id, toUser.id, sats)
-        return
-      }
-      const toUserWallet = await getUserWallet(toUser.id)
-      const invoice = await toUserWallet.createInvoice({sats})
-      if (!ctx.user.nwc) throw new NWCConnectionError()
-      await ctx.user.nwc.payInvoice(invoice.bolt11)
-    })
-
-    // Cached across replays, and a capture failure must not unwind a settled transfer.
-    await conversation.external(() => {
-      try {
-        captureBotEvent(
-          getRuntime().posthog,
-          'dm_transfer_sent',
-          {
-            amount_sats: sats,
-            payment_method: usedNwc ? 'nwc' : 'internal',
-          },
-          {distinctId: String(ctx.user.id)},
-        )
-      } catch {
-        // Analytics must never throw into the money path.
-      }
-    })
-
-    // Best-effort voluntary platform donation — never blocks the transfer.
-    await getRuntime().donationCollect.tryCollect({
-      userId: ctx.user.id,
-      baseAmountSats: sats,
-      kind: 'tip',
-      preferredRail: usedNwc ? 'nwc' : 'internal',
-      nwc: usedNwc ? ctx.user.nwc : undefined,
-      nwcUrl: ctx.user.nwcUrl,
-      user: ctx.user,
-    })
-
-    await notifySatsReceived(toUser.id, sats, ctx.user.username)
-    // The final report drops the wizard's title/breadcrumb lines: the send already happened, so only
-    // the confirmation itself is worth keeping.
-    const reportHtml = ctx.t('sending-to-user.completed', {
+  const reportHtml = ctx.t(
+    result.fee === 'failed' || result.notice === 'failed'
+      ? 'sending-to-user.completed-warning'
+      : 'sending-to-user.completed',
+    {
       amount: sats,
       usdSuffix,
       recipient: toUser.username ?? '',
-    })
+    },
+  )
 
-    // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
-    // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
-    await closeLivingMenu(ctx, host.messageId, markup =>
-      ctx.api.editMessageText(host.chatId, host.messageId, reportHtml, {
-        reply_markup: markup,
-        ...disabledLinkPreview,
-      }),
-    )
-  }
+  // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
+  // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
+  await closeLivingMenu(ctx, host.messageId, markup =>
+    ctx.api.editMessageText(host.chatId, host.messageId, reportHtml, {
+      reply_markup: markup,
+      ...disabledLinkPreview,
+    }),
+  )
 }

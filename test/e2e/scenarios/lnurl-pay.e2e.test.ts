@@ -108,6 +108,43 @@ afterEach(async () => {
   await e2e.dispose()
 })
 
+test('an LNURL path and query are requested exactly', async () => {
+  const seen: string[] = []
+  let port = 0
+  const http = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(request) {
+      const url = new URL(request.url)
+      seen.push(`${url.pathname}${url.search}`)
+      if (url.pathname !== '/Pay/Alice') return new Response('no', {status: 404})
+      return Response.json({
+        tag: 'payRequest',
+        callback: `http://127.0.0.1:${port}/invoice`,
+        minSendable: 10_000,
+        maxSendable: 100_000,
+        metadata: JSON.stringify([
+          ['text/plain', 'Pay Alice'],
+          ['text/identifier', 'alice@example.com'],
+        ]),
+      })
+    },
+  })
+  port = http.port ?? 0
+  const target = `http://127.0.0.1:${port}/Pay/Alice?token=AbC`
+  try {
+    const pasted = privateText(encode('lnurl', toWords(Buffer.from(target)), 5000))
+    await e2e.send(pasted)
+    const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+    const offerId = requiredMessageId('sendMessage')
+    await e2e.send(payCallback(payData, offerId, pasted))
+    expect(seen).toEqual(['/Pay/Alice?token=AbC'])
+    expectNoErrors(e2e.logs)
+  } finally {
+    http.stop(true)
+  }
+})
+
 test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () => {
   server = startServer('ok')
   credit(USER_A, 1_000)
@@ -149,7 +186,7 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
   expect(outgoing()).toHaveLength(0)
   const reviewId = review.id
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(pressWallet('internal', reviewId))
 
   expect(outgoing()).toHaveLength(1)
   expect(outgoing()[0]?.amountMsat).toBe(AMOUNT * 1000)
@@ -183,7 +220,7 @@ test('the same LNURL pays once from NWC after confirmation', async () => {
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   const reviewId = review.id
 
-  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+  await e2e.send(pressWallet('nwc', reviewId))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
   expect(nwcCalls.filter(call => call.method === 'lookupInvoice')).toHaveLength(1)
@@ -192,7 +229,7 @@ test('the same LNURL pays once from NWC after confirmation', async () => {
   expect(e2e.ln.state.payments.filter(payment => payment.paid && !payment.out)).toHaveLength(1)
   expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
 
-  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+  await e2e.send(pressWallet('nwc', reviewId))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
   expectNoErrors(e2e.logs)
@@ -221,7 +258,7 @@ test('Pay still loads the LNURL after a restart, then one confirmation pays once
   expect(outgoing()).toHaveLength(0)
   const reviewId = editedScreen().id
 
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(pressWallet('internal', reviewId))
 
   expect(outgoing()).toHaveLength(1)
   expectReceiptAlive()
@@ -269,11 +306,11 @@ test('an invoice that expires before confirmation is not paid', async () => {
   expect(outgoing()).toHaveLength(0)
 
   await Bun.sleep(2_500)
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(pressWallet('internal', reviewId))
 
   expect(outgoing()).toHaveLength(0)
   expect(expiredScreenAlive(reviewId)).toBe(true)
-  await e2e.send(privateCallback('internal', {messageId: reviewId}))
+  await e2e.send(pressWallet('internal', reviewId))
   expect(outgoing()).toHaveLength(0)
   expectNoErrors(e2e.logs)
 }, 15_000)
@@ -292,12 +329,12 @@ test('an invoice that expires before an NWC confirmation is not paid', async () 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
 
   await Bun.sleep(2_500)
-  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+  await e2e.send(pressWallet('nwc', reviewId))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   expect(outgoing()).toHaveLength(0)
   expect(expiredScreenAlive(reviewId)).toBe(true)
-  await e2e.send(privateCallback('nwc', {messageId: reviewId}))
+  await e2e.send(pressWallet('nwc', reviewId))
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   expectNoErrors(e2e.logs)
 }, 15_000)
@@ -555,6 +592,15 @@ function credit(userId: number, sats: number): void {
 
 function outgoing() {
   return e2e.ln.state.payments.filter(payment => payment.out)
+}
+
+function pressWallet(which: 'internal' | 'nwc', messageId: number) {
+  const payload =
+    e2e.tg.of('editMessageText').find(call => Number(call.message_id) === messageId) ??
+    e2e.tg.last('editMessageText')
+  const data = keyboardOf(payload).find(item => item.startsWith(`${which}:`))
+  if (!data) throw new Error(`Expected a ${which} nonce on the screen`)
+  return privateCallback(data, {messageId})
 }
 
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {

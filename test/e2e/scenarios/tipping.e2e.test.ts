@@ -197,6 +197,90 @@ test('replaying a finished internal DM transfer does not emit dm_transfer_sent a
   )
 })
 
+test('replaying a tipped send collects the donation and notifies once', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 10,
+  })
+  credit(USER_A, STARTING_BALANCE_SATS)
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  replyWithRecipient()
+  const fee = 3
+
+  await replayWizard(
+    e2e,
+    sendingToUser,
+    [
+      privateText('@user_b'),
+      privateText(String(TIP_SATS)),
+      () => privateCallback(confirmSendData(), {messageId: 7}),
+    ],
+    () => {
+      expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+      expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: fee, times: 1})
+      expect(receivedNotices(USER_B)).toHaveLength(1)
+    },
+    privateCallback(staticCallback.sendToUser, {messageId: 7}),
+  )
+  expectNoErrors(e2e.logs)
+})
+
+test('a donation after restart is still one fee and one notice', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({mode: 'file'})
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 10,
+  })
+  credit(USER_A, STARTING_BALANCE_SATS)
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  replyWithRecipient()
+
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  await e2e.restart()
+  const data = confirmSendData()
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: 3, times: 1})
+  expect(receivedNotices(USER_B)).toHaveLength(1)
+
+  await e2e.restart()
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: 3, times: 1})
+  expect(receivedNotices(USER_B)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('a failed recipient notice still shows the send and does not pay again', async () => {
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  const data = confirmSendData()
+  e2e.tg.fail('sendMessage', {error_code: 400, description: 'Bad Request: user not found'})
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+
+  const receipt = String(e2e.tg.last('editMessageText')?.text)
+  expect(receipt).toMatch(/You sent 21 sats/)
+  expect(receipt).toMatch(/do not send this amount again/)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+})
+
 test('a failed internal DM transfer does not emit dm_transfer_sent', async () => {
   const events = recordPosthog(e2e)
   await seedSenderAndRecipient()
@@ -700,6 +784,7 @@ async function expectInternalTransfer(
     db: {
       ...(opts.recipientAdded ? {users: {added: 1}} : {}),
       ...(opts.conversationRemoved ? {conversations: {removed: 1}} : {}),
+      dmTransfers: {added: opts.conversationRemoved ? 1 : 0},
     },
     lnbits: {
       balances: {'100001 wallet': -TIP_SATS, [recipientWallet]: TIP_SATS},
@@ -738,6 +823,14 @@ async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
     await Bun.sleep(5)
   }
   throw new Error('The temporary error message was never deleted')
+}
+
+function receivedNotices(userId: number): Record<string, unknown>[] {
+  return e2e.tg
+    .of('sendMessage')
+    .filter(
+      payload => Number(payload.chat_id) === userId && String(payload.text).includes('received'),
+    )
 }
 
 function notificationTo(userId: number): string {

@@ -236,6 +236,86 @@ describe('fetchLnurlPay', () => {
   }, 20_000)
 })
 
+describe('LNURL chain deadlines', () => {
+  test('redirects inside metadata share one 10s budget, so 8s plus 8s times out', async () => {
+    const closing = new AbortController()
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      idleTimeout: 0,
+      async fetch(request) {
+        await sleepUntilAbort(8_000, request.signal, closing.signal)
+        if (request.signal.aborted) return new Response('late', {status: 504})
+        const path = new URL(request.url).pathname
+        if (path === '/meta') return Response.redirect(`http://127.0.0.1:${port}/meta2`, 302)
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    port = server.port ?? 0
+    const started = Date.now()
+    try {
+      await expect(
+        fetchLnurlPay({kind: 'lnurl', value: encodeLnurl(`http://127.0.0.1:${port}/meta`)}),
+      ).rejects.toMatchObject({code: 'timeout'})
+      const elapsed = Date.now() - started
+      expect(elapsed).toBeGreaterThanOrEqual(8_000)
+      expect(elapsed).toBeLessThan(16_000)
+    } finally {
+      closing.abort()
+      server.stop(true)
+    }
+  }, 20_000)
+
+  test('a slow metadata fetch does not eat the callback budget', async () => {
+    const closing = new AbortController()
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      idleTimeout: 0,
+      async fetch(request) {
+        await sleepUntilAbort(8_000, request.signal, closing.signal)
+        if (request.signal.aborted) return new Response('late', {status: 504})
+        const path = new URL(request.url).pathname
+        if (path === '/meta') {
+          return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+        }
+        const invoice = mintInvoice({sats: 30, description: '', descriptionHash: HASH})
+        return Response.json({pr: invoice.bolt11})
+      },
+    })
+    port = server.port ?? 0
+    const started = Date.now()
+    try {
+      const quote = await fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl(`http://127.0.0.1:${port}/meta`),
+      })
+      const invoice = await requestLnurlInvoice(quote, 30)
+      expect(invoice.bolt11.startsWith('lnbc')).toBe(true)
+      const elapsed = Date.now() - started
+      expect(elapsed).toBeGreaterThanOrEqual(16_000)
+      expect(elapsed).toBeLessThan(22_000)
+    } finally {
+      closing.abort()
+      server.stop(true)
+    }
+  }, 25_000)
+})
+
+function sleepUntilAbort(ms: number, request: AbortSignal, closing: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms)
+    const done = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    closing.addEventListener('abort', done)
+    request.addEventListener('abort', done)
+  })
+}
+
 describe('withDeadline', () => {
   test('a call that never returns fails when the deadline passes', async () => {
     await expect(

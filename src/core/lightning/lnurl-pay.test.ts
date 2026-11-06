@@ -66,6 +66,12 @@ describe('lnurlPayEndpoint', () => {
     expect(lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlp://pay.example/path'})).toBe(
       'https://pay.example/path',
     )
+    expect(
+      lnurlPayEndpoint({
+        kind: 'lnurl',
+        value: 'lnurlp://pay.example/Pay/Alice?token=AbC',
+      }),
+    ).toBe('https://pay.example/Pay/Alice?token=AbC')
     expect(() => lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlw://alice@example.com'})).toThrow(
       LnurlPayError,
     )

@@ -275,7 +275,7 @@ test('the NWC menu with a connected wallet offers disconnect and tips toggle', a
 test('text during wallet selection cancels the action and returns to Wallet', async () => {
   await connectNwc()
   await e2e.send(privateCallback(staticCallback.createInvoice))
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
+  expect(plainCallbacks(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
   const cancellation = privateText('internal')
 
   await expectDelta(e2e, () => e2e.send(cancellation), {
@@ -305,7 +305,7 @@ test('paying an invoice shows decoded details before the wallet picker', async (
   expect(String(prompt?.text)).not.toMatch(/Powered by t\.me\/zap_gram_bot/)
   expect(String(prompt?.text)).not.toMatch(/Description:/)
   expect(prompt?.link_preview_options).toEqual({is_disabled: true})
-  expect(callbackDataOf(prompt)).toEqual(['internal', 'nwc', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['internal', 'nwc', 'cancel'])
   expect(buttonTextsOf(prompt)).toEqual(expect.arrayContaining(['🤖 ZapGram', '⚡️ NWC']))
   expectNoErrors(e2e.logs)
 })
@@ -319,7 +319,7 @@ test('paying an invoice confirms the only wallet that can cover it', async () =>
 
   // The internal balance is empty, so NWC is the only rail: nothing left to choose between.
   const prompt = e2e.tg.last('editMessageText')
-  expect(callbackDataOf(prompt)).toEqual(['nwc', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['nwc', 'cancel'])
   expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
   expect(String(prompt?.text)).toMatch(/Paying from your NWC wallet\. Confirm the payment/)
   expect(String(prompt?.text)).not.toMatch(/Select a wallet/)
@@ -337,7 +337,7 @@ test('paying an invoice hides NWC and notes it when the balance cannot be read',
 
   const prompt = e2e.tg.last('editMessageText')
   expect(String(prompt?.text)).toMatch(/Couldn't reach the connected NWC wallet/)
-  expect(callbackDataOf(prompt)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['internal', 'cancel'])
   expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
   // An unreachable NWC leaves one payable wallet, and the screen has to say which one it is.
   expect(String(prompt?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
@@ -440,13 +440,13 @@ test('choosing a wallet does not pay until the send is confirmed', async () => {
 
   const pickerId = e2e.tg.lastMessageId('editMessageText')
   if (pickerId === undefined) throw new Error('Expected the wallet picker')
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(
+  expect(plainCallbacks(e2e.tg.last('editMessageText'))).toEqual(
     expect.arrayContaining(['internal', 'nwc', 'cancel']),
   )
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
 
-  await e2e.send(privateCallback('nwc', {messageId: pickerId}))
+  await e2e.send(pressWallet('nwc', pickerId))
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Nothing is sent until you confirm/)
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/NWC/)
@@ -744,6 +744,18 @@ function foreignInvoice(sats: number) {
     memo: e2e.container.config.memoFooter,
     expirySec: 3600,
   })
+}
+
+function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
+  return callbackDataOf(payload).map(data => data.replace(/^(internal|nwc):\d+$/, '$1'))
+}
+
+function pressWallet(which: 'internal' | 'nwc', messageId: number) {
+  const data = callbackDataOf(e2e.tg.last('editMessageText')).find(item =>
+    item.startsWith(`${which}:`),
+  )
+  if (!data) throw new Error(`Expected a ${which} nonce on the screen`)
+  return privateCallback(data, {messageId})
 }
 
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {
