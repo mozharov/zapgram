@@ -65,6 +65,12 @@ describe('lnurlPayEndpoint', () => {
     expect(lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlp://pay.example/path'})).toBe(
       'https://pay.example/path',
     )
+    expect(() => lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlw://alice@example.com'})).toThrow(
+      LnurlPayError,
+    )
+    expect(() => lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlw://pay.example/withdraw'})).toThrow(
+      LnurlPayError,
+    )
   })
 
   test('refuses a bolt11 and a broken LNURL', () => {

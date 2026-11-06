@@ -55,8 +55,12 @@ export function lnurlPayEndpoint(request: PaymentRequest): string {
   if (request.kind === 'bolt11') throw new LnurlPayError('bad-response')
   if (request.kind === 'lightning-address') return addressEndpoint(request.value)
 
+  // LUD-17 withdraw is not a payment. Mapping `lnurlw://user@host` onto the pay
+  // well-known path would charge that address.
+  if (request.value.startsWith('lnurlw://')) throw new LnurlPayError('bad-response')
+
   let raw = request.value
-  if (/^(?:lnurlp|lnurlw):\/\//.test(raw)) raw = raw.replace(/^(?:lnurlp|lnurlw):\/\//, '')
+  if (raw.startsWith('lnurlp://')) raw = raw.slice('lnurlp://'.length)
   if (raw.startsWith('lnurl1')) {
     try {
       return decodeLnurl(raw)

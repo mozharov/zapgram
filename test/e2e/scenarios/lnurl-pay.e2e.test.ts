@@ -121,6 +121,8 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
   await e2e.send(payCallback(payData, offerId, pasted))
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/from <b>10<\/b> to <b>100<\/b>/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Pay Alice/)
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/alice@example\.com/)
   expect(server.hits.metadata).toBe(1)
   expect(server.hits.callback).toBe(0)
   expect(outgoing()).toHaveLength(0)
@@ -132,8 +134,10 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
 
   await e2e.send(privateText(String(AMOUNT)))
 
-  expect(joinedText()).toMatch(/Pay Alice/)
-  expect(joinedText()).toMatch(/Confirm the payment/)
+  const review = String(e2e.tg.last('sendMessage')?.text)
+  expect(review).toMatch(/Pay Alice/)
+  expect(review).toMatch(/alice@example\.com/)
+  expect(review).toMatch(/Confirm the payment/)
   expect(server.hits.callback).toBe(1)
   expect(server.hits.comments).toBe(0)
   expect(outgoing()).toHaveLength(0)
@@ -376,7 +380,7 @@ function startServer(mode: Mode): LnurlServer {
       const invoice = e2e.ln.state.createInvoice({
         wallet: master,
         sats,
-        memo: 'Pay Alice',
+        memo: '',
         expirySec: 3600,
         descriptionHash,
       })

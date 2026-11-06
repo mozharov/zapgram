@@ -36,6 +36,8 @@ export async function payingInvoice(
   conversation: BotConversation,
   ctx: ConversationContext,
   lnInvoice?: string,
+  /** Shown above the invoice review. BOLT11 leaves this unset. */
+  reviewPrefix?: string,
 ) {
   const title = ctx.t('paying-invoice')
   // Pay on a pasted bolt11 arrives as a callback on that offer. The offer is not the
@@ -79,16 +81,19 @@ export async function payingInvoice(
   const [previewUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi]),
   )
-  const details = invoiceReviewHtml(ctx, invoice, {
-    usdSuffix: previewUsdSuffix,
-    fee: 'no',
-    feeUsdSuffix: '',
-  })
+  const details = joinWizardHtml(
+    reviewPrefix,
+    invoiceReviewHtml(ctx, invoice, {
+      usdSuffix: previewUsdSuffix,
+      fee: 'no',
+      feeUsdSuffix: '',
+    }),
+  )
 
   if (invoice.hasExpired()) {
     await waitForInvoiceReview(conversation, ctx, invoice, true, {
       host,
-      prefixHtml: host ? title : undefined,
+      prefixHtml: joinWizardHtml(reviewPrefix, host ? title : undefined) || undefined,
       onCancel: restoreParent,
     })
     return

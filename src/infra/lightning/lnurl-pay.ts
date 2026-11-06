@@ -43,6 +43,8 @@ export type LnurlPayQuote = {
   /** Raw metadata string. The description hash is SHA-256 of this, not of a re-encoding. */
   metadata: string
   description: string
+  /** `text/identifier` from the metadata, when the recipient published one. */
+  identifier: string
   callback: string
 }
 
@@ -74,6 +76,7 @@ export async function fetchLnurlPay(request: PaymentRequest): Promise<LnurlPayQu
     maxSats: range.maxSats,
     metadata: raw.metadata,
     description: parsed.description,
+    identifier: parsed.identifier,
     callback: parsed.callback,
   }
 }
@@ -148,7 +151,7 @@ async function fetchText(start: string): Promise<{status: number; body: string}>
   let current = start
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      const url = await assertFetchable(current)
+      const url = await assertFetchable(current, signal)
       const response = await fetch(url, {
         method: 'GET',
         redirect: 'manual',
@@ -197,7 +200,26 @@ async function readLimited(response: Response): Promise<string> {
   return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
-async function assertFetchable(raw: string): Promise<URL> {
+/** DNS and any other wait share the same deadline as the HTTP call. */
+export function withDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new LnurlPayError('timeout'))
+  return new Promise((resolve, reject) => {
+    const fail = () => reject(new LnurlPayError('timeout'))
+    signal.addEventListener('abort', fail, {once: true})
+    work.then(
+      value => {
+        signal.removeEventListener('abort', fail)
+        resolve(value)
+      },
+      error => {
+        signal.removeEventListener('abort', fail)
+        reject(error)
+      },
+    )
+  })
+}
+
+async function assertFetchable(raw: string, signal: AbortSignal): Promise<URL> {
   let url: URL
   try {
     url = new URL(raw)
@@ -214,8 +236,9 @@ async function assertFetchable(raw: string): Promise<URL> {
   }
   let records: {address: string}[]
   try {
-    records = await lookup(host, {all: true, verbatim: true})
-  } catch {
+    records = await withDeadline(lookup(host, {all: true, verbatim: true}), signal)
+  } catch (error) {
+    if (error instanceof LnurlPayError) throw error
     throw new LnurlPayError('server')
   }
   if (records.length === 0 || records.some(record => disallowedIp(record.address))) {

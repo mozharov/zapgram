@@ -7,7 +7,11 @@ import {
 } from '@infra/lightning/lnurl-pay.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
-import {disabledLinkPreview, showHostOrReply} from '@telegram/helpers/conversation-host.js'
+import {
+  disabledLinkPreview,
+  joinWizardHtml,
+  showHostOrReply,
+} from '@telegram/helpers/conversation-host.js'
 import {
   cancelledPromptState,
   classifyPromptUpdate,
@@ -20,6 +24,7 @@ import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
+import {lnurlPayeeHtml} from '../lnurl-payee.js'
 import {payingInvoice} from './paying-invoice.js'
 
 /**
@@ -60,12 +65,19 @@ export async function payingLnurl(
     return conversation.halt()
   }
   const quote: LnurlPayQuote = loaded.quote
+  const payee = lnurlPayeeHtml(
+    quote.description,
+    quote.identifier || (request.kind === 'lightning-address' ? request.value : ''),
+  )
 
-  const html = ctx.t('lnurl-pay-amount', {
-    min: quote.minSats,
-    max: quote.maxSats,
-    exact: quote.minSats === quote.maxSats ? 'yes' : 'no',
-  })
+  const html = joinWizardHtml(
+    ctx.t('lnurl-pay-amount', {
+      min: quote.minSats,
+      max: quote.maxSats,
+      exact: quote.minSats === quote.maxSats ? 'yes' : 'no',
+    }),
+    payee,
+  )
   const message = await showHostOrReply(ctx, html, cancelKeyboard(ctx))
   const prompt = createActivePrompt(message, {
     kind: 'text',
@@ -123,7 +135,9 @@ export async function payingLnurl(
   const bolt11 = invoiced.invoice
 
   // Confirmation and the wallet pay live here. This call does not pay by itself.
-  await payingInvoice(conversation, ctx, bolt11)
+  // The payee stays on that screen: a hash-only invoice has no description of its own,
+  // and the pasted address is deleted with the offer.
+  await payingInvoice(conversation, ctx, bolt11, payee)
 }
 
 function cancelKeyboard(ctx: ConversationContext): InlineKeyboard {

@@ -4,7 +4,7 @@ import {LnurlPayError} from '@core/lightning/lnurl-pay.js'
 import type {PaymentRequest} from '@core/lightning/payment-request.js'
 import {encode, toWords} from 'bech32'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
-import {fetchLnurlPay, requestLnurlInvoice} from './lnurl-pay.js'
+import {fetchLnurlPay, requestLnurlInvoice, withDeadline} from './lnurl-pay.js'
 
 const METADATA = JSON.stringify([
   ['text/plain', 'Pay Alice'],
@@ -147,6 +147,14 @@ describe('fetchLnurlPay', () => {
   }, 20_000)
 })
 
+describe('withDeadline', () => {
+  test('a call that never returns fails when the deadline passes', async () => {
+    await expect(
+      withDeadline(new Promise(() => {}), AbortSignal.timeout(30)),
+    ).rejects.toMatchObject({code: 'timeout'})
+  })
+})
+
 describe('requestLnurlInvoice', () => {
   test('returns the bolt11 only when the amount and description hash match, and sends no comment', async () => {
     const seen: string[] = []
@@ -177,6 +185,7 @@ describe('requestLnurlInvoice', () => {
       maxSats: 100,
       metadata: METADATA,
       description: 'Pay Alice',
+      identifier: 'alice@example.com',
       callback: callback('ok'),
     }
     try {
