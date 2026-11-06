@@ -1024,6 +1024,103 @@ test('two Pay clicks at once open the invoice once', async () => {
   expectNoErrors(e2e.logs)
 })
 
+for (const failure of [
+  {
+    label: '429',
+    arm: () =>
+      e2e.tg.fail('deleteMessage', {
+        error_code: 429,
+        description: 'Too Many Requests: retry after 1',
+        retry_after: 1,
+      }),
+  },
+  {
+    label: '500',
+    arm: () =>
+      e2e.tg.fail('deleteMessage', {error_code: 500, description: 'Internal Server Error'}),
+  },
+  {
+    label: 'network',
+    arm: () => e2e.tg.raw('deleteMessage', 502, ''),
+  },
+  {
+    label: "message can't be deleted",
+    arm: () =>
+      e2e.tg.fail('deleteMessage', {
+        error_code: 400,
+        description: "Bad Request: message can't be deleted",
+      }),
+  },
+  {
+    label: 'unreadable response',
+    arm: () => e2e.tg.raw('deleteMessage', 200, 'not-json'),
+  },
+]) {
+  test(`Pay keeps the step when deleteMessage fails with ${failure.label}`, async () => {
+    await enterSendToUserAtUsername()
+    credit(USER_A, 1000)
+    const promptId = requiredPromptMessageId()
+    const invoice = foreignInvoice()
+    const pasted = privateText(invoice.bolt11)
+    await e2e.send(pasted)
+    const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+    const offerId = requiredResultMessageId('sendMessage')
+    failure.arm()
+
+    await e2e.send(payCallback(payData, offerId, pasted))
+
+    expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+    expect(String(e2e.tg.last('answerCallbackQuery')?.text)).toMatch(/Try again/)
+    expect(editedPromptText(promptId)).not.toMatch(/Action canceled/)
+    expect(keyboardOf(editedPrompt(promptId))).toContain('cancel')
+    expect(await conversationNames()).toEqual(['sendingToUser'])
+
+    await e2e.send(payCallback(payData, offerId, pasted))
+
+    expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
+    expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+    expect(await conversationNames()).toEqual(['payingInvoice'])
+
+    await e2e.send(payCallback(payData, offerId, pasted))
+
+    expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+    expect(outgoingBolt11(invoice.bolt11)).toHaveLength(0)
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('a failed callback answer after the offer is deleted still opens payment once', async () => {
+  await enterSendToUserAtUsername()
+  credit(USER_A, 1000)
+  const invoice = foreignInvoice()
+  const pasted = privateText(invoice.bolt11)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredResultMessageId('sendMessage')
+  e2e.tg.fail('answerCallbackQuery', {
+    error_code: 400,
+    description: 'Bad Request: query is too old',
+  })
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+
+  expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+  expect(joinedInvoiceText()).not.toMatch(/no longer active/)
+  expect(await conversationNames()).toEqual(['payingInvoice'])
+
+  await e2e.send(payCallback(payData, offerId, pasted))
+
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
+  expect(
+    e2e.tg
+      .of('sendMessage')
+      .map(call => String(call.text))
+      .filter(text => /Paying from your ZapGram wallet/.test(text)),
+  ).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
 test('an email is stored as the invoice description', async () => {
   await enterCreateInvoiceAtMemo()
   await e2e.send(privateText('shop@example.com'))

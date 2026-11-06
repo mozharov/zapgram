@@ -9,7 +9,10 @@ type BotApiError = {
   retry_after?: number
 }
 
-type QueuedResponse = {type: 'success'; result: unknown} | {type: 'error'; error: BotApiError}
+type QueuedResponse =
+  | {type: 'success'; result: unknown}
+  | {type: 'error'; error: BotApiError}
+  | {type: 'raw'; status: number; body: string}
 
 export type FakeTelegram = {
   url: string
@@ -20,6 +23,8 @@ export type FakeTelegram = {
   lastMessageId(method: string): number | undefined
   reply(method: string, result: unknown): void
   fail(method: string, err: BotApiError): void
+  /** Next call gets this body as-is. The message is not recorded as deleted. */
+  raw(method: string, status: number, body: string): void
   reset(): void
   stop(): void
 }
@@ -52,6 +57,12 @@ export async function startFakeTelegram(opts?: {
       const queued = responses.get(method)?.shift()
       if (responses.get(method)?.length === 0) responses.delete(method)
       if (queued?.type === 'error') return failure(queued.error)
+      if (queued?.type === 'raw') {
+        return new Response(queued.body, {
+          status: queued.status,
+          headers: {'content-type': 'application/json'},
+        })
+      }
 
       // A message can be deleted once. The second delete is the same 400 Telegram
       // returns, so two Pay clicks cannot both claim the offer.
@@ -99,6 +110,9 @@ export async function startFakeTelegram(opts?: {
     },
     fail(method, error) {
       enqueue(responses, method, {type: 'error', error})
+    },
+    raw(method, status, body) {
+      enqueue(responses, method, {type: 'raw', status, body})
     },
     reset() {
       calls.length = 0

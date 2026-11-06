@@ -3,12 +3,14 @@ import {payPastedBackRoute, payPastedRoute} from '@telegram/callback-data.js'
 import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {
+  answerOfferClick,
   bolt11MatchingToken,
   claimPastedOffer,
   releasePastedPay,
   repliedText,
   replyWithUnsupportedPayment,
   reservePastedPay,
+  takePastedPayHandoff,
 } from '@telegram/helpers/pasted-payment.js'
 import type {NextFunction} from 'grammy'
 import {payingInvoice} from '../conversations/paying-invoice.js'
@@ -34,31 +36,40 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
   const userId = ctx.from?.id
   const {token} = payPastedRoute.parse(ctx.callbackQuery?.data ?? '')
   if (userId === undefined) {
-    await ctx.answerCallbackQuery()
+    await answerOfferClick(ctx)
     return
   }
-  // The delete is the claim shared by every process and a restart. The set
-  // only skips a repeat in this process after that claim has already landed.
-  if (!(await claimPastedOffer(ctx))) {
-    await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-stale')})
-    return
+  // Inside a wizard the conversation already deleted the offer on this click.
+  // A click with no wizard still has to win that delete itself.
+  if (!takePastedPayHandoff(ctx)) {
+    const claim = await claimPastedOffer(ctx)
+    if (claim === 'retry') {
+      await answerOfferClick(ctx, ctx.t('callback-answer.pasted-payment-retry'))
+      return
+    }
+    if (claim !== 'claimed') {
+      await answerOfferClick(ctx, ctx.t('callback-answer.pasted-payment-stale'))
+      return
+    }
   }
   if (!reservePastedPay(userId, token)) {
-    await ctx.answerCallbackQuery()
+    await answerOfferClick(ctx)
     return
   }
   try {
     // Still open from an earlier click. Do not start a second one.
     if ((await ctx.conversation.active(payingInvoice.name)) > 0) {
-      await ctx.answerCallbackQuery()
+      await answerOfferClick(ctx)
       return
     }
     const bolt11 = bolt11MatchingToken(userId, token, repliedText(ctx))
     if (!bolt11) {
-      await ctx.answerCallbackQuery({text: ctx.t('callback-answer.pasted-payment-missing')})
+      await answerOfferClick(ctx, ctx.t('callback-answer.pasted-payment-missing'))
       return
     }
-    await ctx.answerCallbackQuery()
+    // The delete already claimed the offer. A failed answer must not skip payment
+    // and must not be reported as "this offer is no longer active".
+    await answerOfferClick(ctx)
     await ctx.conversation.enter(payingInvoice.name, bolt11)
   } finally {
     releasePastedPay(userId, token)
