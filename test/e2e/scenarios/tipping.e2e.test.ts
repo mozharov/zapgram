@@ -274,7 +274,8 @@ test('a failed recipient notice still shows the send and does not pay again', as
 
   const receipt = String(e2e.tg.last('editMessageText')?.text)
   expect(receipt).toMatch(/You sent 21 sats/)
-  expect(receipt).toMatch(/do not send this amount again/)
+  expect(receipt).toMatch(/The send succeeded/)
+  expect(receipt).toMatch(/Do not send this amount again/)
   expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
 
   await e2e.send(privateCallback(data, {messageId: confirmId}))

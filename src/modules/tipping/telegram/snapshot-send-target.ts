@@ -26,8 +26,15 @@ export function snapshotSendTarget(
       selfUsername,
       findUser: username => getUserByUsername(username),
       telegramUsername: async userId => {
-        const chat = await getRuntime().bot.api.getChat(userId)
-        return chat.username
+        try {
+          const chat = await getRuntime().bot.api.getChat(userId)
+          return chat.username
+        } catch {
+          // A Telegram failure is "not confirmed", not a dead wizard. No error
+          // object: that would put the stack in the log.
+          getRuntime().log.info({userId}, 'Telegram username check failed')
+          return null
+        }
       },
     })
     if (resolved.kind !== 'user') return resolved

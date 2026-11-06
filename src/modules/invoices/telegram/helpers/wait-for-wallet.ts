@@ -76,7 +76,7 @@ export async function waitForWallet(
       }
     }
     if (flow === 'pay_invoice') {
-      const nonce = await conversation.now()
+      const nonce = await conversation.external(() => crypto.randomUUID())
       return pickWallet(conversation, ctx, {
         ...opts,
         flow,
@@ -145,7 +145,7 @@ export async function waitForWallet(
       return {wallet, nwcBalanceError: funded.nwcBalanceError}
     }
 
-    const nonce = await conversation.now()
+    const nonce = await conversation.external(() => crypto.randomUUID())
     return pickWallet(conversation, ctx, {
       ...opts,
       flow,
@@ -163,7 +163,7 @@ export async function waitForWallet(
     })
   }
 
-  const nonce = await conversation.now()
+  const nonce = await conversation.external(() => crypto.randomUUID())
   return pickWallet(conversation, ctx, {
     ...opts,
     flow,
@@ -184,7 +184,7 @@ function walletPrompt(
     note?: string
     copyText?: string
     sole?: SoleWalletPrompt
-    nonce: number
+    nonce: string
   },
 ): {html: string; keyboard: InlineKeyboard; actionLabel?: string} {
   const soleWallet = soleFundedWallet(opts.funded)
@@ -226,7 +226,7 @@ async function pickWallet(
     host?: ConversationHost
     html: string
     keyboard: InlineKeyboard
-    nonce: number
+    nonce: string
     actionLabel?: string
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
@@ -287,7 +287,7 @@ async function pickWallet(
 }
 
 /** This attempt only. Replay of the step keeps the nonce; cancel and a new invoice do not. */
-function walletChoiceData(wallet: 'internal' | 'nwc', nonce: number): string {
+function walletChoiceData(wallet: 'internal' | 'nwc', nonce: string): string {
   return `${wallet}:${nonce}`
 }
 
@@ -295,11 +295,11 @@ function isWalletChoice(data: string | undefined): data is string {
   return (
     data === 'internal' ||
     data === 'nwc' ||
-    Boolean(data && (/^internal:\d+$/.test(data) || /^nwc:\d+$/.test(data)))
+    Boolean(data && (/^internal:[0-9a-f-]{36}$/i.test(data) || /^nwc:[0-9a-f-]{36}$/i.test(data)))
   )
 }
 
-function walletFromChoice(data: string, nonce: number): 'internal' | 'nwc' | undefined {
+function walletFromChoice(data: string, nonce: string): 'internal' | 'nwc' | undefined {
   if (data === walletChoiceData('internal', nonce)) return 'internal'
   if (data === walletChoiceData('nwc', nonce)) return 'nwc'
   return undefined
@@ -308,7 +308,7 @@ function walletFromChoice(data: string, nonce: number): 'internal' | 'nwc' | und
 function walletKeyboard(
   ctx: ConversationContext,
   opts: {
-    nonce: number
+    nonce: string
     copyText?: string
     funded?: FundedWallets
   },
@@ -338,7 +338,7 @@ function walletKeyboard(
 
 function confirmWalletKeyboard(
   ctx: ConversationContext,
-  opts: {wallet: 'internal' | 'nwc'; text: string; nonce: number; copyText?: string},
+  opts: {wallet: 'internal' | 'nwc'; text: string; nonce: string; copyText?: string},
 ) {
   const keyboard = new InlineKeyboard()
   if (opts.copyText) keyboard.copyText(ctx.t('button.copy-invoice'), opts.copyText)

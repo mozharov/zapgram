@@ -46,6 +46,8 @@ export async function payingInvoice(
     host?: ConversationHost
     /** LNURL invoices can expire while the confirm button is on screen. */
     recheckExpiry?: boolean
+    /** The send wizard stays open so the user can correct the paste or cancel. */
+    invalid?: 'return'
   },
 ) {
   const reviewPrefix = options?.reviewPrefix
@@ -79,6 +81,7 @@ export async function payingInvoice(
   } catch {
     if (!lnInvoice) throw new Error('Validated invoice could not be decoded')
     await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
+    if (options?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
   // A pasted bolt11 is the message under the cursor. LNURL already deleted the amount
@@ -241,6 +244,7 @@ export async function payingInvoice(
       }),
     paidKeyboard(ctx, invoice.paymentRequest),
   )
+  return undefined
 }
 
 async function deleteRepliedInvoice(ctx: ConversationContext): Promise<void> {

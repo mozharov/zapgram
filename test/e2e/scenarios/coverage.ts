@@ -150,6 +150,7 @@ export const scenarioCoverage = {
       'check-expired-subscriptions',
       'process-expiring-subscriptions',
       'process-monthly-donations',
+      'recover-dm-transfers',
     ],
     errors: [],
   },

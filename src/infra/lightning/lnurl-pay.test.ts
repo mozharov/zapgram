@@ -8,6 +8,7 @@ import type {PaymentRequest} from '@core/lightning/payment-request.js'
 import {encode, toWords} from 'bech32'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import {
+  callbackUrlWithAmount,
   fetchLnurlPay,
   lnurlIpAllowed,
   lnurlPinnedGet,
@@ -49,6 +50,10 @@ describe('lnurlIpAllowed', () => {
   test('blocks link-local, NAT64, and 6to4 that embeds a private address', () => {
     expect(lnurlIpAllowed('169.254.169.254', 'test')).toBe(false)
     expect(lnurlIpAllowed('::ffff:169.254.169.254', 'test')).toBe(false)
+    expect(lnurlIpAllowed('::ffff:8.8.8.8', 'production')).toBe(false)
+    expect(lnurlIpAllowed('::8.8.8.8', 'production')).toBe(false)
+    expect(lnurlIpAllowed('::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2001:4860:4860::8888', 'production')).toBe(true)
     expect(lnurlIpAllowed('64:ff9b::7f00:1', 'production')).toBe(false)
     expect(lnurlIpAllowed('2002:7f00:1::', 'production')).toBe(false)
     expect(lnurlIpAllowed('2002:0808:0808::', 'production')).toBe(true)
@@ -315,6 +320,17 @@ function sleepUntilAbort(ms: number, request: AbortSignal, closing: AbortSignal)
     request.addEventListener('abort', done)
   })
 }
+
+describe('callbackUrlWithAmount', () => {
+  test('replaces amount and leaves the rest of the query untouched', () => {
+    expect(
+      callbackUrlWithAmount('https://pay.example/Pay/Alice?token=AbC&foo=Bar%2Fbaz', 30_000),
+    ).toBe('https://pay.example/Pay/Alice?token=AbC&foo=Bar%2Fbaz&amount=30000')
+    expect(callbackUrlWithAmount('https://pay.example/cb?amount=1&token=AbC#Keep', 5)).toBe(
+      'https://pay.example/cb?token=AbC&amount=5#Keep',
+    )
+  })
+})
 
 describe('withDeadline', () => {
   test('a call that never returns fails when the deadline passes', async () => {

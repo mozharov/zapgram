@@ -84,11 +84,40 @@ export async function sendingPayment(conversation: BotConversation, ctx: Convers
     })
 
     if (result.kind === 'bolt11') {
-      await payingInvoice(conversation, next, result.value, {host})
+      const outcome = await payingInvoice(conversation, next, result.value, {
+        host,
+        invalid: 'return',
+      })
+      if (outcome === 'invalid') {
+        await showHostOrReply(
+          ctx,
+          html,
+          new InlineKeyboard([
+            [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+          ]),
+          host,
+        )
+        continue
+      }
       return
     }
     if (result.kind === 'lightning-address' || result.kind === 'lnurl') {
-      await payingLnurl(conversation, next, result.value, {host, onCancel: restoreWallet})
+      const outcome = await payingLnurl(conversation, next, result.value, {
+        host,
+        onCancel: restoreWallet,
+        invalid: 'return',
+      })
+      if (outcome === 'invalid') {
+        await showHostOrReply(
+          ctx,
+          html,
+          new InlineKeyboard([
+            [{callback_data: staticCallback.cancel, text: ctx.t('button.cancel')}],
+          ]),
+          host,
+        )
+        continue
+      }
       return
     }
     if (result.kind !== 'user') return

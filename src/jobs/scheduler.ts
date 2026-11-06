@@ -9,6 +9,7 @@ import {probeSatspay} from '@modules/onchain/jobs/probe-satspay.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
+import {recoverDmTransfers} from '@modules/tipping/jobs/recover-dm-transfers.js'
 import {CronJob} from 'cron'
 import type {PostHog} from 'posthog-node'
 
@@ -83,6 +84,12 @@ export function defaultJobDefinitions(): JobDefinition[] {
       cronTime: '0 15 * * * *',
       runOnInit: false,
       tick: () => processMonthlyDonations(),
+    },
+    {
+      name: 'recover-dm-transfers',
+      cronTime: '30 * * * * *',
+      runOnInit: false,
+      tick: () => recoverDmTransfers(),
     },
     {
       name: 'process-broadcasts',

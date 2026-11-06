@@ -1,4 +1,5 @@
 import {type AppConfig, createConfig} from '@config'
+import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import {classifyPayoutLookup} from '@core/payments/payout-state.js'
@@ -82,6 +83,7 @@ import {
   createDmTransferService,
   type DmTransferService,
 } from '@modules/tipping/dm-transfer.service.js'
+import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
@@ -240,7 +242,23 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
         throw error
       }
     },
+    pay: async (userId, bolt11, rail) => {
+      if (rail === 'nwc') {
+        const payer = await users.getOrThrow(userId)
+        if (!payer.nwcUrl) throw new NWCConnectionError()
+        await new NostrWallet(payer.nwcUrl, config.memoFooter, log).payInvoice(bolt11)
+        return
+      }
+      const wallet = await getUserWallet(userId)
+      const payment = await wallet.payInvoice(bolt11)
+      return {paymentHash: payment.payment_hash}
+    },
+    posthog,
     getUser: id => users.getOrThrow(id),
+    notify: async ({toUserId, fromUserId, sats}) => {
+      const from = await users.getOrThrow(fromUserId)
+      return notifySatsReceived(toUserId, sats, from.username)
+    },
     findDonation: hash => donations.findByPaymentHash(hash),
     insertDonation: input =>
       donations.insertDonation({

@@ -29,10 +29,11 @@ export async function waitForTransferConfirm(
     html: string
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
-): Promise<{host: ConversationHost; nonce: number}> {
+): Promise<{host: ConversationHost; nonce: string}> {
   // Stable for replays of this attempt, new after cancel and a new send.
-  // The amount and the recipient are not in the payload.
-  const nonce = await conversation.now()
+  // The amount and the recipient are not in the payload. Millis collide across
+  // conversations, so the id is one random UUID.
+  const nonce = await conversation.external(() => crypto.randomUUID())
   const confirmData = `${CONFIRM_SEND}:${nonce}`
   const keyboard = new InlineKeyboard()
     .text(ctx.t('button.confirm-send'), confirmData)

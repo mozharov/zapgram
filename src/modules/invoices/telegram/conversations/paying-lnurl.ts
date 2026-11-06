@@ -40,6 +40,8 @@ export async function payingLnurl(
   opts?: {
     host?: ConversationHost
     onCancel?: (host: ConversationHost) => Promise<unknown>
+    /** The send wizard stays open so the user can correct the paste or cancel. */
+    invalid?: 'return'
   },
 ) {
   const request = recognizePaymentRequest(target)
@@ -67,6 +69,7 @@ export async function payingLnurl(
   })
   if (!loaded.ok) {
     await refuse(ctx, loaded.code)
+    if (opts?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
   const quote: LnurlPayQuote = loaded.quote
@@ -146,6 +149,7 @@ export async function payingLnurl(
   })
   if (!invoiced.ok) {
     await refuse(ctx, invoiced.code)
+    if (opts?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
 
@@ -156,11 +160,14 @@ export async function payingLnurl(
     serviceText: quote.serviceText,
   })
   // Confirmation and the wallet pay edit `screen`. Nothing is paid before that button.
-  await payingInvoice(conversation, ctx, invoiced.bolt11, {
+  const paid = await payingInvoice(conversation, ctx, invoiced.bolt11, {
     reviewPrefix: payee,
     host: screen,
     recheckExpiry: true,
+    invalid: opts?.invalid,
   })
+  if (paid === 'invalid') return 'invalid'
+  return undefined
 }
 
 function payeeHtml(

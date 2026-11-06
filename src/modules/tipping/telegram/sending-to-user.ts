@@ -1,11 +1,10 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
 import {waitForTransferConfirm} from '@modules/tipping/telegram/wait-for-transfer-confirm.js'
 import {waitForUser} from '@modules/tipping/telegram/wait-for-user.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
-import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
@@ -86,22 +85,14 @@ export async function payResolvedUser(
   // failures stay inside that row: they do not pay the recipient again.
   const result = await conversation.external(() =>
     getRuntime().dmTransfers.settle({
-      attemptId: `${ctx.user.id}:${confirmed.nonce}`,
+      attemptId: confirmed.nonce,
       fromUserId: ctx.user.id,
       toUserId: toUser.id,
       sats,
-      payInvoice: async bolt11 => {
-        if (!usedNwc) {
-          const fromWallet = await getUserWallet(ctx.user.id)
-          await fromWallet.payInvoice(bolt11)
-          return
-        }
-        if (!ctx.user.nwc) throw new NWCConnectionError()
-        await ctx.user.nwc.payInvoice(bolt11)
-      },
-      notify: () => notifySatsReceived(toUser.id, sats, ctx.user.username),
+      rail: usedNwc ? 'nwc' : 'internal',
     }),
   )
+  if (result.outcome === 'rejected') throw new InsufficientFundsError()
   if (result.outcome === 'in_flight') {
     await closeLivingMenu(ctx, host.messageId, markup =>
       ctx.api.editMessageText(

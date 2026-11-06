@@ -747,7 +747,7 @@ function foreignInvoice(sats: number) {
 }
 
 function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
-  return callbackDataOf(payload).map(data => data.replace(/^(internal|nwc):\d+$/, '$1'))
+  return callbackDataOf(payload).map(data => data.replace(/^(internal|nwc):.+$/, '$1'))
 }
 
 function pressWallet(which: 'internal' | 'nwc', messageId: number) {

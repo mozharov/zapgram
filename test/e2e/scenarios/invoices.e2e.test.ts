@@ -1657,7 +1657,7 @@ function confirmWalletOn(messageId: number): Update {
 }
 
 function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
-  return keyboardOf(payload).map(data => data.replace(/^(internal|nwc):\d+$/, '$1'))
+  return keyboardOf(payload).map(data => data.replace(/^(internal|nwc):.+$/, '$1'))
 }
 
 function keyboardOf(payload: Record<string, unknown> | undefined): string[] {

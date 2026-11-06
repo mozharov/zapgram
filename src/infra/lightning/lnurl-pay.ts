@@ -129,8 +129,7 @@ export async function requestLnurlInvoice(
   } catch {
     throw new LnurlPayError('bad-response')
   }
-  callback.searchParams.set('amount', String(msat))
-  const fetched = await getJson(callback.toString())
+  const fetched = await getJson(callbackUrlWithAmount(callback.toString(), msat))
   const json = fetched.json
   if (!json || typeof json !== 'object' || Array.isArray(json)) {
     throw new LnurlPayError('bad-response')
@@ -143,6 +142,22 @@ export async function requestLnurlInvoice(
   return {bolt11: body.pr, callbackHosts: fetched.hosts}
 }
 
+/**
+ * Set `amount` without re-encoding the rest of the query. `URLSearchParams`
+ * would turn `token=AbC` and `foo=Bar%2Fbaz` into a different string.
+ */
+export function callbackUrlWithAmount(callback: string, msat: number): string {
+  const hashAt = callback.indexOf('#')
+  const beforeHash = hashAt >= 0 ? callback.slice(0, hashAt) : callback
+  const fragment = hashAt >= 0 ? callback.slice(hashAt) : ''
+  const queryAt = beforeHash.indexOf('?')
+  const path = queryAt >= 0 ? beforeHash.slice(0, queryAt) : beforeHash
+  const query = queryAt >= 0 ? beforeHash.slice(queryAt + 1) : ''
+  const kept = query.split('&').filter(part => part.length > 0 && part.split('=')[0] !== 'amount')
+  kept.push(`amount=${msat}`)
+  return `${path}?${kept.join('&')}${fragment}`
+}
+
 /** True when this process may open a loopback or RFC1918 target. Only an explicit test env. */
 export function lnurlLocalTargetsAllowed(nodeEnv: string | undefined): boolean {
   return nodeEnv === 'test'
@@ -151,6 +166,10 @@ export function lnurlLocalTargetsAllowed(nodeEnv: string | undefined): boolean {
 /** Public unicast, or (in test only) loopback and RFC1918. Mapped and tunnel addresses follow. */
 export function lnurlIpAllowed(ip: string, nodeEnv: string | undefined): boolean {
   const bare = ip.replace(/^\[|\]$/g, '').toLowerCase()
+  // IPv4-mapped and IPv4-compatible forms are not a globally routable v6 target.
+  if (bare === '::' || bare.startsWith('::ffff:') || /^::\d{1,3}(?:\.\d{1,3}){3}$/.test(bare)) {
+    return false
+  }
   const v4 = ipv4Of(bare)
   if (v4) return !disallowedV4(v4, nodeEnv)
   if (isIP(bare) !== 6) return false
@@ -392,15 +411,13 @@ function isPrivateOrLoopbackV4(ip: string): boolean {
 function disallowedV6(ip: string, nodeEnv: string | undefined): boolean {
   const groups = expandIpv6(ip)
   if (!groups) return true
-  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups
+  const [g0, g1, g2, g3, g4, g5, g6] = groups
   if (g0 === undefined || g1 === undefined || g2 === undefined || g5 === undefined) return true
-  if (groups.every(group => group === 0)) return true
-  if (g0 === 0 && groups.slice(1, 7).every(group => group === 0) && g7 === 1) {
-    return !lnurlLocalTargetsAllowed(nodeEnv)
-  }
-  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0xffff) {
-    if (g6 === undefined || g7 === undefined) return true
-    return disallowedV4(ipv4FromGroups(g6, g7), nodeEnv)
+  // ::/96 (IPv4-compatible) and ::ffff:0:0/96 (IPv4-mapped) are not globally
+  // routable IPv6. Mapping them onto the embedded v4 would let a public v4
+  // through a check that is supposed to be v6-only.
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0 || g5 === 0xffff)) {
+    return true
   }
   // Well-known and local-use NAT64. A reply can embed a metadata or loopback v4.
   if (g0 === 0x64 && g1 === 0xff9b) return true
