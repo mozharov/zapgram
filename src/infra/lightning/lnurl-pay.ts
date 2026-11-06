@@ -293,7 +293,6 @@ export async function lnurlPinnedGet(
         headers: {accept: 'application/json', 'user-agent': 'ZapGram'},
         servername: url.hostname,
         lookup: lookupFn as http.RequestOptions['lookup'],
-        signal,
       },
       response => {
         const chunks: Buffer[] = []
@@ -326,12 +325,13 @@ export async function lnurlPinnedGet(
         response.on('error', error => settle(() => reject(error)))
       },
     )
-    // Passing `signal` is not enough on every runtime: a custom lookup can leave
-    // the socket open after the deadline, and the test runner then never moves on.
+    // Settle here. `destroy` does not always emit `error` (and a `signal` option
+    // can destroy the request first, so a second destroy does nothing).
     const onAbort = () => {
       const error = new Error('The operation was aborted')
       error.name = 'AbortError'
       req.destroy(error)
+      settle(() => reject(error))
     }
     if (signal.aborted) onAbort()
     else signal.addEventListener('abort', onAbort, {once: true})
