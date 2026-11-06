@@ -202,7 +202,10 @@ describe('buildUpdateProperties', () => {
       command: 'tip',
       from_username: 'alice',
       from_language_code: 'ru',
+      text_length: '/tip@zap_gram_bot 21'.length,
+      text_kind: 'other',
     })
+    expect(JSON.stringify(props)).not.toContain('/tip@zap_gram_bot 21')
   })
 })
 

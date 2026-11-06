@@ -11,6 +11,7 @@ import type {Context} from 'grammy'
 import type {User as TgUser} from 'grammy/types'
 import type {PostHog} from 'posthog-node'
 import {parameterizedRoutes, staticCallback} from './callback-data.js'
+import {classifyTextKind} from './text-kind.js'
 
 export {TELEGRAM_CHAT_GROUP_TYPE, telegramChatGroups, telegramUserDistinctId}
 
@@ -275,6 +276,9 @@ export function buildUpdateProperties(ctx: Context): Record<string, unknown> {
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text !== undefined) {
     props.text_length = text.length
+    // Same label as dm_unrecognized_text. A pasted payment request has no product
+    // event of its own — this per-update capture is the intercept record. Kind only.
+    props.text_kind = classifyTextKind(text)
     const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]
     if (command) props.command = command.split('@')[0]
   }

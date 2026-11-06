@@ -1,5 +1,6 @@
 import type {Context} from 'grammy'
 import {resolveUpdateEventName} from './analytics.js'
+import {classifyTextKind, type TextKind} from './text-kind.js'
 
 /**
  * Child-logger bindings for one Telegram update. Every line written while the update is being
@@ -20,11 +21,14 @@ export type UpdateLogContext = {
   callbackData?: string
   command?: string
   textLength?: number
+  /** Class of the message text. The text itself is never a binding. */
+  textKind?: TextKind
 }
 
 /**
  * Message text is deliberately absent: users paste NWC connection secrets, invoices and other
- * sensitive strings into the bot. Only the shape (length) and the command name are recorded.
+ * sensitive strings into the bot. Only the shape (length, text kind) and the command name are
+ * recorded — never the text, a fragment, a normalized form, or a hash.
  */
 export function describeUpdate(ctx: Context): UpdateLogContext {
   const description: UpdateLogContext = {action: resolveUpdateEventName(ctx)}
@@ -51,6 +55,7 @@ export function describeUpdate(ctx: Context): UpdateLogContext {
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text !== undefined) {
     description.textLength = text.length
+    description.textKind = classifyTextKind(text)
     const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]?.split('@')[0]
     if (command) description.command = command
   }

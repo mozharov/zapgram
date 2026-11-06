@@ -3,6 +3,7 @@ import {getConversation} from '@modules/conversations/repository.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {classifyTextKind, type TextKind} from '@telegram/text-kind.js'
 import {getRuntime} from '../../runtime.js'
 
 /** Product event for private text no other handler claimed. Never carries the message body. */
@@ -11,10 +12,12 @@ export const DM_UNRECOGNIZED_TEXT_EVENT = 'dm_unrecognized_text' as const
 export function dmUnrecognizedTextProperties(text: string): {
   text_length: number
   looks_like_onchain: boolean
+  text_kind: TextKind
 } {
   return {
     text_length: text.length,
     looks_like_onchain: looksLikeOnchainAddress(text),
+    text_kind: classifyTextKind(text),
   }
 }
 
@@ -31,7 +34,7 @@ export async function unrecognizedPrivateMessage(ctx: BotContext) {
   // Those handoffs stay wallet-only. The hint is for text no conversation touched.
   if (typeof text === 'string' && !(await handedOffByConversation(ctx))) {
     const properties = dmUnrecognizedTextProperties(text)
-    // `properties` is only length + the on-chain flag. Do not add `text` here.
+    // Length, the on-chain flag, and text_kind. Do not add the text, a fragment, or a hash.
     captureBotEvent(getRuntime().posthog, DM_UNRECOGNIZED_TEXT_EVENT, properties)
     await ctx.reply(
       ctx.t(properties.looks_like_onchain ? 'dm-unrecognized-onchain' : 'dm-unrecognized'),

@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'bun:test'
+import {createHash} from 'node:crypto'
 import type {Context} from 'grammy'
 import {describeUpdate} from './update-log.js'
 
@@ -30,6 +31,7 @@ describe('describeUpdate', () => {
       username: 'user_a',
       command: 'wallet',
       textLength: 7,
+      textKind: 'other',
     })
   })
 
@@ -49,8 +51,9 @@ describe('describeUpdate', () => {
     expect(description.username).toBeUndefined()
   })
 
-  test('never carries message text — only its length', () => {
+  test('never carries message text or a hash of it — only length and kind', () => {
     const secret = 'nostr+walletconnect://deadbeef?secret=supersecret'
+    const invoice = '  Lightning:LNBC1PUNIQUEBODYZZ  '
     const description = describeUpdate(
       ctx({
         update: {update_id: 9, message: {}},
@@ -59,10 +62,36 @@ describe('describeUpdate', () => {
         message: {text: secret},
       }),
     )
+    const invoiceLog = describeUpdate(
+      ctx({
+        update: {update_id: 11, message: {}},
+        from: {id: 42, is_bot: false, first_name: 'A'},
+        chat: {id: 42, type: 'private'},
+        message: {text: invoice},
+      }),
+    )
 
-    expect(JSON.stringify(description)).not.toContain('secret')
+    const secretJson = JSON.stringify(description)
+    const secretDigest = createHash('sha256').update(secret).digest('hex')
+    expect(secretJson).not.toContain('secret')
+    expect(secretJson).not.toContain('deadbeef')
+    expect(secretJson).not.toContain(secretDigest)
+    expect(secretJson).not.toContain(secretDigest.slice(0, 16))
     expect(description.textLength).toBe(secret.length)
+    expect(description.textKind).toBe('other')
     expect(description.command).toBeUndefined()
+
+    const invoiceJson = JSON.stringify(invoiceLog)
+    const invoiceDigest = createHash('sha256').update(invoice).digest('hex')
+    const normalized = 'lnbc1puniquebodyzz'
+    expect(invoiceLog.textKind).toBe('bolt11_invoice')
+    expect(invoiceJson).not.toContain(normalized)
+    expect(invoiceJson).not.toContain('LNBC1PUNIQUEBODYZZ')
+    expect(invoiceJson).not.toContain(invoiceDigest)
+    expect(invoiceJson).not.toContain(createHash('sha256').update(normalized).digest('hex'))
+    expect(invoiceJson).not.toContain(
+      createHash('sha256').update(normalized).digest('hex').slice(0, 16),
+    )
   })
 
   test('ignores the reqId the router stamps onto the update body', () => {
