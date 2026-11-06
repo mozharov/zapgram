@@ -33,12 +33,11 @@ export function mintInvoice({
     timestamp: timestampSec,
     tags: [
       {tagName: 'payment_hash', data: paymentHash},
-      // A description hash is the LNURL commitment. An empty `d` tag next to it
-      // hides whether the parser read `h` or the plain description.
-      ...(description !== '' || !descriptionHash
-        ? [{tagName: 'description', data: description}]
-        : []),
-      ...(descriptionHash ? [{tagName: 'purpose_commit_hash', data: descriptionHash}] : []),
+      // BOLT11 carries either a description or a description hash, never both.
+      // A hash replaces the description string so LUD-06 invoices match real grammar.
+      ...(descriptionHash
+        ? [{tagName: 'purpose_commit_hash', data: descriptionHash}]
+        : [{tagName: 'description', data: description}]),
       {tagName: 'expire_time', data: expirySec},
       {tagName: 'min_final_cltv_expiry', data: 18},
     ],

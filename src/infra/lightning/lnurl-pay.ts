@@ -75,8 +75,9 @@ type ResolvedTarget = {
  * `https://host/.well-known/lnurlp/name` GET.
  *
  * Loopback and RFC1918 are reachable only when `NODE_ENV` is exactly `test`. Link-local,
- * metadata, NAT64, and 6to4-to-a-private address are never a pay target. The connection uses
- * the address that passed that check, so a second DNS lookup cannot rebind it.
+ * metadata, site-local, NAT64, and 6to4-to-a-private address are never a pay target. Onion
+ * names are refused: there is no Tor transport, so they would be resolved on the clearnet.
+ * The connection uses the address that passed that check, so a second DNS lookup cannot rebind it.
  */
 export async function fetchLnurlPay(request: PaymentRequest): Promise<LnurlPayQuote> {
   const fetched = await getJson(lnurlPayEndpoint(request))
@@ -224,7 +225,7 @@ async function resolveTarget(raw: string, signal: AbortSignal): Promise<Resolved
   if (records.length === 0 || records.some(record => !lnurlIpAllowed(record.address, nodeEnv))) {
     throw new LnurlPayError('bad-response')
   }
-  if (url.protocol === 'http:' && !host.endsWith('.onion')) {
+  if (url.protocol === 'http:') {
     const loopback = records.every(record => isLoopback(record.address))
     if (!lnurlLocalTargetsAllowed(nodeEnv) || !loopback) throw new LnurlPayError('bad-response')
   }
@@ -341,8 +342,12 @@ export async function lnurlPinnedGet(
 }
 
 function schemeAllowed(url: URL, nodeEnv: string | undefined): boolean {
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (host.endsWith('.onion')) return url.protocol === 'http:' || url.protocol === 'https:'
+  const host = url.hostname
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
+    .toLowerCase()
+  // No Tor transport. Resolving an onion name would leak it onto clearnet DNS.
+  if (host === 'onion' || host.endsWith('.onion')) return false
   if (url.protocol === 'https:') return true
   if (url.protocol !== 'http:' || !lnurlLocalTargetsAllowed(nodeEnv)) return false
   return host === 'localhost' || isLoopback(host)
@@ -397,6 +402,8 @@ function disallowedV6(ip: string, nodeEnv: string | undefined): boolean {
   if (g0 === 0x2001 && g1 === 0x0db8) return true
   if (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0) return true
   if ((g0 & 0xffc0) === 0xfe80) return true
+  // Deprecated site-local (fec0::/10), still used as a private range.
+  if ((g0 & 0xffc0) === 0xfec0) return true
   if ((g0 & 0xff00) === 0xff00) return true
   if ((g0 & 0xfe00) === 0xfc00) return !lnurlLocalTargetsAllowed(nodeEnv)
   return false

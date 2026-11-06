@@ -53,10 +53,21 @@ describe('lnurlIpAllowed', () => {
     expect(lnurlIpAllowed('2002:7f00:1::', 'production')).toBe(false)
     expect(lnurlIpAllowed('2002:0808:0808::', 'production')).toBe(true)
     expect(lnurlIpAllowed('2001:0:0:0::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('fec0::1', 'test')).toBe(false)
+    expect(lnurlIpAllowed('fec0::1', 'production')).toBe(false)
   })
 })
 
 describe('fetchLnurlPay', () => {
+  test('does not look up an onion name', async () => {
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('https://pay.example.onion/lnurlp')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('http://pay.example.onion/lnurlp')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
+  })
+
   test('connects to the checked address even when the hostname does not resolve', async () => {
     let port = 0
     const server = Bun.serve({

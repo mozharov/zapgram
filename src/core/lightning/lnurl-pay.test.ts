@@ -97,7 +97,7 @@ describe('lnurlInvoiceProblem', () => {
   const hash = createHash('sha256').update(METADATA).digest('hex')
 
   test('accepts the requested amount when the description hash matches and there is no d tag', () => {
-    const invoice = mintInvoice({sats: 30, description: '', descriptionHash: hash})
+    const invoice = mintInvoice({sats: 30, description: 'Pay Alice', descriptionHash: hash})
     const tags = decodeBolt11(invoice.bolt11).tags.map(tag => tag.tagName)
     expect(tags).toContain('purpose_commit_hash')
     expect(tags).not.toContain('description')
