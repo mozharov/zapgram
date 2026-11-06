@@ -346,26 +346,12 @@ export function createDmTransferService(deps: DmTransferDeps) {
     if (row.providerAccepted || row.phase === 'provider_accepted') {
       await settleMark(row.id)
       if (row.status === 'settled' || (await deps.transfers.get(id)).status === 'settled') {
-        await settleNotice({
-          attemptId: row.id,
-          toUserId: row.toUserId,
-          fromUserId: row.fromUserId,
-          sats: row.sats,
-        }).catch(error => {
-          deps.log.error({error, transferId: id}, 'DM transfer notice failed')
-        })
+        await finishSettled(row)
       }
       return 'settled'
     }
     if (row.status === 'settled') {
-      await settleNotice({
-        attemptId: row.id,
-        toUserId: row.toUserId,
-        fromUserId: row.fromUserId,
-        sats: row.sats,
-      }).catch(error => {
-        deps.log.error({error, transferId: id}, 'DM transfer notice failed')
-      })
+      await finishSettled(row)
       return 'settled'
     }
     if (!row.invoiceHash) {
@@ -386,6 +372,8 @@ export function createDmTransferService(deps: DmTransferDeps) {
     if (state === 'paid') {
       await deps.transfers.markProviderAccepted(row.id, row.providerPaymentHash ?? undefined)
       await settleMark(row.id)
+      const latest = await deps.transfers.get(id)
+      if (latest.status === 'settled') await finishSettled(latest)
       return 'settled'
     }
     if (state === 'retryable' && ageMs(row) > reviewMs) {
@@ -408,6 +396,21 @@ export function createDmTransferService(deps: DmTransferDeps) {
       return 'needs_review'
     }
     return 'in_flight'
+  }
+
+  /** Fee and notice, in that order. The wizard does this after a live pay. Recovery is the only caller left once that result was cached as in flight. */
+  async function finishSettled(row: DmTransfer): Promise<void> {
+    await settleFee({attemptId: row.id, fromUserId: row.fromUserId}).catch(error => {
+      deps.log.error({error, fromUserId: row.fromUserId}, 'DM transfer fee failed')
+    })
+    await settleNotice({
+      attemptId: row.id,
+      toUserId: row.toUserId,
+      fromUserId: row.fromUserId,
+      sats: row.sats,
+    }).catch(error => {
+      deps.log.error({error, transferId: row.id}, 'DM transfer notice failed')
+    })
   }
 
   function ageMs(row: DmTransfer): number {

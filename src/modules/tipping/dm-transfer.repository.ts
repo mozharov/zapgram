@@ -1,7 +1,7 @@
 import type {AppDatabase} from '@infra/db/client.js'
 import {dmTransfersTable} from '@infra/db/schema.js'
 import type {DmTransfer} from '@infra/db/types.js'
-import {and, eq, isNull, lt, or} from 'drizzle-orm'
+import {and, asc, desc, eq, isNull, lt, or} from 'drizzle-orm'
 
 export type DmTransferInvoice = {hash: string; bolt11: string}
 
@@ -177,6 +177,9 @@ export function createDmTransferRepository(database: AppDatabase) {
       return database.query.dmTransfersTable.findMany({
         limit,
         offset,
+        // Settled rows still waiting on a notice come first. A page of
+        // `pay_unknown` rows must not hide them until the 24h review.
+        orderBy: [desc(dmTransfersTable.status), asc(dmTransfersTable.createdAt)],
         where: or(
           and(eq(dmTransfersTable.status, 'pending'), eq(dmTransfersTable.reviewLogged, false)),
           and(eq(dmTransfersTable.status, 'settled'), eq(dmTransfersTable.noticeSent, false)),

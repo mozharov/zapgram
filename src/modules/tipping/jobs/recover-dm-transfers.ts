@@ -5,20 +5,46 @@ import {getRuntime} from '../../../runtime.js'
  * An invoice that was only saved is abandoned once it is old enough. A recipient
  * notice whose lease expired is sent from here, without the conversation.
  */
-export async function recoverDmTransfers(): Promise<void> {
-  const {dmTransfers, log} = getRuntime()
-  for (let batch = 0; batch < 20; batch++) {
-    const rows = await dmTransfers.listActionable(20, 0)
+const PAGE = 20
+
+type RecoveryResult = 'settled' | 'abandoned' | 'in_flight' | 'needs_review'
+
+/**
+ * Walk the actionable rows. A page that only stays in flight does not end the
+ * run: the next page is still read. A row that leaves the set pulls the front
+ * forward, so the following read starts at the beginning again.
+ */
+export async function runDmTransferRecovery(input: {
+  list: (limit: number, offset: number) => Promise<{id: string}[]>
+  reconcile: (id: string) => Promise<RecoveryResult>
+  log: {error: (obj: unknown, msg: string) => void}
+}): Promise<void> {
+  let offset = 0
+  for (let batch = 0; batch < PAGE; batch++) {
+    const rows = await input.list(PAGE, offset)
     if (rows.length === 0) return
-    let progressed = false
+    let progressed = 0
     for (const row of rows) {
       try {
-        const result = await dmTransfers.reconcile(row.id)
-        if (result === 'settled' || result === 'abandoned') progressed = true
+        const result = await input.reconcile(row.id)
+        if (result === 'settled' || result === 'abandoned' || result === 'needs_review') {
+          progressed += 1
+        }
       } catch (error) {
-        log.error({error, transferId: row.id}, 'DM transfer recovery failed')
+        input.log.error({error, transferId: row.id}, 'DM transfer recovery failed')
       }
     }
-    if (!progressed) return
+    if (progressed === 0) offset += rows.length
+    else offset = 0
+    if (rows.length < PAGE && progressed === 0) return
   }
+}
+
+export async function recoverDmTransfers(): Promise<void> {
+  const {dmTransfers, log} = getRuntime()
+  await runDmTransferRecovery({
+    list: (limit, offset) => dmTransfers.listActionable(limit, offset),
+    reconcile: id => dmTransfers.reconcile(id),
+    log,
+  })
 }

@@ -154,6 +154,49 @@ test('an unknown pay is in flight and is not paid again', async () => {
   expect(world.created('user')).toBe(1)
 })
 
+test('reconciliation collects the donation for a pay that landed before the timeout', async () => {
+  const world = await worldFor({donationPercent: 10})
+  world.payImpl = async (_user, bolt11) => {
+    await world.pay(bolt11)
+    const row = world.stored.find(invoice => invoice.bolt11 === bolt11)
+    if (row?.kind === 'user') throw new NWCTimeoutError()
+    return undefined
+  }
+  expect(await world.service.settle(send)).toEqual({outcome: 'in_flight'})
+  expect(world.paid('fee')).toHaveLength(0)
+
+  expect(await world.service.reconcile(send.attemptId)).toBe('settled')
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(1)
+  expect(world.donations).toHaveLength(1)
+  expect(world.donations[0]?.amountSats).toBe(3)
+
+  expect(await world.service.reconcile(send.attemptId)).toBe('settled')
+  expect(world.paid('fee')).toHaveLength(1)
+  expect(world.payCalls).toBe(2)
+})
+
+test('a settled notice is listed before a stuck unknown pay', async () => {
+  const world = await worldFor({donationPercent: 0})
+  const created = new Date('2026-01-01T00:00:00Z')
+  world.now = () => created
+  world.payImpl = async () => {
+    throw new NWCTimeoutError()
+  }
+  await world.service.settle({...send, attemptId: 'stuck'})
+  await world.transfers.reserve({
+    id: 'notice',
+    fromUserId: 1,
+    toUserId: 2,
+    sats: 21,
+    rail: 'internal',
+    createdAt: new Date(created.getTime() + 1_000),
+  })
+  await world.transfers.markSettled('notice')
+  const [first] = await world.service.listActionable(1, 0)
+  expect(first?.id).toBe('notice')
+})
+
 test('reconciliation settles a paid unknown transfer and does not pay again', async () => {
   const world = await worldFor({donationPercent: 0})
   world.payImpl = async (_user, bolt11) => {
