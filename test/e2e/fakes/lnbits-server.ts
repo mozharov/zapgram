@@ -124,6 +124,23 @@ function route({
     return json({server_time: Math.floor(Date.now() / 1000), up_time: '0 days, 0 hours, 1 minutes'})
   }
 
+  // Same shape on LNbits 1.5.6 and 1.7.0: admin callers get the funding-source balance.
+  // `up_time` is a string, matching /api/v1/health. Auth is the admin key or a bearer token.
+  if (method === 'GET' && path === '/api/v1/status') {
+    if (!hasUsersApiAuth(request, opts.adminKey)) {
+      return json({detail: 'Missing user ID or access token.'}, 401)
+    }
+    return json({
+      server_time: Math.floor(Date.now() / 1000),
+      up_time: '0 days, 0 hours, 1 minutes',
+      up_time_seconds: 1,
+      version: '1.5.6',
+      funding_source: 'NWCWallet',
+      funding_source_error: state.fundingSourceError,
+      funding_source_balance_msat: state.fundingSourceBalanceMsat,
+    })
+  }
+
   // Public rate endpoint (no API key). null rate simulates LNbits outage for hide-suffix path.
   // Shape matches real LNbits: price = USD/BTC, rate = sats per 1 USD.
   if (method === 'GET' && path === '/api/v1/rate/USD') {

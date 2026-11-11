@@ -70,6 +70,7 @@ const ALL_CODES: AppErrorCode[] = [
   'user_has_no_wallet',
   'not_found',
   'unknown',
+  'send_paused',
 ]
 
 export const COVERS = scenarioCoverage.errors
@@ -141,6 +142,20 @@ test('the message that caused a private error is removed after the temp-message 
   await sendAndWaitForTempMessage(input)
 
   expect(deletedMessageIdsSince(mark)).toContain(inputMessageId)
+})
+
+test('send_paused is shown when the LNbits backend cannot cover an outgoing payment', async () => {
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  const invoice = mintInvoice({sats: 100, description: 'backend empty'})
+  const before = await snapshot(e2e)
+
+  await e2e.send(privateText(invoice.bolt11))
+  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+
+  expectPrivateError('send_paused', 'en')
+  await expectMoneyUnchanged(before)
+  expect(outgoingPays()).toEqual([])
 })
 
 test('invoice_already_paid keeps the payee pending row and shows the dedicated copy', async () => {
@@ -526,6 +541,7 @@ test('every AppErrorCode has a real e2e path in this file', () => {
     'user_has_no_wallet',
     'not_found',
     'unknown',
+    'send_paused',
   ] satisfies AppErrorCode[])
   expect([...covered].sort()).toEqual([...ALL_CODES].sort())
 })
@@ -713,6 +729,14 @@ function stubNwcPayInvoice(impl: () => Promise<void> | void): void {
     NostrWallet.prototype.lookupInvoice = originalLookup
     NostrWallet.prototype.getBalance = originalBalance
   }
+}
+
+function outgoingPays(): typeof e2e.ln.requests {
+  return e2e.ln.requests.filter(request => {
+    if (request.method !== 'POST' || request.path !== '/api/v1/payments') return false
+    const body = request.body
+    return Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true)
+  })
 }
 
 function credit(userId: number, sats: number): void {

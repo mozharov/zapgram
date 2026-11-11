@@ -2,7 +2,10 @@ import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {LNBitsAPI} from './lnbits-api.js'
+import type {OutgoingLiquidityGuard} from './outgoing-liquidity.js'
 import {
+  feeReserveResponseSchema,
+  fundingSourceStatusSchema,
   healthResponseSchema,
   lookupPaymentResponseSchema,
   paymentResponseSchema,
@@ -15,6 +18,7 @@ class MasterWallet extends LNBitsAPI {
   private readonly bearerToken?: string
   private readonly feeCollectionInvoiceKey: string
   private readonly paymentWebhookUrl?: string
+  private outgoingLiquidity?: OutgoingLiquidityGuard
 
   constructor({
     baseUrl,
@@ -91,7 +95,41 @@ class MasterWallet extends LNBitsAPI {
     })
   }
 
+  useOutgoingLiquidity(guard: OutgoingLiquidityGuard): void {
+    this.outgoingLiquidity = guard
+  }
+
+  /**
+   * Funding-source balance via GET /api/v1/status.
+   *
+   * LNbits 1.5.6 and 1.7.0 share this route. The balance is included only for an admin
+   * account — the same bearer the users API already requires — and comes from
+   * funding_source.status(), which for an NWC backend is get_balance. Node APIs are not
+   * used: NWC does not implement them. A missing balance or funding_source_error is a failed
+   * read. The error text is dropped; an NWC failure can contain the connection URL.
+   */
+  async readFundingSourceBalanceMsat(): Promise<number> {
+    const response = await this.fetch(
+      '/api/v1/status',
+      // Fail fast. got retries GET 500s, and a dead funding source should pause the send
+      // instead of waiting out those retries before refusing.
+      {headers: this.getAuthHeaders(), retry: {limit: 0}},
+      {logHttpError: false},
+    )
+    const parsed = fundingSourceStatusSchema.safeParse(response.body)
+    if (!parsed.success || parsed.data.funding_source_error) {
+      throw new Error('Funding source balance unavailable')
+    }
+    return parsed.data.funding_source_balance_msat
+  }
+
   async payInvoice(paymentRequest: string) {
+    if (this.outgoingLiquidity) {
+      await this.outgoingLiquidity.assertCanPay({
+        bolt11: paymentRequest,
+        feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
+      })
+    }
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
       body: JSON.stringify({
@@ -99,6 +137,15 @@ class MasterWallet extends LNBitsAPI {
         bolt11: paymentRequest,
       }),
     })
+  }
+
+  private async feeReserveMsat(paymentRequest: string): Promise<number> {
+    const response = await this.fetchWithSchema(
+      '/api/v1/payments/fee-reserve',
+      feeReserveResponseSchema,
+      {searchParams: {invoice: paymentRequest}},
+    )
+    return response.fee_reserve
   }
 
   async lookupPayment(paymentHash: string) {

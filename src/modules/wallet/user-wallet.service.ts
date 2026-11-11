@@ -1,5 +1,6 @@
 import type {User} from '@infra/db/types.js'
 import type {MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import type {OutgoingLiquidityGuard} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import type {AppLogger} from '@infra/logger.js'
 import {getRuntime} from '../../runtime.js'
@@ -11,6 +12,7 @@ export function createUserWalletFactory(deps: {
   log?: AppLogger
   /** When set, every user invoice is created with an LNbits payment webhook. */
   paymentWebhookUrl?: string
+  outgoingLiquidity?: OutgoingLiquidityGuard
 }) {
   return async function getUserWallet(userId: User['id']) {
     const existing = await deps.masterWallet.getUserByUsername(userId.toString())
@@ -31,6 +33,7 @@ export function createUserWalletFactory(deps: {
       deps.memoFooter,
       deps.log,
       deps.paymentWebhookUrl,
+      deps.outgoingLiquidity,
     )
   }
 }

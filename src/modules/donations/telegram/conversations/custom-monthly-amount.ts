@@ -1,3 +1,4 @@
+import {throwIfSendPaused} from '@core/errors/send-paused.js'
 import {advanceMonthlyNextAt, isValidDonationAmountSats} from '@core/money/donation.js'
 import {replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -138,6 +139,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     )
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
   } else {
+    throwIfSendPaused(result.error)
     await conversation.external(() =>
       getRuntime().users.update(ctx.user.id, {
         monthlyDonationSats: sats,

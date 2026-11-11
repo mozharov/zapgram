@@ -5,6 +5,10 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
 import {
+  createOutgoingLiquidityGuard,
+  SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+} from '@infra/lnbits/outgoing-liquidity.js'
+import {
   createLnbitsRateFetcher,
   createRateService,
   type RateService,
@@ -144,6 +148,18 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
+  const outgoingLiquidity = createOutgoingLiquidityGuard({
+    readBalanceMsat: () => masterWallet.readFundingSourceBalanceMsat(),
+    log,
+    capturePaused: properties => {
+      posthog?.capture({
+        distinctId: 'lnbits-backend',
+        event: SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+        properties: {$process_person_profile: false, ...properties},
+      })
+    },
+  })
+  masterWallet.useOutgoingLiquidity(outgoingLiquidity)
   const health = await masterWallet.checkStatus()
   log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
 
@@ -196,6 +212,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     memoFooter: config.memoFooter,
     log,
     paymentWebhookUrl,
+    outgoingLiquidity,
   })
 
   const donationPay = createDonationPayService({
@@ -211,10 +228,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     payService: donationPay,
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
-    notifyDonationFailed: async (userId, donationSats, languageCode) => {
+    notifyDonationFailed: async (userId, donationSats, languageCode, reason) => {
       const btcUsd = await rates.getBtcUsd()
       const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
-      const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
+      const text =
+        reason === 'paused'
+          ? translate('error.send-paused', languageCode)
+          : translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
     log,

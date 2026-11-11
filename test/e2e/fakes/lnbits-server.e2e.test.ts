@@ -171,6 +171,30 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
+  test('reads the funding-source balance from /api/v1/status', async () => {
+    await withFake(async fake => {
+      fake.state.fundingSourceBalanceMsat = 42_000
+      const master = createMasterWallet(testConfig(fake.url))
+      expect(await master.readFundingSourceBalanceMsat()).toBe(42_000)
+
+      const body = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {'X-Api-Key': keys.adminKey},
+          })
+        ).json(),
+      )
+      expect(body?.up_time).toBe('0 days, 0 hours, 1 minutes')
+      expect(body?.funding_source_balance_msat).toBe(42_000)
+
+      fake.state.fundingSourceError = 'backend unreachable'
+      await expect(master.readFundingSourceBalanceMsat()).rejects.toThrow(
+        'Funding source balance unavailable',
+      )
+      expect((await fetch(`${fake.url}/api/v1/status`)).status).toBe(401)
+    })
+  })
+
   test('matches fee-reserve before the payment-hash route', async () => {
     await withFake(async fake => {
       const wallet = userWallet(fake, '100001')

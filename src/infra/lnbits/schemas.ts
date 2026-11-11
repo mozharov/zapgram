@@ -90,13 +90,15 @@ export const lookupPaymentResponseSchema = z.object({
   details: paymentResponseSchema,
 })
 
-export const statusResponseSchema = z.object({
-  server_time: z.number(),
-  up_time: z.number(),
-  version: z.string(),
-  funding_source: z.string(),
-  funding_source_error: z.string().nullable(),
+/**
+ * Admin view of GET /api/v1/status on LNbits 1.5.6 and 1.7.0.
+ * Timing fields differ by version (`up_time` is a string, same as /health) and are ignored.
+ * Non-admin callers omit the funding-source fields; that parse failure is a failed read.
+ */
+export const fundingSourceStatusSchema = z.object({
   funding_source_balance_msat: z.number(),
+  funding_source_error: z.string().nullable().optional(),
+  funding_source: z.string().optional(),
 })
 
 export const healthResponseSchema = z.object({

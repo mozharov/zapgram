@@ -5,6 +5,7 @@ import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
+import type {OutgoingLiquidityGuard} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
   feeReserveResponseSchema,
@@ -20,6 +21,7 @@ export class UserWallet extends LNBitsAPI {
   public readonly balance: number
   private readonly memoFooter: string
   private readonly paymentWebhookUrl?: string
+  private readonly outgoingLiquidity?: OutgoingLiquidityGuard
 
   constructor(
     adminKey: string,
@@ -28,11 +30,13 @@ export class UserWallet extends LNBitsAPI {
     memoFooter = '',
     log?: AppLogger,
     paymentWebhookUrl?: string,
+    outgoingLiquidity?: OutgoingLiquidityGuard,
   ) {
     super({baseUrl, adminKey, log})
     this.balance = balance
     this.memoFooter = memoFooter
     this.paymentWebhookUrl = paymentWebhookUrl
+    this.outgoingLiquidity = outgoingLiquidity
   }
 
   /**
@@ -56,6 +60,12 @@ export class UserWallet extends LNBitsAPI {
   }
 
   async payInvoice(paymentRequest: string) {
+    if (this.outgoingLiquidity) {
+      await this.outgoingLiquidity.assertCanPay({
+        bolt11: paymentRequest,
+        feeReserveMsat: () => this.getFeeReserve(paymentRequest),
+      })
+    }
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
       body: JSON.stringify({

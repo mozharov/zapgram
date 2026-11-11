@@ -1,3 +1,4 @@
+import {throwIfSendPaused} from '@core/errors/send-paused.js'
 import {advanceMonthlyNextAt, isValidDonationAmountSats} from '@core/money/donation.js'
 import {buildDonateMonthlyKeyboard} from '@modules/donations/telegram/keyboards/donate.js'
 import {
@@ -130,6 +131,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     })
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
   } else {
+    throwIfSendPaused(result.error)
     await users.update(ctx.user.id, {
       monthlyDonationSats: amountSats,
       monthlyDonationNextAt: now,

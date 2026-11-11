@@ -21,4 +21,5 @@ export const errorTranslationKey: Record<AppErrorCode, string> = {
   // No dedicated copy yet; fall back to the generic unknown error message.
   not_found: 'error.unknown',
   unknown: 'error.unknown',
+  send_paused: 'error.send-paused',
 }
