@@ -22,12 +22,13 @@ import subprocess
 import sys
 import time
 
-# Restated as CMD in the Dockerfile. Upstream lnbits/lnbits:v1.5.6 ships
+# Restated as CMD in the Dockerfile. Upstream lnbits/lnbits:v1.7.0 ships
 # this exact command and no ENTRYPOINT; setting an ENTRYPOINT clears it.
+# `--no-sync` is a `uv run` flag, not an argument of the lnbits CLI.
 UPSTREAM_COMMAND = (
     "sh",
     "-c",
-    "uv --offline run lnbits --port $LNBITS_PORT --host $LNBITS_HOST --forwarded-allow-ips='*'",
+    "uv --offline run --no-sync lnbits --port $LNBITS_PORT --host $LNBITS_HOST --forwarded-allow-ips='*'",
 )
 
 INTERVAL_ENV = "LNBITS_RESTART_INTERVAL_HOURS"

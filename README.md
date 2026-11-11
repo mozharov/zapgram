@@ -215,6 +215,34 @@ Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-c
 
 **Persistence:** compose sets `LNBITS_EXTENSIONS_PATH=/app/data/extensions`, so installed LNbits extension code lives on the `lnbits-data` volume (`/app/data/extensions/extensions/<id>`) next to the DB and survives container recreates. Without it LNbits 1.x installs extensions into `/app/lnbits/extensions` inside the container: after a redeploy the DB still lists them, the files are gone, and you get `Extension 'satspay' disabled` / 500 on enable. When upgrading an existing instance to this setting, reinstall Watch Only and SatsPay once (Admin → Extensions); their data in the DB is kept.
 
+### Post-deploy check for 1.7.0
+
+Compose builds `lnbits/lnbits:v1.7.0` (tag only; amd64 and arm64 have separate digests). Keep the existing `lnbits-data` volume. Recreating it opens the `first_install` wizard.
+
+`LNBITS_AUTOUPDATE_EXTENSIONS_ON_STARTUP` is set to `true` (the 1.7.0 default). It is an editable setting: the env value applies when the settings DB has no stored value. On startup LNbits updates each installed extension in place to the latest compatible stable release from the same source repo and runs that extension's migrations. `ext_*.sqlite3` on the volume stays in place.
+
+1.7.0 needs **SatsPay 1.2.0** and **Watch Only 1.2.1**. The copies that were running (1.0.2 and 1.1.0) set an exclusive `max_lnbits_version` of `1.7.0`, so they do not load. The satspay v1.2.0 tag still has `"version": "1.1.0"` in `config.json` with `min_lnbits_version: 1.7.0`. Trust the release tag and `min_lnbits_version`; the `version` string in `config.json` can lag.
+
+Manual fallback when the manifest was not downloaded and the log still shows 1.0.2 / 1.1.0, the extensions are disabled, or `GET /satspay/api/v1` returns 404:
+
+1. Admin → Extensions.
+2. **Update** on top of the installed SatsPay and Watch Only.
+3. Do not press Uninstall. Charge and watch-only wallet data live in `ext_satspay.sqlite3` and `ext_watchonly.sqlite3` on the volume.
+
+After start:
+
+1. Log shows version **1.7.0**, core migrations through `m057` with no error, `planned restart in 96h`, and neither a redirect to `/first_install` nor `Settings DB empty`.
+2. `GET /api/v1/health` returns 200.
+3. SatsPay 1.2.0 (or the v1.2.0 tag; see the `config.json` note) and Watch Only 1.2.1 are enabled. `GET /satspay/api/v1` returns 200. The SatsPay websocket is connected to mempool.space again.
+4. The log shows NWC connected. `GET /api/v1/status` with the admin key shows an NWC funding source. A zero backend balance is the expected state until a channel exists.
+5. `GET /users/api/v1/user` with Bearer still answers. Create a test incoming invoice and look it up by hash. With a zero balance, an outgoing Lightning payment only shows that the error is about funds. On-chain: probe SatsPay and create (then delete) a test charge on an existing watch-only wallet.
+6. After the first incoming payment, the webhook reaches the bot. If SSRF rejects it, inspect `HOST`, `lnbits_baseurl`, and `lnbits_outbound_host_ips`. The pending-invoice cron remains the fallback.
+7. Accounts created since 2026-11-06 match the bot's wallet-provision logs. Unexpected accounts stop the rollout.
+8. Public registration stays closed (`POST /api/v1/account` and `/api/v1/auth/register` are refused).
+9. Bot logs have no new ERROR/WARN, and `SatsPay availability changed` goes to `up`.
+
+Core migrations `m046`–`m057` are irreversible. Rollback is restoring the backup files into the existing volume and returning the 1.5.6 image with the previous command (no `--no-sync`). Take that backup, without recreating the volume, before deploy.
+
 ---
 
 ## Links
