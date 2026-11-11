@@ -133,6 +133,21 @@ test('the master wallet pay is paused without calling pay when the backend is em
   expect(outgoingPaysSince(mark)).toEqual([])
 })
 
+test('a non-admin status body does not pause payments even when the stored balance is zero', async () => {
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.fundingSourceVisible = false
+  const invoice = mintInvoice({sats: 100, description: 'balance hidden'})
+  const mark = e2e.ln.requests.length
+
+  await e2e.send(privateText(invoice.bolt11))
+  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
+  expect(outgoingPaysSince(mark)).toHaveLength(1)
+  expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
+})
+
 test('the master wallet pays when the backend covers the invoice and the reserve', async () => {
   const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
   if (!master) throw new Error('Fake master wallet not found')

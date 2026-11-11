@@ -131,7 +131,6 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     })
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
   } else {
-    throwIfSendPaused(result.error)
     await users.update(ctx.user.id, {
       monthlyDonationSats: amountSats,
       monthlyDonationNextAt: now,
@@ -149,6 +148,8 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       source: 'preset',
       $set: {monthly_donation_sats: amountSats},
     })
+    // The row is already saved, so the cron retries after the backend can pay again.
+    throwIfSendPaused(result.error)
     await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats: amountSats, usdSuffix}))
   }
 

@@ -139,7 +139,6 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     )
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
   } else {
-    throwIfSendPaused(result.error)
     await conversation.external(() =>
       getRuntime().users.update(ctx.user.id, {
         monthlyDonationSats: sats,
@@ -161,6 +160,8 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         $set: {monthly_donation_sats: sats},
       }),
     )
+    // The row is already saved, so the cron retries after the backend can pay again.
+    throwIfSendPaused(result.error)
     await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats, usdSuffix}))
   }
 

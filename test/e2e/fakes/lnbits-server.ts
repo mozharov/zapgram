@@ -12,6 +12,12 @@ export type FakeLnbitsRequest = {
   body?: unknown
 }
 
+/**
+ * Access token LNbits would accept as an admin (superuser or `lnbits_admin_users`).
+ * The wallet `X-Api-Key` is not an access token and does not reveal the funding-source balance.
+ */
+export const FAKE_LNBITS_ADMIN_BEARER = 'e2e-admin'
+
 export type FakeLnbits = {
   url: string
   state: LnbitsState
@@ -124,17 +130,20 @@ function route({
     return json({server_time: Math.floor(Date.now() / 1000), up_time: '0 days, 0 hours, 1 minutes'})
   }
 
-  // Same shape on LNbits 1.5.6 and 1.7.0: admin callers get the funding-source balance.
-  // `up_time` is a string, matching /api/v1/health. Auth is the admin key or a bearer token.
+  // LNbits 1.5.6 and 1.7.0: access token only. The wallet admin key is ignored.
+  // Admin token: funding_source_balance_msat. Any other token: timing fields only.
   if (method === 'GET' && path === '/api/v1/status') {
-    if (!hasUsersApiAuth(request, opts.adminKey)) {
-      return json({detail: 'Missing user ID or access token.'}, 401)
-    }
-    return json({
+    const bearer = bearerOf(request)
+    if (!bearer) return json({detail: 'Missing user ID or access token.'}, 401)
+    const status = {
       server_time: Math.floor(Date.now() / 1000),
       up_time: '0 days, 0 hours, 1 minutes',
       up_time_seconds: 1,
       version: '1.5.6',
+    }
+    if (bearer !== FAKE_LNBITS_ADMIN_BEARER || !state.fundingSourceVisible) return json(status)
+    return json({
+      ...status,
       funding_source: 'NWCWallet',
       funding_source_error: state.fundingSourceError,
       funding_source_balance_msat: state.fundingSourceBalanceMsat,
@@ -384,6 +393,13 @@ function walletResponse(wallet: FakeWallet): Record<string, unknown> {
 
 function authenticatedWallet(request: Request, state: LnbitsState): FakeWallet | undefined {
   return state.walletByApiKey(request.headers.get('X-Api-Key') ?? undefined)
+}
+
+function bearerOf(request: Request): string | undefined {
+  const header = request.headers.get('Authorization')
+  if (!header?.startsWith('Bearer ')) return undefined
+  const token = header.slice('Bearer '.length).trim()
+  return token.length > 0 ? token : undefined
 }
 
 function hasUsersApiAuth(request: Request, adminKey: string): boolean {

@@ -4,10 +4,11 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {FundingSourceUnreadableError} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
-import {type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
+import {FAKE_LNBITS_ADMIN_BEARER, type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
 
 const keys = {adminKey: 'master-admin-key', feeCollectionKey: 'fee-collection-key'}
 
@@ -171,27 +172,53 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
-  test('reads the funding-source balance from /api/v1/status', async () => {
+  test('only an admin access token can see the funding-source balance', async () => {
     await withFake(async fake => {
       fake.state.fundingSourceBalanceMsat = 42_000
-      const master = createMasterWallet(testConfig(fake.url))
-      expect(await master.readFundingSourceBalanceMsat()).toBe(42_000)
-
-      const body = asRecord(
-        await (
+      const walletKeyOnly = createMasterWallet(testConfig(fake.url))
+      await expect(walletKeyOnly.readFundingSourceBalanceMsat()).rejects.toBeInstanceOf(
+        FundingSourceUnreadableError,
+      )
+      expect(
+        (
           await fetch(`${fake.url}/api/v1/status`, {
             headers: {'X-Api-Key': keys.adminKey},
           })
+        ).status,
+      ).toBe(401)
+
+      const admin = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      expect(await admin.readFundingSourceBalanceMsat()).toBe(42_000)
+      const adminBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: `Bearer ${FAKE_LNBITS_ADMIN_BEARER}`},
+          })
         ).json(),
       )
-      expect(body?.up_time).toBe('0 days, 0 hours, 1 minutes')
-      expect(body?.funding_source_balance_msat).toBe(42_000)
+      expect(adminBody?.up_time).toBe('0 days, 0 hours, 1 minutes')
+      expect(adminBody?.funding_source_balance_msat).toBe(42_000)
+
+      const member = createMasterWallet(testConfig(fake.url, {bearerToken: 'e2e-member'}))
+      await expect(member.readFundingSourceBalanceMsat()).rejects.toBeInstanceOf(
+        FundingSourceUnreadableError,
+      )
+      const memberBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: 'Bearer e2e-member'},
+          })
+        ).json(),
+      )
+      expect(memberBody?.version).toBe('1.5.6')
+      expect(memberBody).not.toHaveProperty('funding_source_balance_msat')
 
       fake.state.fundingSourceError = 'backend unreachable'
-      await expect(master.readFundingSourceBalanceMsat()).rejects.toThrow(
+      await expect(admin.readFundingSourceBalanceMsat()).rejects.toThrow(
         'Funding source balance unavailable',
       )
-      expect((await fetch(`${fake.url}/api/v1/status`)).status).toBe(401)
     })
   })
 

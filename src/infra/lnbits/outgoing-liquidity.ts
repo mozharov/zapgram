@@ -8,6 +8,17 @@ export const BACKEND_LIQUIDITY_CACHE_MS = 45_000
 
 export const SEND_PAUSED_NO_BACKEND_LIQUIDITY = 'send_paused_no_backend_liquidity'
 
+/**
+ * The status call succeeded as a non-admin view, or LNbits refused it (401/403).
+ * The wallet admin key cannot see `funding_source_balance_msat`. That is not an empty node.
+ */
+export class FundingSourceUnreadableError extends Error {
+  constructor() {
+    super('Funding source balance is not visible to this credential')
+    this.name = FundingSourceUnreadableError.name
+  }
+}
+
 export type PausedLiquidity = {
   reason: 'insufficient_backend_liquidity' | 'backend_liquidity_check_failed'
   amount_msat: number | null
@@ -36,6 +47,7 @@ export function createOutgoingLiquidityGuard(deps: {
   const ttlMs = deps.ttlMs ?? BACKEND_LIQUIDITY_CACHE_MS
   let cached: {balanceMsat: number; at: number} | null = null
   let inFlight: Promise<number> | null = null
+  let notedUnreadable = false
 
   async function balanceMsat(): Promise<number> {
     const at = now()
@@ -86,7 +98,18 @@ export function createOutgoingLiquidityGuard(deps: {
       let backendBalance: number
       try {
         backendBalance = await balanceMsat()
-      } catch {
+      } catch (error) {
+        // A wallet admin key gets 401 or a body without the balance. Pausing on that
+        // would stop every send for as long as the credential stays non-admin.
+        if (error instanceof FundingSourceUnreadableError) {
+          if (!notedUnreadable) {
+            notedUnreadable = true
+            deps.log?.warn(
+              'Funding source balance is not visible to this credential; outgoing payments continue',
+            )
+          }
+          return
+        }
         pause(paused('backend_liquidity_check_failed', amountMsat, null, null))
       }
 

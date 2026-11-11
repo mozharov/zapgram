@@ -122,6 +122,12 @@ export class LnbitsState {
   /** When set, /api/v1/status reports a funding-source error and the balance is not trusted. */
   fundingSourceError: string | null = null
 
+  /**
+   * When false, even the admin bearer gets the non-admin status body (no balance field).
+   * That is the production shape for a wallet admin key or a non-admin token.
+   */
+  fundingSourceVisible = true
+
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []
   private readonly masterWallet: FakeWallet

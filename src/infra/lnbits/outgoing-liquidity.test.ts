@@ -3,6 +3,7 @@ import {SendPausedError} from '@core/errors/send-paused.js'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import {
   createOutgoingLiquidityGuard,
+  FundingSourceUnreadableError,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from './outgoing-liquidity.js'
 
@@ -64,6 +65,32 @@ describe('createOutgoingLiquidityGuard', () => {
         feeReserveMsat: async () => 2_000,
       }),
     ).rejects.toBeInstanceOf(SendPausedError)
+  })
+
+  test('a credential that cannot see the balance does not pause the payment', async () => {
+    let reads = 0
+    const guard = createOutgoingLiquidityGuard({
+      readBalanceMsat: async () => {
+        reads += 1
+        throw new FundingSourceUnreadableError()
+      },
+    })
+
+    await expect(
+      guard.assertCanPay({
+        bolt11: invoice.bolt11,
+        feeReserveMsat: async () => {
+          throw new Error('fee reserve must not be required')
+        },
+      }),
+    ).resolves.toBeUndefined()
+    await expect(
+      guard.assertCanPay({
+        bolt11: invoice.bolt11,
+        feeReserveMsat: async () => 0,
+      }),
+    ).resolves.toBeUndefined()
+    expect(reads).toBe(2)
   })
 
   test('a failed balance read pauses and does not call pay-side work', async () => {

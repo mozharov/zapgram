@@ -1,8 +1,9 @@
 import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
+import {HTTPError} from 'got'
 import {LNBitsAPI} from './lnbits-api.js'
-import type {OutgoingLiquidityGuard} from './outgoing-liquidity.js'
+import {FundingSourceUnreadableError, type OutgoingLiquidityGuard} from './outgoing-liquidity.js'
 import {
   feeReserveResponseSchema,
   fundingSourceStatusSchema,
@@ -102,25 +103,50 @@ class MasterWallet extends LNBitsAPI {
   /**
    * Funding-source balance via GET /api/v1/status.
    *
-   * LNbits 1.5.6 and 1.7.0 share this route. The balance is included only for an admin
-   * account — the same bearer the users API already requires — and comes from
-   * funding_source.status(), which for an NWC backend is get_balance. Node APIs are not
-   * used: NWC does not implement them. A missing balance or funding_source_error is a failed
-   * read. The error text is dropped; an NWC failure can contain the connection URL.
+   * LNbits 1.5.6 and 1.7.0 authenticate this route with an access token, not the wallet
+   * admin key. `funding_source_balance_msat` is present only when that token's user is the
+   * superuser or in `lnbits_admin_users`. The users API bearer is that token when it is set.
+   * A wallet key, a missing bearer, or a non-admin token cannot see the field: that throws
+   * {@link FundingSourceUnreadableError} so payments are not paused forever. A transport
+   * failure or `funding_source_error` stays a failed read. The error text is dropped; an NWC
+   * failure can contain the connection URL.
    */
   async readFundingSourceBalanceMsat(): Promise<number> {
-    const response = await this.fetch(
-      '/api/v1/status',
-      // Fail fast. got retries GET 500s, and a dead funding source should pause the send
-      // instead of waiting out those retries before refusing.
-      {headers: this.getAuthHeaders(), retry: {limit: 0}},
-      {logHttpError: false},
-    )
-    const parsed = fundingSourceStatusSchema.safeParse(response.body)
-    if (!parsed.success || parsed.data.funding_source_error) {
+    let response: {body: unknown}
+    try {
+      response = await this.fetch(
+        '/api/v1/status',
+        // Fail fast. got retries GET 500s, and a dead funding source should pause the send
+        // instead of waiting out those retries before refusing.
+        {headers: this.statusHeaders(), retry: {limit: 0}},
+        {logHttpError: false},
+      )
+    } catch (error) {
+      if (error instanceof HTTPError && isStatusHidden(error.response.statusCode)) {
+        throw new FundingSourceUnreadableError()
+      }
       throw new Error('Funding source balance unavailable')
     }
-    return parsed.data.funding_source_balance_msat
+    const parsed = fundingSourceStatusSchema.safeParse(response.body)
+    if (!parsed.success) {
+      if (isNonAdminStatus(response.body)) throw new FundingSourceUnreadableError()
+      throw new Error('Funding source balance unavailable')
+    }
+    if (parsed.data.funding_source_error) throw new Error('Funding source balance unavailable')
+    const balance = parsed.data.funding_source_balance_msat
+    if (!Number.isSafeInteger(balance) || balance < 0) {
+      throw new Error('Funding source balance unavailable')
+    }
+    return balance
+  }
+
+  /** Bearer for /api/v1/status. The wallet admin key is not an access token, so it is not sent. */
+  private statusHeaders(): Record<string, string | undefined> {
+    if (!this.bearerToken) return {'X-Api-Key': undefined}
+    return {
+      Authorization: `Bearer ${this.bearerToken}`,
+      'X-Api-Key': undefined,
+    }
   }
 
   async payInvoice(paymentRequest: string) {
@@ -164,6 +190,16 @@ class MasterWallet extends LNBitsAPI {
 }
 
 export type MasterWalletInstance = MasterWallet
+
+function isStatusHidden(status: number): boolean {
+  return status === 401 || status === 403
+}
+
+/** LNbits omits the funding-source fields for any account that is not an admin. */
+function isNonAdminStatus(body: unknown): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false
+  return 'server_time' in body && !('funding_source_balance_msat' in body)
+}
 
 export function createMasterWallet(cfg: AppConfig): MasterWallet {
   return new MasterWallet({
