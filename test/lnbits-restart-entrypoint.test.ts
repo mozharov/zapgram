@@ -252,7 +252,7 @@ test('compose has no ofelia or docker.sock and lnbits restarts itself', () => {
   const block = compose.slice(start, end)
   expect(block).toContain('restart: unless-stopped')
   expect(block).toContain('context: ./ops/lnbits')
-  expect(block).toContain('LNBITS_IMAGE: lnbits/lnbits:v1.7.0')
+  expect(block).toContain('LNBITS_IMAGE: lnbits/lnbits:v1.7.1')
   expect(block).not.toContain('@sha256:')
   expect(block).toContain('LNBITS_AUTOUPDATE_EXTENSIONS_ON_STARTUP: "true"')
   expect(block).toContain(
@@ -266,7 +266,7 @@ test('compose has no ofelia or docker.sock and lnbits restarts itself', () => {
 test('the image keeps the upstream LNbits command', () => {
   const dockerfile = readFileSync(join(repoRoot, 'ops/lnbits/Dockerfile'), 'utf8')
   const wrapper = readFileSync(entrypoint, 'utf8')
-  expect(dockerfile).toContain('ARG LNBITS_IMAGE=lnbits/lnbits:v1.7.0')
+  expect(dockerfile).toContain('ARG LNBITS_IMAGE=lnbits/lnbits:v1.7.1')
   expect(dockerfile).not.toContain('@sha256:')
   expect(dockerfile).toContain(
     'ENTRYPOINT ["python", "-u", "/usr/local/bin/lnbits-restart-entrypoint.py"]',
