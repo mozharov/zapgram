@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 
-# Restated as CMD in the Dockerfile. Upstream lnbits/lnbits:v1.7.0 ships
+# Restated as CMD in the Dockerfile. Upstream lnbits/lnbits:v1.7.1 ships
 # this exact command and no ENTRYPOINT; setting an ENTRYPOINT clears it.
 # `--no-sync` is a `uv run` flag, not an argument of the lnbits CLI.
 UPSTREAM_COMMAND = (
