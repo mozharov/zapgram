@@ -7,8 +7,8 @@ import {sanitizeMemo} from '@core/lightning/memo.js'
 import {satsToMsats} from '@core/money/sats.js'
 import {editMessageWidgetData, sendWidget} from '@infra/telegram/widget-api.js'
 import {
-  clearInvoiceWidgetMessage,
   createPendingInvoice,
+  moveInvoiceWidgetMessage,
   setInvoiceWidgetMessage,
 } from '@modules/invoices/repository.js'
 import {waitForMemoText} from '@modules/invoices/telegram/helpers/wait-for-memo.js'
@@ -351,22 +351,10 @@ async function trySendInvoiceWidget(
   }
 
   const chatId = typeof sent.chat.id === 'number' ? sent.chat.id : host.chatId
-  let removedPrompt = false
-  try {
-    await ctx.api.deleteMessage(host.chatId, host.messageId)
-    removedPrompt = true
-  } catch (error) {
-    ctx.log.warn({description: errorText(error)}, 'Failed to remove the invoice prompt')
-  }
+  // Persist the pointer before any further API call. A payment in that gap must find this message.
   await conversation.external(async () => {
     if (wallet === 'internal') {
       await setInvoiceWidgetMessage(paymentRequest, chatId, sent.message_id)
-    }
-    if (removedPrompt) {
-      const user = await getRuntime().users.findById(ctx.user.id)
-      if (user?.lastMenuMessageId === host.messageId) {
-        await getRuntime().users.update(ctx.user.id, {lastMenuMessageId: null})
-      }
     }
     ctx.log.info(
       {
@@ -378,6 +366,24 @@ async function trySendInvoiceWidget(
       'Invoice widget sent',
     )
   })
+  let removedPrompt = false
+  try {
+    await ctx.api.deleteMessage(host.chatId, host.messageId)
+    removedPrompt = true
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Failed to remove the invoice prompt')
+    })
+  }
+  if (removedPrompt) {
+    await conversation.external(async () => {
+      const user = await getRuntime().users.findById(ctx.user.id)
+      if (user?.lastMenuMessageId === host.messageId) {
+        await getRuntime().users.update(ctx.user.id, {lastMenuMessageId: null})
+      }
+    })
+  }
   return {chatId, messageId: sent.message_id}
 }
 
@@ -392,6 +398,13 @@ async function renderFinalWidget(
 ): Promise<void> {
   const chatId = shown.message.chat.id
   const messageId = shown.message.message_id
+  // The conversation is still waiting on the next update. Rewriting chat_data here would
+  // put "pending" back over a status the webhook or cron already wrote (paid, expired).
+  if (shown.paymentRequest === paymentRequest) {
+    await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
+    return
+  }
+
   let document: InvoiceWidgetDocument
   try {
     document = buildInvoiceWidgetDocument({
@@ -402,39 +415,41 @@ async function renderFinalWidget(
       bolt11: paymentRequest,
     })
   } catch (error) {
-    ctx.log.warn({description: errorText(error)}, 'Replacement invoice widget does not fit')
-    if (shown.paymentRequest === paymentRequest) {
-      await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
-      return
-    }
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Replacement invoice widget does not fit')
+    })
     await sendPhotoFallback(ctx, chatId, caption, keyboard)
     return
   }
 
   if (!invoiceWidgetNeedsNewMessage(document.bolt11InData, shown.paymentRequest, paymentRequest)) {
-    let updated = false
     try {
       await editMessageWidgetData(ctx.api, {
         chat_id: chatId,
         message_id: messageId,
         chat_data: document.chatData,
       })
-      updated = true
     } catch (error) {
-      ctx.log.warn({description: errorText(error)}, 'Failed to update invoice widget')
+      const description = errorText(error)
+      await conversation.external(() => {
+        ctx.log.warn({description}, 'Failed to update invoice widget')
+      })
+      // QR still shows A. Do not caption the bubble as B.
+      return
+    }
+    if (wallet === 'internal') {
+      await conversation.external(() =>
+        moveInvoiceWidgetMessage(shown.paymentRequest, paymentRequest, chatId, messageId),
+      )
     }
     await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
-    if (updated && wallet === 'internal' && shown.paymentRequest !== paymentRequest) {
-      await conversation.external(async () => {
-        await clearInvoiceWidgetMessage(shown.paymentRequest)
-        await setInvoiceWidgetMessage(paymentRequest, chatId, messageId)
-      })
-    }
     return
   }
 
+  let sent: {message_id: number; chat: {id: number | string}}
   try {
-    const sent = await sendWidget(ctx.api, {
+    sent = await sendWidget(ctx.api, {
       chat_id: chatId,
       html: document.html,
       chat_data: document.chatData,
@@ -443,20 +458,21 @@ async function renderFinalWidget(
       height: 300,
       reply_markup: keyboard,
     })
-    const sentChatId = typeof sent.chat.id === 'number' ? sent.chat.id : chatId
-    if (wallet === 'internal') {
-      await conversation.external(() =>
-        setInvoiceWidgetMessage(paymentRequest, sentChatId, sent.message_id),
-      )
-    }
-    await closeWidget(ctx, sentChatId, sent.message_id, caption.html, keyboard)
   } catch (error) {
-    ctx.log.warn(
-      {description: errorText(error)},
-      'Replacement invoice widget send failed, sending QR photo',
-    )
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Replacement invoice widget send failed, sending QR photo')
+    })
     await sendPhotoFallback(ctx, chatId, caption, keyboard)
+    return
   }
+  const sentChatId = typeof sent.chat.id === 'number' ? sent.chat.id : chatId
+  if (wallet === 'internal') {
+    await conversation.external(() =>
+      setInvoiceWidgetMessage(paymentRequest, sentChatId, sent.message_id),
+    )
+  }
+  await closeWidget(ctx, sentChatId, sent.message_id, caption.html, keyboard)
 }
 
 async function closeWidget(

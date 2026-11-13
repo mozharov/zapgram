@@ -27,10 +27,16 @@ export function createInvoiceRepository(database: AppDatabase) {
       })
     },
 
+    /**
+     * Delete one pending row and return it. `undefined` means the row was already gone, so a
+     * caller must not treat a stale in-memory copy as cancelled.
+     */
     async deleteByPaymentRequest(paymentRequest: PendingInvoice['paymentRequest']) {
-      await database
+      return database
         .delete(pendingInvoicesTable)
         .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
+        .returning()
+        .then(rows => rows[0])
     },
 
     /**
@@ -91,6 +97,28 @@ export function createInvoiceRepository(database: AppDatabase) {
         .set({widgetChatId: null, widgetMessageId: null})
         .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
     },
+
+    /**
+     * Point the live widget at `toPaymentRequest` and drop it from `fromPaymentRequest` in one
+     * transaction, so a payment of A cannot land on the message that now shows B.
+     */
+    async moveWidgetMessage(
+      fromPaymentRequest: PendingInvoice['paymentRequest'],
+      toPaymentRequest: PendingInvoice['paymentRequest'],
+      widgetChatId: number,
+      widgetMessageId: number,
+    ) {
+      await database.transaction(async tx => {
+        await tx
+          .update(pendingInvoicesTable)
+          .set({widgetChatId: null, widgetMessageId: null})
+          .where(eq(pendingInvoicesTable.paymentRequest, fromPaymentRequest))
+        await tx
+          .update(pendingInvoicesTable)
+          .set({widgetChatId, widgetMessageId})
+          .where(eq(pendingInvoicesTable.paymentRequest, toPaymentRequest))
+      })
+    },
   }
 }
 
@@ -124,3 +152,15 @@ export const setInvoiceWidgetMessage = (
 ) => getRuntime().invoices.setWidgetMessage(paymentRequest, widgetChatId, widgetMessageId)
 export const clearInvoiceWidgetMessage = (paymentRequest: PendingInvoice['paymentRequest']) =>
   getRuntime().invoices.clearWidgetMessage(paymentRequest)
+export const moveInvoiceWidgetMessage = (
+  fromPaymentRequest: PendingInvoice['paymentRequest'],
+  toPaymentRequest: PendingInvoice['paymentRequest'],
+  widgetChatId: number,
+  widgetMessageId: number,
+) =>
+  getRuntime().invoices.moveWidgetMessage(
+    fromPaymentRequest,
+    toPaymentRequest,
+    widgetChatId,
+    widgetMessageId,
+  )

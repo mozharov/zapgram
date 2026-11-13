@@ -122,9 +122,9 @@ canvas{background:#fff;image-rendering:pixelated;width:86%;max-width:260px;heigh
 ${widgetQrSource()}
 ${LABELS_SCRIPT}
 const EMBEDDED=${jsString(embeddedBolt11)};
-function read(){let d={};try{d=JSON.parse((window.TelegramWidget&&TelegramWidget.chatData)||"{}")}catch(e){}return d}
+function read(){let d={};try{const W=window.TelegramWidget;d=JSON.parse((W&&W.chatData)||"{}")}catch(e){}return d}
 function paint(code){const c=document.getElementById("qr");const n=code.size,q=4,scale=Math.max(1,Math.floor(228/(n+q*2)));const side=(n+q*2)*scale;c.width=side;c.height=side;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,side,side);g.fillStyle="#000";for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(code.get(x,y))g.fillRect((x+q)*scale,(y+q)*scale,scale,scale)}
-function draw(){const d=read();const pack=d.l==="ru"?"ru":"en";document.getElementById("amt").textContent=(d.a??"")+" "+UNITS[pack];document.getElementById("st").textContent=d.t||"";const bolt=d.b||EMBEDDED;if(bolt)paint(m(bolt,{minCorrectionLevel:0}))}
+function draw(){const d=read();const pack=d.l==="ru"?"ru":"en";document.getElementById("amt").textContent=(d.a??"")+" "+UNITS[pack];document.getElementById("st").textContent=d.t||"";const c=document.getElementById("qr");if(d.s==="paid"||d.s==="expired"||d.s==="cancelled"){c.style.display="none";return}c.style.display="";const bolt=d.b||EMBEDDED;if(bolt)paint(m(bolt,{minCorrectionLevel:0}))}
 const W=window.TelegramWidget;if(W){W.onEvent("chatDataChanged",draw);draw();if(typeof W.ready==="function")W.ready()}
 </script>`
 }

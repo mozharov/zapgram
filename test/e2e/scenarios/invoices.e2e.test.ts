@@ -562,7 +562,6 @@ test('cancelling the memo step keeps the QR as the receipt with an Open wallet b
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageWidgetData', to: USER_A},
         {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       ],
     },
@@ -629,7 +628,6 @@ test('ordinary text on the QR step drops the buttons and opens Wallet', async ()
   await expectDelta(e2e, () => e2e.send(privateText('add a memo')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageWidgetData', to: USER_A},
       {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
@@ -652,7 +650,6 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     db: {conversations: {changed: 1}},
     telegram: [
-      {method: 'editMessageWidgetData', to: USER_A},
       {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Invoice review/},
@@ -696,7 +693,6 @@ test('a callback from another message deactivates the QR and starts its own flow
     {
       db: {conversations: {changed: 1}},
       telegram: [
-        {method: 'editMessageWidgetData', to: USER_A},
         {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
         {method: 'editMessageText', to: USER_A, text: /Send or forward a message/},
       ],
@@ -709,13 +705,38 @@ test('a callback from another message deactivates the QR and starts its own flow
   expectNoErrors(e2e.logs)
 })
 
+test('paying an invoice then opening the wallet leaves the widget paid', async () => {
+  await enterCreateInvoiceAtQr()
+  const row = await onlyPendingInvoice()
+  const payment = e2e.ln.state.payments.find(item => item.paymentHash === row.paymentHash)
+  if (!payment) throw new Error('minted invoice missing from fake LNbits')
+  payment.paid = true
+
+  await e2e.jobs.pendingInvoices()
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'paid',
+    b: row.paymentRequest,
+  })
+
+  await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
+    db: {conversations: {removed: 1}},
+    telegram: [
+      {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
+      {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
+    ],
+  })
+
+  expect(e2e.tg.of('editMessageWidgetData')).toHaveLength(1)
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data)).s).toBe('paid')
+  expectNoErrors(e2e.logs)
+})
+
 test('/wallet during memo input deactivates both memo prompts and keeps the invoice valid', async () => {
   await enterCreateInvoiceAtMemo()
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageWidgetData', to: USER_A},
       {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],

@@ -7,6 +7,7 @@ import jsQR from 'jsqr'
 import {
   buildInvoiceWidgetChatData,
   buildInvoiceWidgetDocument,
+  type InvoiceWidgetStatus,
   invoiceWidgetNeedsNewMessage,
   widgetQrModules,
 } from './invoice-widget.js'
@@ -28,6 +29,35 @@ function mintBolt11(description = 'coffee'): string {
   const paymentRequest = sign(encoded, '11'.repeat(32)).paymentRequest
   if (!paymentRequest) throw new Error('bolt11 did not encode')
   return paymentRequest
+}
+
+function widgetShowsQr(status: InvoiceWidgetStatus): boolean {
+  const doc = buildInvoiceWidgetDocument({
+    status,
+    amountSats: 21,
+    locale: 'en',
+    label: status,
+    bolt11: mintBolt11('qr'),
+  })
+  const script = doc.html.slice(
+    doc.html.indexOf('<script>') + '<script>'.length,
+    doc.html.lastIndexOf('</script>'),
+  )
+  const qr = {
+    style: {display: ''},
+    width: 0,
+    height: 0,
+    getContext: () => ({fillStyle: '', fillRect() {}}),
+  }
+  const document = {
+    getElementById(id: string) {
+      if (id === 'qr') return qr
+      return {textContent: '', style: {display: ''}}
+    },
+  }
+  const window = {TelegramWidget: {chatData: doc.chatData, onEvent() {}, ready() {}}}
+  new Function('document', 'window', script)(document, window)
+  return qr.style.display !== 'none'
 }
 
 function decodeModules(text: string): string | null {
@@ -111,6 +141,13 @@ describe('invoice widget document', () => {
     })
     expect(doc.html).toContain(bolt11)
     expect(doc.compressedBytes).toBeLessThanOrEqual(4096)
+  })
+
+  test('a paid, expired, or cancelled widget does not draw the QR', () => {
+    for (const status of ['paid', 'expired', 'cancelled'] as const) {
+      expect(widgetShowsQr(status)).toBe(false)
+    }
+    expect(widgetShowsQr('pending')).toBe(true)
   })
 
   test('the same oversized invoice stays on its message; only a new one needs another widget', () => {

@@ -15,27 +15,32 @@ export async function notifyInvoicePaid(
   userId: User['id'],
   widget?: Pick<PendingInvoice, 'paymentHash' | 'widgetChatId' | 'widgetMessageId'> | null,
 ) {
-  const user = await getUserOrThrow(userId)
-  const wallet = await getUserWallet(user.id)
+  try {
+    const user = await getUserOrThrow(userId)
+    const wallet = await getUserWallet(user.id)
 
-  const invoice = decodeInvoice(paymentRequest)
-  const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
-  const balance = msatsToSats(wallet.balance)
-  const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([
-    invoice.satoshi,
-    balance,
-  ])
-  await notifier.send(
-    user.id,
-    translate('received-incoming-invoice', user.languageCode, {
-      amount: invoice.satoshi,
-      usdSuffix,
-      hasDescription: (!!memo).toString(),
-      description: memo,
+    const invoice = decodeInvoice(paymentRequest)
+    const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
+    const balance = msatsToSats(wallet.balance)
+    const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([
+      invoice.satoshi,
       balance,
-      balanceUsdSuffix,
-    }),
-  )
+    ])
+    await notifier.send(
+      user.id,
+      translate('received-incoming-invoice', user.languageCode, {
+        amount: invoice.satoshi,
+        usdSuffix,
+        hasDescription: (!!memo).toString(),
+        description: memo,
+        balance,
+        balanceUsdSuffix,
+      }),
+    )
+  } catch (error) {
+    // The widget is the in-chat proof of payment. A failed receipt must not skip it.
+    getRuntime().log.error({error, userId}, 'Failed to notify user about paid invoice')
+  }
   if (widget) {
     await syncInvoiceWidget(
       {
