@@ -435,7 +435,8 @@ async function renderFinalWidget(
       await conversation.external(() => {
         ctx.log.warn({description}, 'Failed to update invoice widget')
       })
-      // QR still shows A. Do not caption the bubble as B.
+      // The bubble still shows A's QR. Do not caption it as B; hand B over as its own photo.
+      await sendPhotoFallback(ctx, chatId, caption, keyboard)
       return
     }
     if (wallet === 'internal') {
