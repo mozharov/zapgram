@@ -17,6 +17,7 @@ import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.
 import {
   buildInvoiceWidgetDocument,
   type InvoiceWidgetDocument,
+  invoiceWidgetNeedsNewMessage,
 } from '@modules/invoices/telegram/invoice-widget.js'
 import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -402,11 +403,15 @@ async function renderFinalWidget(
     })
   } catch (error) {
     ctx.log.warn({description: errorText(error)}, 'Replacement invoice widget does not fit')
+    if (shown.paymentRequest === paymentRequest) {
+      await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
+      return
+    }
     await sendPhotoFallback(ctx, chatId, caption, keyboard)
     return
   }
 
-  if (document.bolt11InData) {
+  if (!invoiceWidgetNeedsNewMessage(document.bolt11InData, shown.paymentRequest, paymentRequest)) {
     let updated = false
     try {
       await editMessageWidgetData(ctx.api, {

@@ -7,6 +7,7 @@ import jsQR from 'jsqr'
 import {
   buildInvoiceWidgetChatData,
   buildInvoiceWidgetDocument,
+  invoiceWidgetNeedsNewMessage,
   widgetQrModules,
 } from './invoice-widget.js'
 
@@ -110,6 +111,14 @@ describe('invoice widget document', () => {
     })
     expect(doc.html).toContain(bolt11)
     expect(doc.compressedBytes).toBeLessThanOrEqual(4096)
+  })
+
+  test('the same oversized invoice stays on its message; only a new one needs another widget', () => {
+    const previous = `lnbc1${'p'.repeat(1100)}`
+    const next = `lnbc1${'q'.repeat(1100)}`
+    expect(invoiceWidgetNeedsNewMessage(false, previous, previous)).toBe(false)
+    expect(invoiceWidgetNeedsNewMessage(false, previous, next)).toBe(true)
+    expect(invoiceWidgetNeedsNewMessage(true, previous, next)).toBe(false)
   })
 
   test('a status edit keeps the BOLT11 when it was stored in chat_data', () => {

@@ -64,6 +64,19 @@ export function widgetQrModules(text: string): {
   return {size: code.size, dark: (x, y) => Boolean(code.get(x, y))}
 }
 
+/**
+ * A second widget is only for a new BOLT11 that cannot live in `chat_data`.
+ * The HTML already contains the current request, so finalizing that same invoice
+ * (cancel, interrupt, leftover text) must edit the message in place.
+ */
+export function invoiceWidgetNeedsNewMessage(
+  bolt11InData: boolean,
+  previousPaymentRequest: string,
+  paymentRequest: string,
+): boolean {
+  return !bolt11InData && previousPaymentRequest !== paymentRequest
+}
+
 export function buildInvoiceWidgetChatData(state: InvoiceWidgetState): {
   chatData: string
   bolt11InData: boolean
