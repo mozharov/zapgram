@@ -1,13 +1,23 @@
 import {AppError} from '@core/errors/app-error.js'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {resolveAppLocale} from '@core/i18n/locale.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {sanitizeMemo} from '@core/lightning/memo.js'
 import {satsToMsats} from '@core/money/sats.js'
-import {createPendingInvoice} from '@modules/invoices/repository.js'
+import {editMessageWidgetData, sendWidget} from '@infra/telegram/widget-api.js'
+import {
+  clearInvoiceWidgetMessage,
+  createPendingInvoice,
+  setInvoiceWidgetMessage,
+} from '@modules/invoices/repository.js'
 import {waitForMemoText} from '@modules/invoices/telegram/helpers/wait-for-memo.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
+import {
+  buildInvoiceWidgetDocument,
+  type InvoiceWidgetDocument,
+} from '@modules/invoices/telegram/invoice-widget.js'
 import {editHostWithWallet, replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import {staticCallback} from '@telegram/callback-data.js'
@@ -56,7 +66,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
   captureInvoiceCreated({sats, wallet, hasMemo: false, isReplacement: false})
 
-  const invoiceView = await renderInvoice(ctx, host, paymentRequest, {
+  const invoiceView = await renderInvoice(conversation, ctx, host, paymentRequest, {
     wallet,
     usdSuffix,
     offerAddMemo: true,
@@ -93,7 +103,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     // keeps living, so re-render its terminal state instead of annotating it as cancelled.
     // Pasted-payment intercept is off here: a bolt11 already starts the pay flow via this
     // handoff, and offering first would add a confirmation the paste does not have today.
-    await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
+    await renderFinalInvoice(conversation, ctx, invoiceView, paymentRequest, {wallet, usdSuffix})
     return conversation.halt({next: true})
   }
 
@@ -104,7 +114,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
 
   const memoHtml = joinWizardHtml(invoiceView.html, ctx.t('wait-for-memo'))
   const memoResult = await waitForMemoText(conversation, ctx, {
-    host,
+    host: {chatId: invoiceView.message.chat.id, messageId: invoiceView.message.message_id},
     html: memoHtml,
     kind: 'caption',
   })
@@ -116,7 +126,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     })
     // Both an explicit cancel and an interrupting update (new invoice, command, ...) leave the
     // invoice itself unchanged, so re-render its terminal state either way.
-    await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
+    await renderFinalInvoice(conversation, ctx, invoiceView, paymentRequest, {wallet, usdSuffix})
     if (memoResult.status === 'cancelled') return conversation.halt()
     return conversation.halt({next: true})
   }
@@ -127,7 +137,7 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
   captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
-  await renderFinalInvoice(ctx, host, paymentRequest, {wallet, usdSuffix})
+  await renderFinalInvoice(conversation, ctx, invoiceView, paymentRequest, {wallet, usdSuffix})
 }
 
 /**
@@ -209,25 +219,47 @@ function selectedWalletHtml(ctx: ConversationContext, wallet: 'internal' | 'nwc'
   return wallet === 'nwc' ? ctx.t('wait-for-wallet.nwc') : ctx.t('wait-for-wallet.internal')
 }
 
+type ShownInvoice = {
+  message: {chat: {id: number}; message_id: number}
+  html: string
+  mode: 'widget' | 'photo'
+  paymentRequest: string
+}
+
 async function renderInvoice(
+  conversation: BotConversation,
   ctx: ConversationContext,
   host: ConversationHost,
   paymentRequest: string,
   opts: {wallet: 'internal' | 'nwc'; usdSuffix: string; offerAddMemo: boolean},
-): Promise<{message: {chat: {id: number}; message_id: number}; html: string}> {
-  const {html, buffer} = await buildInvoiceCaption(ctx, paymentRequest, opts)
+): Promise<ShownInvoice> {
+  const caption = await buildInvoiceCaption(ctx, paymentRequest, opts)
   const keyboard = invoiceKeyboard(ctx, paymentRequest, opts.offerAddMemo)
+  const widget = await trySendInvoiceWidget(
+    conversation,
+    ctx,
+    host,
+    paymentRequest,
+    caption,
+    keyboard,
+    opts.wallet,
+  )
+  if (widget) {
+    return {
+      message: {chat: {id: widget.chatId}, message_id: widget.messageId},
+      html: caption.html,
+      mode: 'widget',
+      paymentRequest,
+    }
+  }
+
   await ctx.api.editMessageMedia(
     host.chatId,
     host.messageId,
-    {
-      type: 'photo',
-      media: new InputFile(buffer),
-      caption: html,
-    },
+    {type: 'photo', media: new InputFile(caption.buffer), caption: caption.html},
     {reply_markup: keyboard},
   )
-  return {message: promptMessageFromHost(host), html}
+  return {message: promptMessageFromHost(host), html: caption.html, mode: 'photo', paymentRequest}
 }
 
 /**
@@ -237,25 +269,238 @@ async function renderInvoice(
  * button, so the keyboard underneath carries only the copy-invoice button.
  */
 async function renderFinalInvoice(
+  conversation: BotConversation,
   ctx: ConversationContext,
-  host: ConversationHost,
+  shown: ShownInvoice,
   paymentRequest: string,
   opts: {wallet: 'internal' | 'nwc'; usdSuffix: string},
 ): Promise<void> {
-  const {html, buffer} = await buildInvoiceCaption(ctx, paymentRequest, opts)
+  const caption = await buildInvoiceCaption(ctx, paymentRequest, opts)
   const keyboard = invoiceKeyboard(ctx, paymentRequest, false, {includeWalletButton: false})
+  if (shown.mode === 'widget') {
+    await renderFinalWidget(
+      conversation,
+      ctx,
+      shown,
+      paymentRequest,
+      caption,
+      keyboard,
+      opts.wallet,
+    )
+    return
+  }
   await closeLivingMenu(
     ctx,
-    host.messageId,
+    shown.message.message_id,
     markup =>
       ctx.api.editMessageMedia(
-        host.chatId,
-        host.messageId,
-        {type: 'photo', media: new InputFile(buffer), caption: html},
+        shown.message.chat.id,
+        shown.message.message_id,
+        {type: 'photo', media: new InputFile(caption.buffer), caption: caption.html},
         {reply_markup: markup},
       ),
     keyboard,
   )
+}
+
+async function trySendInvoiceWidget(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  host: ConversationHost,
+  paymentRequest: string,
+  caption: {html: string; amountSats: number},
+  keyboard: InlineKeyboard,
+  wallet: 'internal' | 'nwc',
+): Promise<{chatId: number; messageId: number} | undefined> {
+  if (ctx.chat?.type !== 'private') return undefined
+  let document: InvoiceWidgetDocument
+  try {
+    document = buildInvoiceWidgetDocument({
+      status: 'pending',
+      amountSats: caption.amountSats,
+      locale: invoiceLocale(ctx),
+      label: ctx.t('invoice-widget-status.pending'),
+      bolt11: paymentRequest,
+    })
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Invoice widget does not fit, sending QR photo')
+    })
+    return undefined
+  }
+
+  let sent: {message_id: number; chat: {id: number | string}}
+  try {
+    sent = await sendWidget(ctx.api, {
+      chat_id: host.chatId,
+      html: document.html,
+      chat_data: document.chatData,
+      caption: caption.html,
+      parse_mode: 'HTML',
+      height: 300,
+      reply_markup: keyboard,
+    })
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Invoice widget send failed, sending QR photo')
+    })
+    return undefined
+  }
+
+  const chatId = typeof sent.chat.id === 'number' ? sent.chat.id : host.chatId
+  let removedPrompt = false
+  try {
+    await ctx.api.deleteMessage(host.chatId, host.messageId)
+    removedPrompt = true
+  } catch (error) {
+    ctx.log.warn({description: errorText(error)}, 'Failed to remove the invoice prompt')
+  }
+  await conversation.external(async () => {
+    if (wallet === 'internal') {
+      await setInvoiceWidgetMessage(paymentRequest, chatId, sent.message_id)
+    }
+    if (removedPrompt) {
+      const user = await getRuntime().users.findById(ctx.user.id)
+      if (user?.lastMenuMessageId === host.messageId) {
+        await getRuntime().users.update(ctx.user.id, {lastMenuMessageId: null})
+      }
+    }
+    ctx.log.info(
+      {
+        sats: caption.amountSats,
+        messageId: sent.message_id,
+        source: wallet,
+        bolt11InData: document.bolt11InData,
+      },
+      'Invoice widget sent',
+    )
+  })
+  return {chatId, messageId: sent.message_id}
+}
+
+async function renderFinalWidget(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+  paymentRequest: string,
+  caption: {html: string; buffer: Buffer; amountSats: number},
+  keyboard: InlineKeyboard,
+  wallet: 'internal' | 'nwc',
+): Promise<void> {
+  const chatId = shown.message.chat.id
+  const messageId = shown.message.message_id
+  let document: InvoiceWidgetDocument
+  try {
+    document = buildInvoiceWidgetDocument({
+      status: 'pending',
+      amountSats: caption.amountSats,
+      locale: invoiceLocale(ctx),
+      label: ctx.t('invoice-widget-status.pending'),
+      bolt11: paymentRequest,
+    })
+  } catch (error) {
+    ctx.log.warn({description: errorText(error)}, 'Replacement invoice widget does not fit')
+    await sendPhotoFallback(ctx, chatId, caption, keyboard)
+    return
+  }
+
+  if (document.bolt11InData) {
+    let updated = false
+    try {
+      await editMessageWidgetData(ctx.api, {
+        chat_id: chatId,
+        message_id: messageId,
+        chat_data: document.chatData,
+      })
+      updated = true
+    } catch (error) {
+      ctx.log.warn({description: errorText(error)}, 'Failed to update invoice widget')
+    }
+    await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
+    if (updated && wallet === 'internal' && shown.paymentRequest !== paymentRequest) {
+      await conversation.external(async () => {
+        await clearInvoiceWidgetMessage(shown.paymentRequest)
+        await setInvoiceWidgetMessage(paymentRequest, chatId, messageId)
+      })
+    }
+    return
+  }
+
+  try {
+    const sent = await sendWidget(ctx.api, {
+      chat_id: chatId,
+      html: document.html,
+      chat_data: document.chatData,
+      caption: caption.html,
+      parse_mode: 'HTML',
+      height: 300,
+      reply_markup: keyboard,
+    })
+    const sentChatId = typeof sent.chat.id === 'number' ? sent.chat.id : chatId
+    if (wallet === 'internal') {
+      await conversation.external(() =>
+        setInvoiceWidgetMessage(paymentRequest, sentChatId, sent.message_id),
+      )
+    }
+    await closeWidget(ctx, sentChatId, sent.message_id, caption.html, keyboard)
+  } catch (error) {
+    ctx.log.warn(
+      {description: errorText(error)},
+      'Replacement invoice widget send failed, sending QR photo',
+    )
+    await sendPhotoFallback(ctx, chatId, caption, keyboard)
+  }
+}
+
+async function closeWidget(
+  ctx: ConversationContext,
+  chatId: number,
+  messageId: number,
+  html: string,
+  keyboard: InlineKeyboard,
+): Promise<void> {
+  await closeLivingMenu(
+    ctx,
+    messageId,
+    markup => ctx.api.editMessageCaption(chatId, messageId, {caption: html, reply_markup: markup}),
+    keyboard,
+  )
+}
+
+async function sendPhotoFallback(
+  ctx: ConversationContext,
+  chatId: number,
+  caption: {html: string; buffer: Buffer},
+  keyboard: InlineKeyboard,
+): Promise<void> {
+  const sent = await ctx.api.sendPhoto(chatId, new InputFile(caption.buffer), {
+    caption: caption.html,
+  })
+  await closeLivingMenu(
+    ctx,
+    sent.message_id,
+    markup =>
+      ctx.api.editMessageMedia(
+        chatId,
+        sent.message_id,
+        {type: 'photo', media: new InputFile(caption.buffer), caption: caption.html},
+        {reply_markup: markup},
+      ),
+    keyboard,
+  )
+}
+
+function invoiceLocale(ctx: ConversationContext): 'en' | 'ru' {
+  return resolveAppLocale({
+    telegramLanguageCode: ctx.from?.language_code,
+    storedLanguageCode: ctx.user.languageCode,
+  })
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function invoiceKeyboard(
@@ -285,7 +530,7 @@ async function buildInvoiceCaption(
   ctx: ConversationContext,
   paymentRequest: string,
   opts: {wallet: 'internal' | 'nwc'; usdSuffix: string},
-): Promise<{html: string; buffer: Buffer}> {
+): Promise<{html: string; buffer: Buffer; amountSats: number}> {
   const invoice = decodeInvoice(paymentRequest)
   const expiresAt = invoice.expiryDate ?? 0
   const buffer = await QRCode.toBuffer(invoice.paymentRequest)
@@ -299,5 +544,5 @@ async function buildInvoiceCaption(
     expiresAt,
     invoice: paymentRequest,
   })
-  return {html, buffer}
+  return {html, buffer, amountSats: invoice.satoshi ?? 0}
 }

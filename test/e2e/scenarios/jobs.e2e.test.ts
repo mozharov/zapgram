@@ -118,6 +118,30 @@ test('a paid pending invoice is notified and deleted', async () => {
   expectNoErrors(e2e.logs)
 })
 
+test('a paid invoice updates its widget in place and still sends the receipt', async () => {
+  const pending = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    widgetChatId: USER_A,
+    widgetMessageId: 77,
+  })
+  payPendingInvoice(pending)
+
+  await expectDelta(e2e, () => e2e.jobs.pendingInvoices(), {
+    db: {pendingInvoices: {removed: 1}},
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /You received payment for a Lightning invoice/},
+      {method: 'editMessageWidgetData', to: USER_A},
+    ],
+  })
+
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'paid',
+    a: PENDING_SATS,
+    b: pending.paymentRequest,
+  })
+  expectNoErrors(e2e.logs)
+})
+
 test('a pending invoice missing from LNbits is deleted', async () => {
   await seedOrphanPendingInvoice()
   const before = await snapshot(e2e)
@@ -252,6 +276,49 @@ test('pending invoices finishes with more than one batch of unpaid rows', async 
 })
 
 // --- delete-expired-invoices ---
+
+test('an expired invoice widget is marked expired before the row is deleted', async () => {
+  const expired = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 88,
+  })
+
+  await expectDelta(e2e, () => e2e.jobs.expiredInvoices(), {
+    db: {pendingInvoices: {removed: 1}},
+    telegram: [{method: 'editMessageWidgetData', to: USER_A}],
+  })
+
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'expired',
+    b: expired.paymentRequest,
+  })
+  expectNoErrors(e2e.logs)
+})
+
+test('a missing LNbits invoice marks its widget cancelled', async () => {
+  const pending = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    widgetChatId: USER_A,
+    widgetMessageId: 91,
+  })
+  const index = e2e.ln.state.payments.findIndex(
+    payment => payment.paymentHash === pending.paymentHash,
+  )
+  expect(index).toBeGreaterThanOrEqual(0)
+  e2e.ln.state.payments.splice(index, 1)
+
+  await expectDelta(e2e, () => e2e.jobs.pendingInvoices(), {
+    db: {pendingInvoices: {removed: 1}},
+    telegram: [{method: 'editMessageWidgetData', to: USER_A}],
+  })
+
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'cancelled',
+    b: pending.paymentRequest,
+  })
+})
 
 test('delete-expired-invoices removes only past-due rows', async () => {
   const expired = await seedPendingInvoice(e2e, {

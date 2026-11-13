@@ -73,6 +73,24 @@ export function createInvoiceRepository(database: AppDatabase) {
         .where(lt(pendingInvoicesTable.expiresAt, new Date()))
         .returning()
     },
+
+    async setWidgetMessage(
+      paymentRequest: PendingInvoice['paymentRequest'],
+      widgetChatId: number,
+      widgetMessageId: number,
+    ) {
+      await database
+        .update(pendingInvoicesTable)
+        .set({widgetChatId, widgetMessageId})
+        .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
+    },
+
+    async clearWidgetMessage(paymentRequest: PendingInvoice['paymentRequest']) {
+      await database
+        .update(pendingInvoicesTable)
+        .set({widgetChatId: null, widgetMessageId: null})
+        .where(eq(pendingInvoicesTable.paymentRequest, paymentRequest))
+    },
   }
 }
 
@@ -99,3 +117,10 @@ export const getPendingInvoices = (limit?: number, offset?: number) =>
   getRuntime().invoices.list(limit, offset)
 export const countPendingInvoices = () => getRuntime().invoices.count()
 export const deleteExpiredInvoices = () => getRuntime().invoices.deleteExpired()
+export const setInvoiceWidgetMessage = (
+  paymentRequest: PendingInvoice['paymentRequest'],
+  widgetChatId: number,
+  widgetMessageId: number,
+) => getRuntime().invoices.setWidgetMessage(paymentRequest, widgetChatId, widgetMessageId)
+export const clearInvoiceWidgetMessage = (paymentRequest: PendingInvoice['paymentRequest']) =>
+  getRuntime().invoices.clearWidgetMessage(paymentRequest)

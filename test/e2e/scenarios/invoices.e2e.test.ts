@@ -88,14 +88,14 @@ test('the amount step mints an invoice without a memo and offers Add memo', asyn
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageMedia',
+        method: 'sendWidget',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
     ],
   })
 
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([
+  expect(keyboardOf(e2e.tg.last('sendWidget'))).toEqual([
     staticCallback.addInvoiceMemo,
     staticCallback.wallet,
   ])
@@ -103,6 +103,29 @@ test('the amount step mints an invoice without a memo and offers Add memo', asyn
   expect(lastInvoiceCaption()).toContain('Wallet: <b>ZapGram</b>')
   expect(lastInvoiceCaption()).toContain('<blockquote expandable>')
   expect(lastInvoiceCaption()).not.toContain('Description:')
+  expectNoErrors(e2e.logs)
+})
+
+test('a rejected sendWidget falls back to the QR photo and leaves no widget pointer', async () => {
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+  e2e.tg.fail('sendWidget', {error_code: 400, description: 'Bad Request: WIDGETS_DISABLED'})
+
+  await expectDelta(e2e, () => e2e.send(privateText(String(AMOUNT))), {
+    db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
+    lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
+    telegram: [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'deleteMessage', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendWidget', to: USER_A},
+      {method: 'editMessageMedia', to: USER_A, text: /Amount: <b>1\D?000 sats/},
+    ],
+  })
+
+  const row = await onlyPendingInvoice()
+  expect(row.widgetChatId).toBeNull()
+  expect(row.widgetMessageId).toBeNull()
+  expect(lastInvoiceCaption()).toContain('<blockquote expandable>')
   expectNoErrors(e2e.logs)
 })
 
@@ -168,13 +191,14 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
     db: {
       conversations: {removed: 1},
       // Old no-memo invoice stays tracked: its BOLT11 can still be paid.
-      pendingInvoices: {added: 1},
+      pendingInvoices: {added: 1, changed: 1},
     },
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'editMessageMedia', to: USER_A, text: /Description: <b>coffee<\/b>/},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /Description: <b>coffee<\/b>/},
     ],
   })
 
@@ -189,7 +213,7 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
   expect(lastInvoiceCaption()).not.toContain(previous.paymentRequest)
   // The QR becomes the receipt in place: no more wallet-edit row, just the self-disappearing
   // "Open wallet" button `closeLivingMenu` appends.
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   expectNoErrors(e2e.logs)
 })
 
@@ -532,19 +556,21 @@ test('cancelling the memo step keeps the QR as the receipt with an Open wallet b
 
   await expectDelta(
     e2e,
-    () => e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredPromptMessageId()})),
+    () =>
+      e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredInvoiceHostMessageId()})),
     {
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+        {method: 'editMessageWidgetData', to: USER_A},
+        {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       ],
     },
   )
 
   // The QR becomes the receipt in place — no separate wallet message, just the self-disappearing
   // "Open wallet" button `closeLivingMenu` appends.
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
@@ -581,13 +607,14 @@ test('a memo longer than 150 characters keeps the existing no-memo invoice', asy
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
 
   await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
-    db: {conversations: {removed: 1}, pendingInvoices: {added: 1}},
+    db: {conversations: {removed: 1}, pendingInvoices: {added: 1, changed: 1}},
     lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
     telegram: [
       {method: 'deleteMessages', to: USER_A},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
-      {method: 'editMessageMedia', to: USER_A, text: /Description:/},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /Description:/},
     ],
   })
 
@@ -602,15 +629,16 @@ test('ordinary text on the QR step drops the buttons and opens Wallet', async ()
   await expectDelta(e2e, () => e2e.send(privateText('add a memo')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
-  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
+  expect(Number(e2e.tg.last('editMessageCaption')?.message_id)).toBe(qrMessageId)
   // The QR becomes the receipt in place — no "cancelled" annotation, just the self-disappearing
   // "Open wallet" button `closeLivingMenu` appends.
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
@@ -624,14 +652,15 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
   await expectDelta(e2e, () => e2e.send(privateText(invoice.bolt11)), {
     db: {conversations: {changed: 1}},
     telegram: [
-      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendMessage', to: USER_A, text: /Invoice review/},
     ],
   })
 
-  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(Number(e2e.tg.last('editMessageCaption')?.message_id)).toBe(qrMessageId)
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(
     /Paying from your ZapGram wallet\. Confirm the payment/,
   )
@@ -667,14 +696,15 @@ test('a callback from another message deactivates the QR and starts its own flow
     {
       db: {conversations: {changed: 1}},
       telegram: [
-        {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+        {method: 'editMessageWidgetData', to: USER_A},
+        {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
         {method: 'editMessageText', to: USER_A, text: /Send or forward a message/},
       ],
     },
   )
 
-  expect(Number(e2e.tg.last('editMessageMedia')?.message_id)).toBe(qrMessageId)
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(Number(e2e.tg.last('editMessageCaption')?.message_id)).toBe(qrMessageId)
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
@@ -685,13 +715,14 @@ test('/wallet during memo input deactivates both memo prompts and keeps the invo
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
     db: {conversations: {removed: 1}},
     telegram: [
-      {method: 'editMessageMedia', to: USER_A, text: /Amount:/},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /Amount:/},
       {method: 'sendRichMessage', to: USER_A, text: /Balance:/},
     ],
   })
 
   // The invoice keeps living as the receipt — no "cancelled" annotation.
-  expect(keyboardOf(e2e.tg.last('editMessageMedia'))).toEqual([staticCallback.openMenu])
+  expect(keyboardOf(e2e.tg.last('editMessageCaption'))).toEqual([staticCallback.openMenu])
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
 })
@@ -1655,12 +1686,17 @@ function requiredPromptMessageId(): number {
 
 function requiredInvoiceHostMessageId(): number {
   const messageId =
-    e2e.tg.lastMessageId('editMessageMedia') ?? e2e.tg.lastMessageId('editMessageText')
+    e2e.tg.lastMessageId('sendWidget') ??
+    e2e.tg.lastMessageId('editMessageMedia') ??
+    e2e.tg.lastMessageId('editMessageText')
   if (messageId === undefined) throw new Error('Expected an outbound invoice host message ID')
   return messageId
 }
 
 function lastInvoiceCaption(): string {
+  const widgetCaption =
+    e2e.tg.last('editMessageCaption')?.caption ?? e2e.tg.last('sendWidget')?.caption
+  if (typeof widgetCaption === 'string') return widgetCaption
   const media = e2e.tg.last('editMessageMedia')?.media
   if (!media || typeof media !== 'object' || Array.isArray(media)) return ''
   return String(Reflect.get(media, 'caption') ?? '')

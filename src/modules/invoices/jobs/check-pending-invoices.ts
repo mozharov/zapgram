@@ -7,6 +7,7 @@ import {
   deletePendingInvoice,
   getPendingInvoices,
 } from '@modules/invoices/repository.js'
+import {syncInvoiceWidget} from '@modules/invoices/sync-invoice-widget.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {HTTPError} from 'got'
 import {getRuntime} from '../../../runtime.js'
@@ -37,6 +38,7 @@ export async function checkPendingInvoices(): Promise<void> {
 
           if (error instanceof HTTPError && error.response.statusCode === 404) {
             getRuntime().log.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
+            await syncInvoiceWidget(invoice, 'cancelled')
             // Only report 'done' if the row actually went away — otherwise offset would not
             // advance past a row that is still there and the batch would never finish.
             return deletePendingInvoice(invoice.paymentRequest)

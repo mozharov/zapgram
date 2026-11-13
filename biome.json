@@ -3,6 +3,7 @@
   "files": {
     "includes": [
       "src/**",
+      "!src/modules/invoices/telegram/vendor",
       "test/**",
       "docs/**",
       "bunfig.toml",
