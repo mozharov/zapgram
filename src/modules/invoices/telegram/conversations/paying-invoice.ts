@@ -186,13 +186,13 @@ export async function payingInvoice(
         rail: isInternalWallet ? 'internal' : 'nwc',
         paymentHash: invoice.paymentHash,
         bolt11: invoice.paymentRequest,
-        pay: async () => {
+        pay: async claimExisting => {
           if (isInternalWallet) {
             const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
             return payment.fee < 0 ? -payment.fee : 0
           }
           if (!ctx.user.nwc) throw new NWCConnectionError()
-          await ctx.user.nwc.payInvoice(invoice.paymentRequest)
+          await ctx.user.nwc.payInvoice(invoice.paymentRequest, true, {claimExisting})
           const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
           return lookupResponse.fees_paid
         },
@@ -323,7 +323,7 @@ async function payLnurlAttempt(input: {
   rail: 'internal' | 'nwc'
   paymentHash: string
   bolt11: string
-  pay: () => Promise<number>
+  pay: (claimExisting: boolean) => Promise<number>
 }): Promise<LnurlPayOutcome> {
   const pays = getRuntime().lnurlPays
   const gate = await pays.beginPay({
@@ -337,12 +337,27 @@ async function payLnurlAttempt(input: {
   })
   if (gate === 'blocked' || gate === 'in_flight') return {kind: 'hold'}
   if (gate === 'paid') return {kind: 'paid', feesPaid: 0}
+  // A payment that already exists is not this confirm. Do not pay, and do not
+  // let an old preimage become a receipt.
+  const seen = await pays.readPay(input.attemptId)
+  if (seen === 'prior') {
+    await pays.noteRejected(input.attemptId)
+    return {kind: 'absent'}
+  }
+  if (seen === 'ours') {
+    const claimed = await pays.notePaid(input.attemptId, input.paymentHash, true)
+    return claimed ? {kind: 'paid', feesPaid: 0} : {kind: 'absent'}
+  }
+  if (seen === 'ambiguous') return {kind: 'hold'}
   try {
-    const feesPaid = await input.pay()
-    await pays.notePaid(input.attemptId, input.paymentHash, true)
+    const feesPaid = await input.pay(seen === 'fresh')
+    const claimed = await pays.notePaid(input.attemptId, input.paymentHash, true)
+    if (!claimed) return {kind: 'absent'}
     return {kind: 'paid', feesPaid}
   } catch (error) {
     if (error instanceof InvoiceAlreadyPaidError) {
+      // Only an invoice we just saw unpaid can be this call's debit.
+      if (seen !== 'fresh') return {kind: 'hold'}
       const resolved = await pays.resolveAlreadyPaid(input.attemptId)
       if (resolved === 'paid') return {kind: 'paid', feesPaid: 0}
       if (resolved === 'absent') return {kind: 'absent'}

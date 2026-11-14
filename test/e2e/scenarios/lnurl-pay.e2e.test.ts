@@ -71,9 +71,17 @@ class FakeNostrWallet {
     return {invoice: 'lnbc-fake-nwc', payment_hash: 'fake-nwc-hash'}
   }
 
-  async lookupInvoice(invoice: string): Promise<{preimage: string | null; fees_paid: number}> {
+  async lookupInvoice(invoice: string): Promise<{
+    preimage: string | null
+    fees_paid: number
+    settled_at?: number
+  }> {
     nwcCalls.push({method: 'lookupInvoice', args: [invoice]})
-    return {preimage: 'fake-preimage', fees_paid: 0}
+    const payment = e2e.ln.state.payments.find(
+      candidate => candidate.bolt11 === invoice && !candidate.out,
+    )
+    if (!payment?.paid) return {preimage: null, fees_paid: 0}
+    return {preimage: 'fake-preimage', fees_paid: 0, settled_at: Math.floor(Date.now() / 1000)}
   }
 }
 
@@ -223,7 +231,7 @@ test('the same LNURL pays once from NWC after confirmation', async () => {
   await e2e.send(pressWallet('nwc', reviewId))
 
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
-  expect(nwcCalls.filter(call => call.method === 'lookupInvoice')).toHaveLength(1)
+  expect(nwcCalls.filter(call => call.method === 'lookupInvoice')).toHaveLength(2)
   expectReceiptAlive()
   expect(outgoing()).toHaveLength(0)
   expect(e2e.ln.state.payments.filter(payment => payment.paid && !payment.out)).toHaveLength(1)

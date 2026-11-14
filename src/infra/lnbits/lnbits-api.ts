@@ -31,9 +31,10 @@ export class LNBitsAPI {
   protected async fetch(
     path: string,
     init?: OptionsOfJSONResponseBody,
-    options?: {logHttpError?: boolean},
+    options?: {logHttpError?: boolean; quietStatuses?: number[]},
   ) {
     const logHttpError = options?.logHttpError ?? true
+    const quietStatuses = options?.quietStatuses ?? []
     const headers = {...this.headers, ...init?.headers}
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
@@ -42,7 +43,11 @@ export class LNBitsAPI {
         responseType: 'json',
         timeout: {request: 15000},
       }).catch((error: unknown) => {
-        if (logHttpError && error instanceof HTTPError)
+        if (
+          logHttpError &&
+          error instanceof HTTPError &&
+          !quietStatuses.includes(error.response.statusCode)
+        )
           this.log?.error(
             {
               body: error.response.body as unknown,
@@ -60,8 +65,9 @@ export class LNBitsAPI {
     path: string,
     schema: ZodType<T>,
     init?: OptionsOfJSONResponseBody,
+    options?: {logHttpError?: boolean; quietStatuses?: number[]},
   ) {
-    const response = await this.fetch(path, init)
+    const response = await this.fetch(path, init, options)
     this.log?.debug(
       {body: response.body as unknown},
       `${init?.method ?? 'GET'} ${path}: response body`,

@@ -1,6 +1,5 @@
 import {expect, test} from 'bun:test'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
-import type {PayoutState} from '@core/payments/payout-state.js'
 import type {AppLogger} from '@infra/logger.js'
 import {createUserRepository} from '@modules/users/repository.js'
 import {createTestDb} from '@test/helpers/db.js'
@@ -26,7 +25,7 @@ test('an unclear LNURL pay blocks a second debit to the same recipient', async (
   const service = createLnurlPayAttemptService({
     attempts: createLnurlPayAttemptRepository(db),
     log,
-    lookup: async () => 'unknown' satisfies PayoutState | 'unknown',
+    lookup: async () => ({state: 'unknown' as const}),
   })
 
   expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
@@ -51,12 +50,12 @@ test('an already-paid invoice is a receipt only when this wallet paid it', async
   const db = createTestDb()
   const users = createUserRepository(db)
   await users.getOrCreate({id: 1, languageCode: 'en'})
-  let state: 'retryable' | 'paid' = 'retryable'
+  let looked: {state: 'retryable' | 'paid'; paidAt?: Date} = {state: 'retryable'}
   let donations = 0
   const service = createLnurlPayAttemptService({
     attempts: createLnurlPayAttemptRepository(db),
     log,
-    lookup: async () => state,
+    lookup: async () => looked,
     collectDonation: async () => {
       donations += 1
     },
@@ -67,11 +66,86 @@ test('an already-paid invoice is a receipt only when this wallet paid it', async
   expect(donations).toBe(0)
   expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('abandoned')
 
-  state = 'paid'
+  looked = {state: 'paid', paidAt: new Date()}
   expect(await service.beginPay({...attempt, attemptId: 'two', paymentHash: 'hash-2'})).toBe(
     'ready',
   )
   expect(await service.resolveAlreadyPaid('two')).toBe('paid')
   expect(donations).toBe(1)
   expect((await createLnurlPayAttemptRepository(db).get('two')).status).toBe('settled')
+})
+
+test('a prior payment of the same invoice does not settle a new attempt', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  let donations = 0
+  const service = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async () => ({state: 'paid' as const, paidAt: new Date(Date.now() - 60_000)}),
+    collectDonation: async () => {
+      donations += 1
+    },
+  })
+
+  expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
+  expect(await service.readPay('one')).toBe('prior')
+  expect(await service.resolveAlreadyPaid('one')).toBe('absent')
+  expect(donations).toBe(0)
+  expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('abandoned')
+  expect((await createLnurlPayAttemptRepository(db).get('one')).status).toBe('pending')
+})
+
+test('a second attempt cannot collect a donation for a hash already settled', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  let donations = 0
+  const service = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async () => ({state: 'paid' as const, paidAt: new Date()}),
+    collectDonation: async () => {
+      donations += 1
+    },
+  })
+
+  expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
+  expect(await service.notePaid('one', attempt.paymentHash, true)).toBe(true)
+  expect(donations).toBe(1)
+
+  expect(
+    await service.beginPay({
+      ...attempt,
+      attemptId: 'two',
+      recipient: 'bob@pay.example',
+    }),
+  ).toBe('ready')
+  expect(await service.readPay('two')).toBe('prior')
+  expect(await service.resolveAlreadyPaid('two')).toBe('absent')
+  expect(donations).toBe(1)
+  expect((await createLnurlPayAttemptRepository(db).get('two')).phase).toBe('abandoned')
+  expect((await createLnurlPayAttemptRepository(db).get('one')).status).toBe('settled')
+})
+
+test('a paid lookup without a time does not become a receipt', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  let donations = 0
+  const service = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async () => ({state: 'paid' as const}),
+    collectDonation: async () => {
+      donations += 1
+    },
+  })
+
+  expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
+  expect(await service.readPay('one')).toBe('ambiguous')
+  expect(await service.resolveAlreadyPaid('one')).toBe('hold')
+  expect(donations).toBe(0)
+  expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('pay_unknown')
 })

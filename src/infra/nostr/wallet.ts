@@ -39,13 +39,19 @@ export class NostrWallet {
     return withTimeout(this.client.lookupInvoice({invoice}))
   }
 
-  public async payInvoice(invoice: string, timeout = true) {
+  public async payInvoice(invoice: string, timeout = true, options?: {claimExisting?: boolean}) {
+    // A preimage that already existed is an earlier debit. Callers that have
+    // just seen this invoice unpaid may still treat it as this call's receipt.
+    const claimExisting = options?.claimExisting !== false
     try {
       if (timeout) await withTimeout(this.client.payInvoice({invoice}))
       else await this.client.payInvoice({invoice})
     } catch (error) {
       // some wallet don't return success response after payment, but invoice is paid
-      if (!(error instanceof Nip47Error) || !error.message.includes('already been paid')) {
+      if (
+        claimExisting &&
+        (!(error instanceof Nip47Error) || !error.message.includes('already been paid'))
+      ) {
         const lookup = await this.lookupInvoice(invoice).catch(() => ({preimage: null}))
         if (lookup.preimage) return
       }

@@ -9,6 +9,17 @@ import type {LnurlPayAttemptRepository} from './lnurl-pay-attempt.repository.js'
 export const LNURL_PAY_REVIEW_MS = 24 * 60 * 60_000
 /** A saved invoice that was never submitted is abandoned after this. */
 export const LNURL_INVOICE_GRACE_MS = 2 * 60_000
+/**
+ * A wallet clock this far behind the attempt row still counts as this debit.
+ * Anything older was paid before this attempt existed.
+ */
+export const LNURL_PAY_CLOCK_SKEW_MS = 15_000
+
+export type LnurlPayLookup = {
+  state: PayoutState | 'unknown'
+  /** When the wallet settled the outgoing payment, if it said. */
+  paidAt?: Date
+}
 
 export type LnurlPayGate = 'ready' | 'blocked' | 'in_flight' | 'paid'
 
@@ -20,12 +31,7 @@ export type LnurlPayAttemptDeps = {
   now?: () => Date
   invoiceGraceMs?: number
   payReviewMs?: number
-  lookup: (
-    userId: number,
-    hash: string,
-    bolt11: string,
-    rail: Rail,
-  ) => Promise<PayoutState | 'unknown'>
+  lookup: (userId: number, hash: string, bolt11: string, rail: Rail) => Promise<LnurlPayLookup>
   notifySender?: (input: {
     fromUserId: number
     recipient: string
@@ -99,22 +105,39 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     return 'ready'
   }
 
-  async function notePaid(id: string, paymentHash?: string, senderNotified = false) {
+  async function notePaid(
+    id: string,
+    paymentHash?: string,
+    senderNotified = false,
+  ): Promise<boolean> {
     const before = await deps.attempts.get(id)
-    await deps.attempts.markProviderAccepted(id, paymentHash)
-    // The wizard's receipt claims the sender in this same settle, so recovery
-    // cannot send a second message while the screen is still being painted.
-    await deps.attempts.markSettled(id, senderNotified && before.status !== 'settled')
+    if (before.status === 'settled') return true
+    const hash = paymentHash ?? before.invoiceHash ?? undefined
+    if (hash && (await deps.attempts.findSettledByHash(hash, id))) {
+      await deps.attempts.dropUnclaimed(id)
+      return false
+    }
+    try {
+      await deps.attempts.markProviderAccepted(id, paymentHash)
+      // The wizard's receipt claims the sender in this same settle, so recovery
+      // cannot send a second message while the screen is still being painted.
+      await deps.attempts.markSettled(id, senderNotified)
+    } catch (error) {
+      if (!isConstraint(error)) throw error
+      await deps.attempts.dropUnclaimed(id)
+      return false
+    }
     const row = await deps.attempts.get(id)
-    if (row.status !== 'settled') return
+    if (row.status !== 'settled') return false
     // The wizard shows the receipt itself. Recovery is what tells the sender
     // when that screen never landed.
-    if (before.status === 'settled' || !deps.collectDonation) return
+    if (!deps.collectDonation) return true
     await deps
       .collectDonation({userId: row.fromUserId, sats: row.sats, rail: row.rail})
       .catch(error => {
         deps.log.error({error, attemptId: row.id}, 'LNURL pay donation failed')
       })
+    return true
   }
 
   async function noteRejected(id: string) {
@@ -122,19 +145,31 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
   }
 
   /**
-   * "Already paid" means the invoice is settled, not that this wallet paid it.
-   * Only an outgoing payment on this wallet counts. Anything else is not a receipt.
+   * "Already paid" means the invoice is settled, not that this attempt paid it.
+   * A payment that settled before this row, or one another attempt already
+   * claimed, is not a receipt and does not collect another donation.
    */
   async function resolveAlreadyPaid(id: string): Promise<'paid' | 'hold' | 'absent'> {
     const row = await deps.attempts.get(id)
-    const state = await lookupQuiet(row)
-    if (state === 'paid') {
-      await notePaid(id, row.invoiceHash ?? undefined, true)
-      return 'paid'
-    }
-    if (state === 'pending' || state === 'unknown') return 'hold'
+    const looked = await lookupQuiet(row)
+    if (looked.state === 'paid') return finishPaidLookup(row, looked, 'wizard')
+    if (looked.state === 'pending' || looked.state === 'unknown') return 'hold'
     await noteRejected(id)
     return 'absent'
+  }
+
+  /**
+   * What a paid lookup means for this attempt.
+   * `fresh` — the wallet does not have a settled payment yet, so a following pay is this debit.
+   */
+  async function readPay(
+    id: string,
+  ): Promise<'fresh' | 'prior' | 'ours' | 'unknown' | 'ambiguous'> {
+    const row = await deps.attempts.get(id)
+    const looked = await lookupQuiet(row)
+    if (looked.state === 'paid') return claimOf(row, looked)
+    if (looked.state === 'pending' || looked.state === 'retryable') return 'fresh'
+    return 'unknown'
   }
 
   async function reconcile(
@@ -147,7 +182,14 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     }
     if (row.status === 'settled') return finishSender(row)
     if (row.providerAccepted || row.phase === 'provider_accepted') {
-      await notePaid(row.id, row.providerPaymentHash ?? undefined)
+      const claimed = await notePaid(
+        row.id,
+        row.providerPaymentHash ?? row.invoiceHash ?? undefined,
+      )
+      if (!claimed) {
+        await tellSender(row, 'abandoned')
+        return 'abandoned'
+      }
       return finishSender(await deps.attempts.get(id))
     }
     if (!row.invoiceHash || row.phase === 'reserved' || row.phase === 'invoice_saved') {
@@ -158,12 +200,14 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       }
       return 'in_flight'
     }
-    const state = await lookupQuiet(row)
-    if (state === 'paid') {
-      await notePaid(row.id, row.providerPaymentHash ?? undefined)
+    const looked = await lookupQuiet(row)
+    if (looked.state === 'paid') {
+      const claim = await finishPaidLookup(row, looked, 'recover')
+      if (claim === 'hold') return 'in_flight'
+      if (claim === 'absent') return 'abandoned'
       return finishSender(await deps.attempts.get(id))
     }
-    if (state === 'retryable' && ageMs(row) > reviewMs) {
+    if (looked.state === 'retryable' && ageMs(row) > reviewMs) {
       await deps.attempts.markAbandoned(row.id)
       await tellSender(row, 'abandoned')
       deps.log.error(
@@ -173,7 +217,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       return 'abandoned'
     }
     if (row.phase === 'needs_review') return 'in_flight'
-    if ((state === 'pending' || state === 'unknown') && ageMs(row) > reviewMs) {
+    if ((looked.state === 'pending' || looked.state === 'unknown') && ageMs(row) > reviewMs) {
       const logged = await deps.attempts.markNeedsReview(row.id)
       if (logged) {
         deps.log.error(
@@ -211,8 +255,39 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     }
   }
 
-  async function lookupQuiet(row: LnurlPayAttempt): Promise<PayoutState | 'unknown'> {
-    if (!row.invoiceHash) return 'unknown'
+  async function finishPaidLookup(
+    row: LnurlPayAttempt,
+    looked: LnurlPayLookup,
+    mode: 'wizard' | 'recover',
+  ): Promise<'paid' | 'hold' | 'absent'> {
+    const claim = await claimOf(row, looked)
+    if (claim === 'ours') {
+      // The wizard paints the receipt itself. Recovery sends it afterwards.
+      const claimed = await notePaid(row.id, row.invoiceHash ?? undefined, mode === 'wizard')
+      return claimed ? 'paid' : 'absent'
+    }
+    if (claim === 'prior') {
+      await deps.attempts.dropUnclaimed(row.id)
+      if (mode === 'recover') await tellSender(row, 'abandoned')
+      return 'absent'
+    }
+    return 'hold'
+  }
+
+  async function claimOf(
+    row: LnurlPayAttempt,
+    looked: LnurlPayLookup,
+  ): Promise<'ours' | 'prior' | 'ambiguous'> {
+    if (row.invoiceHash && (await deps.attempts.findSettledByHash(row.invoiceHash, row.id))) {
+      return 'prior'
+    }
+    if (paymentIsPrior(row.createdAt, looked.paidAt)) return 'prior'
+    if (looked.paidAt) return 'ours'
+    return 'ambiguous'
+  }
+
+  async function lookupQuiet(row: LnurlPayAttempt): Promise<LnurlPayLookup> {
+    if (!row.invoiceHash) return {state: 'unknown'}
     try {
       return await deps.lookup(row.fromUserId, row.invoiceHash, row.bolt11 ?? '', row.rail)
     } catch (error) {
@@ -220,7 +295,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
         {name: error instanceof Error ? error.name : 'unknown'},
         'LNURL pay lookup failed',
       )
-      return 'unknown'
+      return {state: 'unknown'}
     }
   }
 
@@ -236,11 +311,17 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     return error instanceof InvoiceAlreadyPaidError
   }
 
+  function isConstraint(error: unknown): boolean {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+    return code.includes('CONSTRAINT')
+  }
+
   return {
     hasUnresolved,
     beginPay,
     notePaid,
     noteRejected,
+    readPay,
     resolveAlreadyPaid,
     reconcile,
     isClearMiss,
@@ -253,3 +334,9 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
 }
 
 export type LnurlPayAttemptService = ReturnType<typeof createLnurlPayAttemptService>
+
+/** A settled payment older than this attempt is an earlier debit, not this one. */
+export function paymentIsPrior(attemptCreatedAt: Date, paidAt: Date | undefined): boolean {
+  if (!paidAt) return false
+  return paidAt.getTime() < attemptCreatedAt.getTime() - LNURL_PAY_CLOCK_SKEW_MS
+}

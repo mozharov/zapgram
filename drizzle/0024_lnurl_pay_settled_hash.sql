@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `lnurl_pay_attempts_one_settled_hash` ON `lnurl_pay_attempts` (`invoice_hash`) WHERE "lnurl_pay_attempts"."invoice_hash" is not null AND "lnurl_pay_attempts"."status" = 'settled';

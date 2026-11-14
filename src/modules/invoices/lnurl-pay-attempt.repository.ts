@@ -41,6 +41,17 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
       return get(input.id)
     },
 
+    /** Another settled attempt already owns this invoice. */
+    async findSettledByHash(hash: string, exceptId: string) {
+      return database.query.lnurlPayAttemptsTable.findFirst({
+        where: and(
+          eq(lnurlPayAttemptsTable.invoiceHash, hash),
+          eq(lnurlPayAttemptsTable.status, 'settled'),
+          ne(lnurlPayAttemptsTable.id, exceptId),
+        ),
+      })
+    },
+
     /** Another unresolved pay for this sender and recipient, if one exists. */
     async findOpen(fromUserId: number, recipient: string) {
       return database.query.lnurlPayAttemptsTable.findFirst({
@@ -131,6 +142,28 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
           ...(senderNotified ? {senderNotified: true} : {}),
         })
         .where(and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.status, 'pending')))
+    },
+
+    /**
+     * Drop a pending row that lost the claim on its invoice, including one that
+     * already flipped to provider_accepted. A settled row is left alone.
+     */
+    async dropUnclaimed(id: string) {
+      await database
+        .update(lnurlPayAttemptsTable)
+        .set({phase: 'abandoned', reviewLogged: true})
+        .where(
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            inArray(lnurlPayAttemptsTable.phase, [
+              'reserved',
+              'invoice_saved',
+              'pay_unknown',
+              'provider_accepted',
+            ]),
+          ),
+        )
     },
 
     async markAbandoned(id: string) {

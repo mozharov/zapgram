@@ -169,6 +169,13 @@
       "when": 1794676603829,
       "tag": "0023_lnurl_pay_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794681198761,
+      "tag": "0024_lnurl_pay_settled_hash",
+      "breakpoints": true
     }
   ]
 }

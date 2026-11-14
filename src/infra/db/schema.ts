@@ -496,5 +496,9 @@ export const lnurlPayAttemptsTable = sqliteTable(
       .where(
         sql`${table.status} = 'pending' AND ${table.phase} in ('pay_unknown', 'provider_accepted', 'needs_review')`,
       ),
+    // One settled debit per invoice. A second attempt cannot collect another donation for it.
+    uniqueIndex('lnurl_pay_attempts_one_settled_hash')
+      .on(table.invoiceHash)
+      .where(sql`${table.invoiceHash} is not null AND ${table.status} = 'settled'`),
   ],
 )

@@ -14,7 +14,7 @@ import {
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
-import {nwcInvoiceMissing} from '@infra/nostr/nwc-lookup.js'
+import {nwcInvoiceMissing, unixDate} from '@infra/nostr/nwc-lookup.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
@@ -309,22 +309,28 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     lookup: async (userId, hash, bolt11, rail) => {
       if (rail === 'nwc') {
         const payer = await users.getOrThrow(userId)
-        if (!payer.nwcUrl || !bolt11) return 'unknown'
+        if (!payer.nwcUrl || !bolt11) return {state: 'unknown'}
         try {
           const wallet = new NostrWallet(payer.nwcUrl, config.memoFooter, log)
           const found = await wallet.lookupInvoice(bolt11)
-          return found.preimage ? 'paid' : 'pending'
+          if (!found.preimage) return {state: 'pending'}
+          return {state: 'paid', paidAt: unixDate(found.settled_at)}
         } catch (error) {
-          if (nwcInvoiceMissing(error)) return 'retryable'
-          return 'unknown'
+          if (nwcInvoiceMissing(error)) return {state: 'retryable'}
+          return {state: 'unknown'}
         }
       }
       try {
         const wallet = await getUserWallet(userId)
-        return classifyPayoutLookup(await wallet.lookupPayment(hash))
+        // A 404 is the expected "this wallet has not paid" answer, not a failure.
+        const found = await wallet.lookupPayment(hash, {quietStatuses: [404]})
+        const state = classifyPayoutLookup(found)
+        if (state !== 'paid') return {state}
+        return {state, paidAt: found.details?.time}
       } catch (error) {
-        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
-        return 'unknown'
+        if (error instanceof HTTPError && error.response.statusCode === 404)
+          return {state: 'retryable'}
+        return {state: 'unknown'}
       }
     },
     notifySender: async ({fromUserId, recipient, sats, outcome}) => {

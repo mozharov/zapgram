@@ -77,8 +77,13 @@ export class UserWallet extends LNBitsAPI {
     return response.fee_reserve
   }
 
-  async lookupPayment(paymentHash: string) {
-    return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema)
+  async lookupPayment(paymentHash: string, options?: {quietStatuses?: number[]}) {
+    return this.fetchWithSchema(
+      `/api/v1/payments/${paymentHash}`,
+      lookupPaymentResponseSchema,
+      undefined,
+      options,
+    )
   }
 
   /**
