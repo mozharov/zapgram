@@ -2,6 +2,7 @@ import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {usersTable} from '@infra/db/schema.js'
 import type {Chat, Subscription} from '@infra/db/types.js'
 import {parameterizedRoutes, staticCallback} from '@telegram/callback-data.js'
+import {DM_UNRECOGNIZED_TEXT_EVENT} from '@telegram/handlers/unrecognized-private-message.js'
 import {expectNoErrors} from '../asserts.js'
 import {CHAT_CHANNEL, CHAT_GROUP, USER_A} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedUser} from '../fixtures/seed.js'
@@ -14,6 +15,7 @@ import {
   privateText,
 } from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
 import {expectDelta} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -576,6 +578,114 @@ test('a refused deleteMessage does not abort callback cleanup or raise a bot err
   // Cleanup is best-effort: Telegram 400 must not surface as "Bot error" / PostHog $exception.
   expectNoErrors(e2e.logs)
   expect(e2e.tg.of('sendMessage')).toHaveLength(0)
+})
+
+test('unrecognized private text is captured as typed, and the hint does not repeat it', async () => {
+  const text = 'nostr+walletconnect://deadbeef?secret=supersecret https://pay.example/a'
+  const events = recordPosthog(e2e)
+
+  await expectDelta(e2e, () => e2e.send(privateText(text)), {
+    ...FIRST_TOUCH,
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
+  })
+
+  expect(capturesOf(events, DM_UNRECOGNIZED_TEXT_EVENT).map(item => item.properties)).toEqual([
+    {
+      text_length: text.length,
+      looks_like_onchain: false,
+      text_kind: 'other',
+      text,
+      text_truncated: false,
+    },
+  ])
+  expect(e2e.tg.last('sendMessage')?.text).not.toContain(text)
+  const elsewhere = JSON.stringify([
+    events.filter(item => item.event !== DM_UNRECOGNIZED_TEXT_EVENT),
+    e2e.logs,
+  ])
+  expect(elsewhere).not.toContain('deadbeef')
+  expect(elsewhere).not.toContain('pay.example')
+  expectNoErrors(e2e.logs)
+})
+
+test('a failing unrecognized-text capture still shows the hint and does not log the text', async () => {
+  const text = 'https://example.com/token?secret=keep-out'
+  recordPosthog(e2e)
+  const posthog = e2e.container.posthog
+  if (!posthog) throw new Error('Expected a recording PostHog client')
+  const capture = posthog.capture.bind(posthog)
+  let threw = false
+  posthog.capture = payload => {
+    if (payload.event === DM_UNRECOGNIZED_TEXT_EVENT) {
+      threw = true
+      throw new Error(`posthog down ${text}`)
+    }
+    capture(payload)
+  }
+
+  await expectDelta(e2e, () => e2e.send(privateText(text)), {
+    ...FIRST_TOUCH,
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /This is a Lightning wallet/},
+      {method: 'sendRichMessage', to: USER_A, text: /Wallet/},
+    ],
+  })
+
+  expect(threw).toBe(true)
+  expect(joinedOutput()).not.toContain('keep-out')
+  expect(joinedOutput()).not.toContain('example.com')
+  const logs = JSON.stringify(e2e.logs)
+  expect(logs).not.toContain('keep-out')
+  expect(logs).not.toContain('example.com')
+  expectNoErrors(e2e.logs)
+})
+
+test('a recognized bolt11, LNURL, or Lightning address is not dm_unrecognized_text', async () => {
+  const bolt11 = 'lnbc1pabcdef'
+  const lnurl = 'LNURL1DP68GURN8GHJ7CTS'
+  const address = 'bob@walletofsatoshi.com'
+  const events = recordPosthog(e2e)
+
+  await e2e.send(privateText(bolt11))
+  await e2e.send(privateText(lnurl))
+  await e2e.send(privateText(address))
+
+  expect(capturesOf(events, DM_UNRECOGNIZED_TEXT_EVENT)).toEqual([])
+  expect(
+    String(
+      e2e.tg
+        .of('sendMessage')
+        .map(call => call.text)
+        .join('\n'),
+    ),
+  ).not.toMatch(/This is a Lightning wallet/)
+})
+
+test('a registered command is command_<name> and is not unrecognized text', async () => {
+  const events = recordPosthog(e2e)
+  await e2e.send(privateCommand('/wallet'))
+
+  expect(capturesOf(events, DM_UNRECOGNIZED_TEXT_EVENT)).toEqual([])
+  expect(capturesOf(events, 'command_wallet').map(item => item.properties?.command)).toEqual([
+    'wallet',
+  ])
+})
+
+test('an unregistered slash command does not publish its suffix', async () => {
+  const secret = 'private_secret_123'
+  const events = recordPosthog(e2e)
+  await e2e.send(privateText(`/${secret}`))
+
+  expect(events.map(item => item.event)).not.toContain(`command_${secret}`)
+  expect(events.map(item => item.event)).toContain('command_unknown')
+  for (const event of events) {
+    if (event.event === DM_UNRECOGNIZED_TEXT_EVENT) continue
+    expect(JSON.stringify(event)).not.toContain(secret)
+    expect(event.properties?.command).toBeUndefined()
+  }
 })
 
 test('plain private text shows a hint and the wallet', async () => {

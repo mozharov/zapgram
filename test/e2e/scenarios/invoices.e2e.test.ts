@@ -20,6 +20,7 @@ import {CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {recordPosthog} from '../record-posthog.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -728,6 +729,50 @@ test('a bolt11 on the QR step drops the buttons and starts payment review', asyn
   )
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
   expectNoErrors(e2e.logs)
+})
+
+test('text handed off from invoice review is not dm_unrecognized_text', async () => {
+  const events = recordPosthog(e2e)
+  await enterPayInvoiceAtReview()
+  events.length = 0
+  const text = 'handoff-marker-not-a-command'
+
+  await e2e.send(privateText(text))
+
+  expect(events.filter(item => item.event === 'dm_unrecognized_text')).toEqual([])
+  expect(JSON.stringify(events)).not.toContain(text)
+})
+
+test('a pasted Pay click keeps the route name out of analytics and info logs', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({env: {BOT_USERNAME: 'zap_gram_bot', LOG_LEVEL: 'info'}})
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  const events = recordPosthog(e2e)
+  await enterSendToUserAtUsername()
+  const invoice = foreignInvoice()
+  const pasted = privateText(invoice.bolt11)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0]
+  const backData = keyboardOf(e2e.tg.last('sendMessage'))[1]
+  if (!payData || !backData) throw new Error('missing pasted-payment buttons')
+  const payToken = payData.slice('pay-pasted:'.length)
+  const backToken = backData.slice('pay-pasted-back:'.length)
+  expect(payToken).toMatch(/^[0-9a-f]{16}$/)
+  expect(backToken).toBe(payToken)
+
+  events.length = 0
+  e2e.logs.length = 0
+  await e2e.send(payCallback(payData, requiredResultMessageId('sendMessage'), pasted))
+
+  const click = events.find(item => item.event === 'callback_pay_pasted')
+  expect(click?.properties?.callback_data).toBe('pay-pasted')
+  const visible = JSON.stringify({events, logs: e2e.logs})
+  expect(visible).not.toContain(payToken)
+  expect(visible).not.toContain(invoice.bolt11)
+  expect(visible).not.toContain(invoice.bolt11.toLowerCase())
+  expect(visible).not.toContain(invoice.bolt11.slice(0, 12))
+  expect(e2e.logs.some(log => log.callbackData === 'pay-pasted')).toBe(true)
+  expect(e2e.logs.some(log => log.msg === 'dm_unrecognized_text capture failed')).toBe(false)
 })
 
 test('ordinary text on invoice review cancels payment and returns to Wallet', async () => {

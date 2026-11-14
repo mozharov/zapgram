@@ -1,22 +1,21 @@
-import {looksLikeOnchainAddress} from '@core/onchain/looks-like-address.js'
 import {getConversation} from '@modules/conversations/repository.js'
 import {replyWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {captureBotEvent} from '@telegram/analytics.js'
 import type {BotContext} from '@telegram/context.js'
+import {
+  dmUnrecognizedTextProperties,
+  type UnrecognizedTextProperties,
+} from '@telegram/unrecognized-text.js'
 import {getRuntime} from '../../runtime.js'
 
-/** Product event for private text no other handler claimed. Never carries the message body. */
-export const DM_UNRECOGNIZED_TEXT_EVENT = 'dm_unrecognized_text' as const
+export {dmUnrecognizedTextProperties} from '@telegram/unrecognized-text.js'
 
-export function dmUnrecognizedTextProperties(text: string): {
-  text_length: number
-  looks_like_onchain: boolean
-} {
-  return {
-    text_length: text.length,
-    looks_like_onchain: looksLikeOnchainAddress(text),
-  }
-}
+/**
+ * Product event for private text no other handler claimed.
+ * PostHog receives the message (`text`) so unrecognized pastes can be read.
+ * Logs do not: `describeUpdate` keeps length, kind, the on-chain flag, and truncation.
+ */
+export const DM_UNRECOGNIZED_TEXT_EVENT = 'dm_unrecognized_text' as const
 
 /**
  * Private text (and any other private message) that no command, hears, or conversation took.
@@ -31,13 +30,28 @@ export async function unrecognizedPrivateMessage(ctx: BotContext) {
   // Those handoffs stay wallet-only. The hint is for text no conversation touched.
   if (typeof text === 'string' && !(await handedOffByConversation(ctx))) {
     const properties = dmUnrecognizedTextProperties(text)
-    // `properties` is only length + the on-chain flag. Do not add `text` here.
-    captureBotEvent(getRuntime().posthog, DM_UNRECOGNIZED_TEXT_EVENT, properties)
+    // Same object capture receives. A PostHog failure must not skip the hint or the wallet.
+    captureUnrecognizedText(ctx.log, properties)
     await ctx.reply(
       ctx.t(properties.looks_like_onchain ? 'dm-unrecognized-onchain' : 'dm-unrecognized'),
     )
   }
   return replyWithWallet(ctx)
+}
+
+export function captureUnrecognizedText(
+  log: {warn: (bindings: object, message?: string) => void},
+  properties: UnrecognizedTextProperties,
+  posthog?: Parameters<typeof captureBotEvent>[0],
+): void {
+  try {
+    captureBotEvent(posthog ?? getRuntime().posthog, DM_UNRECOGNIZED_TEXT_EVENT, properties)
+  } catch (error) {
+    log.warn(
+      {errorName: error instanceof Error ? error.name : 'Error'},
+      'dm_unrecognized_text capture failed',
+    )
+  }
 }
 
 async function handedOffByConversation(ctx: BotContext): Promise<boolean> {

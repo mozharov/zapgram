@@ -1,28 +1,29 @@
 import type {AppConfig} from '@config'
 import type {AppLogger} from '@infra/logger.js'
 import {setWebhook} from '@infra/telegram/webhook.js'
+import {botCommand, groupCommand} from '@telegram/bot-commands.js'
 import type {Bot, Context} from 'grammy'
 import type {ChatAdministratorRights} from 'grammy/types'
 
 const privateCommandsEn = [
-  {command: 'wallet', description: 'Main menu and wallet info'},
-  {command: 'donate', description: 'Support the project — one-shot, monthly, stats'},
-  {command: 'help', description: 'FAQ, links and instructions'},
+  {command: botCommand.wallet, description: 'Main menu and wallet info'},
+  {command: botCommand.donate, description: 'Support the project — one-shot, monthly, stats'},
+  {command: botCommand.help, description: 'FAQ, links and instructions'},
 ] as const
 
 const privateCommandsRu = [
-  {command: 'wallet', description: 'Меню и информация о кошельке'},
-  {command: 'donate', description: 'Поддержать проект — разово, ежемесячно, статистика'},
-  {command: 'help', description: 'FAQ, ссылки и инструкции'},
+  {command: botCommand.wallet, description: 'Меню и информация о кошельке'},
+  {command: botCommand.donate, description: 'Поддержать проект — разово, ежемесячно, статистика'},
+  {command: botCommand.help, description: 'FAQ, ссылки и инструкции'},
 ] as const
 
 const adminBroadcastEn = {
-  command: 'broadcast',
+  command: botCommand.broadcast,
   description: 'Admin: broadcast update to users by language',
 } as const
 
 const adminBroadcastRu = {
-  command: 'broadcast',
+  command: botCommand.broadcast,
   description: 'Админ: рассылка обновления пользователям по языку',
 } as const
 
@@ -113,7 +114,7 @@ export async function configureBot(deps: {
   await bot.api.setMyCommands(
     [
       {
-        command: 'tip',
+        command: groupCommand.tip,
         description: 'Send sats: /tip [amount] [username]',
         is_ephemeral: true,
       },
@@ -123,7 +124,7 @@ export async function configureBot(deps: {
   await bot.api.setMyCommands(
     [
       {
-        command: 'tip',
+        command: groupCommand.tip,
         description: 'Отправить саты: /tip [amount] [username]',
         is_ephemeral: true,
       },
