@@ -4,7 +4,7 @@ import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
-import {LNBitsAPI} from './lnbits-api.js'
+import {FEE_RESERVE_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
@@ -21,7 +21,8 @@ export class UserWallet extends LNBitsAPI {
   private readonly memoFooter: string
   private readonly paymentWebhookUrl?: string
   private readonly outgoingLiquidity?: OutgoingLiquidityGuard
-  private payerWalletId: Promise<string | undefined> | undefined
+  /** LNbits wallet id from the factory. Not fetched again: a failed read must not drop it. */
+  private readonly payerWalletId?: string
 
   constructor(
     adminKey: string,
@@ -31,12 +32,14 @@ export class UserWallet extends LNBitsAPI {
     log?: AppLogger,
     paymentWebhookUrl?: string,
     outgoingLiquidity?: OutgoingLiquidityGuard,
+    walletId?: string,
   ) {
     super({baseUrl, adminKey, log})
     this.balance = balance
     this.memoFooter = memoFooter
     this.paymentWebhookUrl = paymentWebhookUrl
     this.outgoingLiquidity = outgoingLiquidity
+    this.payerWalletId = walletId
   }
 
   /**
@@ -63,8 +66,8 @@ export class UserWallet extends LNBitsAPI {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
-          payerWalletId: await this.walletId(),
-          feeReserveMsat: () => this.getFeeReserve(paymentRequest),
+          payerWalletId: this.payerWalletId,
+          feeReserveMsat: () => this.feeReserveForPause(paymentRequest),
         })
       : undefined
     try {
@@ -85,20 +88,27 @@ export class UserWallet extends LNBitsAPI {
    * @returns millisatoshis
    */
   async getFeeReserve(paymentRequest: string) {
+    return this.quoteFeeReserve(paymentRequest)
+  }
+
+  /** Pause quote only. The review screen keeps the ordinary client timeout. */
+  private feeReserveForPause(paymentRequest: string) {
+    return this.quoteFeeReserve(paymentRequest, {
+      retry: {limit: 0},
+      timeout: {request: FEE_RESERVE_TIMEOUT_MS},
+    })
+  }
+
+  private async quoteFeeReserve(
+    paymentRequest: string,
+    init?: {retry: {limit: number}; timeout: {request: number}},
+  ) {
     const response = await this.fetchWithSchema(
       '/api/v1/payments/fee-reserve',
       feeReserveResponseSchema,
-      {searchParams: {invoice: paymentRequest}},
+      {searchParams: {invoice: paymentRequest}, ...init},
     )
     return response.fee_reserve
-  }
-
-  /** Cached. A failed read leaves outgoing rows unmatched and the liquidity check still runs. */
-  private walletId(): Promise<string | undefined> {
-    this.payerWalletId ??= this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
-      .then(wallet => wallet.id)
-      .catch(() => undefined)
-    return this.payerWalletId
   }
 
   async lookupPayment(paymentHash: string) {

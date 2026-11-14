@@ -51,22 +51,32 @@ export function createInvoiceOriginLookup(
     if (!paymentHash) return 'unknown'
     try {
       const body = await lookup.paymentsForHash(paymentHash, bearerToken)
-      return originFromAdminPaymentPage(body, payerWalletId)
+      return originFromAdminPaymentPage(body, paymentHash, payerWalletId)
     } catch {
       return 'unknown'
     }
   }
 }
 
-/** Admin payment page → whether this pay can skip the funding source. */
-export function originFromAdminPaymentPage(body: unknown, payerWalletId?: string): InvoiceOrigin {
+/**
+ * Admin payment page → whether this pay can skip the funding source.
+ * A row whose `payment_hash` is not the one we asked for means the server filter
+ * was not applied. That page must not be treated as internal.
+ */
+export function originFromAdminPaymentPage(
+  body: unknown,
+  paymentHash: string,
+  payerWalletId?: string,
+): InvoiceOrigin {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'unknown'
   const data = (body as {data?: unknown}).data
   if (!Array.isArray(data)) return 'unknown'
+  const wanted = paymentHash.toLowerCase()
   let skipsFundingSource = false
   for (const row of data) {
     const parsed = paymentRow(row)
     if (!parsed) return 'unknown'
+    if (parsed.paymentHash.toLowerCase() !== wanted) return 'unknown'
     const incomingLive =
       parsed.amount > 0 && (parsed.status === 'pending' || parsed.status === 'success')
     const ownOutgoingInFlight =
@@ -79,14 +89,20 @@ export function originFromAdminPaymentPage(body: unknown, payerWalletId?: string
   return skipsFundingSource ? 'internal' : 'external'
 }
 
-function paymentRow(
-  row: unknown,
-): {amount: number; status: string; walletId: string | undefined} | undefined {
+function paymentRow(row: unknown):
+  | {
+      amount: number
+      status: string
+      walletId: string | undefined
+      paymentHash: string
+    }
+  | undefined {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return
   const record = row as Record<string, unknown>
-  const {amount, status, wallet_id: walletId} = record
+  const {amount, status, wallet_id: walletId, payment_hash: paymentHash} = record
+  if (typeof paymentHash !== 'string' || paymentHash.length === 0) return
   if (typeof amount !== 'number' || !Number.isSafeInteger(amount)) return
   if (status !== 'pending' && status !== 'success' && status !== 'failed') return
   if (walletId !== undefined && typeof walletId !== 'string') return
-  return {amount, status, walletId}
+  return {amount, status, walletId, paymentHash}
 }

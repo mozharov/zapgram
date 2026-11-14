@@ -128,6 +128,12 @@ export class LnbitsState {
    */
   fundingSourceVisible = true
 
+  /** When set, GET /api/v1/status never answers. The startup probe must already have run. */
+  hangFundingSourceStatus = false
+
+  /** When set, GET /api/v1/payments/fee-reserve never answers. */
+  hangFeeReserve = false
+
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []
   private readonly masterWallet: FakeWallet

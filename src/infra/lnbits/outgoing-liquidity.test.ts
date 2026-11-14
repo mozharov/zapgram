@@ -22,6 +22,7 @@ function guard(input: {
   fee?: () => Promise<number>
   now?: () => number
   ttlMs?: number
+  failureTtlMs?: number
 }) {
   const failed: LiquidityCheckReason[] = []
   const paused: unknown[] = []
@@ -37,6 +38,7 @@ function guard(input: {
     },
     now: input.now ?? (() => clock),
     ttlMs: input.ttlMs ?? 45_000,
+    failureTtlMs: input.failureTtlMs,
   })
   return {
     liquidity,
@@ -159,6 +161,57 @@ describe('createOutgoingLiquidityGuard', () => {
         feeReserveMsat: async () => 2_000,
       }),
     ).resolves.toEqual({msat: 23_000, generation: 1})
+  })
+
+  test('a failed balance read is reused for a few seconds and then tried again', async () => {
+    let reads = 0
+    const {pay, advance} = guard({
+      read: async () => {
+        reads += 1
+        return {ok: false, reason: 'timeout'}
+      },
+      failureTtlMs: 5_000,
+    })
+    await pay()
+    await pay()
+    expect(reads).toBe(1)
+    advance(5_000)
+    await pay()
+    expect(reads).toBe(2)
+  })
+
+  test('an internal payment does not wait for a hung balance read', async () => {
+    let finish: (read: BalanceRead) => void = () => {}
+    const hung = new Promise<BalanceRead>(resolve => {
+      finish = resolve
+    })
+    let reads = 0
+    const liquidity = createOutgoingLiquidityGuard({
+      classifyInvoice: async bolt11 => (bolt11 === invoice.bolt11 ? 'external' : 'internal'),
+      readBalance: () => {
+        reads += 1
+        return hung
+      },
+    })
+    const external = liquidity.assertCanPay({
+      bolt11: invoice.bolt11,
+      feeReserveMsat: async () => 2_000,
+    })
+    try {
+      await Promise.race([
+        liquidity.assertCanPay({
+          bolt11: second.bolt11,
+          feeReserveMsat: async () => 2_000,
+        }),
+        new Promise((_resolve, reject) => {
+          setTimeout(() => reject(new Error('internal pay waited on the balance read')), 500)
+        }),
+      ])
+    } finally {
+      finish({ok: false, reason: 'timeout'})
+    }
+    expect(reads).toBe(1)
+    await expect(external).resolves.toBeUndefined()
   })
 
   test('a successful balance is reused until the cache window passes', async () => {

@@ -2,7 +2,7 @@ import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {HTTPError} from 'got'
-import {LNBitsAPI} from './lnbits-api.js'
+import {FEE_RESERVE_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import {
   type BalanceRead,
   type LiquidityCheckReason,
@@ -25,7 +25,7 @@ class MasterWallet extends LNBitsAPI {
   private readonly feeCollectionInvoiceKey: string
   private readonly paymentWebhookUrl?: string
   private outgoingLiquidity?: OutgoingLiquidityGuard
-  private payerWalletId: Promise<string | undefined> | undefined
+  private payerWalletId?: string
 
   constructor({
     baseUrl,
@@ -143,7 +143,7 @@ class MasterWallet extends LNBitsAPI {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
-          payerWalletId: await this.walletId(),
+          payerWalletId: this.payerWalletId,
           feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
         })
       : undefined
@@ -161,20 +161,27 @@ class MasterWallet extends LNBitsAPI {
     }
   }
 
+  /** Id of the wallet behind `LNBITS_ADMIN_KEY`. Set once at startup, never from a failed read. */
+  adoptWalletId(walletId: string): void {
+    this.payerWalletId = walletId
+  }
+
+  async readWalletId(): Promise<string> {
+    const wallet = await this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
+    return wallet.id
+  }
+
   private async feeReserveMsat(paymentRequest: string): Promise<number> {
     const response = await this.fetchWithSchema(
       '/api/v1/payments/fee-reserve',
       feeReserveResponseSchema,
-      {searchParams: {invoice: paymentRequest}},
+      {
+        searchParams: {invoice: paymentRequest},
+        retry: {limit: 0},
+        timeout: {request: FEE_RESERVE_TIMEOUT_MS},
+      },
     )
     return response.fee_reserve
-  }
-
-  private walletId(): Promise<string | undefined> {
-    this.payerWalletId ??= this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
-      .then(wallet => wallet.id)
-      .catch(() => undefined)
-    return this.payerWalletId
   }
 
   async lookupPayment(paymentHash: string) {

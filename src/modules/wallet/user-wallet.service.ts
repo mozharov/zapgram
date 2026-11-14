@@ -34,6 +34,7 @@ export function createUserWalletFactory(deps: {
       deps.log,
       deps.paymentWebhookUrl,
       deps.outgoingLiquidity,
+      wallet.id,
     )
   }
 }

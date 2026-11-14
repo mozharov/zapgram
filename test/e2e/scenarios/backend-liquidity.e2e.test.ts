@@ -112,6 +112,29 @@ test('the pause copy is Russian when the sender is Russian', async () => {
   expect(outgoingPaysSince(0)).toEqual([])
 })
 
+test('an internal tip does not wait for a hung funding-source status', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 0,
+  })
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  credit(USER_A, 1000)
+  e2e.ln.state.hangFundingSourceStatus = true
+  const mark = e2e.ln.requests.length
+  const started = Date.now()
+
+  await e2e.send(groupText('/tip 21 @user_b'))
+
+  expect(Date.now() - started).toBeLessThan(4_000)
+  expect(pathsSince(mark)).not.toContain('GET /api/v1/status')
+  expect(
+    e2e.tg.of('sendMessage').some(call => /sent 21 sats to @user_b/.test(String(call.text))),
+  ).toBe(true)
+  expect(outgoingPaysSince(mark)).toHaveLength(1)
+})
+
 test('a group tip still pays when the backend balance is zero', async () => {
   await seedUser(e2e, {
     id: USER_A,

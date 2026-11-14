@@ -9,6 +9,9 @@ import type {AppLogger} from '../logger.js'
 /** Short enough that a refilled channel is visible on the next send, long enough to spare LNbits. */
 export const BACKEND_LIQUIDITY_CACHE_MS = 45_000
 
+/** A failed status read stays fail-open, but the next pay must not wait on the same hang. */
+export const BACKEND_LIQUIDITY_FAILURE_CACHE_MS = 5_000
+
 export const SEND_PAUSED_NO_BACKEND_LIQUIDITY = 'send_paused_no_backend_liquidity'
 export const BACKEND_LIQUIDITY_CHECK_FAILED = 'backend_liquidity_check_failed'
 export const BACKEND_LIQUIDITY_MODE = 'backend_liquidity_mode'
@@ -83,11 +86,14 @@ export function createOutgoingLiquidityGuard(deps: {
   captureCheckFailed?: (properties: {reason: LiquidityCheckReason}) => void
   now?: () => number
   ttlMs?: number
+  failureTtlMs?: number
 }): OutgoingLiquidityGuard {
   const now = deps.now ?? (() => Date.now())
   const ttlMs = deps.ttlMs ?? BACKEND_LIQUIDITY_CACHE_MS
+  const failureTtlMs = deps.failureTtlMs ?? BACKEND_LIQUIDITY_FAILURE_CACHE_MS
   let generation = 0
   let cached: {balanceMsat: number; at: number; generation: number} | null = null
+  let failedRead: {reason: LiquidityCheckReason; at: number} | null = null
   let inFlight: Promise<BalanceRead> | null = null
   let tail: Promise<unknown> = Promise.resolve()
   const lastFailureEventAt = new Map<string, number>()
@@ -108,6 +114,9 @@ export function createOutgoingLiquidityGuard(deps: {
   async function balance(): Promise<BalanceRead> {
     const at = now()
     if (cached && at - cached.at < ttlMs) return {ok: true, balanceMsat: cached.balanceMsat}
+    if (failedRead && at - failedRead.at < failureTtlMs) {
+      return {ok: false, reason: failedRead.reason}
+    }
     if (!inFlight) {
       inFlight = deps
         .readBalance()
@@ -115,6 +124,9 @@ export function createOutgoingLiquidityGuard(deps: {
           if (read.ok) {
             generation += 1
             cached = {balanceMsat: read.balanceMsat, at: now(), generation}
+            failedRead = null
+          } else {
+            failedRead = {reason: read.reason, at: now()}
           }
           return read
         })
@@ -202,21 +214,21 @@ export function createOutgoingLiquidityGuard(deps: {
   }
 
   return {
-    assertCanPay(input) {
+    async assertCanPay(input) {
+      // Classification stays outside the pay queue. An internal transfer must not wait
+      // while an external pay is stuck on a hung funding-source status.
+      const origin = await deps.classifyInvoice(input.bolt11, input.payerWalletId)
+      if (origin === 'internal') return
+      if (origin === 'unknown') {
+        noteFailure('classify_failed')
+        return
+      }
       // A previous pause rejects the chain. Swallow it so the next payment is still checked.
       const settled = tail.then(
         () => undefined,
         () => undefined,
       )
-      const run = settled.then(async () => {
-        const origin = await deps.classifyInvoice(input.bolt11, input.payerWalletId)
-        if (origin === 'internal') return
-        if (origin === 'unknown') {
-          noteFailure('classify_failed')
-          return
-        }
-        return assertExternal(input.bolt11, input.feeReserveMsat)
-      })
+      const run = settled.then(() => assertExternal(input.bolt11, input.feeReserveMsat))
       tail = run.then(
         () => undefined,
         () => undefined,

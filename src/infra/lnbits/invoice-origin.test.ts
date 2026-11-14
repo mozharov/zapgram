@@ -4,44 +4,81 @@ import {FAKE_LNBITS_ADMIN_BEARER, startFakeLnbits} from '../../../test/e2e/fakes
 import {createInvoiceOriginLookup, originFromAdminPaymentPage} from './invoice-origin.js'
 import {UserWallet} from './user-wallet.js'
 
-const incoming = {amount: 21_000, status: 'pending', wallet_id: 'receiver'}
+const HASH = 'ab'.repeat(32)
+const incoming = {
+  amount: 21_000,
+  status: 'pending',
+  wallet_id: 'receiver',
+  payment_hash: HASH,
+}
 
 describe('originFromAdminPaymentPage', () => {
   test('a pending or paid incoming row does not need the funding source', () => {
-    expect(originFromAdminPaymentPage({data: [incoming], total: 1})).toBe('internal')
+    expect(originFromAdminPaymentPage({data: [incoming], total: 1}, HASH)).toBe('internal')
     expect(
-      originFromAdminPaymentPage({
-        data: [{amount: 21_000, status: 'success', wallet_id: 'receiver'}],
-        total: 1,
-      }),
+      originFromAdminPaymentPage(
+        {
+          data: [{amount: 21_000, status: 'success', wallet_id: 'receiver', payment_hash: HASH}],
+          total: 1,
+        },
+        HASH,
+      ),
     ).toBe('internal')
   })
 
   test('a failed incoming row, or only another wallet outgoing row, still pays externally', () => {
     expect(
-      originFromAdminPaymentPage({
-        data: [{amount: 21_000, status: 'failed', wallet_id: 'receiver'}],
-        total: 1,
-      }),
+      originFromAdminPaymentPage(
+        {
+          data: [{amount: 21_000, status: 'failed', wallet_id: 'receiver', payment_hash: HASH}],
+          total: 1,
+        },
+        HASH,
+      ),
     ).toBe('external')
     expect(
       originFromAdminPaymentPage(
-        {data: [{amount: -21_000, status: 'success', wallet_id: 'payer-a'}], total: 1},
+        {
+          data: [{amount: -21_000, status: 'success', wallet_id: 'payer-a', payment_hash: HASH}],
+          total: 1,
+        },
+        HASH,
         'payer-b',
       ),
     ).toBe('external')
   })
 
   test('the payer own pending or successful outgoing row is not sent again', () => {
-    const page = {data: [{amount: -21_000, status: 'success', wallet_id: 'payer-a'}], total: 1}
-    expect(originFromAdminPaymentPage(page, 'payer-a')).toBe('internal')
-    expect(originFromAdminPaymentPage(page)).toBe('external')
+    const page = {
+      data: [{amount: -21_000, status: 'success', wallet_id: 'payer-a', payment_hash: HASH}],
+      total: 1,
+    }
+    expect(originFromAdminPaymentPage(page, HASH, 'payer-a')).toBe('internal')
+    expect(originFromAdminPaymentPage(page, HASH)).toBe('external')
+  })
+
+  test('a row for a different payment hash is not treated as internal', () => {
+    expect(originFromAdminPaymentPage({data: [incoming], total: 1}, 'cd'.repeat(32))).toBe(
+      'unknown',
+    )
+    expect(
+      originFromAdminPaymentPage(
+        {data: [{amount: 21_000, status: 'pending', wallet_id: 'receiver'}], total: 1},
+        HASH,
+      ),
+    ).toBe('unknown')
+    expect(originFromAdminPaymentPage({data: [], total: 0}, HASH)).toBe('external')
   })
 
   test('an unreadable page does not decide', () => {
-    expect(originFromAdminPaymentPage(null)).toBe('unknown')
-    expect(originFromAdminPaymentPage({paid: true})).toBe('unknown')
-    expect(originFromAdminPaymentPage({data: [{amount: '21', status: 'pending'}]})).toBe('unknown')
+    expect(originFromAdminPaymentPage(null, HASH)).toBe('unknown')
+    expect(originFromAdminPaymentPage({paid: true}, HASH)).toBe('unknown')
+    expect(
+      originFromAdminPaymentPage(
+        {data: [{amount: '21', status: 'pending', payment_hash: HASH}]},
+        HASH,
+      ),
+    ).toBe('unknown')
   })
 })
 

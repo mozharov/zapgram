@@ -4,6 +4,12 @@ import type {ZodType} from 'zod'
 import type {AppLogger} from '../logger.js'
 import {validateData} from '../validate.js'
 
+/**
+ * Quote used only to decide a pause. It is not the payment. A hung funding source must not
+ * hold the pay for the default 15s, and got must not retry that GET.
+ */
+export const FEE_RESERVE_TIMEOUT_MS = 3_000
+
 /** Shared 30 rps budget against LNbits. Exported so tests can lift it; do not change in prod. */
 export const limiter = new Bottleneck({
   reservoir: 30,
@@ -40,7 +46,7 @@ export class LNBitsAPI {
         ...init,
         headers,
         responseType: 'json',
-        timeout: {request: 15000},
+        timeout: {request: 15_000, ...init?.timeout},
       }).catch((error: unknown) => {
         if (logHttpError && error instanceof HTTPError)
           this.log?.error(

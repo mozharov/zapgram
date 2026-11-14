@@ -75,7 +75,7 @@ function route({
   body: unknown
   state: LnbitsState
   opts: {adminKey: string; feeCollectionKey: string}
-}): Response {
+}): Response | Promise<Response> {
   const {method} = request
   const path = url.pathname
 
@@ -133,6 +133,7 @@ function route({
   // LNbits 1.7.1 (same handler as 1.5.6 and 1.7.0): access token only. The wallet key is ignored.
   // Admin token: funding_source_balance_msat. Any other token: timing fields only.
   if (method === 'GET' && path === '/api/v1/status') {
+    if (state.hangFundingSourceStatus) return new Promise<Response>(() => undefined)
     const bearer = bearerOf(request)
     if (!bearer) return json({detail: 'Missing user ID or access token.'}, 401)
     const status = {
@@ -179,6 +180,7 @@ function route({
 
   // This exact route must be checked before /api/v1/payments/{hash}.
   if (method === 'GET' && path === '/api/v1/payments/fee-reserve') {
+    if (state.hangFeeReserve) return new Promise<Response>(() => undefined)
     const wallet = authenticatedWallet(request, state)
     if (!wallet) return json({detail: 'Unauthorized.'}, 401)
     const bolt11 = url.searchParams.get('invoice')

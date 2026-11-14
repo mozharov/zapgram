@@ -191,6 +191,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   })
   const health = await masterWallet.checkStatus()
   log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
+  try {
+    masterWallet.adoptWalletId(await masterWallet.readWalletId())
+  } catch {
+    log.warn('Master wallet id was not read')
+  }
 
   const rates = createRateService({
     fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
