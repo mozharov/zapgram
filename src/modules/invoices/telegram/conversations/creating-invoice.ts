@@ -9,6 +9,7 @@ import {editMessageWidgetData, sendWidget} from '@infra/telegram/widget-api.js'
 import {
   clearInvoiceWidgetMessage,
   createPendingInvoice,
+  getPendingInvoiceBy,
   moveInvoiceWidgetMessage,
   setInvoiceWidgetMessage,
 } from '@modules/invoices/repository.js'
@@ -422,7 +423,7 @@ async function renderFinalWidget(
     await conversation.external(() => {
       ctx.log.warn({description}, 'Replacement invoice widget does not fit')
     })
-    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard, wallet)
     return
   }
 
@@ -472,7 +473,7 @@ async function renderFinalWidget(
           }
         })
       }
-      await handOffReplacement(conversation, ctx, shown, caption, keyboard)
+      await handOffReplacement(conversation, ctx, shown, caption, keyboard, wallet)
       return
     }
     await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
@@ -495,7 +496,7 @@ async function renderFinalWidget(
     await conversation.external(() => {
       ctx.log.warn({description}, 'Replacement invoice widget send failed, sending QR photo')
     })
-    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard, wallet)
     return
   }
   const sentChatId = typeof sent.chat.id === 'number' ? sent.chat.id : chatId
@@ -511,7 +512,12 @@ type WidgetMove = 'moved' | 'claimed' | 'failed'
 
 /**
  * Attach the live message to the reminted invoice. `claimed` means A was already taken, so the
- * caller must not edit that message. `failed` already sent B as a photo and retired A's caption.
+ * caller must not edit that message. `failed` already sent B as a photo and retired A's caption
+ * only when A still owns it.
+ *
+ * The photo send stays outside the move's try. A throw from `sendPhotoFallback` after a claim
+ * must not be handled as a failed move: that path rewrites the caption, and the message is
+ * already the paid receipt.
  */
 async function takeWidgetMessage(
   conversation: BotConversation,
@@ -521,8 +527,9 @@ async function takeWidgetMessage(
   caption: {html: string; buffer: Buffer},
   keyboard: InlineKeyboard,
 ): Promise<WidgetMove> {
+  let moved = false
   try {
-    const moved = await conversation.external(() =>
+    moved = await conversation.external(() =>
       moveInvoiceWidgetMessage(
         shown.paymentRequest,
         paymentRequest,
@@ -530,22 +537,22 @@ async function takeWidgetMessage(
         shown.message.message_id,
       ),
     )
-    if (!moved) {
-      await conversation.external(() => {
-        ctx.log.info({messageId: shown.message.message_id}, 'Invoice widget stayed with invoice A')
-      })
-      await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
-      return 'claimed'
-    }
-    return 'moved'
   } catch (error) {
     const description = errorText(error)
     await conversation.external(() => {
       ctx.log.warn({description}, 'Failed to move invoice widget')
     })
-    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard, 'internal')
     return 'failed'
   }
+  if (!moved) {
+    await conversation.external(() => {
+      ctx.log.info({messageId: shown.message.message_id}, 'Invoice widget stayed with invoice A')
+    })
+    await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
+    return 'claimed'
+  }
+  return 'moved'
 }
 
 async function handOffReplacement(
@@ -554,9 +561,23 @@ async function handOffReplacement(
   shown: ShownInvoice,
   caption: {html: string; buffer: Buffer},
   keyboard: InlineKeyboard,
+  wallet: 'internal' | 'nwc',
 ): Promise<void> {
   await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
+  // A claim during memo entry already turned this bubble into the paid receipt. Captioning it
+  // "replaced" would hide that. NWC invoices are not pending rows, so nothing else updates them.
+  if (wallet === 'internal') {
+    const stillOwns = await conversation.external(() => originalInvoiceStillOwnsWidget(shown))
+    if (!stillOwns) return
+  }
   await retireReplacedInvoice(conversation, ctx, shown)
+}
+
+async function originalInvoiceStillOwnsWidget(shown: ShownInvoice): Promise<boolean> {
+  const row = await getPendingInvoiceBy({paymentRequest: shown.paymentRequest})
+  return (
+    row?.widgetChatId === shown.message.chat.id && row?.widgetMessageId === shown.message.message_id
+  )
 }
 
 async function retireReplacedInvoice(
