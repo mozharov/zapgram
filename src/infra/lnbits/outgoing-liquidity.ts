@@ -37,8 +37,16 @@ export type LiquidityMode = {
   reason: 'ok' | 'missing_bearer' | LiquidityCheckReason | 'check_failed'
 }
 
+/** Amount held against the cached balance until the pay settles or is released. */
+export type LiquidityHold = {msat: number; generation: number}
+
 export type OutgoingLiquidityGuard = {
-  assertCanPay(input: {bolt11: string; feeReserveMsat: () => Promise<number>}): Promise<void>
+  assertCanPay(input: {
+    bolt11: string
+    feeReserveMsat: () => Promise<number>
+  }): Promise<LiquidityHold | undefined>
+  /** Put a hold back if the payment call failed and the cache has not been refreshed. */
+  release(hold: LiquidityHold): Promise<void>
 }
 
 /**
@@ -61,7 +69,8 @@ export function createOutgoingLiquidityGuard(deps: {
 }): OutgoingLiquidityGuard {
   const now = deps.now ?? (() => Date.now())
   const ttlMs = deps.ttlMs ?? BACKEND_LIQUIDITY_CACHE_MS
-  let cached: {balanceMsat: number; at: number} | null = null
+  let generation = 0
+  let cached: {balanceMsat: number; at: number; generation: number} | null = null
   let inFlight: Promise<BalanceRead> | null = null
   let tail: Promise<unknown> = Promise.resolve()
   const lastFailureEventAt = new Map<string, number>()
@@ -86,7 +95,10 @@ export function createOutgoingLiquidityGuard(deps: {
       inFlight = deps
         .readBalance()
         .then(read => {
-          if (read.ok) cached = {balanceMsat: read.balanceMsat, at: now()}
+          if (read.ok) {
+            generation += 1
+            cached = {balanceMsat: read.balanceMsat, at: now(), generation}
+          }
           return read
         })
         .finally(() => {
@@ -118,7 +130,7 @@ export function createOutgoingLiquidityGuard(deps: {
   async function assertExternal(
     bolt11: string,
     feeReserveMsat: () => Promise<number>,
-  ): Promise<void> {
+  ): Promise<LiquidityHold | undefined> {
     let amountMsat: number
     try {
       amountMsat = decodeInvoice(bolt11).millisatoshi
@@ -163,12 +175,13 @@ export function createOutgoingLiquidityGuard(deps: {
       pause(amountMsat, reserveMsat, read.balanceMsat)
     }
 
-    // Hold the amount against the cached balance so the next external pay in this process
-    // sees what this one is about to spend, until the cache expires and we re-read.
-    if (cached) {
-      const needed = amountMsat + reserveMsat
-      cached = {...cached, balanceMsat: Math.max(0, cached.balanceMsat - needed)}
-    }
+    // Hold the amount against this cache generation. A later re-read replaces the generation,
+    // so releasing a failed pay cannot add the amount on top of a fresh server balance.
+    if (!cached) return
+    const needed = amountMsat + reserveMsat
+    const hold = {msat: needed, generation: cached.generation}
+    cached = {...cached, balanceMsat: Math.max(0, cached.balanceMsat - needed)}
+    return hold
   }
 
   return {
@@ -185,7 +198,22 @@ export function createOutgoingLiquidityGuard(deps: {
           noteFailure('classify_failed')
           return
         }
-        await assertExternal(input.bolt11, input.feeReserveMsat)
+        return assertExternal(input.bolt11, input.feeReserveMsat)
+      })
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      )
+      return run
+    },
+    release(hold) {
+      const settled = tail.then(
+        () => undefined,
+        () => undefined,
+      )
+      const run = settled.then(() => {
+        if (!cached || cached.generation !== hold.generation) return
+        cached = {...cached, balanceMsat: cached.balanceMsat + hold.msat}
       })
       tail = run.then(
         () => undefined,

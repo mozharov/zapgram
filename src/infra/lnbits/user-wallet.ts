@@ -10,7 +10,6 @@ import {
   balanceResponseSchema,
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
-  type PaymentResponse,
   paymentResponseSchema,
 } from './schemas.js'
 
@@ -60,19 +59,24 @@ export class UserWallet extends LNBitsAPI {
   }
 
   async payInvoice(paymentRequest: string) {
-    if (this.outgoingLiquidity) {
-      await this.outgoingLiquidity.assertCanPay({
-        bolt11: paymentRequest,
-        feeReserveMsat: () => this.getFeeReserve(paymentRequest),
-      })
+    const hold = this.outgoingLiquidity
+      ? await this.outgoingLiquidity.assertCanPay({
+          bolt11: paymentRequest,
+          feeReserveMsat: () => this.getFeeReserve(paymentRequest),
+        })
+      : undefined
+    try {
+      return await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+        method: 'POST',
+        body: JSON.stringify({
+          out: true,
+          bolt11: paymentRequest,
+        }),
+      }).catch(error => handlePayInvoiceError(error, this.log))
+    } catch (error) {
+      if (hold) await this.outgoingLiquidity?.release(hold)
+      throw error
     }
-    return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
-      method: 'POST',
-      body: JSON.stringify({
-        out: true,
-        bolt11: paymentRequest,
-      }),
-    }).catch(error => handlePayInvoiceError(error, this.log)) as Promise<PaymentResponse>
   }
 
   /**
@@ -105,7 +109,7 @@ interface CreateInvoiceParams {
   expiry?: number
 }
 
-function handlePayInvoiceError(error: unknown, log?: AppLogger) {
+function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
   log?.error({error}, 'Error paying invoice')
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {

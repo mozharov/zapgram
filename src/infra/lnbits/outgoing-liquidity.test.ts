@@ -81,7 +81,7 @@ describe('createOutgoingLiquidityGuard', () => {
 
   test('enough balance plus the fee reserve lets the external payment proceed', async () => {
     const {pay} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
-    await expect(pay()).resolves.toBeUndefined()
+    await expect(pay()).resolves.toEqual({msat: 23_000, generation: 1})
   })
 
   test('one millisatoshi under amount plus reserve pauses', async () => {
@@ -140,13 +140,21 @@ describe('createOutgoingLiquidityGuard', () => {
     const {pay, liquidity} = guard({
       read: async () => ({ok: true, balanceMsat: 30_000}),
     })
-    await expect(pay()).resolves.toBeUndefined()
+    const hold = await pay()
     await expect(
       liquidity.assertCanPay({
         bolt11: second.bolt11,
         feeReserveMsat: async () => 2_000,
       }),
     ).rejects.toBeInstanceOf(SendPausedError)
+    if (!hold) throw new Error('Expected a liquidity hold')
+    await liquidity.release(hold)
+    await expect(
+      liquidity.assertCanPay({
+        bolt11: second.bolt11,
+        feeReserveMsat: async () => 2_000,
+      }),
+    ).resolves.toEqual({msat: 23_000, generation: 1})
   })
 
   test('a successful balance is reused until the cache window passes', async () => {

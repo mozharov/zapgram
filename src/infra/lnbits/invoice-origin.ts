@@ -16,7 +16,8 @@ class OriginLookup extends LNBitsAPI {
   }
 
   async hasPayment(paymentHash: string): Promise<void> {
-    await this.fetch(`/api/v1/payments/${paymentHash}`, undefined, {logHttpError: false})
+    // No retries: a 5xx would back off inside the serialized pay check and stall every send.
+    await this.fetch(`/api/v1/payments/${paymentHash}`, {retry: {limit: 0}}, {logHttpError: false})
   }
 }
 

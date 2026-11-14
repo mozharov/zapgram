@@ -137,19 +137,24 @@ class MasterWallet extends LNBitsAPI {
   }
 
   async payInvoice(paymentRequest: string) {
-    if (this.outgoingLiquidity) {
-      await this.outgoingLiquidity.assertCanPay({
-        bolt11: paymentRequest,
-        feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
+    const hold = this.outgoingLiquidity
+      ? await this.outgoingLiquidity.assertCanPay({
+          bolt11: paymentRequest,
+          feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
+        })
+      : undefined
+    try {
+      return await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+        method: 'POST',
+        body: JSON.stringify({
+          out: true,
+          bolt11: paymentRequest,
+        }),
       })
+    } catch (error) {
+      if (hold) await this.outgoingLiquidity?.release(hold)
+      throw error
     }
-    return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
-      method: 'POST',
-      body: JSON.stringify({
-        out: true,
-        bolt11: paymentRequest,
-      }),
-    })
   }
 
   private async feeReserveMsat(paymentRequest: string): Promise<number> {
