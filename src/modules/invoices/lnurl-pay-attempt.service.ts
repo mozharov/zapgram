@@ -105,7 +105,8 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     await deps.attempts.markSettled(id)
     const row = await deps.attempts.get(id)
     if (row.status !== 'settled') return
-    await tellSender(row, 'settled')
+    // The wizard shows the receipt itself. Recovery is what tells the sender
+    // when that screen never landed.
     if (before.status === 'settled' || !deps.collectDonation) return
     await deps
       .collectDonation({userId: row.fromUserId, sats: row.sats, rail: row.rail})
@@ -126,13 +127,10 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       await tellSender(row, 'abandoned')
       return 'abandoned'
     }
-    if (row.status === 'settled') {
-      await tellSender(row, 'settled')
-      return 'settled'
-    }
+    if (row.status === 'settled') return finishSender(row)
     if (row.providerAccepted || row.phase === 'provider_accepted') {
       await notePaid(row.id, row.providerPaymentHash ?? undefined)
-      return 'settled'
+      return finishSender(await deps.attempts.get(id))
     }
     if (!row.invoiceHash || row.phase === 'reserved' || row.phase === 'invoice_saved') {
       if (ageMs(row) > graceMs) {
@@ -145,8 +143,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     const state = await lookupQuiet(row)
     if (state === 'paid') {
       await notePaid(row.id, row.providerPaymentHash ?? undefined)
-      const latest = await deps.attempts.get(id)
-      return latest.status === 'settled' ? 'settled' : 'in_flight'
+      return finishSender(await deps.attempts.get(id))
     }
     if (state === 'retryable' && ageMs(row) > reviewMs) {
       await deps.attempts.markAbandoned(row.id)
@@ -169,6 +166,13 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       return 'needs_review'
     }
     return 'in_flight'
+  }
+
+  async function finishSender(row: LnurlPayAttempt): Promise<'settled' | 'in_flight'> {
+    if (row.status !== 'settled') return 'in_flight'
+    await tellSender(row, 'settled')
+    const latest = await deps.attempts.get(row.id)
+    return latest.senderNotified ? 'settled' : 'in_flight'
   }
 
   async function tellSender(row: LnurlPayAttempt, outcome: 'settled' | 'abandoned') {
@@ -222,6 +226,8 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     reconcile,
     isClearMiss,
     isAlreadyPaid,
+    /** The receipt is on screen. Recovery must not send a second success message. */
+    markSenderNotified: (id: string) => deps.attempts.claimSenderNotice(id),
     listActionable: (limit: number, offset: number) => deps.attempts.listActionable(limit, offset),
   }
 }

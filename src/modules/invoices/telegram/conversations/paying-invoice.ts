@@ -171,10 +171,13 @@ export async function payingInvoice(
   )
 
   const lnurl = options?.lnurl
-  let skipPay = false
+  let feesPaid = 0
   if (lnurl) {
-    const gate = await conversation.external(() =>
-      getRuntime().lnurlPays.beginPay({
+    // One external for the gate and the debit. A replay returns this result
+    // instead of calling payInvoice again. beginPay has already marked the row
+    // pay_unknown, so a crash inside the call comes back as a hold, not a second pay.
+    const outcome = await conversation.external(() =>
+      payLnurlAttempt({
         attemptId: lnurl.attemptId,
         fromUserId: ctx.user.id,
         recipient: lnurl.recipient,
@@ -182,9 +185,19 @@ export async function payingInvoice(
         rail: isInternalWallet ? 'internal' : 'nwc',
         paymentHash: invoice.paymentHash,
         bolt11: invoice.paymentRequest,
+        pay: async () => {
+          if (isInternalWallet) {
+            const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+            return payment.fee < 0 ? -payment.fee : 0
+          }
+          if (!ctx.user.nwc) throw new NWCConnectionError()
+          await ctx.user.nwc.payInvoice(invoice.paymentRequest)
+          const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
+          return lookupResponse.fees_paid
+        },
       }),
     )
-    if (gate === 'blocked' || gate === 'in_flight') {
+    if (outcome.kind === 'hold') {
       await showLnurlHold(
         ctx,
         host,
@@ -192,43 +205,16 @@ export async function payingInvoice(
       )
       return conversation.halt()
     }
-    skipPay = gate === 'paid'
-  }
-
-  let feesPaid = 0
-  if (!skipPay) {
-    try {
-      if (isInternalWallet) {
-        const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
-        feesPaid = payment.fee < 0 ? -payment.fee : 0
-      } else {
-        if (!ctx.user.nwc) throw new NWCConnectionError()
-        await ctx.user.nwc.payInvoice(invoice.paymentRequest)
-        const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
-        feesPaid = lookupResponse.fees_paid
-      }
-    } catch (error) {
-      if (!lnurl) throw error
-      const pays = getRuntime().lnurlPays
-      if (error instanceof InvoiceAlreadyPaidError) {
-        await conversation.external(() => pays.notePaid(lnurl.attemptId, invoice.paymentHash))
-      } else if (error instanceof InsufficientFundsError) {
-        await conversation.external(() => pays.noteRejected(lnurl.attemptId))
-        throw error
-      } else {
-        await showLnurlHold(
-          ctx,
-          host,
-          ctx.t('lnurl-pay-still-checking', {recipient: lnurl.recipient}),
-        )
-        return conversation.halt()
-      }
-    }
-  }
-  if (lnurl && !skipPay) {
-    await conversation.external(() =>
-      getRuntime().lnurlPays.notePaid(lnurl.attemptId, invoice.paymentHash),
-    )
+    if (outcome.kind === 'rejected') throw new InsufficientFundsError()
+    feesPaid = outcome.feesPaid
+  } else if (isInternalWallet) {
+    const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+    feesPaid = payment.fee < 0 ? -payment.fee : 0
+  } else {
+    if (!ctx.user.nwc) throw new NWCConnectionError()
+    await ctx.user.nwc.payInvoice(invoice.paymentRequest)
+    const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
+    feesPaid = lookupResponse.fees_paid
   }
 
   // Past the last `conversation.wait()`, so this line is written once and not on every replay.
@@ -305,7 +291,52 @@ export async function payingInvoice(
       }),
     paidKeyboard(ctx, invoice.paymentRequest),
   )
+  if (lnurl) {
+    await conversation.external(() => getRuntime().lnurlPays.markSenderNotified(lnurl.attemptId))
+  }
   return undefined
+}
+
+type LnurlPayOutcome = {kind: 'paid'; feesPaid: number} | {kind: 'hold'} | {kind: 'rejected'}
+
+/** Gate, debit, and settle mark. Runs once per attempt: the caller caches it. */
+async function payLnurlAttempt(input: {
+  attemptId: string
+  fromUserId: number
+  recipient: string
+  sats: number
+  rail: 'internal' | 'nwc'
+  paymentHash: string
+  bolt11: string
+  pay: () => Promise<number>
+}): Promise<LnurlPayOutcome> {
+  const pays = getRuntime().lnurlPays
+  const gate = await pays.beginPay({
+    attemptId: input.attemptId,
+    fromUserId: input.fromUserId,
+    recipient: input.recipient,
+    sats: input.sats,
+    rail: input.rail,
+    paymentHash: input.paymentHash,
+    bolt11: input.bolt11,
+  })
+  if (gate === 'blocked' || gate === 'in_flight') return {kind: 'hold'}
+  if (gate === 'paid') return {kind: 'paid', feesPaid: 0}
+  try {
+    const feesPaid = await input.pay()
+    await pays.notePaid(input.attemptId, input.paymentHash)
+    return {kind: 'paid', feesPaid}
+  } catch (error) {
+    if (error instanceof InvoiceAlreadyPaidError) {
+      await pays.notePaid(input.attemptId, input.paymentHash)
+      return {kind: 'paid', feesPaid: 0}
+    }
+    if (error instanceof InsufficientFundsError) {
+      await pays.noteRejected(input.attemptId)
+      return {kind: 'rejected'}
+    }
+    return {kind: 'hold'}
+  }
 }
 
 async function showLnurlHold(

@@ -177,10 +177,17 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
       return database.query.lnurlPayAttemptsTable.findMany({
         limit,
         offset,
-        orderBy: [asc(lnurlPayAttemptsTable.createdAt)],
-        where: and(
-          eq(lnurlPayAttemptsTable.status, 'pending'),
-          eq(lnurlPayAttemptsTable.reviewLogged, false),
+        // Unknown pays before sender notices, so a failed receipt cannot hide a debit.
+        orderBy: [asc(lnurlPayAttemptsTable.status), asc(lnurlPayAttemptsTable.createdAt)],
+        where: or(
+          and(
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            eq(lnurlPayAttemptsTable.reviewLogged, false),
+          ),
+          and(
+            eq(lnurlPayAttemptsTable.status, 'settled'),
+            eq(lnurlPayAttemptsTable.senderNotified, false),
+          ),
         ),
       })
     },
