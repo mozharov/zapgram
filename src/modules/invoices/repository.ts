@@ -2,7 +2,7 @@ import type {AppDatabase} from '@infra/db/client.js'
 import {pendingInvoicesTable} from '@infra/db/schema.js'
 import type {NewPendingInvoice, PendingInvoice} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {count, eq, lt} from 'drizzle-orm'
+import {and, count, eq, lt} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export function createInvoiceRepository(database: AppDatabase) {
@@ -80,6 +80,12 @@ export function createInvoiceRepository(database: AppDatabase) {
         .returning()
     },
 
+    async listExpired() {
+      return database.query.pendingInvoicesTable.findMany({
+        where: lt(pendingInvoicesTable.expiresAt, new Date()),
+      })
+    },
+
     async setWidgetMessage(
       paymentRequest: PendingInvoice['paymentRequest'],
       widgetChatId: number,
@@ -99,24 +105,48 @@ export function createInvoiceRepository(database: AppDatabase) {
     },
 
     /**
-     * Point the live widget at `toPaymentRequest` and drop it from `fromPaymentRequest` in one
-     * transaction, so a payment of A cannot land on the message that now shows B.
+     * Point the live widget at `toPaymentRequest` and drop it from `fromPaymentRequest`.
+     *
+     * bun-sqlite commits when the transaction callback returns, and it invokes that callback
+     * synchronously. An `async` callback yields at the first `await`, so the commit lands before
+     * the second update and the two writes are not one transaction. Both statements stay synchronous
+     * (`.all()`) for that reason.
+     *
+     * Returns false when `fromPaymentRequest` no longer holds this message (already claimed, or the
+     * pointer moved). The destination is left untouched, so a late paid status for A cannot be
+     * written onto the message that now shows B. Throws, and rolls both writes back, when the
+     * destination row is already gone.
      */
     async moveWidgetMessage(
       fromPaymentRequest: PendingInvoice['paymentRequest'],
       toPaymentRequest: PendingInvoice['paymentRequest'],
       widgetChatId: number,
       widgetMessageId: number,
-    ) {
-      await database.transaction(async tx => {
-        await tx
+    ): Promise<boolean> {
+      return database.transaction(tx => {
+        const cleared = tx
           .update(pendingInvoicesTable)
           .set({widgetChatId: null, widgetMessageId: null})
-          .where(eq(pendingInvoicesTable.paymentRequest, fromPaymentRequest))
-        await tx
+          .where(
+            and(
+              eq(pendingInvoicesTable.paymentRequest, fromPaymentRequest),
+              eq(pendingInvoicesTable.widgetChatId, widgetChatId),
+              eq(pendingInvoicesTable.widgetMessageId, widgetMessageId),
+            ),
+          )
+          .returning()
+          .all()
+        if (cleared.length !== 1) return false
+        const attached = tx
           .update(pendingInvoicesTable)
           .set({widgetChatId, widgetMessageId})
           .where(eq(pendingInvoicesTable.paymentRequest, toPaymentRequest))
+          .returning()
+          .all()
+        if (attached.length !== 1) {
+          throw new Error('Invoice widget destination is gone')
+        }
+        return true
       })
     },
   }
@@ -145,6 +175,7 @@ export const getPendingInvoices = (limit?: number, offset?: number) =>
   getRuntime().invoices.list(limit, offset)
 export const countPendingInvoices = () => getRuntime().invoices.count()
 export const deleteExpiredInvoices = () => getRuntime().invoices.deleteExpired()
+export const listExpiredInvoices = () => getRuntime().invoices.listExpired()
 export const setInvoiceWidgetMessage = (
   paymentRequest: PendingInvoice['paymentRequest'],
   widgetChatId: number,

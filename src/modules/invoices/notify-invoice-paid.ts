@@ -2,6 +2,7 @@ import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {sanitizeMemo} from '@core/lightning/memo.js'
 import {msatsToSats} from '@core/money/sats.js'
 import type {PendingInvoice, User} from '@infra/db/types.js'
+import type {PaidInvoiceNotifySource} from '@modules/invoices/claim-and-notify-paid.js'
 import {syncInvoiceWidget} from '@modules/invoices/sync-invoice-widget.js'
 import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
@@ -14,6 +15,7 @@ export async function notifyInvoicePaid(
   paymentRequest: PendingInvoice['paymentRequest'],
   userId: User['id'],
   widget?: Pick<PendingInvoice, 'paymentHash' | 'widgetChatId' | 'widgetMessageId'> | null,
+  source?: PaidInvoiceNotifySource,
 ) {
   try {
     const user = await getUserOrThrow(userId)
@@ -39,7 +41,10 @@ export async function notifyInvoicePaid(
     )
   } catch (error) {
     // The widget is the in-chat proof of payment. A failed receipt must not skip it.
-    getRuntime().log.error({error, userId}, 'Failed to notify user about paid invoice')
+    getRuntime().log.error(
+      {error, userId, source, paymentHash: widget?.paymentHash},
+      'Failed to notify user about paid invoice',
+    )
   }
   if (widget) {
     await syncInvoiceWidget(

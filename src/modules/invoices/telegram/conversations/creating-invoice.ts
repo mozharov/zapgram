@@ -7,6 +7,7 @@ import {sanitizeMemo} from '@core/lightning/memo.js'
 import {satsToMsats} from '@core/money/sats.js'
 import {editMessageWidgetData, sendWidget} from '@infra/telegram/widget-api.js'
 import {
+  clearInvoiceWidgetMessage,
   createPendingInvoice,
   moveInvoiceWidgetMessage,
   setInvoiceWidgetMessage,
@@ -351,7 +352,9 @@ async function trySendInvoiceWidget(
   }
 
   const chatId = typeof sent.chat.id === 'number' ? sent.chat.id : host.chatId
-  // Persist the pointer before any further API call. A payment in that gap must find this message.
+  // The message id does not exist until sendWidget returns, so the pointer cannot be written
+  // earlier. This external() is the whole remaining gap: a payment that lands inside it will not
+  // find the widget. Persist before any further API call so the gap is only that one write.
   await conversation.external(async () => {
     if (wallet === 'internal') {
       await setInvoiceWidgetMessage(paymentRequest, chatId, sent.message_id)
@@ -419,11 +422,24 @@ async function renderFinalWidget(
     await conversation.external(() => {
       ctx.log.warn({description}, 'Replacement invoice widget does not fit')
     })
-    await sendPhotoFallback(ctx, chatId, caption, keyboard)
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
     return
   }
 
   if (!invoiceWidgetNeedsNewMessage(document.bolt11InData, shown.paymentRequest, paymentRequest)) {
+    // Move the pointer before rewriting chat_data. A payment of A that already claimed the row
+    // keeps this message; writing B's QR onto it would put A's paid status on B.
+    if (wallet === 'internal') {
+      const move = await takeWidgetMessage(
+        conversation,
+        ctx,
+        shown,
+        paymentRequest,
+        caption,
+        keyboard,
+      )
+      if (move !== 'moved') return
+    }
     try {
       await editMessageWidgetData(ctx.api, {
         chat_id: chatId,
@@ -435,14 +451,29 @@ async function renderFinalWidget(
       await conversation.external(() => {
         ctx.log.warn({description}, 'Failed to update invoice widget')
       })
-      // The bubble still shows A's QR. Do not caption it as B; hand B over as its own photo.
-      await sendPhotoFallback(ctx, chatId, caption, keyboard)
+      // The bubble still shows A's QR. Give the pointer back to A, then hand B over as a photo
+      // so this caption is not left describing the previous invoice.
+      if (wallet === 'internal') {
+        await conversation.external(async () => {
+          try {
+            const restored = await moveInvoiceWidgetMessage(
+              paymentRequest,
+              shown.paymentRequest,
+              chatId,
+              messageId,
+            )
+            if (!restored) await clearInvoiceWidgetMessage(paymentRequest)
+          } catch (restoreError) {
+            ctx.log.warn(
+              {description: errorText(restoreError)},
+              'Failed to restore the invoice widget pointer',
+            )
+            await clearInvoiceWidgetMessage(paymentRequest)
+          }
+        })
+      }
+      await handOffReplacement(conversation, ctx, shown, caption, keyboard)
       return
-    }
-    if (wallet === 'internal') {
-      await conversation.external(() =>
-        moveInvoiceWidgetMessage(shown.paymentRequest, paymentRequest, chatId, messageId),
-      )
     }
     await closeWidget(ctx, chatId, messageId, caption.html, keyboard)
     return
@@ -464,7 +495,7 @@ async function renderFinalWidget(
     await conversation.external(() => {
       ctx.log.warn({description}, 'Replacement invoice widget send failed, sending QR photo')
     })
-    await sendPhotoFallback(ctx, chatId, caption, keyboard)
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
     return
   }
   const sentChatId = typeof sent.chat.id === 'number' ? sent.chat.id : chatId
@@ -474,6 +505,77 @@ async function renderFinalWidget(
     )
   }
   await closeWidget(ctx, sentChatId, sent.message_id, caption.html, keyboard)
+}
+
+type WidgetMove = 'moved' | 'claimed' | 'failed'
+
+/**
+ * Attach the live message to the reminted invoice. `claimed` means A was already taken, so the
+ * caller must not edit that message. `failed` already sent B as a photo and retired A's caption.
+ */
+async function takeWidgetMessage(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+  paymentRequest: string,
+  caption: {html: string; buffer: Buffer},
+  keyboard: InlineKeyboard,
+): Promise<WidgetMove> {
+  try {
+    const moved = await conversation.external(() =>
+      moveInvoiceWidgetMessage(
+        shown.paymentRequest,
+        paymentRequest,
+        shown.message.chat.id,
+        shown.message.message_id,
+      ),
+    )
+    if (!moved) {
+      await conversation.external(() => {
+        ctx.log.info({messageId: shown.message.message_id}, 'Invoice widget stayed with invoice A')
+      })
+      await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
+      return 'claimed'
+    }
+    return 'moved'
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Failed to move invoice widget')
+    })
+    await handOffReplacement(conversation, ctx, shown, caption, keyboard)
+    return 'failed'
+  }
+}
+
+async function handOffReplacement(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+  caption: {html: string; buffer: Buffer},
+  keyboard: InlineKeyboard,
+): Promise<void> {
+  await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
+  await retireReplacedInvoice(conversation, ctx, shown)
+}
+
+async function retireReplacedInvoice(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+): Promise<void> {
+  const keyboard = invoiceKeyboard(ctx, shown.paymentRequest, false, {includeWalletButton: false})
+  try {
+    await ctx.api.editMessageCaption(shown.message.chat.id, shown.message.message_id, {
+      caption: ctx.t('invoice-replaced'),
+      reply_markup: keyboard,
+    })
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Failed to retire the replaced invoice')
+    })
+  }
 }
 
 async function closeWidget(
@@ -500,16 +602,12 @@ async function sendPhotoFallback(
   const sent = await ctx.api.sendPhoto(chatId, new InputFile(caption.buffer), {
     caption: caption.html,
   })
+  // The photo is already on the message. Attaching the keyboard with editMessageMedia would
+  // upload the same PNG again.
   await closeLivingMenu(
     ctx,
     sent.message_id,
-    markup =>
-      ctx.api.editMessageMedia(
-        chatId,
-        sent.message_id,
-        {type: 'photo', media: new InputFile(caption.buffer), caption: caption.html},
-        {reply_markup: markup},
-      ),
+    markup => ctx.api.editMessageReplyMarkup(chatId, sent.message_id, {reply_markup: markup}),
     keyboard,
   )
 }

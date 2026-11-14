@@ -20,7 +20,7 @@ export async function claimAndNotifyPaidInvoice(
   const claimed = await claim()
   if (!claimed) return 'already_claimed'
 
-  await notifyInvoicePaid(claimed.paymentRequest, claimed.userId, claimed).catch(
+  await notifyInvoicePaid(claimed.paymentRequest, claimed.userId, claimed, source).catch(
     (error: unknown) => {
       getRuntime().log.error({error, source}, 'Failed to notify user about paid invoice')
     },

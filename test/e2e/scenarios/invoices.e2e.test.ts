@@ -217,6 +217,71 @@ test('adding a memo remints the invoice and edits the QR without the Add memo bu
   expectNoErrors(e2e.logs)
 })
 
+test('a failed widget edit on memo remint sends one photo and retires the old caption', async () => {
+  await enterCreateInvoiceAtQr()
+  const previous = await onlyPendingInvoice()
+  await openMemoPrompt()
+  e2e.tg.fail('editMessageWidgetData', {
+    error_code: 400,
+    description: 'Bad Request: WIDGET_EDIT_FAILED',
+  })
+
+  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
+    db: {
+      conversations: {removed: 1},
+      pendingInvoices: {added: 1},
+    },
+    lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
+    telegram: [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'editMessageWidgetData', to: USER_A},
+      {method: 'sendPhoto', to: USER_A, text: /Description: <b>coffee<\/b>/},
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'editMessageCaption', to: USER_A, text: /replaced by a new one/},
+    ],
+  })
+
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  const kept = rows.find(row => row.paymentRequest === previous.paymentRequest)
+  const reminted = rows.find(row => row.paymentRequest !== previous.paymentRequest)
+  expect(kept).toMatchObject({
+    widgetChatId: previous.widgetChatId,
+    widgetMessageId: previous.widgetMessageId,
+  })
+  expect(reminted?.widgetMessageId).toBeNull()
+  expect(e2e.tg.of('sendPhoto')).toHaveLength(1)
+  expect(e2e.tg.of('editMessageMedia')).toHaveLength(0)
+  expectNoErrors(e2e.logs)
+})
+
+test('a memo remint does not retarget a widget whose invoice was already claimed', async () => {
+  await enterCreateInvoiceAtQr()
+  const previous = await onlyPendingInvoice()
+  await openMemoPrompt()
+  await e2e.container.invoices.deleteByPaymentRequest(previous.paymentRequest)
+
+  await expectDelta(e2e, () => e2e.send(privateText(MEMO)), {
+    db: {conversations: {removed: 1}, pendingInvoices: {added: 1}},
+    lnbits: {payments: [{out: false, sats: AMOUNT, times: 1}]},
+    telegram: [
+      {method: 'editMessageReplyMarkup', to: USER_A},
+      {method: 'sendChatAction', to: USER_A},
+      {method: 'sendPhoto', to: USER_A, text: /Description: <b>coffee<\/b>/},
+      {method: 'editMessageReplyMarkup', to: USER_A},
+    ],
+  })
+
+  expect(e2e.tg.of('editMessageWidgetData')).toHaveLength(0)
+  expect(e2e.tg.of('sendPhoto')).toHaveLength(1)
+  expect(e2e.tg.of('editMessageMedia')).toHaveLength(0)
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  expect(rows).toHaveLength(1)
+  expect(rows[0]?.widgetMessageId).toBeNull()
+  expect(rows[0]?.paymentRequest).not.toBe(previous.paymentRequest)
+  expectNoErrors(e2e.logs)
+})
+
 test('an LNbits that refuses to mint the invoice leaves no pending row behind', async () => {
   await e2e.send(privateCallback(staticCallback.createInvoice))
   e2e.ln.state.failAlways({method: 'POST', path: '/api/v1/payments'}, {status: 500, body: {}})
