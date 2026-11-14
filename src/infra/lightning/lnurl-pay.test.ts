@@ -189,6 +189,62 @@ describe('fetchLnurlPay', () => {
     }
   })
 
+  test('a vetted address that does not connect is followed by the next one', async () => {
+    const handed: string[] = []
+    const hosts: string[] = []
+    let calls = 0
+    const lookup = spyOn(dnsPromises, 'lookup').mockImplementation((() => {
+      calls += 1
+      return Promise.resolve([
+        {address: '127.0.0.2', family: 4},
+        {address: '127.0.0.1', family: 4},
+      ])
+    }) as unknown as typeof dnsPromises.lookup)
+    const restore = watchHanded(handed, hosts)
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    if (server.port === undefined) throw new Error('LNURL test server has no port')
+    port = server.port
+    try {
+      const quote = await fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl(`http://localhost:${port}/pay`),
+      })
+      expect(quote.callback).toContain('/callback')
+      expect(calls).toBe(1)
+      expect(handed.slice(0, 2)).toEqual(['127.0.0.2', '127.0.0.1'])
+      expect(handed.includes('169.254.169.254')).toBe(false)
+
+      calls = 0
+      handed.length = 0
+      lookup.mockImplementation((() => {
+        calls += 1
+        return Promise.resolve([
+          {address: '127.0.0.1', family: 4},
+          {address: '169.254.169.254', family: 4},
+        ])
+      }) as unknown as typeof dnsPromises.lookup)
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`http://localhost:${port}/pay`),
+        }),
+      ).rejects.toMatchObject({code: 'bad-response'})
+      expect(calls).toBe(1)
+      expect(handed).toEqual([])
+    } finally {
+      lookup.mockRestore()
+      restore()
+      server.stop(true)
+    }
+  })
+
   test('does not connect to a metadata address or to clearnet http', async () => {
     await expect(
       fetchLnurlPay({

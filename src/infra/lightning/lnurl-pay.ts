@@ -61,12 +61,22 @@ export type LnurlInvoice = {
   callbackHosts: string[]
 }
 
+type VettedAddress = {address: string; family: 4 | 6}
+
 type ResolvedTarget = {
   url: URL
-  address: string
-  family: 4 | 6
+  addresses: VettedAddress[]
   label: string
 }
+
+/** Failures that mean this address was never reached. A later vetted address may still work. */
+const CONNECT_FAILURES = new Set([
+  'ECONNREFUSED',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EADDRNOTAVAIL',
+  'ENETDOWN',
+])
 
 /**
  * LNURL-pay metadata for a lightning address or LNURL.
@@ -80,7 +90,8 @@ type ResolvedTarget = {
  * Loopback and RFC1918 are reachable only when `NODE_ENV` is exactly `test`. Link-local,
  * metadata, site-local, NAT64, and 6to4-to-a-private address are never a pay target. Onion
  * names are refused: there is no Tor transport, so they would be resolved on the clearnet.
- * The connection uses the address that passed that check, so a second DNS lookup cannot rebind it.
+ * The connection uses an address that passed that check, so a second DNS lookup cannot rebind it.
+ * When the first vetted address does not connect, the next one from that same answer is tried.
  */
 export async function fetchLnurlPay(request: PaymentRequest): Promise<LnurlPayQuote> {
   const fetched = await getJson(lnurlPayEndpoint(request))
@@ -220,7 +231,7 @@ async function fetchText(start: string): Promise<{status: number; body: string; 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       const target = await resolveTarget(current, signal)
       hosts.push(target.label)
-      const response = await lnurlPinnedGet(target.url, target.address, target.family, signal)
+      const response = await pinnedGet(target, signal)
       if (response.status >= 300 && response.status < 400) {
         if (!response.location || hop === MAX_REDIRECTS) throw new LnurlPayError('bad-response')
         current = new URL(response.location, target.url).toString()
@@ -258,9 +269,40 @@ async function resolveTarget(raw: string, signal: AbortSignal): Promise<Resolved
     const loopback = records.every(record => isLoopback(record.address))
     if (!lnurlLocalTargetsAllowed(nodeEnv) || !loopback) throw new LnurlPayError('bad-response')
   }
-  const chosen = records[0]
-  if (!chosen) throw new LnurlPayError('bad-response')
-  return {url, address: chosen.address, family: chosen.family, label: endpointLabel(url)}
+  return {url, addresses: records, label: endpointLabel(url)}
+}
+
+/**
+ * One vetted address per attempt. A connect failure tries the next address from the
+ * same DNS answer. An HTTP response, a bad body, or the shared deadline does not.
+ */
+async function pinnedGet(
+  target: ResolvedTarget,
+  signal: AbortSignal,
+): Promise<{status: number; body: string; location?: string}> {
+  let last: unknown
+  for (let index = 0; index < target.addresses.length; index++) {
+    const record = target.addresses[index]
+    if (!record) break
+    try {
+      return await lnurlPinnedGet(target.url, record.address, record.family, signal)
+    } catch (error) {
+      const more = index < target.addresses.length - 1
+      if (!more || !isConnectFailure(error)) throw error
+      last = error
+    }
+  }
+  throw last instanceof Error ? last : new LnurlPayError('server')
+}
+
+function isConnectFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const code = (error as NodeJS.ErrnoException).code
+  if (code && CONNECT_FAILURES.has(code)) return true
+  const cause = error.cause
+  if (!(cause instanceof Error)) return false
+  const nested = (cause as NodeJS.ErrnoException).code
+  return nested !== undefined && CONNECT_FAILURES.has(nested)
 }
 
 async function addressesFor(
