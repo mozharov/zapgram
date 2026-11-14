@@ -162,7 +162,9 @@ function route({
   // Admin list used to match check_internal. Must stay ahead of /api/v1/payments/{hash}.
   // A non-admin token only sees its own user; the fake has no such user, so the page is empty.
   if (method === 'GET' && path === '/api/v1/payments/all/paginated') {
-    if (bearerOf(request) !== FAKE_LNBITS_ADMIN_BEARER) return json({data: [], total: 0})
+    const bearer = bearerOf(request)
+    if (!bearer) return json({detail: 'Missing user ID or access token.'}, 401)
+    if (bearer !== FAKE_LNBITS_ADMIN_BEARER) return json({data: [], total: 0})
     const paymentHash = url.searchParams.get('payment_hash')
     const rows = state.payments.filter(
       payment => paymentHash === null || payment.paymentHash === paymentHash,

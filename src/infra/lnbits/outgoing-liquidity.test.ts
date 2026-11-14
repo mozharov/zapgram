@@ -1,10 +1,12 @@
 import {describe, expect, test} from 'bun:test'
+import {Writable} from 'node:stream'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import got, {HTTPError, RequestError} from 'got'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
+import {createLogger} from '../logger.js'
 import {interpretFundingSourceStatus} from './master-wallet.js'
 import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
@@ -15,8 +17,13 @@ import {
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from './outgoing-liquidity.js'
 
-function held(msat: number, generation: number, bolt11: string) {
-  return {msat, generation, paymentHash: decodeInvoice(bolt11).paymentHash.toLowerCase()}
+function held(msat: number, generation: number, bolt11: string, walletId = '') {
+  return {
+    msat,
+    generation,
+    paymentHash: decodeInvoice(bolt11).paymentHash.toLowerCase(),
+    walletId,
+  }
 }
 
 const invoice = mintInvoice({sats: 21, description: 'liquidity'})
@@ -237,14 +244,59 @@ describe('createOutgoingLiquidityGuard', () => {
     expect(reads).toBe(2)
   })
 
-  test('a second pay of the same invoice does not reserve the amount again', async () => {
+  test('another wallet paying the same invoice is checked against the balance', async () => {
+    const {liquidity} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
+    await expect(
+      liquidity.assertCanPay({
+        bolt11: invoice.bolt11,
+        payerWalletId: 'wallet-a',
+        feeReserveMsat: async () => 2_000,
+      }),
+    ).resolves.toEqual(held(23_000, 1, invoice.bolt11, 'wallet-a'))
+    await expect(
+      liquidity.assertCanPay({
+        bolt11: invoice.bolt11,
+        payerWalletId: 'wallet-b',
+        feeReserveMsat: async () => 2_000,
+      }),
+    ).rejects.toBeInstanceOf(SendPausedError)
+  })
+
+  test('a shared reservation stays until the last live pay of that wallet and invoice ends', async () => {
     const {liquidity} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
     const [first, secondPay] = await Promise.all([
       liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
       liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
     ])
-    const holds = [first, secondPay].filter(hold => hold !== undefined)
-    expect(holds).toEqual([held(23_000, 1, invoice.bolt11)])
+    if (!first || !secondPay) throw new Error('Expected both live pays to share a hold')
+    await liquidity.release(first)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+    await liquidity.release(secondPay)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).resolves.toEqual(held(23_000, 1, second.bolt11))
+  })
+
+  test('a released hold does not inflate a clamped remainder', async () => {
+    let balance = 30_000
+    const {pay, liquidity, advance} = guard({
+      read: async () => ({ok: true, balanceMsat: balance}),
+      ttlMs: 1_000,
+    })
+    const hold = await pay()
+    if (!hold) throw new Error('Expected a liquidity hold')
+    balance = 0
+    advance(1_000)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+    await liquidity.release(hold)
+    const tiny = mintInvoice({sats: 1, description: 'tiny'})
+    await expect(
+      liquidity.assertCanPay({bolt11: tiny.bolt11, feeReserveMsat: async () => 0}),
+    ).rejects.toBeInstanceOf(SendPausedError)
   })
 
   test('a timed-out hold is not subtracted again after the balance is reread', async () => {
@@ -318,7 +370,7 @@ describe('probeFundingSource', () => {
       read: async () => ({ok: true, balanceMsat: 5}),
       probeClassify: async () => false,
     })
-    expect(mode).toEqual({mode: 'active', reason: 'ok', classify: 'failed'})
+    expect(mode).toEqual({mode: 'degraded', reason: 'ok', classify: 'failed'})
   })
 
   test('an unreadable balance disables without throwing', async () => {
@@ -443,6 +495,34 @@ test('a non-string funding source error is not treated as a healthy balance', ()
   expect(
     interpretFundingSourceStatus({funding_source_balance_msat: 5, funding_source_error: null}),
   ).toEqual({ok: true, balanceMsat: 5})
+})
+
+test('a pause log does not include the invoice', async () => {
+  const lines: string[] = []
+  const log = createLogger(
+    {LOG_LEVEL: 'info', NODE_ENV: 'test'},
+    new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(String(chunk))
+        callback()
+      },
+    }),
+  )
+  const liquidity = createOutgoingLiquidityGuard({
+    classifyInvoice: async () => 'external',
+    readBalance: async () => ({ok: true, balanceMsat: 0}),
+    log,
+  })
+  await expect(
+    liquidity.assertCanPay({
+      bolt11: invoice.bolt11,
+      feeReserveMsat: async () => 2_000,
+    }),
+  ).rejects.toBeInstanceOf(SendPausedError)
+  const text = lines.join('\n')
+  expect(text).toContain('Outgoing payment paused')
+  expect(text).not.toContain(invoice.bolt11)
+  expect(text).not.toContain('payment_request')
 })
 
 test('event names stay stable', () => {

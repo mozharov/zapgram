@@ -173,7 +173,7 @@ broadcast =
 
 donation = 
     .failed = ⚠️ Платёж прошёл, но опциональный донат {$donationSats} сат{$usdSuffix} отправить не удалось. Проверь баланс / NWC или используй /donate.
-    .paused = ⏸ Платёж прошёл. Опциональный донат {$donationSats} сат{$usdSuffix} на паузе. Средства в безопасности.
+    .paused = ⏸ Платёж прошёл. Опциональный донат {$donationSats} сат{$usdSuffix} не отправлен. Средства в безопасности.
 
 donate = 
     .hub = <h1>💚 Поддержать {bot-name}</h1>

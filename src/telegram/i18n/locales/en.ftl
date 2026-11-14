@@ -173,7 +173,7 @@ broadcast =
 
 donation = 
     .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
-    .paused = ⏸ Your payment succeeded. The optional {$donationSats} sat{$usdSuffix} support tip is paused for now. Your funds are safe.
+    .paused = ⏸ Your payment succeeded. The optional {$donationSats} sat{$usdSuffix} support tip was not sent. Your funds are safe.
 
 donate = 
     .hub = <h1>💚 Support {bot-name}</h1>

@@ -41,14 +41,19 @@ export type InvoiceOrigin = 'internal' | 'external' | 'unknown'
 export type ClassifyProbe = 'ok' | 'failed' | 'missing_bearer'
 
 export type LiquidityMode = {
-  mode: 'active' | 'disabled'
+  mode: 'active' | 'degraded' | 'disabled'
   reason: 'ok' | 'missing_bearer' | LiquidityCheckReason | 'check_failed'
   /** Whether the admin payment list used to classify invoices answered. */
   classify: ClassifyProbe
 }
 
 /** Amount held against the cached balance until the pay settles or is released. */
-export type LiquidityHold = {msat: number; generation: number; paymentHash: string}
+export type LiquidityHold = {
+  msat: number
+  generation: number
+  paymentHash: string
+  walletId: string
+}
 
 export type OutgoingLiquidityGuard = {
   assertCanPay(input: {
@@ -112,7 +117,7 @@ export function createOutgoingLiquidityGuard(deps: {
   let failedRead: {reason: LiquidityCheckReason; at: number} | null = null
   let inFlight: Promise<BalanceRead> | null = null
   let tail: Promise<unknown> = Promise.resolve()
-  const outstanding = new Map<string, LiquidityHold>()
+  const outstanding = new Map<string, Reservation>()
   const lastFailureEventAt = new Map<string, number>()
 
   function noteFailure(reason: LiquidityCheckReason): void {
@@ -148,12 +153,10 @@ export function createOutgoingLiquidityGuard(deps: {
             generation += 1
             // A fresh server balance does not include pays still in flight. Keep those holds.
             for (const hold of outstanding.values()) hold.generation = generation
+            // Keep a negative remainder. Clamping here and adding a hold back later
+            // invents balance that the server does not have.
             const available = read.balanceMsat - reservedMsat()
-            cached = {
-              balanceMsat: available > 0 ? available : 0,
-              at: now(),
-              generation,
-            }
+            cached = {balanceMsat: available, at: now(), generation}
             failedRead = null
             return {ok: true as const, balanceMsat: cached.balanceMsat}
           }
@@ -189,6 +192,7 @@ export function createOutgoingLiquidityGuard(deps: {
   async function assertExternal(
     bolt11: string,
     feeReserveMsat: () => Promise<number>,
+    payerWalletId: string | undefined,
   ): Promise<LiquidityHold | undefined> {
     let amountMsat: number
     let paymentHash: string
@@ -204,8 +208,14 @@ export function createOutgoingLiquidityGuard(deps: {
       noteFailure('invalid_invoice')
       return
     }
-    // A second pay of the same invoice is already reserved. Subtracting again pauses the next send.
-    if (outstanding.has(paymentHash)) return
+    const walletId = payerWalletId ?? ''
+    const key = reservationKey(walletId, paymentHash)
+    // Same wallet and invoice are one reservation. Another wallet still has to be checked.
+    const existing = outstanding.get(key)
+    if (existing) {
+      existing.refs += 1
+      return {msat: existing.msat, generation: existing.generation, paymentHash, walletId}
+    }
 
     const read = await balance()
     if (!read.ok) {
@@ -213,8 +223,9 @@ export function createOutgoingLiquidityGuard(deps: {
       return
     }
 
-    // A non-negative reserve cannot make a balance that is already under the invoice enough.
-    if (read.balanceMsat < amountMsat) {
+    // Compare against zero when the cache is negative. The stored remainder stays intact.
+    const comparable = read.balanceMsat > 0 ? read.balanceMsat : 0
+    if (comparable < amountMsat) {
       pause(amountMsat, null, read.balanceMsat)
     }
 
@@ -231,7 +242,7 @@ export function createOutgoingLiquidityGuard(deps: {
     }
     if (
       !backendCoversOutgoingPayment({
-        balanceMsat: read.balanceMsat,
+        balanceMsat: comparable,
         amountMsat,
         feeReserveMsat: reserveMsat,
       })
@@ -243,10 +254,26 @@ export function createOutgoingLiquidityGuard(deps: {
     // so releasing a failed pay cannot add the amount on top of a fresh server balance.
     if (!cached) return
     const needed = amountMsat + reserveMsat
-    const hold = {msat: needed, generation: cached.generation, paymentHash}
-    outstanding.set(paymentHash, hold)
-    cached = {...cached, balanceMsat: Math.max(0, cached.balanceMsat - needed)}
-    return hold
+    outstanding.set(key, {
+      msat: needed,
+      generation: cached.generation,
+      paymentHash,
+      walletId,
+      refs: 1,
+    })
+    cached = {...cached, balanceMsat: cached.balanceMsat - needed}
+    return {msat: needed, generation: cached.generation, paymentHash, walletId}
+  }
+
+  function finish(hold: LiquidityHold, restore: boolean): void {
+    const current = outstanding.get(reservationKey(hold.walletId, hold.paymentHash))
+    if (!current) return
+    current.refs -= 1
+    if (current.refs > 0) return
+    outstanding.delete(reservationKey(hold.walletId, hold.paymentHash))
+    if (!restore) return
+    if (!cached || cached.generation !== current.generation) return
+    cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
   }
 
   function enqueue<T>(task: () => Promise<T> | T): Promise<T> {
@@ -273,30 +300,30 @@ export function createOutgoingLiquidityGuard(deps: {
         return
       }
       // A previous pause rejects the chain. Swallow it so the next payment is still checked.
-      return enqueue(() => {
-        return assertExternal(input.bolt11, input.feeReserveMsat)
-      })
+      return enqueue(() => assertExternal(input.bolt11, input.feeReserveMsat, input.payerWalletId))
     },
     settle(hold) {
       return enqueue(() => {
-        outstanding.delete(hold.paymentHash)
+        finish(hold, false)
       })
     },
     release(hold) {
       return enqueue(() => {
-        const current = outstanding.get(hold.paymentHash)
-        if (!current) return
-        outstanding.delete(hold.paymentHash)
-        if (!cached || cached.generation !== current.generation) return
-        cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
+        finish(hold, true)
       })
     },
     abandon(hold) {
       return enqueue(() => {
-        outstanding.delete(hold.paymentHash)
+        finish(hold, false)
       })
     },
   }
+}
+
+type Reservation = LiquidityHold & {refs: number}
+
+function reservationKey(walletId: string, paymentHash: string): string {
+  return `${walletId}\n${paymentHash}`
 }
 
 /** One startup sample. A thrown read must not take the process down. */
@@ -316,7 +343,8 @@ export async function probeFundingSource(input: {
   }
   try {
     const read = await input.read()
-    if (read.ok) return {mode: 'active', reason: 'ok', classify}
+    if (read.ok && classify === 'ok') return {mode: 'active', reason: 'ok', classify}
+    if (read.ok) return {mode: 'degraded', reason: 'ok', classify}
     return {mode: 'disabled', reason: read.reason, classify}
   } catch {
     return {mode: 'disabled', reason: 'check_failed', classify}

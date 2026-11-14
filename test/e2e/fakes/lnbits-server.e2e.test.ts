@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'bun:test'
+import {Writable} from 'node:stream'
 import {createConfig} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
@@ -6,6 +7,7 @@ import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {createOutgoingLiquidityGuard} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
+import {createLogger} from '@infra/logger.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
 import {FAKE_LNBITS_ADMIN_BEARER, type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
@@ -35,6 +37,38 @@ describe('fake LNbits HTTP server', () => {
       const wallet = await master.getWallet(created.id)
       expect(wallet.user).toBe(created.id)
       expect(wallet.balance_msat).toBe(0)
+    })
+  })
+
+  test('the admin payment list without a token is unauthorized', async () => {
+    await withFake(async fake => {
+      const response = await fetch(`${fake.url}/api/v1/payments/all/paginated`)
+      expect(response.status).toBe(401)
+    })
+  })
+
+  test('a paid invoice debug log omits bolt11 and payment_request', async () => {
+    await withFake(async fake => {
+      const lines: string[] = []
+      const log = createLogger(
+        {LOG_LEVEL: 'debug', NODE_ENV: 'test'},
+        new Writable({
+          write(chunk, _encoding, callback) {
+            lines.push(String(chunk))
+            callback()
+          },
+        }),
+      )
+      const user = fake.state.ensureUser('100009')
+      const wallet = fake.state.walletsOfUser(user.id)[0]
+      if (!wallet) throw new Error('wallet missing')
+      fake.state.credit(wallet.id, 100_000)
+      const external = mintInvoice({sats: 21, description: 'logged'})
+      const client = new UserWallet(wallet.adminkey, wallet.balanceMsat, fake.url, '', log)
+      await client.payInvoice(external.bolt11)
+      const text = lines.join('\n')
+      expect(text).not.toContain(external.bolt11)
+      expect(text).not.toContain('payment_request')
     })
   })
 
