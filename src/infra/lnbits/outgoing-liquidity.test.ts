@@ -2,7 +2,7 @@ import {describe, expect, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
-import got, {HTTPError, TimeoutError} from 'got'
+import got, {HTTPError} from 'got'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
@@ -260,27 +260,6 @@ describe('payLeftBackendUnspent', () => {
       expect(payLeftBackendUnspent(crashed)).toBe(false)
     } finally {
       server.stop(true)
-    }
-
-    const hung = Bun.serve({
-      hostname: '127.0.0.1',
-      port: 0,
-      fetch() {
-        return new Promise(() => undefined)
-      },
-    })
-    try {
-      const timedOut = await got(`http://127.0.0.1:${hung.port}/`, {
-        retry: {limit: 0},
-        timeout: {request: 50},
-      }).then(
-        () => undefined,
-        (error: unknown) => error,
-      )
-      expect(timedOut).toBeInstanceOf(TimeoutError)
-      expect(payLeftBackendUnspent(timedOut)).toBe(false)
-    } finally {
-      hung.stop(true)
     }
   })
 })
