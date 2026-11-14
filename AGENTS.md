@@ -130,6 +130,8 @@ Full rules: `docs/architecture.md` → Logging.
   jobs/services use `getRuntime().log`.
 - Add an info line for every state change and money movement; skip it for read-only screens.
 - Never log message text, NWC URLs, LNbits keys, or whole `ctx.user` / wallet objects.
+  `describeUpdate` stays metadata (`textLength`, `looksLikeOnchain`, `textKind`, `textTruncated`).
+  `dm_unrecognized_text` in PostHog is the exception: it stores the message, cut at 4000 code points.
 - Inside conversations, log after the last `wait()` or inside `conversation.external` — anything
   else re-runs on every replay.
 

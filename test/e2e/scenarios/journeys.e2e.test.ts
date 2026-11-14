@@ -89,7 +89,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageMedia',
+        method: 'sendWidget',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
@@ -102,7 +102,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     () =>
       e2e.send(
         privateCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('editMessageMedia'),
+          messageId: requiredMessageId('sendWidget'),
         }),
       ),
     {
@@ -120,7 +120,10 @@ test('a new user receives, observes and tips sats without rebuilding the world',
 
   await expectDelta(e2e, () => e2e.jobs.pendingInvoices(), {
     db: {pendingInvoices: {removed: 1}},
-    telegram: [{method: 'sendMessage', to: USER_A, text: /received payment/}],
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /received payment/},
+      {method: 'editMessageWidgetData', to: USER_A},
+    ],
   })
 
   await expectDelta(e2e, () => e2e.send(privateCommand('/wallet')), {
@@ -579,7 +582,7 @@ test('an invoice conversation survives a container restart on the same database'
       {method: 'deleteMessage', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {
-        method: 'editMessageMedia',
+        method: 'sendWidget',
         to: USER_A,
         text: /Amount: <b>1\D?000 sats(?: \(\$[^)]+\))?<\/b>/,
       },
@@ -596,7 +599,7 @@ test('an invoice conversation survives a container restart on the same database'
     () =>
       e2e.send(
         privateCallback(staticCallback.wallet, {
-          messageId: requiredMessageId('editMessageMedia'),
+          messageId: requiredMessageId('sendWidget'),
         }),
       ),
     {
@@ -868,7 +871,7 @@ function richHtmlOf(payload: Record<string, unknown> | undefined): string {
 }
 
 function requiredMessageId(
-  method: 'sendMessage' | 'sendPhoto' | 'editMessageText' | 'editMessageMedia',
+  method: 'sendMessage' | 'sendPhoto' | 'sendWidget' | 'editMessageText' | 'editMessageMedia',
 ): number {
   const messageId = e2e.tg.lastMessageId(method)
   if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)

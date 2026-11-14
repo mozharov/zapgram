@@ -134,6 +134,13 @@
       "when": 1787100000000,
       "tag": "0018_join_screen_pointer",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1787200000000,
+      "tag": "0019_invoice_widget_message",
+      "breakpoints": true
     }
   ]
 }

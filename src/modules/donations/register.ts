@@ -1,3 +1,4 @@
+import {botCommand} from '@telegram/bot-commands.js'
 import {
   donateAmountRoute,
   donateMonthlyAmountRoute,
@@ -24,7 +25,7 @@ import {
 } from './telegram/handlers/donation-settings.js'
 import {clearDonateCallbackMessage} from './telegram/reply-hub.js'
 
-export const donationCommands = ['donate'] as const
+export const donationCommands = [botCommand.donate] as const
 
 export function register(composer: Composer<BotContext>): void {
   const privateChat = composer.chatType('private')

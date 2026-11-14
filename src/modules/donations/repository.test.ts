@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test'
+import {donationPlatformStatsTable, donationsTable} from '@infra/db/schema.js'
 import {createDonationRepository} from '@modules/donations/repository.js'
 import {createUserRepository} from '@modules/users/repository.js'
 import {createTestDb} from '@test/helpers/db.js'
@@ -49,4 +50,29 @@ test('platform stats singleton tracks all-time and last-month window', async () 
   expect(platform.totalCount).toBe(2)
   expect(platform.lastMonthSats).toBe(1500)
   expect(platform.lastMonthCount).toBe(2)
+})
+
+test('insert donation rolls the ledger back when the platform total cannot be updated', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const donations = createDonationRepository(db)
+  await users.createOrUpdate({id: 1, username: 'a'})
+  const sqlite = Reflect.get(db, '$client') as {exec(sql: string): void}
+  sqlite.exec(`
+    CREATE TRIGGER donations_stats_abort
+    BEFORE INSERT ON donation_platform_stats
+    WHEN NEW.total_sats = 777
+    BEGIN
+      SELECT RAISE(ABORT, 'stats aborted');
+    END;
+  `)
+
+  await expect(
+    donations.insertDonation({userId: 1, amountSats: 777, kind: 'one_shot'}),
+  ).rejects.toThrow('stats aborted')
+  expect(await db.select().from(donationsTable)).toEqual([])
+  // Migration seeds the singleton at zero. A failed total update must leave it there.
+  expect(await db.select().from(donationPlatformStatsTable)).toEqual([
+    expect.objectContaining({id: 1, totalSats: 0, totalCount: 0}),
+  ])
 })

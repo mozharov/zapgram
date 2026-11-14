@@ -1,5 +1,9 @@
 import {describe, expect, test} from 'bun:test'
+import {createHash} from 'node:crypto'
+import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import type {Context} from 'grammy'
+import {payPastedBackRoute, payPastedRoute} from './callback-data.js'
+import {pastedPaymentToken} from './helpers/pasted-payment.js'
 import {describeUpdate} from './update-log.js'
 
 function ctx(partial: Record<string, unknown>): Context {
@@ -30,6 +34,9 @@ describe('describeUpdate', () => {
       username: 'user_a',
       command: 'wallet',
       textLength: 7,
+      textKind: 'other',
+      looksLikeOnchain: false,
+      textTruncated: false,
     })
   })
 
@@ -49,8 +56,9 @@ describe('describeUpdate', () => {
     expect(description.username).toBeUndefined()
   })
 
-  test('never carries message text — only its length', () => {
+  test('never carries message text or a hash of it — only length and kind', () => {
     const secret = 'nostr+walletconnect://deadbeef?secret=supersecret'
+    const invoice = '  Lightning:LNBC1PUNIQUEBODYZZ  '
     const description = describeUpdate(
       ctx({
         update: {update_id: 9, message: {}},
@@ -59,10 +67,81 @@ describe('describeUpdate', () => {
         message: {text: secret},
       }),
     )
+    const invoiceLog = describeUpdate(
+      ctx({
+        update: {update_id: 11, message: {}},
+        from: {id: 42, is_bot: false, first_name: 'A'},
+        chat: {id: 42, type: 'private'},
+        message: {text: invoice},
+      }),
+    )
 
-    expect(JSON.stringify(description)).not.toContain('secret')
+    const secretJson = JSON.stringify(description)
+    const secretDigest = createHash('sha256').update(secret).digest('hex')
+    expect(secretJson).not.toContain('secret')
+    expect(secretJson).not.toContain('deadbeef')
+    expect(secretJson).not.toContain(secretDigest)
+    expect(secretJson).not.toContain(secretDigest.slice(0, 16))
     expect(description.textLength).toBe(secret.length)
+    expect(description.textKind).toBe('other')
+    expect(description.looksLikeOnchain).toBe(false)
+    expect(description.textTruncated).toBe(false)
+    expect(description).not.toHaveProperty('text')
     expect(description.command).toBeUndefined()
+
+    const invoiceJson = JSON.stringify(invoiceLog)
+    const invoiceDigest = createHash('sha256').update(invoice).digest('hex')
+    const normalized = 'lnbc1puniquebodyzz'
+    expect(invoiceLog.textKind).toBe('bolt11_invoice')
+    expect(invoiceLog.textTruncated).toBe(false)
+    expect(invoiceLog).not.toHaveProperty('text')
+    expect(invoiceJson).not.toContain(normalized)
+    expect(invoiceJson).not.toContain('LNBC1PUNIQUEBODYZZ')
+    expect(invoiceJson).not.toContain(invoiceDigest)
+    expect(invoiceJson).not.toContain(createHash('sha256').update(normalized).digest('hex'))
+    expect(invoiceJson).not.toContain(
+      createHash('sha256').update(normalized).digest('hex').slice(0, 16),
+    )
+  })
+
+  test('an unregistered slash command is command_unknown and drops the suffix', () => {
+    const secret = 'private_secret_123'
+    const description = describeUpdate(
+      ctx({
+        update: {update_id: 12, message: {}},
+        from: {id: 42, is_bot: false, first_name: 'A'},
+        chat: {id: 42, type: 'private'},
+        message: {text: `/${secret} extra`},
+      }),
+    )
+
+    expect(description.action).toBe('command_unknown')
+    expect(description.command).toBeUndefined()
+    expect(JSON.stringify(description)).not.toContain(secret)
+  })
+
+  test('a pasted Pay click logs the route name without the invoice token', () => {
+    const bolt11 = 'LNBC1PUNIQUEBODYZZ'
+    const normalized = recognizePaymentRequest(bolt11)?.value
+    if (!normalized) throw new Error('expected a bolt11')
+    const token = pastedPaymentToken(42, normalized)
+    for (const route of [payPastedRoute, payPastedBackRoute]) {
+      const description = describeUpdate(
+        ctx({
+          update: {update_id: 13, callback_query: {}},
+          from: {id: 42, is_bot: false, first_name: 'A'},
+          chat: {id: 42, type: 'private'},
+          callbackQuery: {data: route.build({token})},
+        }),
+      )
+      expect(description.action).toBe(`callback_${route.name.replaceAll('-', '_')}`)
+      expect(description.callbackData).toBe(route.name)
+      const json = JSON.stringify(description)
+      expect(json).not.toContain(token)
+      expect(json).not.toContain(normalized)
+      expect(json).not.toContain('UNIQUEBODYZZ')
+      expect(json).not.toContain('uniquebodyzz')
+    }
   })
 
   test('ignores the reqId the router stamps onto the update body', () => {

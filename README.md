@@ -215,6 +215,31 @@ Compose passes `LNBITS_ONCHAIN_NETWORK` (default `Mainnet`). After enabling on-c
 
 **Persistence:** compose sets `LNBITS_EXTENSIONS_PATH=/app/data/extensions`, so installed LNbits extension code lives on the `lnbits-data` volume (`/app/data/extensions/extensions/<id>`) next to the DB and survives container recreates. Without it LNbits 1.x installs extensions into `/app/lnbits/extensions` inside the container: after a redeploy the DB still lists them, the files are gone, and you get `Extension 'satspay' disabled` / 500 on enable. When upgrading an existing instance to this setting, reinstall Watch Only and SatsPay once (Admin → Extensions); their data in the DB is kept.
 
+### Post-deploy check for 1.7.1
+
+Compose builds `lnbits/lnbits:v1.7.1` (tag only; amd64 and arm64 have separate digests). Keep the existing `lnbits-data` volume. Recreating it opens the `first_install` wizard.
+
+No new environment variables. `LNBITS_AUTOUPDATE_EXTENSIONS_ON_STARTUP` stays `"true"`. The command stays `uv --offline run --no-sync lnbits ...`. Autoupdate still updates each installed extension in place and leaves `ext_*.sqlite3` on the volume.
+
+Startup does **not** rotate wallet `adminkey` or `inkey`. Those columns change only through `POST /admin/api/v1/wallets/reset-keys` (Admin → Users → Reset Wallet Keys). Do not press that: `LNBITS_ADMIN_KEY` and `LNBITS_FEE_COLLECTION_INVOICE_KEY` are those keys. The release line "Rotates auth keys" is the JWT secret. `check_auth_secret_key()` reads `.lnbits_auth_key_v1` and mints a new secret only when `auth_secret_key` is empty. Compose passes `AUTH_SECRET_KEY`. A non-empty value skips the file, so admin cookies and `LNBITS_BEARER_TOKEN` stay valid. `.lnbits_totp_key` is unchanged.
+
+`m058_clear_extensions_reviews_url` writes `lnbits_extensions_reviews_url` to an empty string in `system_settings`. It does not alter `wallets` or `apipayments`. The last schema migration is still `m057`.
+
+SatsPay **1.2.0** and Watch Only **1.2.1** set `min_lnbits_version: 1.7.0` and no `max_lnbits_version`, so they load on 1.7.1. There is no newer stable release. The satspay v1.2.0 tag still has `"version": "1.1.0"` in `config.json`. Trust the release tag and `min_lnbits_version`. Older 1.0.2 and 1.1.0 set an exclusive `max_lnbits_version` of `1.7.0` and do not load. If the log still shows those, or `GET /satspay/api/v1` returns 404: Admin → Extensions → **Update** on top of the installed copies. Do not press Uninstall. Data stays in `ext_satspay.sqlite3` and `ext_watchonly.sqlite3`.
+
+After start:
+
+1. Log shows version **1.7.1**, `running migration core.58` with no error, `planned restart in 96h`, and neither a redirect to `/first_install` nor `Settings DB empty`.
+2. `GET /api/v1/health` returns 200.
+3. `GET /api/v1/wallet` with the existing admin key returns 200 and the same `adminkey`. A fee-collection invoice with the existing invoice key still succeeds. Wallet keys were not reset.
+4. `GET /users/api/v1/user` with the existing Bearer still answers. That confirms `AUTH_SECRET_KEY` did not change.
+5. SatsPay 1.2.0 (or the v1.2.0 tag; see the `config.json` note) and Watch Only 1.2.1 are enabled. `GET /satspay/api/v1` returns 200. The log shows NWC connected.
+6. After the first incoming payment, the webhook reaches the bot. If SSRF rejects it, inspect `HOST`, `lnbits_baseurl`, and `lnbits_outbound_host_ips`. The pending-invoice cron remains the fallback.
+7. Public registration stays closed (`POST /api/v1/account` and `/api/v1/auth/register` are refused).
+8. Bot logs have no new ERROR/WARN, and `SatsPay availability changed` stays `up`.
+
+`m058` does not change table schema. Rolling this image back to 1.7.0 does not require restoring the volume. Do not recreate `lnbits-data`. Migrations `m046`–`m057` are still irreversible on the way back to 1.5.6.
+
 ---
 
 ## Links
