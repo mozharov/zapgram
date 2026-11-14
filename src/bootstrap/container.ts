@@ -3,7 +3,15 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
+import {createInvoiceOriginLookup} from '@infra/lnbits/invoice-origin.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import {
+  BACKEND_LIQUIDITY_CHECK_FAILED,
+  BACKEND_LIQUIDITY_MODE,
+  createOutgoingLiquidityGuard,
+  probeFundingSource,
+  SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+} from '@infra/lnbits/outgoing-liquidity.js'
 import {
   createLnbitsRateFetcher,
   createRateService,
@@ -144,6 +152,43 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
+  const outgoingLiquidity = createOutgoingLiquidityGuard({
+    classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL),
+    readBalance: () => masterWallet.readFundingSource(),
+    log,
+    capturePaused: properties => {
+      posthog?.capture({
+        distinctId: 'lnbits-backend',
+        event: SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+        properties: {$process_person_profile: false, ...properties},
+      })
+    },
+    captureCheckFailed: properties => {
+      posthog?.capture({
+        distinctId: 'lnbits-backend',
+        event: BACKEND_LIQUIDITY_CHECK_FAILED,
+        properties: {$process_person_profile: false, ...properties},
+      })
+    },
+  })
+  masterWallet.useOutgoingLiquidity(outgoingLiquidity)
+  const liquidityMode = await probeFundingSource({
+    hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
+    read: () => masterWallet.readFundingSource(),
+  })
+  log.info(
+    {liquidityMode: liquidityMode.mode, reason: liquidityMode.reason},
+    'Funding source liquidity check',
+  )
+  posthog?.capture({
+    distinctId: 'lnbits-backend',
+    event: BACKEND_LIQUIDITY_MODE,
+    properties: {
+      $process_person_profile: false,
+      mode: liquidityMode.mode,
+      reason: liquidityMode.reason,
+    },
+  })
   const health = await masterWallet.checkStatus()
   log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
 
@@ -196,6 +241,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     memoFooter: config.memoFooter,
     log,
     paymentWebhookUrl,
+    outgoingLiquidity,
   })
 
   const donationPay = createDonationPayService({
@@ -211,10 +257,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     payService: donationPay,
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
-    notifyDonationFailed: async (userId, donationSats, languageCode) => {
+    notifyDonationFailed: async (userId, donationSats, languageCode, reason) => {
       const btcUsd = await rates.getBtcUsd()
       const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
-      const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
+      const text =
+        reason === 'paused'
+          ? translate('error.send-paused', languageCode)
+          : translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
     log,

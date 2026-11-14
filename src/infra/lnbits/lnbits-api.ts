@@ -34,7 +34,7 @@ export class LNBitsAPI {
     options?: {logHttpError?: boolean},
   ) {
     const logHttpError = options?.logHttpError ?? true
-    const headers = {...this.headers, ...init?.headers}
+    const headers = omitEmptyHeaders({...this.headers, ...init?.headers})
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
         ...init,
@@ -68,6 +68,16 @@ export class LNBitsAPI {
     )
     return validateData(response.body, schema)
   }
+}
+
+function omitEmptyHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string | string[]> {
+  const kept: Record<string, string | string[]> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    if (value !== undefined) kept[name] = value
+  }
+  return kept
 }
 
 interface LNBitsAPIConfig {

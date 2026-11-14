@@ -15,7 +15,7 @@ import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-
 import type {Update} from 'grammy/types'
 import {clearRuntime} from '../../src/runtime.js'
 import {registerHandlers} from '../../src/telegram/composition.js'
-import {type FakeLnbits, startFakeLnbits} from './fakes/lnbits-server.js'
+import {FAKE_LNBITS_ADMIN_BEARER, type FakeLnbits, startFakeLnbits} from './fakes/lnbits-server.js'
 import {type FakeTelegram, startFakeTelegram} from './fakes/telegram-server.js'
 
 const ADMIN_KEY = 'e2e-admin-key'
@@ -72,6 +72,8 @@ export async function createE2E(opts?: {
     LNBITS_URL: ln.url,
     LNBITS_ADMIN_KEY: ADMIN_KEY,
     LNBITS_FEE_COLLECTION_INVOICE_KEY: FEE_COLLECTION_KEY,
+    // Admin access token. The wallet admin key cannot read funding_source_balance_msat.
+    LNBITS_BEARER_TOKEN: FAKE_LNBITS_ADMIN_BEARER,
     SUBSCRIPTION_FEE_PERCENT: '0.05',
     HOST: 'https://test.local',
     CONFIGURE_BOT: 'false',

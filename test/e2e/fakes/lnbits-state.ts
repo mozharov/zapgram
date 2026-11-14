@@ -113,6 +113,21 @@ export class LnbitsState {
    */
   btcUsdRate: number | null = 100_000
 
+  /**
+   * Funding-source balance returned by GET /api/v1/status, in millisatoshis.
+   * Default is large so existing payments are not paused. Set 0 to simulate an empty backend.
+   */
+  fundingSourceBalanceMsat = 1_000_000_000_000_000
+
+  /** When set, /api/v1/status reports a funding-source error and the balance is not trusted. */
+  fundingSourceError: string | null = null
+
+  /**
+   * When false, even the admin bearer gets the non-admin status body (no balance field).
+   * That is the production shape for a wallet admin key or a non-admin token.
+   */
+  fundingSourceVisible = true
+
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []
   private readonly masterWallet: FakeWallet

@@ -43,7 +43,12 @@ describe('createFeatureRequestService', () => {
       amountSats: 0,
     })
 
-    expect(result).toEqual({fundStatus: 'skipped', amountPaidSats: 0, adminNotified: 2})
+    expect(result).toEqual({
+      fundStatus: 'skipped',
+      amountPaidSats: 0,
+      adminNotified: 2,
+      sendPaused: false,
+    })
     expect(payDonation).not.toHaveBeenCalled()
     expect(notify).toHaveBeenCalledTimes(2)
     expect(copyMessage).toHaveBeenCalledTimes(2)

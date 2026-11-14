@@ -1,3 +1,4 @@
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {advanceMonthlyNextAt} from '@core/money/donation.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {User} from '@infra/db/types.js'
@@ -94,10 +95,13 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
         try {
           const btcUsd = await rates.getBtcUsd()
           const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(amount, btcUsd))
-          const text = translate('donate.monthly-failed', user.languageCode, {
-            sats: amount,
-            usdSuffix,
-          })
+          const text =
+            result.error instanceof SendPausedError
+              ? translate('error.send-paused', user.languageCode)
+              : translate('donate.monthly-failed', user.languageCode, {
+                  sats: amount,
+                  usdSuffix,
+                })
           await notifier.send(user.id, text)
           await users.update(user.id, {monthlyDonationLastFailNotifyAt: now})
         } catch (error) {

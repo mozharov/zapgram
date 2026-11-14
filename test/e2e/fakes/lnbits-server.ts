@@ -12,6 +12,12 @@ export type FakeLnbitsRequest = {
   body?: unknown
 }
 
+/**
+ * Access token LNbits would accept as an admin (superuser or `lnbits_admin_users`).
+ * The wallet `X-Api-Key` is not an access token and does not reveal the funding-source balance.
+ */
+export const FAKE_LNBITS_ADMIN_BEARER = 'e2e-admin'
+
 export type FakeLnbits = {
   url: string
   state: LnbitsState
@@ -124,6 +130,26 @@ function route({
     return json({server_time: Math.floor(Date.now() / 1000), up_time: '0 days, 0 hours, 1 minutes'})
   }
 
+  // LNbits 1.7.1 (same handler as 1.5.6 and 1.7.0): access token only. The wallet key is ignored.
+  // Admin token: funding_source_balance_msat. Any other token: timing fields only.
+  if (method === 'GET' && path === '/api/v1/status') {
+    const bearer = bearerOf(request)
+    if (!bearer) return json({detail: 'Missing user ID or access token.'}, 401)
+    const status = {
+      server_time: Math.floor(Date.now() / 1000),
+      up_time: '0 days, 0 hours, 1 minutes',
+      up_time_seconds: 1,
+      version: '1.7.1',
+    }
+    if (bearer !== FAKE_LNBITS_ADMIN_BEARER || !state.fundingSourceVisible) return json(status)
+    return json({
+      ...status,
+      funding_source: 'NWCWallet',
+      funding_source_error: state.fundingSourceError,
+      funding_source_balance_msat: state.fundingSourceBalanceMsat,
+    })
+  }
+
   // Public rate endpoint (no API key). null rate simulates LNbits outage for hide-suffix path.
   // Shape matches real LNbits: price = USD/BTC, rate = sats per 1 USD.
   if (method === 'GET' && path === '/api/v1/rate/USD') {
@@ -173,9 +199,20 @@ function route({
 
   const paymentMatch = path.match(/^\/api\/v1\/payments\/([^/]+)$/)
   if (method === 'GET' && paymentMatch) {
-    const wallet = authenticatedWallet(request, state)
-    if (!wallet) return json({detail: 'Unauthorized.'}, 401)
     const paymentHash = paymentMatch[1]
+    const wallet = authenticatedWallet(request, state)
+    // No wallet key: LNbits 1.7.1 looks the hash up on the whole instance. That is how a
+    // payer learns the invoice was issued here (internal) before calling pay.
+    if (!wallet) {
+      const payment = state.payments.find(candidate => candidate.paymentHash === paymentHash)
+      if (!payment) return json({detail: 'Payment not found.'}, 404)
+      return json({
+        paid: payment.paid,
+        status: payment.paid ? 'success' : 'pending',
+        preimage: payment.paid ? '00'.repeat(32) : null,
+        details: paymentResponse(payment),
+      })
+    }
     const payment = state.payments.find(
       candidate => candidate.paymentHash === paymentHash && candidate.walletId === wallet.id,
     )
@@ -367,6 +404,13 @@ function walletResponse(wallet: FakeWallet): Record<string, unknown> {
 
 function authenticatedWallet(request: Request, state: LnbitsState): FakeWallet | undefined {
   return state.walletByApiKey(request.headers.get('X-Api-Key') ?? undefined)
+}
+
+function bearerOf(request: Request): string | undefined {
+  const header = request.headers.get('Authorization')
+  if (!header?.startsWith('Bearer ')) return undefined
+  const token = header.slice('Bearer '.length).trim()
+  return token.length > 0 ? token : undefined
 }
 
 function hasUsersApiAuth(request: Request, adminKey: string): boolean {

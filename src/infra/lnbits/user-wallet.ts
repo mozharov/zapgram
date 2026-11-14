@@ -5,11 +5,11 @@ import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
+import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
-  type PaymentResponse,
   paymentResponseSchema,
 } from './schemas.js'
 
@@ -20,6 +20,7 @@ export class UserWallet extends LNBitsAPI {
   public readonly balance: number
   private readonly memoFooter: string
   private readonly paymentWebhookUrl?: string
+  private readonly outgoingLiquidity?: OutgoingLiquidityGuard
 
   constructor(
     adminKey: string,
@@ -28,11 +29,13 @@ export class UserWallet extends LNBitsAPI {
     memoFooter = '',
     log?: AppLogger,
     paymentWebhookUrl?: string,
+    outgoingLiquidity?: OutgoingLiquidityGuard,
   ) {
     super({baseUrl, adminKey, log})
     this.balance = balance
     this.memoFooter = memoFooter
     this.paymentWebhookUrl = paymentWebhookUrl
+    this.outgoingLiquidity = outgoingLiquidity
   }
 
   /**
@@ -56,13 +59,24 @@ export class UserWallet extends LNBitsAPI {
   }
 
   async payInvoice(paymentRequest: string) {
-    return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
-      method: 'POST',
-      body: JSON.stringify({
-        out: true,
-        bolt11: paymentRequest,
-      }),
-    }).catch(error => handlePayInvoiceError(error, this.log)) as Promise<PaymentResponse>
+    const hold = this.outgoingLiquidity
+      ? await this.outgoingLiquidity.assertCanPay({
+          bolt11: paymentRequest,
+          feeReserveMsat: () => this.getFeeReserve(paymentRequest),
+        })
+      : undefined
+    try {
+      return await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+        method: 'POST',
+        body: JSON.stringify({
+          out: true,
+          bolt11: paymentRequest,
+        }),
+      }).catch(error => handlePayInvoiceError(error, this.log))
+    } catch (error) {
+      if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
+      throw error
+    }
   }
 
   /**
@@ -95,7 +109,7 @@ interface CreateInvoiceParams {
   expiry?: number
 }
 
-function handlePayInvoiceError(error: unknown, log?: AppLogger) {
+function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
   log?.error({error}, 'Error paying invoice')
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {

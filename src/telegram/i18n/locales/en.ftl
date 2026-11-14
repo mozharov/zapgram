@@ -131,6 +131,8 @@ error =
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
     .from-bot = <b>⚠️ You can't send from a bot, channel, group, or anonymous profile.</b>
         Use your personal account.
+    .send-paused = <b>⏸ Sending is temporarily paused.</b>
+        Your funds are safe. Try again later.
 
 start = <img src="https://zapgram.mozharov.me/assets/bot-description-en.png"/>
     <h1>⚡ {bot-name}</h1>

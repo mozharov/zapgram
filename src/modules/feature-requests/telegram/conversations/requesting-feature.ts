@@ -92,8 +92,9 @@ export async function requestingFeature(conversation: BotConversation, ctx: Conv
     })
   }
 
-  const reportHtml =
-    result.fundStatus === 'paid'
+  const reportHtml = result.sendPaused
+    ? `${ctx.t('error.send-paused')}\n\n${ctx.t('feature.fund-failed-submitted')}`
+    : result.fundStatus === 'paid'
       ? ctx.t('feature.submitted-funded', {sats: result.amountPaidSats, usdSuffix})
       : result.fundStatus === 'pay_failed'
         ? ctx.t('feature.fund-failed-submitted')

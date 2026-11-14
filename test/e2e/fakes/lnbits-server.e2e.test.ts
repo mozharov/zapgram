@@ -7,7 +7,7 @@ import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
-import {type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
+import {FAKE_LNBITS_ADMIN_BEARER, type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
 
 const keys = {adminKey: 'master-admin-key', feeCollectionKey: 'fee-collection-key'}
 
@@ -168,6 +168,56 @@ describe('fake LNbits HTTP server', () => {
       expect(await payer.client.getBalance()).toBe(0)
       expect(await receiver.client.getBalance()).toBe(21_000)
       expect(totalBalance(fake)).toBe(before)
+    })
+  })
+
+  test('only an admin access token can see the funding-source balance', async () => {
+    await withFake(async fake => {
+      fake.state.fundingSourceBalanceMsat = 42_000
+      const walletKeyOnly = createMasterWallet(testConfig(fake.url))
+      expect(await walletKeyOnly.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'unauthorized',
+      })
+      expect(
+        (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {'X-Api-Key': keys.adminKey},
+          })
+        ).status,
+      ).toBe(401)
+
+      const admin = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      expect(await admin.readFundingSource()).toEqual({ok: true, balanceMsat: 42_000})
+      const adminBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: `Bearer ${FAKE_LNBITS_ADMIN_BEARER}`},
+          })
+        ).json(),
+      )
+      expect(adminBody?.up_time).toBe('0 days, 0 hours, 1 minutes')
+      expect(adminBody?.funding_source_balance_msat).toBe(42_000)
+
+      const member = createMasterWallet(testConfig(fake.url, {bearerToken: 'e2e-member'}))
+      expect(await member.readFundingSource()).toEqual({ok: false, reason: 'balance_missing'})
+      const memberBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: 'Bearer e2e-member'},
+          })
+        ).json(),
+      )
+      expect(memberBody?.version).toBe('1.7.1')
+      expect(memberBody).not.toHaveProperty('funding_source_balance_msat')
+
+      fake.state.fundingSourceError = 'backend unreachable'
+      expect(await admin.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'funding_source_error',
+      })
     })
   })
 
