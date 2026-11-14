@@ -1,6 +1,10 @@
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
-import {LNBitsAPI} from './lnbits-api.js'
+import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import type {InvoiceOrigin} from './outgoing-liquidity.js'
+
+const PAGE_SIZE = 50
+/** Past this many rows the list is not trusted and the pay fails open. */
+const MAX_CLASSIFY_ROWS = 200
 
 /**
  * LNbits 1.7.1 calls the funding source only from `_pay_external_invoice`.
@@ -21,17 +25,32 @@ class OriginLookup extends LNBitsAPI {
     super({baseUrl})
   }
 
-  async paymentsForHash(paymentHash: string, bearerToken: string): Promise<unknown> {
+  async page(bearerToken: string, searchParams: Record<string, string | number>): Promise<unknown> {
     const response = await this.fetch(
       '/api/v1/payments/all/paginated',
       {
         retry: {limit: 0},
-        searchParams: {payment_hash: paymentHash, limit: 50},
+        timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
+        searchParams,
         headers: {Authorization: `Bearer ${bearerToken}`},
       },
       {logHttpError: false},
     )
     return response.body
+  }
+}
+
+/** One cheap admin-list read. False means classification cannot be trusted yet. */
+export async function probeAdminPaymentList(
+  baseUrl: string,
+  bearerToken: string | undefined,
+): Promise<boolean> {
+  if (!bearerToken) return false
+  const lookup = new OriginLookup(baseUrl)
+  try {
+    return readPaymentPage(await lookup.page(bearerToken, {limit: 1})) !== undefined
+  } catch {
+    return false
   }
 }
 
@@ -50,12 +69,52 @@ export function createInvoiceOriginLookup(
     }
     if (!paymentHash) return 'unknown'
     try {
-      const body = await lookup.paymentsForHash(paymentHash, bearerToken)
-      return originFromAdminPaymentPage(body, paymentHash, payerWalletId)
+      const rows = await loadPaymentRows(lookup, bearerToken, paymentHash)
+      if (!rows) return 'unknown'
+      return originFromAdminPaymentPage(
+        {data: rows, total: rows.length},
+        paymentHash,
+        payerWalletId,
+      )
     } catch {
       return 'unknown'
     }
   }
+}
+
+async function loadPaymentRows(
+  lookup: OriginLookup,
+  bearerToken: string,
+  paymentHash: string,
+): Promise<unknown[] | undefined> {
+  const rows: unknown[] = []
+  let fetched = 0
+  for (let page = 0; page < MAX_CLASSIFY_ROWS / PAGE_SIZE; page++) {
+    const parsed = readPaymentPage(
+      await lookup.page(bearerToken, {
+        payment_hash: paymentHash,
+        limit: PAGE_SIZE,
+        offset: fetched,
+      }),
+    )
+    if (!parsed) return
+    if (parsed.total > MAX_CLASSIFY_ROWS) return
+    if (parsed.data.length === 0) return fetched >= parsed.total ? rows : undefined
+    rows.push(...parsed.data)
+    fetched += parsed.data.length
+    if (fetched >= parsed.total) return rows
+  }
+  return
+}
+
+function readPaymentPage(body: unknown): {data: unknown[]; total: number} | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return
+  const record = body as {data?: unknown; total?: unknown}
+  if (!Array.isArray(record.data)) return
+  if (typeof record.total !== 'number' || !Number.isSafeInteger(record.total) || record.total < 0) {
+    return
+  }
+  return {data: record.data, total: record.total}
 }
 
 /**

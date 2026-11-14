@@ -116,4 +116,40 @@ describe('createInvoiceOriginLookup', () => {
       fake.stop()
     }
   })
+
+  test('pages through the admin list and fails open past the row ceiling', async () => {
+    const fake = await startFakeLnbits({
+      adminKey: 'master-admin-key',
+      feeCollectionKey: 'fee-collection-key',
+    })
+    try {
+      const wallet = fake.state.walletByApiKey('master-admin-key')
+      if (!wallet) throw new Error('master wallet missing')
+      const invoice = fake.state.createInvoice({
+        wallet,
+        sats: 21,
+        memo: 'pages',
+        expirySec: 3600,
+      })
+      const sample = fake.state.payments[0]
+      if (!sample) throw new Error('payment missing')
+      for (let index = 0; index < 55; index++) {
+        fake.state.payments.push({...sample, out: true, paid: true})
+      }
+      const classify = createInvoiceOriginLookup(fake.url, FAKE_LNBITS_ADMIN_BEARER)
+      const before = fake.requests.length
+      expect(await classify(invoice.bolt11, wallet.id)).toBe('internal')
+      const pages = fake.requests
+        .slice(before)
+        .filter(request => request.path.endsWith('/paginated'))
+      expect(pages.length).toBe(2)
+
+      for (let index = 0; index < 150; index++) {
+        fake.state.payments.push({...sample, out: true, paid: true})
+      }
+      expect(await classify(invoice.bolt11, wallet.id)).toBe('unknown')
+    } finally {
+      fake.stop()
+    }
+  })
 })

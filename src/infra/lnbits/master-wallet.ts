@@ -2,7 +2,7 @@ import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {HTTPError} from 'got'
-import {FEE_RESERVE_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
+import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import {
   type BalanceRead,
   type LiquidityCheckReason,
@@ -121,7 +121,11 @@ class MasterWallet extends LNBitsAPI {
       const response = await this.fetch(
         '/api/v1/status',
         // Fail fast. got retries GET 500s, which would delay a send that should proceed.
-        {headers: this.statusHeaders(), retry: {limit: 0}},
+        {
+          headers: this.statusHeaders(),
+          retry: {limit: 0},
+          timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
+        },
         {logHttpError: false},
       )
       return interpretFundingSourceStatus(response.body)
@@ -143,18 +147,20 @@ class MasterWallet extends LNBitsAPI {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
-          payerWalletId: this.payerWalletId,
+          payerWalletId: await this.walletIdForPay(),
           feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
         })
       : undefined
     try {
-      return await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+      const payment = await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
         method: 'POST',
         body: JSON.stringify({
           out: true,
           bolt11: paymentRequest,
         }),
       })
+      if (hold) await this.outgoingLiquidity?.settle(hold)
+      return payment
     } catch (error) {
       if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
       throw error
@@ -167,8 +173,27 @@ class MasterWallet extends LNBitsAPI {
   }
 
   async readWalletId(): Promise<string> {
-    const wallet = await this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
+    const wallet = await this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema, {
+      retry: {limit: 0},
+      timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
+    })
     return wallet.id
+  }
+
+  /** Startup read can fail. The next pay tries again and keeps the id only after it works. */
+  private walletIdInFlight?: Promise<string | undefined>
+  private async walletIdForPay(): Promise<string | undefined> {
+    if (this.payerWalletId) return this.payerWalletId
+    this.walletIdInFlight ??= this.readWalletId()
+      .then(id => {
+        this.payerWalletId = id
+        return id
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!this.payerWalletId) this.walletIdInFlight = undefined
+      })
+    return this.walletIdInFlight
   }
 
   private async feeReserveMsat(paymentRequest: string): Promise<number> {
@@ -178,8 +203,9 @@ class MasterWallet extends LNBitsAPI {
       {
         searchParams: {invoice: paymentRequest},
         retry: {limit: 0},
-        timeout: {request: FEE_RESERVE_TIMEOUT_MS},
+        timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
       },
+      {logHttpError: false},
     )
     return response.fee_reserve
   }
@@ -225,7 +251,7 @@ export function interpretFundingSourceStatus(body: unknown): BalanceRead {
   }
   const record = body as Record<string, unknown>
   const error = record.funding_source_error
-  if (typeof error === 'string' && error.length > 0) {
+  if (error !== undefined && error !== null && error !== '') {
     return {ok: false, reason: 'funding_source_error'}
   }
   const balance = record.funding_source_balance_msat

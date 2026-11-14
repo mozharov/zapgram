@@ -4,7 +4,7 @@ import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
-import {FEE_RESERVE_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
+import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
@@ -71,13 +71,15 @@ export class UserWallet extends LNBitsAPI {
         })
       : undefined
     try {
-      return await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+      const payment = await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
         method: 'POST',
         body: JSON.stringify({
           out: true,
           bolt11: paymentRequest,
         }),
       }).catch(error => handlePayInvoiceError(error, this.log))
+      if (hold) await this.outgoingLiquidity?.settle(hold)
+      return payment
     } catch (error) {
       if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
       throw error
@@ -93,20 +95,26 @@ export class UserWallet extends LNBitsAPI {
 
   /** Pause quote only. The review screen keeps the ordinary client timeout. */
   private feeReserveForPause(paymentRequest: string) {
-    return this.quoteFeeReserve(paymentRequest, {
-      retry: {limit: 0},
-      timeout: {request: FEE_RESERVE_TIMEOUT_MS},
-    })
+    return this.quoteFeeReserve(
+      paymentRequest,
+      {
+        retry: {limit: 0},
+        timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
+      },
+      {logHttpError: false},
+    )
   }
 
   private async quoteFeeReserve(
     paymentRequest: string,
     init?: {retry: {limit: number}; timeout: {request: number}},
+    options?: {logHttpError?: boolean},
   ) {
     const response = await this.fetchWithSchema(
       '/api/v1/payments/fee-reserve',
       feeReserveResponseSchema,
       {searchParams: {invoice: paymentRequest}, ...init},
+      options,
     )
     return response.fee_reserve
   }
@@ -130,7 +138,7 @@ interface CreateInvoiceParams {
 }
 
 function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
-  log?.error({error}, 'Error paying invoice')
+  log?.error(safePayError(error), 'Error paying invoice')
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {
       const {detail, status} = error.response.body as {detail: string; status: string}
@@ -146,4 +154,15 @@ function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
     }
   }
   throw error
+}
+
+function safePayError(error: unknown): {message: string; code?: string; statusCode?: number} {
+  if (error instanceof HTTPError) {
+    return {message: error.message, code: error.code, statusCode: error.response.statusCode}
+  }
+  if (error instanceof Error) {
+    const code = 'code' in error && error.code != null ? String(error.code) : undefined
+    return {message: error.message, code}
+  }
+  return {message: 'unknown'}
 }

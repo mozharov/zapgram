@@ -163,6 +163,7 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
   credit(USER_A, 10_000)
   e2e.ln.state.fundingSourceBalanceMsat = 0
 
+  const donationMark = e2e.ln.requests.length
   const donation = await e2e.container.donationPay.payDonation({
     userId: USER_A,
     amountSats: 21,
@@ -170,6 +171,7 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
     rail: 'internal',
   })
   expect(donation.status).toBe('paid')
+  expect(outgoingPaysSince(donationMark)).toHaveLength(1)
 
   const subscription = await seedSubscription(e2e, {
     userId: USER_A,
@@ -178,11 +180,14 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
     autoRenew: true,
     endsAt: new Date(Date.now() + 60 * 60 * 1000),
   })
+  const renewalMark = e2e.ln.requests.length
   const renewal = await e2e.container.renewalService.attemptAutoRenewal(
     subscription,
     await e2e.container.chats.getOrThrow(CHAT_GROUP),
   )
   expect(renewal.status).not.toBe('failed')
+  // Subscriber charge, then settle pays the owner and the fee wallet.
+  expect(outgoingPaysSince(renewalMark)).toHaveLength(3)
 
   const settled = await seedSubscriptionPayment(e2e, {
     userId: USER_A,
@@ -192,7 +197,9 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
     kind: 'renewal',
   })
   e2e.ln.state.fundingSourceBalanceMsat = 0
+  const settleMark = e2e.ln.requests.length
   expect(await e2e.container.settleService.complete(settled)).toBe('settled')
+  expect(outgoingPaysSince(settleMark)).toHaveLength(2)
   expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
 })
 

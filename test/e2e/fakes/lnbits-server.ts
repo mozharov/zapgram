@@ -167,8 +167,13 @@ function route({
     const rows = state.payments.filter(
       payment => paymentHash === null || payment.paymentHash === paymentHash,
     )
+    const limitRaw = Number(url.searchParams.get('limit') ?? '50')
+    const offsetRaw = Number(url.searchParams.get('offset') ?? '0')
+    const limit = Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 1000) : 50
+    const offset = Number.isInteger(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0
+    const page = rows.slice(offset, offset + limit)
     return json({
-      data: rows.map(payment => ({
+      data: page.map(payment => ({
         payment_hash: payment.paymentHash,
         wallet_id: payment.walletId,
         amount: payment.out ? -payment.amountMsat : payment.amountMsat,

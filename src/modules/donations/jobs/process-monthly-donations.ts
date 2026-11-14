@@ -97,7 +97,10 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
           const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(amount, btcUsd))
           const text =
             result.error instanceof SendPausedError
-              ? translate('error.send-paused', user.languageCode)
+              ? translate('donate.monthly-charge-paused', user.languageCode, {
+                  sats: amount,
+                  usdSuffix,
+                })
               : translate('donate.monthly-failed', user.languageCode, {
                   sats: amount,
                   usdSuffix,

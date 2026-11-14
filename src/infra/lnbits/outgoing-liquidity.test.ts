@@ -2,8 +2,10 @@ import {describe, expect, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import got, {HTTPError, RequestError} from 'got'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
+import {interpretFundingSourceStatus} from './master-wallet.js'
 import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
   BACKEND_LIQUIDITY_CHECK_FAILED,
@@ -12,6 +14,10 @@ import {
   probeFundingSource,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from './outgoing-liquidity.js'
+
+function held(msat: number, generation: number, bolt11: string) {
+  return {msat, generation, paymentHash: decodeInvoice(bolt11).paymentHash.toLowerCase()}
+}
 
 const invoice = mintInvoice({sats: 21, description: 'liquidity'})
 const second = mintInvoice({sats: 21, description: 'second'})
@@ -87,7 +93,7 @@ describe('createOutgoingLiquidityGuard', () => {
 
   test('enough balance plus the fee reserve lets the external payment proceed', async () => {
     const {pay} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
-    await expect(pay()).resolves.toEqual({msat: 23_000, generation: 1})
+    await expect(pay()).resolves.toEqual(held(23_000, 1, invoice.bolt11))
   })
 
   test('one millisatoshi under amount plus reserve pauses', async () => {
@@ -160,7 +166,7 @@ describe('createOutgoingLiquidityGuard', () => {
         bolt11: second.bolt11,
         feeReserveMsat: async () => 2_000,
       }),
-    ).resolves.toEqual({msat: 23_000, generation: 1})
+    ).resolves.toEqual(held(23_000, 1, second.bolt11))
   })
 
   test('a failed balance read is reused for a few seconds and then tried again', async () => {
@@ -222,12 +228,46 @@ describe('createOutgoingLiquidityGuard', () => {
         return {ok: true, balanceMsat: 100_000}
       },
     })
+    const third = mintInvoice({sats: 21, description: 'third'})
     await pay()
     await pay(second.bolt11)
     expect(reads).toBe(1)
     advance(45_000)
-    await pay()
+    await pay(third.bolt11)
     expect(reads).toBe(2)
+  })
+
+  test('a second pay of the same invoice does not reserve the amount again', async () => {
+    const {liquidity} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
+    const [first, secondPay] = await Promise.all([
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+    ])
+    const holds = [first, secondPay].filter(hold => hold !== undefined)
+    expect(holds).toEqual([held(23_000, 1, invoice.bolt11)])
+  })
+
+  test('a balance reread keeps an unfinished hold', async () => {
+    let balance = 30_000
+    const {pay, liquidity, advance} = guard({
+      read: async () => ({ok: true, balanceMsat: balance}),
+      ttlMs: 1_000,
+    })
+    const hold = await pay()
+    if (!hold) throw new Error('Expected a liquidity hold')
+    advance(1_000)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+    balance = 7_000
+    await liquidity.settle(hold)
+    advance(1_000)
+    await expect(
+      liquidity.assertCanPay({
+        bolt11: mintInvoice({sats: 5, description: 'after settle'}).bolt11,
+        feeReserveMsat: async () => 2_000,
+      }),
+    ).resolves.toEqual(expect.objectContaining({msat: 7_000, generation: 3}))
   })
 })
 
@@ -240,8 +280,11 @@ describe('probeFundingSource', () => {
         reads += 1
         return {ok: true, balanceMsat: 1}
       },
+      probeClassify: async () => {
+        throw new Error('should not classify')
+      },
     })
-    expect(mode).toEqual({mode: 'disabled', reason: 'missing_bearer'})
+    expect(mode).toEqual({mode: 'disabled', reason: 'missing_bearer', classify: 'missing_bearer'})
     expect(reads).toBe(0)
   })
 
@@ -249,23 +292,37 @@ describe('probeFundingSource', () => {
     const mode = await probeFundingSource({
       hasBearer: true,
       read: async () => ({ok: true, balanceMsat: 5}),
+      probeClassify: async () => true,
     })
-    expect(mode).toEqual({mode: 'active', reason: 'ok'})
+    expect(mode).toEqual({mode: 'active', reason: 'ok', classify: 'ok'})
+  })
+
+  test('a failed classification probe is reported without throwing', async () => {
+    const mode = await probeFundingSource({
+      hasBearer: true,
+      read: async () => ({ok: true, balanceMsat: 5}),
+      probeClassify: async () => false,
+    })
+    expect(mode).toEqual({mode: 'active', reason: 'ok', classify: 'failed'})
   })
 
   test('an unreadable balance disables without throwing', async () => {
     const hidden = await probeFundingSource({
       hasBearer: true,
       read: async () => ({ok: false, reason: 'balance_missing'}),
+      probeClassify: async () => true,
     })
-    expect(hidden).toEqual({mode: 'disabled', reason: 'balance_missing'})
+    expect(hidden).toEqual({mode: 'disabled', reason: 'balance_missing', classify: 'ok'})
     const crashed = await probeFundingSource({
       hasBearer: true,
       read: async () => {
         throw new Error('down')
       },
+      probeClassify: async () => {
+        throw new Error('list down')
+      },
     })
-    expect(crashed).toEqual({mode: 'disabled', reason: 'check_failed'})
+    expect(crashed).toEqual({mode: 'disabled', reason: 'check_failed', classify: 'failed'})
   })
 })
 
@@ -279,7 +336,12 @@ describe('payLeftBackendUnspent', () => {
       hostname: '127.0.0.1',
       port: 0,
       fetch(request) {
-        const status = Number(new URL(request.url).pathname.slice(1))
+        const path = new URL(request.url).pathname
+        if (path === '/520failed') {
+          return Response.json({status: 'failed', detail: 'nope'}, {status: 520})
+        }
+        if (path === '/520open') return Response.json({status: 'pending'}, {status: 520})
+        const status = Number(path.slice(1))
         return new Response('no', {status})
       },
     })
@@ -291,9 +353,18 @@ describe('payLeftBackendUnspent', () => {
         () => undefined,
         (error: unknown) => error,
       )
-      const failed = await got(`http://127.0.0.1:${server.port}/520`, {
+      const failed = await got(`http://127.0.0.1:${server.port}/520failed`, {
         retry: {limit: 0},
         throwHttpErrors: true,
+        responseType: 'json',
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      const open = await got(`http://127.0.0.1:${server.port}/520open`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+        responseType: 'json',
       }).then(
         () => undefined,
         (error: unknown) => error,
@@ -310,6 +381,7 @@ describe('payLeftBackendUnspent', () => {
       expect(crashed).toBeInstanceOf(HTTPError)
       expect(payLeftBackendUnspent(refused)).toBe(true)
       expect(payLeftBackendUnspent(failed)).toBe(true)
+      expect(payLeftBackendUnspent(open)).toBe(false)
       expect(payLeftBackendUnspent(crashed)).toBe(false)
     } finally {
       server.stop(true)
@@ -341,6 +413,21 @@ describe('payLeftBackendUnspent', () => {
       hung.stop(true)
     }
   })
+})
+
+test('a non-string funding source error is not treated as a healthy balance', () => {
+  expect(
+    interpretFundingSourceStatus({
+      funding_source_balance_msat: 5,
+      funding_source_error: {detail: 'nwc'},
+    }),
+  ).toEqual({ok: false, reason: 'funding_source_error'})
+  expect(
+    interpretFundingSourceStatus({funding_source_balance_msat: 5, funding_source_error: ''}),
+  ).toEqual({ok: true, balanceMsat: 5})
+  expect(
+    interpretFundingSourceStatus({funding_source_balance_msat: 5, funding_source_error: null}),
+  ).toEqual({ok: true, balanceMsat: 5})
 })
 
 test('event names stay stable', () => {

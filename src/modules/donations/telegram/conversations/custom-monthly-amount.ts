@@ -1,4 +1,4 @@
-import {throwIfSendPaused} from '@core/errors/send-paused.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {advanceMonthlyNextAt, isValidDonationAmountSats} from '@core/money/donation.js'
 import {replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -161,8 +161,13 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       }),
     )
     // The row is already saved, so the cron retries after the backend can pay again.
-    throwIfSendPaused(result.error)
-    await ctx.reply(ctx.t('donate.monthly-enable-failed', {sats, usdSuffix}))
+    const paused = result.error instanceof SendPausedError
+    await ctx.reply(
+      ctx.t(paused ? 'donate.monthly-paused' : 'donate.monthly-enable-failed', {
+        sats,
+        usdSuffix,
+      }),
+    )
   }
 
   await replyDonateHub(ctx)

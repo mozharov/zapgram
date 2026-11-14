@@ -173,6 +173,7 @@ broadcast =
 
 donation = 
     .failed = ⚠️ Your payment succeeded, but the optional {$donationSats} sat{$usdSuffix} support tip could not be sent. Check balance / NWC, or use /donate.
+    .paused = ⏸ Your payment succeeded. The optional {$donationSats} sat{$usdSuffix} support tip is paused for now. Your funds are safe.
 
 donate = 
     .hub = <h1>💚 Support {bot-name}</h1>
@@ -204,6 +205,7 @@ donate =
     .auto-scope-all = tips + invoices
     .success = ✅ Thanks! You sent {$sats} sats{$usdSuffix} to support {bot-name}.
     .failed = ⚠️ Could not send {$sats} sats{$usdSuffix}. Check your balance or NWC connection.
+    .paused = ⏸ Could not send {$sats} sats{$usdSuffix} right now. Sending is paused, and your funds are safe. Try again later.
     .invalid-amount = ⚠️ Enter a whole number of sats between 1 and 100000000.
     .custom-amount = 🔤 Enter the amount in sats you want to donate.
     .monthly-status-on = {$sats} sats{$usdSuffix} / 30 days
@@ -215,6 +217,8 @@ donate =
         Choose an amount. Enabling charges once now, then every 30 days.
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
     .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
+    .monthly-paused = ✅ Monthly donation of {$sats} sats{$usdSuffix} is on. The first charge is paused and will be collected later. Your funds are safe.
+    .monthly-charge-paused = ⏸ This month's {$sats} sat{$usdSuffix} donation was not charged. Monthly support stays on, and your funds are safe. We will try again later.
     .monthly-amount-updated = ✅ Monthly amount updated to {$sats} sats{$usdSuffix}. Next charge stays on schedule.
     .monthly-disabled-toast = Monthly donation disabled
     .monthly-failed = ⚠️ Could not charge your monthly {$sats} sat{$usdSuffix} donation. Check balance / NWC or /donate.

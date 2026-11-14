@@ -4,6 +4,7 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {createOutgoingLiquidityGuard} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
@@ -257,6 +258,35 @@ describe('fake LNbits HTTP server', () => {
       await expect(payer.client.payInvoice(external.bolt11)).rejects.toBeInstanceOf(
         InvoiceAlreadyPaidError,
       )
+    })
+  })
+
+  test('reads the master wallet id on the next pay when startup missed it', async () => {
+    await withFake(async fake => {
+      fake.state.failNext(
+        {method: 'GET', path: '/api/v1/wallet'},
+        {status: 500, body: {detail: 'down'}},
+      )
+      const master = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      await expect(master.readWalletId()).rejects.toBeInstanceOf(HTTPError)
+      let seen: string | undefined
+      master.useOutgoingLiquidity(
+        createOutgoingLiquidityGuard({
+          classifyInvoice: async (_bolt11, walletId) => {
+            seen = walletId
+            return 'internal'
+          },
+          readBalance: async () => ({ok: true, balanceMsat: 0}),
+        }),
+      )
+      const wallet = fake.state.walletByApiKey(keys.adminKey)
+      if (!wallet) throw new Error('master wallet missing')
+      fake.state.credit(wallet.id, 100_000)
+      const invoice = fake.state.createInvoice({wallet, sats: 1, memo: 'id', expirySec: 60})
+      await master.payInvoice(invoice.bolt11)
+      expect(seen).toBe(wallet.id)
     })
   })
 

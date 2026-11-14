@@ -38,13 +38,17 @@ export type BalanceRead =
 
 export type InvoiceOrigin = 'internal' | 'external' | 'unknown'
 
+export type ClassifyProbe = 'ok' | 'failed' | 'missing_bearer'
+
 export type LiquidityMode = {
   mode: 'active' | 'disabled'
   reason: 'ok' | 'missing_bearer' | LiquidityCheckReason | 'check_failed'
+  /** Whether the admin payment list used to classify invoices answered. */
+  classify: ClassifyProbe
 }
 
 /** Amount held against the cached balance until the pay settles or is released. */
-export type LiquidityHold = {msat: number; generation: number}
+export type LiquidityHold = {msat: number; generation: number; paymentHash: string}
 
 export type OutgoingLiquidityGuard = {
   assertCanPay(input: {
@@ -52,13 +56,16 @@ export type OutgoingLiquidityGuard = {
     payerWalletId?: string
     feeReserveMsat: () => Promise<number>
   }): Promise<LiquidityHold | undefined>
+  /** Drop a hold after the pay succeeded. The cache already counts it as spent. */
+  settle(hold: LiquidityHold): Promise<void>
   /** Put a hold back after LNbits refused the pay and this cache generation is still current. */
   release(hold: LiquidityHold): Promise<void>
 }
 
 /**
- * True only when LNbits finished the request and refused the payment.
- * A timeout, a 5xx, or a success body we could not parse may still have spent the backend.
+ * True only when LNbits finished the request and the payment did not leave.
+ * A 4xx is a refusal before pay. A 520 counts only when its body says `failed`.
+ * Any other 520, a timeout, or a 5xx may still have spent the backend.
  */
 export function payLeftBackendUnspent(error: unknown): boolean {
   if (error instanceof InvoiceAlreadyPaidError || error instanceof InsufficientFundsError) {
@@ -66,7 +73,11 @@ export function payLeftBackendUnspent(error: unknown): boolean {
   }
   if (!(error instanceof HTTPError)) return false
   const status = error.response.statusCode
-  return status === 520 || (status >= 400 && status < 500)
+  if (status >= 400 && status < 500) return true
+  if (status !== 520) return false
+  const body = error.response.body
+  if (!body || typeof body !== 'object') return false
+  return (body as {status?: unknown}).status === 'failed'
 }
 
 /**
@@ -96,19 +107,26 @@ export function createOutgoingLiquidityGuard(deps: {
   let failedRead: {reason: LiquidityCheckReason; at: number} | null = null
   let inFlight: Promise<BalanceRead> | null = null
   let tail: Promise<unknown> = Promise.resolve()
+  const outstanding = new Map<string, LiquidityHold>()
   const lastFailureEventAt = new Map<string, number>()
 
   function noteFailure(reason: LiquidityCheckReason): void {
-    deps.log?.warn({reason}, 'Backend liquidity check failed; payment continues')
     const at = now()
     const previous = lastFailureEventAt.get(reason)
     if (previous !== undefined && at - previous < ttlMs) return
     lastFailureEventAt.set(reason, at)
+    deps.log?.warn({reason}, 'Backend liquidity check failed; payment continues')
     try {
       deps.captureCheckFailed?.({reason})
     } catch {
       // Analytics must never decide whether the payment is attempted.
     }
+  }
+
+  function reservedMsat(): number {
+    let sum = 0
+    for (const hold of outstanding.values()) sum += hold.msat
+    return sum
   }
 
   async function balance(): Promise<BalanceRead> {
@@ -123,11 +141,18 @@ export function createOutgoingLiquidityGuard(deps: {
         .then(read => {
           if (read.ok) {
             generation += 1
-            cached = {balanceMsat: read.balanceMsat, at: now(), generation}
+            // A fresh server balance does not include pays still in flight. Keep those holds.
+            for (const hold of outstanding.values()) hold.generation = generation
+            const available = read.balanceMsat - reservedMsat()
+            cached = {
+              balanceMsat: available > 0 ? available : 0,
+              at: now(),
+              generation,
+            }
             failedRead = null
-          } else {
-            failedRead = {reason: read.reason, at: now()}
+            return {ok: true as const, balanceMsat: cached.balanceMsat}
           }
+          failedRead = {reason: read.reason, at: now()}
           return read
         })
         .finally(() => {
@@ -161,16 +186,21 @@ export function createOutgoingLiquidityGuard(deps: {
     feeReserveMsat: () => Promise<number>,
   ): Promise<LiquidityHold | undefined> {
     let amountMsat: number
+    let paymentHash: string
     try {
-      amountMsat = decodeInvoice(bolt11).millisatoshi
+      const decoded = decodeInvoice(bolt11)
+      amountMsat = decoded.millisatoshi
+      paymentHash = decoded.paymentHash.toLowerCase()
     } catch {
       noteFailure('invalid_invoice')
       return
     }
-    if (!Number.isSafeInteger(amountMsat) || amountMsat <= 0) {
+    if (!Number.isSafeInteger(amountMsat) || amountMsat <= 0 || !paymentHash) {
       noteFailure('invalid_invoice')
       return
     }
+    // A second pay of the same invoice is already reserved. Subtracting again pauses the next send.
+    if (outstanding.has(paymentHash)) return
 
     const read = await balance()
     if (!read.ok) {
@@ -208,9 +238,23 @@ export function createOutgoingLiquidityGuard(deps: {
     // so releasing a failed pay cannot add the amount on top of a fresh server balance.
     if (!cached) return
     const needed = amountMsat + reserveMsat
-    const hold = {msat: needed, generation: cached.generation}
+    const hold = {msat: needed, generation: cached.generation, paymentHash}
+    outstanding.set(paymentHash, hold)
     cached = {...cached, balanceMsat: Math.max(0, cached.balanceMsat - needed)}
     return hold
+  }
+
+  function enqueue<T>(task: () => Promise<T> | T): Promise<T> {
+    const settled = tail.then(
+      () => undefined,
+      () => undefined,
+    )
+    const run = settled.then(task)
+    tail = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
   }
 
   return {
@@ -224,31 +268,23 @@ export function createOutgoingLiquidityGuard(deps: {
         return
       }
       // A previous pause rejects the chain. Swallow it so the next payment is still checked.
-      const settled = tail.then(
-        () => undefined,
-        () => undefined,
-      )
-      const run = settled.then(() => assertExternal(input.bolt11, input.feeReserveMsat))
-      tail = run.then(
-        () => undefined,
-        () => undefined,
-      )
-      return run
+      return enqueue(() => {
+        return assertExternal(input.bolt11, input.feeReserveMsat)
+      })
+    },
+    settle(hold) {
+      return enqueue(() => {
+        outstanding.delete(hold.paymentHash)
+      })
     },
     release(hold) {
-      const settled = tail.then(
-        () => undefined,
-        () => undefined,
-      )
-      const run = settled.then(() => {
-        if (!cached || cached.generation !== hold.generation) return
-        cached = {...cached, balanceMsat: cached.balanceMsat + hold.msat}
+      return enqueue(() => {
+        const current = outstanding.get(hold.paymentHash)
+        if (!current) return
+        outstanding.delete(hold.paymentHash)
+        if (!cached || cached.generation !== current.generation) return
+        cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
       })
-      tail = run.then(
-        () => undefined,
-        () => undefined,
-      )
-      return run
     },
   }
 }
@@ -257,13 +293,22 @@ export function createOutgoingLiquidityGuard(deps: {
 export async function probeFundingSource(input: {
   hasBearer: boolean
   read: () => Promise<BalanceRead>
+  probeClassify: () => Promise<boolean>
 }): Promise<LiquidityMode> {
-  if (!input.hasBearer) return {mode: 'disabled', reason: 'missing_bearer'}
+  if (!input.hasBearer) {
+    return {mode: 'disabled', reason: 'missing_bearer', classify: 'missing_bearer'}
+  }
+  let classify: ClassifyProbe = 'failed'
+  try {
+    if (await input.probeClassify()) classify = 'ok'
+  } catch {
+    classify = 'failed'
+  }
   try {
     const read = await input.read()
-    if (read.ok) return {mode: 'active', reason: 'ok'}
-    return {mode: 'disabled', reason: read.reason}
+    if (read.ok) return {mode: 'active', reason: 'ok', classify}
+    return {mode: 'disabled', reason: read.reason, classify}
   } catch {
-    return {mode: 'disabled', reason: 'check_failed'}
+    return {mode: 'disabled', reason: 'check_failed', classify}
   }
 }

@@ -1,4 +1,4 @@
-import {throwIfSendPaused} from '@core/errors/send-paused.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {isValidDonationAmountSats} from '@core/money/donation.js'
 import {clearDonateCallbackMessage, replyDonateHub} from '@modules/donations/telegram/reply-hub.js'
 import {captureBotEvent} from '@telegram/analytics.js'
@@ -49,7 +49,6 @@ export async function donateAmountCallback(ctx: BotContext) {
 
   const usdSuffix = await usdSuffixForSats(amountSats)
   if (result.status !== 'paid') {
-    throwIfSendPaused(result.error)
     captureBotEvent(posthog, 'donate_one_shot_ui_failed', {
       feature: 'donations',
       flow: 'one_shot',
@@ -57,7 +56,12 @@ export async function donateAmountCallback(ctx: BotContext) {
       amount_sats: amountSats,
       reason: result.reason,
     })
-    await ctx.reply(ctx.t('donate.failed', {sats: amountSats, usdSuffix}))
+    await ctx.reply(
+      ctx.t(result.error instanceof SendPausedError ? 'donate.paused' : 'donate.failed', {
+        sats: amountSats,
+        usdSuffix,
+      }),
+    )
     await replyDonateHub(ctx)
     return
   }

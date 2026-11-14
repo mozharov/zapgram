@@ -4,11 +4,11 @@ import type {ZodType} from 'zod'
 import type {AppLogger} from '../logger.js'
 import {validateData} from '../validate.js'
 
-/**
- * Quote used only to decide a pause. It is not the payment. A hung funding source must not
- * hold the pay for the default 15s, and got must not retry that GET.
- */
-export const FEE_RESERVE_TIMEOUT_MS = 3_000
+/** Pause reads (status and fee quote). A hung funding source must not hold a send for 15s. */
+export const GUARD_UPSTREAM_TIMEOUT_MS = 3_000
+
+/** @deprecated Use GUARD_UPSTREAM_TIMEOUT_MS. Kept so existing imports stay valid. */
+export const FEE_RESERVE_TIMEOUT_MS = GUARD_UPSTREAM_TIMEOUT_MS
 
 /** Shared 30 rps budget against LNbits. Exported so tests can lift it; do not change in prod. */
 export const limiter = new Bottleneck({
@@ -66,13 +66,23 @@ export class LNBitsAPI {
     path: string,
     schema: ZodType<T>,
     init?: OptionsOfJSONResponseBody,
+    options?: {logHttpError?: boolean},
   ) {
-    const response = await this.fetch(path, init)
+    const response = await this.fetch(path, init, options)
     this.log?.debug(
-      {body: response.body as unknown},
-      `${init?.method ?? 'GET'} ${path}: response body`,
+      {statusCode: response.statusCode, bodyLength: bodyLength(response.body)},
+      `${init?.method ?? 'GET'} ${path}: response`,
     )
     return validateData(response.body, schema)
+  }
+}
+
+function bodyLength(body: unknown): number {
+  if (typeof body === 'string') return body.length
+  try {
+    return JSON.stringify(body).length
+  } catch {
+    return 0
   }
 }
 

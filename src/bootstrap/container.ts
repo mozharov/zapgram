@@ -3,7 +3,7 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
-import {createInvoiceOriginLookup} from '@infra/lnbits/invoice-origin.js'
+import {createInvoiceOriginLookup, probeAdminPaymentList} from '@infra/lnbits/invoice-origin.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
 import {
   BACKEND_LIQUIDITY_CHECK_FAILED,
@@ -175,9 +175,14 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const liquidityMode = await probeFundingSource({
     hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
     read: () => masterWallet.readFundingSource(),
+    probeClassify: () => probeAdminPaymentList(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
   })
   log.info(
-    {liquidityMode: liquidityMode.mode, reason: liquidityMode.reason},
+    {
+      liquidityMode: liquidityMode.mode,
+      reason: liquidityMode.reason,
+      classify: liquidityMode.classify,
+    },
     'Funding source liquidity check',
   )
   posthog?.capture({
@@ -187,6 +192,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       $process_person_profile: false,
       mode: liquidityMode.mode,
       reason: liquidityMode.reason,
+      classify: liquidityMode.classify,
     },
   })
   const health = await masterWallet.checkStatus()
@@ -267,7 +273,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
       const text =
         reason === 'paused'
-          ? translate('error.send-paused', languageCode)
+          ? translate('donation.paused', languageCode, {donationSats, usdSuffix})
           : translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
