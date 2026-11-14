@@ -2,6 +2,8 @@ import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {sanitizeMemo} from '@core/lightning/memo.js'
 import {msatsToSats} from '@core/money/sats.js'
 import type {PendingInvoice, User} from '@infra/db/types.js'
+import type {PaidInvoiceNotifySource} from '@modules/invoices/claim-and-notify-paid.js'
+import {syncInvoiceWidget} from '@modules/invoices/sync-invoice-widget.js'
 import {notifier} from '@modules/notifications/notifier.js'
 import {getUserOrThrow} from '@modules/users/repository.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
@@ -12,26 +14,48 @@ import {getRuntime} from '../../runtime.js'
 export async function notifyInvoicePaid(
   paymentRequest: PendingInvoice['paymentRequest'],
   userId: User['id'],
+  widget?: Pick<PendingInvoice, 'paymentHash' | 'widgetChatId' | 'widgetMessageId'> | null,
+  source?: PaidInvoiceNotifySource,
 ) {
-  const user = await getUserOrThrow(userId)
-  const wallet = await getUserWallet(user.id)
+  try {
+    const user = await getUserOrThrow(userId)
+    const wallet = await getUserWallet(user.id)
 
-  const invoice = decodeInvoice(paymentRequest)
-  const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
-  const balance = msatsToSats(wallet.balance)
-  const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([
-    invoice.satoshi,
-    balance,
-  ])
-  await notifier.send(
-    user.id,
-    translate('received-incoming-invoice', user.languageCode, {
-      amount: invoice.satoshi,
-      usdSuffix,
-      hasDescription: (!!memo).toString(),
-      description: memo,
+    const invoice = decodeInvoice(paymentRequest)
+    const memo = sanitizeMemo(invoice.description ?? '', getRuntime().config.memoFooter)
+    const balance = msatsToSats(wallet.balance)
+    const [usdSuffix = '', balanceUsdSuffix = ''] = await usdSuffixesForSats([
+      invoice.satoshi,
       balance,
-      balanceUsdSuffix,
-    }),
-  )
+    ])
+    await notifier.send(
+      user.id,
+      translate('received-incoming-invoice', user.languageCode, {
+        amount: invoice.satoshi,
+        usdSuffix,
+        hasDescription: (!!memo).toString(),
+        description: memo,
+        balance,
+        balanceUsdSuffix,
+      }),
+    )
+  } catch (error) {
+    // The widget is the in-chat proof of payment. A failed receipt must not skip it.
+    getRuntime().log.error(
+      {error, userId, source, paymentHash: widget?.paymentHash},
+      'Failed to notify user about paid invoice',
+    )
+  }
+  if (widget) {
+    await syncInvoiceWidget(
+      {
+        paymentRequest,
+        paymentHash: widget.paymentHash,
+        userId,
+        widgetChatId: widget.widgetChatId,
+        widgetMessageId: widget.widgetMessageId,
+      },
+      'paid',
+    )
+  }
 }

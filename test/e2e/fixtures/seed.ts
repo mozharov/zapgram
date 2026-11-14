@@ -160,6 +160,8 @@ export async function seedPendingInvoice(
     paymentHash: invoice.paymentHash,
     expiresAt: opts.expiresAt ?? new Date(Date.now() + expiresInMs),
     createdAt: opts.createdAt,
+    widgetChatId: opts.widgetChatId,
+    widgetMessageId: opts.widgetMessageId,
   })
 }
 
