@@ -5,7 +5,7 @@ import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 import {LNBitsAPI} from './lnbits-api.js'
-import type {OutgoingLiquidityGuard} from './outgoing-liquidity.js'
+import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
   feeReserveResponseSchema,
@@ -74,7 +74,7 @@ export class UserWallet extends LNBitsAPI {
         }),
       }).catch(error => handlePayInvoiceError(error, this.log))
     } catch (error) {
-      if (hold) await this.outgoingLiquidity?.release(hold)
+      if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
       throw error
     }
   }

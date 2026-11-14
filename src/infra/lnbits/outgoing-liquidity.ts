@@ -1,6 +1,9 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {backendCoversOutgoingPayment} from '@core/lnbits/outgoing-liquidity.js'
+import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 
 /** Short enough that a refilled channel is visible on the next send, long enough to spare LNbits. */
@@ -45,8 +48,21 @@ export type OutgoingLiquidityGuard = {
     bolt11: string
     feeReserveMsat: () => Promise<number>
   }): Promise<LiquidityHold | undefined>
-  /** Put a hold back if the payment call failed and the cache has not been refreshed. */
+  /** Put a hold back after LNbits refused the pay and this cache generation is still current. */
   release(hold: LiquidityHold): Promise<void>
+}
+
+/**
+ * True only when LNbits finished the request and refused the payment.
+ * A timeout, a 5xx, or a success body we could not parse may still have spent the backend.
+ */
+export function payLeftBackendUnspent(error: unknown): boolean {
+  if (error instanceof InvoiceAlreadyPaidError || error instanceof InsufficientFundsError) {
+    return true
+  }
+  if (!(error instanceof HTTPError)) return false
+  const status = error.response.statusCode
+  return status === 520 || (status >= 400 && status < 500)
 }
 
 /**

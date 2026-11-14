@@ -3,10 +3,11 @@ import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {HTTPError} from 'got'
 import {LNBitsAPI} from './lnbits-api.js'
-import type {
-  BalanceRead,
-  LiquidityCheckReason,
-  OutgoingLiquidityGuard,
+import {
+  type BalanceRead,
+  type LiquidityCheckReason,
+  type OutgoingLiquidityGuard,
+  payLeftBackendUnspent,
 } from './outgoing-liquidity.js'
 import {
   feeReserveResponseSchema,
@@ -152,7 +153,7 @@ class MasterWallet extends LNBitsAPI {
         }),
       })
     } catch (error) {
-      if (hold) await this.outgoingLiquidity?.release(hold)
+      if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
       throw error
     }
   }

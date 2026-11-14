@@ -1,10 +1,14 @@
 import {describe, expect, test} from 'bun:test'
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
+import got, {HTTPError, TimeoutError} from 'got'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
   BACKEND_LIQUIDITY_CHECK_FAILED,
   createOutgoingLiquidityGuard,
+  payLeftBackendUnspent,
   probeFundingSource,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from './outgoing-liquidity.js'
@@ -209,6 +213,75 @@ describe('probeFundingSource', () => {
       },
     })
     expect(crashed).toEqual({mode: 'disabled', reason: 'check_failed'})
+  })
+})
+
+describe('payLeftBackendUnspent', () => {
+  test('a hold comes back only when LNbits refused the payment', async () => {
+    expect(payLeftBackendUnspent(new InvoiceAlreadyPaidError())).toBe(true)
+    expect(payLeftBackendUnspent(new InsufficientFundsError())).toBe(true)
+    expect(payLeftBackendUnspent(new Error('socket hang up'))).toBe(false)
+
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        const status = Number(new URL(request.url).pathname.slice(1))
+        return new Response('no', {status})
+      },
+    })
+    try {
+      const refused = await got(`http://127.0.0.1:${server.port}/400`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      const failed = await got(`http://127.0.0.1:${server.port}/520`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      const crashed = await got(`http://127.0.0.1:${server.port}/500`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(refused).toBeInstanceOf(HTTPError)
+      expect(failed).toBeInstanceOf(HTTPError)
+      expect(crashed).toBeInstanceOf(HTTPError)
+      expect(payLeftBackendUnspent(refused)).toBe(true)
+      expect(payLeftBackendUnspent(failed)).toBe(true)
+      expect(payLeftBackendUnspent(crashed)).toBe(false)
+    } finally {
+      server.stop(true)
+    }
+
+    const hung = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch() {
+        return new Promise(() => undefined)
+      },
+    })
+    try {
+      const timedOut = await got(`http://127.0.0.1:${hung.port}/`, {
+        retry: {limit: 0},
+        timeout: {request: 50},
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(timedOut).toBeInstanceOf(TimeoutError)
+      expect(payLeftBackendUnspent(timedOut)).toBe(false)
+    } finally {
+      hung.stop(true)
+    }
   })
 })
 
