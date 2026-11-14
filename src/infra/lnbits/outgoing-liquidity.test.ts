@@ -2,7 +2,7 @@ import {describe, expect, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
-import got, {HTTPError} from 'got'
+import got, {HTTPError, RequestError} from 'got'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
@@ -260,6 +260,32 @@ describe('payLeftBackendUnspent', () => {
       expect(payLeftBackendUnspent(crashed)).toBe(false)
     } finally {
       server.stop(true)
+    }
+  })
+
+  test('a timed-out pay leaves the hold in place', async () => {
+    const hung = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch() {
+        return new Promise(() => undefined)
+      },
+    })
+    try {
+      const timedOut = await got(`http://127.0.0.1:${hung.port}/`, {
+        retry: {limit: 0},
+        timeout: {request: 50},
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      // got reports this abort as TimeoutError locally and ReadError (ECONNRESET) on CI.
+      // Both extend RequestError and neither is an HTTP refusal.
+      expect(timedOut).toBeInstanceOf(RequestError)
+      expect(timedOut).not.toBeInstanceOf(HTTPError)
+      expect(payLeftBackendUnspent(timedOut)).toBe(false)
+    } finally {
+      hung.stop(true)
     }
   })
 })
