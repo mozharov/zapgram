@@ -134,6 +134,15 @@ export class LnbitsState {
   /** When set, GET /api/v1/payments/fee-reserve never answers. */
   hangFeeReserve = false
 
+  /** When set, the admin payment list returns an empty page, so pays look external. */
+  adminPaymentListEmpty = false
+
+  /**
+   * When set, `payment_hash` is ignored. A startup probe that asks for an unused hash
+   * must then fail once any payment exists.
+   */
+  ignorePaymentHashFilter = false
+
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []
   private readonly masterWallet: FakeWallet

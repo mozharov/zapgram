@@ -393,6 +393,15 @@ describe('probeFundingSource', () => {
     expect(reads).toBe(0)
   })
 
+  test('a zero balance with no error stays active and is named on the startup reason', async () => {
+    const mode = await probeFundingSource({
+      hasBearer: true,
+      read: async () => ({ok: true, balanceMsat: 0}),
+      probeClassify: async () => true,
+    })
+    expect(mode).toEqual({mode: 'active', reason: 'zero_balance', classify: 'ok'})
+  })
+
   test('a readable balance is active', async () => {
     const mode = await probeFundingSource({
       hasBearer: true,

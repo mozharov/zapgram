@@ -18,6 +18,18 @@ export const envSchema = z.object({
   LNBITS_ADMIN_KEY: z.string().min(1),
   LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
   LNBITS_BEARER_TOKEN: z.string().optional(),
+  /**
+   * Pause external Lightning sends when the funding-source balance is short.
+   * `off` skips the check. NWC without get_balance reports 0 and an empty error,
+   * which would otherwise pause every external send until the bearer is removed.
+   */
+  BACKEND_LIQUIDITY_GUARD: z.preprocess(
+    value => {
+      if (value === undefined || value === null || value === '') return 'on'
+      return typeof value === 'string' ? value.trim().toLowerCase() : value
+    },
+    z.enum(['on', 'off']).default('on'),
+  ),
   /** Network string accepted by Watch-Only / SatsPay (Mainnet | Testnet). */
   LNBITS_ONCHAIN_NETWORK: z.enum(['Mainnet', 'Testnet']).default('Mainnet'),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee

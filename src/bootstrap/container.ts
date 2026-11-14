@@ -152,31 +152,46 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
-  const outgoingLiquidity = createOutgoingLiquidityGuard({
-    classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
-    readBalance: () => masterWallet.readFundingSource(),
-    log,
-    capturePaused: properties => {
-      posthog?.capture({
-        distinctId: 'lnbits-backend',
-        event: SEND_PAUSED_NO_BACKEND_LIQUIDITY,
-        properties: {$process_person_profile: false, ...properties},
+  const guardEnabled = config.BACKEND_LIQUIDITY_GUARD === 'on'
+  const outgoingLiquidity = guardEnabled
+    ? createOutgoingLiquidityGuard({
+        classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
+        readBalance: () => masterWallet.readFundingSource(),
+        log,
+        capturePaused: properties => {
+          posthog?.capture({
+            distinctId: 'lnbits-backend',
+            event: SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+            properties: {$process_person_profile: false, ...properties},
+          })
+        },
+        captureCheckFailed: properties => {
+          posthog?.capture({
+            distinctId: 'lnbits-backend',
+            event: BACKEND_LIQUIDITY_CHECK_FAILED,
+            properties: {$process_person_profile: false, ...properties},
+          })
+        },
       })
-    },
-    captureCheckFailed: properties => {
-      posthog?.capture({
-        distinctId: 'lnbits-backend',
-        event: BACKEND_LIQUIDITY_CHECK_FAILED,
-        properties: {$process_person_profile: false, ...properties},
+    : undefined
+  if (outgoingLiquidity) masterWallet.useOutgoingLiquidity(outgoingLiquidity)
+  const liquidityMode = outgoingLiquidity
+    ? await probeFundingSource({
+        hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
+        read: () => masterWallet.readFundingSource(),
+        probeClassify: () => probeAdminPaymentList(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
       })
-    },
-  })
-  masterWallet.useOutgoingLiquidity(outgoingLiquidity)
-  const liquidityMode = await probeFundingSource({
-    hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
-    read: () => masterWallet.readFundingSource(),
-    probeClassify: () => probeAdminPaymentList(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
-  })
+    : {mode: 'disabled' as const, reason: 'guard_off' as const, classify: 'skipped' as const}
+  if (liquidityMode.reason === 'zero_balance') {
+    log.warn(
+      {
+        liquidityMode: liquidityMode.mode,
+        reason: liquidityMode.reason,
+        classify: liquidityMode.classify,
+      },
+      'Funding source balance is 0 with an empty error; NWC without get_balance looks the same',
+    )
+  }
   log.info(
     {
       liquidityMode: liquidityMode.mode,

@@ -10,8 +10,10 @@ const MAX_CLASSIFY_ROWS = 200
  * LNbits 1.7.1 calls the funding source only from `_pay_external_invoice`.
  * `pay_invoice` never gets there when an incoming row (`amount > 0`) is pending
  * (`check_internal`) or already successful (`is_internal_status_success`).
- * A pending or successful outgoing row on the payer's own wallet is returned
- * by `_verify_external_payment` without a new funding-source call.
+ * A pending, successful, or failed outgoing row on the payer's own wallet is
+ * returned by `_verify_external_payment` without a new funding-source pay.
+ * A failed row raises "retrying is not possible"; the guard must not replace
+ * that refusal with a pause.
  * Anything else, including another wallet's outgoing row, still pays externally.
  *
  * `GET /api/v1/payments/all/paginated` with the admin access token lists every
@@ -40,15 +42,24 @@ class OriginLookup extends LNBitsAPI {
   }
 }
 
-/** One cheap admin-list read. False means classification cannot be trusted yet. */
+/**
+ * One admin-list read that asks for a hash nothing should have.
+ * False when the page is unreadable or a row comes back for a different hash,
+ * which means the server ignored `payment_hash`.
+ */
 export async function probeAdminPaymentList(
   baseUrl: string,
   bearerToken: string | undefined,
 ): Promise<boolean> {
   if (!bearerToken) return false
   const lookup = new OriginLookup(baseUrl)
+  const probeHash = '00'.repeat(32)
   try {
-    return readPaymentPage(await lookup.page(bearerToken, {limit: 1})) !== undefined
+    const page = readPaymentPage(
+      await lookup.page(bearerToken, {payment_hash: probeHash, limit: 1}),
+    )
+    if (!page) return false
+    return page.data.every(row => paymentRow(row)?.paymentHash.toLowerCase() === probeHash)
   } catch {
     return false
   }
@@ -138,12 +149,12 @@ export function originFromAdminPaymentPage(
     if (parsed.paymentHash.toLowerCase() !== wanted) return 'unknown'
     const incomingLive =
       parsed.amount > 0 && (parsed.status === 'pending' || parsed.status === 'success')
-    const ownOutgoingInFlight =
+    const ownOutgoingSkipsFundingSource =
       payerWalletId !== undefined &&
       parsed.walletId === payerWalletId &&
       parsed.amount < 0 &&
-      (parsed.status === 'pending' || parsed.status === 'success')
-    if (incomingLive || ownOutgoingInFlight) skipsFundingSource = true
+      (parsed.status === 'pending' || parsed.status === 'success' || parsed.status === 'failed')
+    if (incomingLive || ownOutgoingSkipsFundingSource) skipsFundingSource = true
   }
   return skipsFundingSource ? 'internal' : 'external'
 }

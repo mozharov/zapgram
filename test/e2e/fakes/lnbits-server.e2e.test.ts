@@ -97,6 +97,10 @@ describe('fake LNbits HTTP server', () => {
       if (!created.id) throw new Error('Fake LNbits did not return a user id')
       expect((await master.getUserByUsername('100001'))?.id).toBe(created.id)
       expect((await master.getWallet(created.id)).user).toBe(created.id)
+      const userCalls = fake.requests.filter(request => request.path.startsWith('/users/api/'))
+      expect(userCalls.length).toBeGreaterThan(0)
+      expect(userCalls.every(request => request.apiKey === null)).toBe(true)
+      expect(userCalls.every(request => request.authorization === 'Bearer e2e-token')).toBe(true)
     })
   })
 
@@ -167,6 +171,29 @@ describe('fake LNbits HTTP server', () => {
         if (!(error instanceof HTTPError)) throw error
         expect(error.response.statusCode).toBe(404)
       }
+    })
+  })
+
+  test('a keyless payment lookup matches LNbits 1.7.1 and omits details and preimage', async () => {
+    await withFake(async fake => {
+      const receiver = userWallet(fake, '100002')
+      const invoice = await receiver.client.createInvoice({sats: 21})
+
+      const unpaid = await fetch(`${fake.url}/api/v1/payments/${invoice.payment_hash}`)
+      expect(unpaid.status).toBe(200)
+      expect(await unpaid.json()).toEqual({paid: false})
+
+      fake.state.credit(receiver.walletId, 21_000)
+      const payer = userWallet(fake, '100001')
+      fake.state.credit(payer.walletId, 21_000)
+      await payer.client.payInvoice(invoice.bolt11)
+
+      const paid = await fetch(`${fake.url}/api/v1/payments/${invoice.payment_hash}`)
+      expect(paid.status).toBe(200)
+      expect(await paid.json()).toEqual({paid: true})
+
+      const missing = await fetch(`${fake.url}/api/v1/payments/${'ab'.repeat(32)}`)
+      expect(missing.status).toBe(404)
     })
   })
 

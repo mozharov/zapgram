@@ -46,12 +46,11 @@ class MasterWallet extends LNBitsAPI {
     this.paymentWebhookUrl = paymentWebhookUrl
   }
 
-  private getAuthHeaders() {
+  private getAuthHeaders(): Record<string, string | undefined> {
     if (!this.bearerToken) return {}
     return {
       Authorization: `Bearer ${this.bearerToken}`,
-      // Remove X-API-KEY for OAuth endpoints
-      'X-API-KEY': undefined,
+      'X-Api-Key': undefined,
     }
   }
 

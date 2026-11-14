@@ -7,9 +7,6 @@ import {validateData} from '../validate.js'
 /** Pause reads (status and fee quote). A hung funding source must not hold a send for 15s. */
 export const GUARD_UPSTREAM_TIMEOUT_MS = 3_000
 
-/** @deprecated Use GUARD_UPSTREAM_TIMEOUT_MS. Kept so existing imports stay valid. */
-export const FEE_RESERVE_TIMEOUT_MS = GUARD_UPSTREAM_TIMEOUT_MS
-
 /** Shared 30 rps budget against LNbits. Exported so tests can lift it; do not change in prod. */
 export const limiter = new Bottleneck({
   reservoir: 30,

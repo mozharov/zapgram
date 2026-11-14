@@ -10,6 +10,8 @@ export type FakeLnbitsRequest = {
   method: string
   path: string
   body?: unknown
+  apiKey: string | null
+  authorization: string | null
 }
 
 /**
@@ -37,7 +39,12 @@ export async function startFakeLnbits(opts: {
     async fetch(request) {
       const url = new URL(request.url)
       const body = await readBody(request)
-      const recorded: FakeLnbitsRequest = {method: request.method, path: url.pathname}
+      const recorded: FakeLnbitsRequest = {
+        method: request.method,
+        path: url.pathname,
+        apiKey: request.headers.get('X-Api-Key'),
+        authorization: request.headers.get('Authorization'),
+      }
       if (body !== undefined) recorded.body = body
       requests.push(recorded)
 
@@ -165,9 +172,13 @@ function route({
     const bearer = bearerOf(request)
     if (!bearer) return json({detail: 'Missing user ID or access token.'}, 401)
     if (bearer !== FAKE_LNBITS_ADMIN_BEARER) return json({data: [], total: 0})
+    if (state.adminPaymentListEmpty) return json({data: [], total: 0})
     const paymentHash = url.searchParams.get('payment_hash')
     const rows = state.payments.filter(
-      payment => paymentHash === null || payment.paymentHash === paymentHash,
+      payment =>
+        state.ignorePaymentHashFilter ||
+        paymentHash === null ||
+        payment.paymentHash === paymentHash,
     )
     const limitRaw = Number(url.searchParams.get('limit') ?? '50')
     const offsetRaw = Number(url.searchParams.get('offset') ?? '0')
@@ -232,14 +243,12 @@ function route({
     // No wallet key: LNbits 1.7.1 looks the hash up on the whole instance. That is how a
     // payer learns the invoice was issued here (internal) before calling pay.
     if (!wallet) {
+      // LNbits 1.7.1 api_payment: no wallet key means paid/status only. details and
+      // preimage are returned only when the key belongs to the payment's wallet.
       const payment = state.payments.find(candidate => candidate.paymentHash === paymentHash)
-      if (!payment) return json({detail: 'Payment not found.'}, 404)
-      return json({
-        paid: payment.paid,
-        status: payment.paid ? 'success' : 'pending',
-        preimage: payment.paid ? '00'.repeat(32) : null,
-        details: paymentResponse(payment),
-      })
+      if (!payment) return json({detail: 'Payment does not exist.'}, 404)
+      if (payment.paid) return json({paid: true})
+      return json({paid: false})
     }
     const payment = state.payments.find(
       candidate => candidate.paymentHash === paymentHash && candidate.walletId === wallet.id,

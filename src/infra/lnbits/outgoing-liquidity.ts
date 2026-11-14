@@ -38,11 +38,17 @@ export type BalanceRead =
 
 export type InvoiceOrigin = 'internal' | 'external' | 'unknown'
 
-export type ClassifyProbe = 'ok' | 'failed' | 'missing_bearer'
+export type ClassifyProbe = 'ok' | 'failed' | 'missing_bearer' | 'skipped'
 
 export type LiquidityMode = {
   mode: 'active' | 'degraded' | 'disabled'
-  reason: 'ok' | 'missing_bearer' | LiquidityCheckReason | 'check_failed'
+  reason:
+    | 'ok'
+    | 'missing_bearer'
+    | 'zero_balance'
+    | 'guard_off'
+    | LiquidityCheckReason
+    | 'check_failed'
   /** Whether the admin payment list used to classify invoices answered. */
   classify: ClassifyProbe
 }
@@ -352,6 +358,15 @@ export async function probeFundingSource(input: {
   }
   try {
     const read = await input.read()
+    // NWC without get_balance returns 0 and an empty error. Keep pausing on a real zero,
+    // but say so on the startup event: the only off switch is BACKEND_LIQUIDITY_GUARD=off.
+    if (read.ok && read.balanceMsat === 0) {
+      return {
+        mode: classify === 'ok' ? 'active' : 'degraded',
+        reason: 'zero_balance',
+        classify,
+      }
+    }
     if (read.ok && classify === 'ok') return {mode: 'active', reason: 'ok', classify}
     if (read.ok) return {mode: 'degraded', reason: 'ok', classify}
     return {mode: 'disabled', reason: read.reason, classify}

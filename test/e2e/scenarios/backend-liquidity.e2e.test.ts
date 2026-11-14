@@ -1,6 +1,9 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {SendPausedError} from '@core/errors/send-paused.js'
+import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
+import {donateAmountRoute, featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {expectPayoutsExactly} from '../asserts.js'
 import {mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedSubscription, seedSubscriptionPayment, seedUser} from '../fixtures/seed.js'
@@ -239,6 +242,162 @@ test('a non-admin status body does not pause payments even when the stored balan
   await e2e.send(privateText(invoice.bolt11))
   await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
 
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
+  expect(outgoingPaysSince(mark)).toHaveLength(1)
+  expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
+})
+
+test('a one-shot donation pauses before pay when the invoice is external and the backend is empty', async () => {
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+  const before = await snapshot(e2e)
+  const mark = e2e.ln.requests.length
+
+  await e2e.send(privateCallback(donateAmountRoute.build({amountSats: 21})))
+
+  expect(
+    messageTexts().some(text => /Could not send 21 sats/.test(text) && /paused/.test(text)),
+  ).toBe(true)
+  expect(outgoingPaysSince(mark)).toEqual([])
+  expect((await snapshot(e2e)).lnbits.wallets).toEqual(before.lnbits.wallets)
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(0)
+})
+
+test('the monthly donation cron pauses the charge and leaves the schedule due', async () => {
+  const dueAt = new Date(Date.now() - 60_000)
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    monthlyDonationSats: 21,
+    monthlyDonationNextAt: dueAt,
+  })
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+  const mark = e2e.ln.requests.length
+
+  await processMonthlyDonations()
+
+  expect(
+    messageTexts().some(
+      text => /21 sat/.test(text) && /was not charged/.test(text) && /stays on/.test(text),
+    ),
+  ).toBe(true)
+  expect(outgoingPaysSince(mark)).toEqual([])
+  const user = await e2e.container.users.findById(USER_A)
+  expect(user?.monthlyDonationSats).toBe(21)
+  expect(user?.monthlyDonationLastHash ?? null).toBeNull()
+  const storedDue = user?.monthlyDonationNextAt?.getTime() ?? 0
+  expect(Math.abs(storedDue - dueAt.getTime())).toBeLessThan(2_000)
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(0)
+})
+
+test('feature-request funding pauses and still submits the request', async () => {
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+  const mark = e2e.ln.requests.length
+
+  await e2e.send(privateCallback(staticCallback.featureRequest))
+  await e2e.send(privateText('Show a pause instead of sending'))
+  await e2e.send(
+    privateCallback(featureFundAmountRoute.build({amountSats: 21}), {
+      messageId: requiredPromptMessageId(),
+    }),
+  )
+
+  const report = e2e.tg.of('editMessageText').map(call => String(call.text))
+  expect(report.some(text => text.includes(translate('error.send-paused', 'en')))).toBe(true)
+  expect(outgoingPaysSince(mark)).toEqual([])
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(0)
+})
+
+test('settlement pays the owner and the fee once, and a duplicate refunds once', async () => {
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active', price: 1000})
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  const intent = await e2e.container.subscriptionIntents.create({
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    kind: 'renewal',
+  })
+  const winner = await seedSubscriptionPayment(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    paid: true,
+    price: 1000,
+    kind: 'renewal',
+    intentId: intent.id,
+  })
+  const duplicate = await seedSubscriptionPayment(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    paid: true,
+    price: 1000,
+    kind: 'renewal',
+    intentId: intent.id,
+    isCurrent: false,
+  })
+  expect(await e2e.container.settleService.complete(winner)).toBe('settled')
+  expect(await e2e.container.settleService.complete(duplicate)).toBe('settled')
+
+  expectPayoutsExactly(e2e.ln, {toWallet: `${OWNER} wallet`, sats: 950, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: 50, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: `${USER_A} wallet`, sats: 1000, times: 1})
+  expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
+})
+
+test('startup names a zero balance with an empty error and still pauses external sends', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    env: {LOG_LEVEL: 'info'},
+    prepareLn(ln) {
+      ln.state.fundingSourceBalanceMsat = 0
+    },
+  })
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  const startup = e2e.logs.filter(entry =>
+    String(entry.msg).includes('Funding source balance is 0 with an empty error'),
+  )
+  expect(startup).toHaveLength(1)
+  expect(startup[0]).toMatchObject({
+    reason: 'zero_balance',
+    liquidityMode: 'active',
+    classify: 'ok',
+  })
+
+  credit(USER_A, 1000)
+  const invoice = mintInvoice({sats: 10, description: 'still paused'})
+  const mark = e2e.ln.requests.length
+  await e2e.send(privateText(invoice.bolt11))
+  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  expect(messageTexts()).toContain(translate('error.send-paused', 'en'))
+  expect(outgoingPaysSince(mark)).toEqual([])
+})
+
+test('BACKEND_LIQUIDITY_GUARD=off disables the check and lets an external send through', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    env: {LOG_LEVEL: 'info', BACKEND_LIQUIDITY_GUARD: 'off'},
+    prepareLn(ln) {
+      ln.state.fundingSourceBalanceMsat = 0
+    },
+  })
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A'})
+  const startup = e2e.logs.find(entry => String(entry.msg) === 'Funding source liquidity check')
+  expect(startup).toMatchObject({
+    liquidityMode: 'disabled',
+    reason: 'guard_off',
+    classify: 'skipped',
+  })
+
+  credit(USER_A, 1000)
+  const invoice = mintInvoice({sats: 10, description: 'guard off'})
+  const mark = e2e.ln.requests.length
+  await e2e.send(privateText(invoice.bolt11))
+  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
   expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)

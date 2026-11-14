@@ -1,7 +1,11 @@
 import {describe, expect, test} from 'bun:test'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import {FAKE_LNBITS_ADMIN_BEARER, startFakeLnbits} from '../../../test/e2e/fakes/lnbits-server.js'
-import {createInvoiceOriginLookup, originFromAdminPaymentPage} from './invoice-origin.js'
+import {
+  createInvoiceOriginLookup,
+  originFromAdminPaymentPage,
+  probeAdminPaymentList,
+} from './invoice-origin.js'
 import {UserWallet} from './user-wallet.js'
 
 const HASH = 'ab'.repeat(32)
@@ -48,6 +52,29 @@ describe('originFromAdminPaymentPage', () => {
     ).toBe('external')
   })
 
+  test('the payer own failed outgoing row is not sent to the funding source again', () => {
+    expect(
+      originFromAdminPaymentPage(
+        {
+          data: [{amount: -21_000, status: 'failed', wallet_id: 'payer-a', payment_hash: HASH}],
+          total: 1,
+        },
+        HASH,
+        'payer-a',
+      ),
+    ).toBe('internal')
+    expect(
+      originFromAdminPaymentPage(
+        {
+          data: [{amount: -21_000, status: 'failed', wallet_id: 'payer-a', payment_hash: HASH}],
+          total: 1,
+        },
+        HASH,
+        'payer-b',
+      ),
+    ).toBe('external')
+  })
+
   test('the payer own pending or successful outgoing row is not sent again', () => {
     const page = {
       data: [{amount: -21_000, status: 'success', wallet_id: 'payer-a', payment_hash: HASH}],
@@ -79,6 +106,29 @@ describe('originFromAdminPaymentPage', () => {
         HASH,
       ),
     ).toBe('unknown')
+  })
+})
+
+describe('probeAdminPaymentList', () => {
+  test('a filtered empty page is accepted, and an ignored filter is not', async () => {
+    const fake = await startFakeLnbits({
+      adminKey: 'master-admin-key',
+      feeCollectionKey: 'fee-collection-key',
+    })
+    try {
+      expect(await probeAdminPaymentList(fake.url, undefined)).toBe(false)
+      expect(await probeAdminPaymentList(fake.url, FAKE_LNBITS_ADMIN_BEARER)).toBe(true)
+
+      const wallet = fake.state.walletByApiKey('master-admin-key')
+      if (!wallet) throw new Error('master wallet missing')
+      fake.state.createInvoice({wallet, sats: 21, memo: 'probe', expirySec: 3600})
+      expect(await probeAdminPaymentList(fake.url, FAKE_LNBITS_ADMIN_BEARER)).toBe(true)
+
+      fake.state.ignorePaymentHashFilter = true
+      expect(await probeAdminPaymentList(fake.url, FAKE_LNBITS_ADMIN_BEARER)).toBe(false)
+    } finally {
+      fake.stop()
+    }
   })
 })
 

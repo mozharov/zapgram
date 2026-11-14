@@ -47,6 +47,8 @@ export type E2E = {
 export async function createE2E(opts?: {
   mode?: 'memory' | 'file'
   env?: Partial<Record<string, string>>
+  /** Runs after the fake LNbits is up and before createContainer, so startup sees it. */
+  prepareLn?: (ln: FakeLnbits) => void
 }): Promise<E2E> {
   await limiter.updateSettings({
     reservoir: null,
@@ -57,6 +59,7 @@ export async function createE2E(opts?: {
   })
 
   const ln = await startFakeLnbits({adminKey: ADMIN_KEY, feeCollectionKey: FEE_COLLECTION_KEY})
+  opts?.prepareLn?.(ln)
   const tg = await startFakeTelegram()
   const mode = opts?.mode ?? 'memory'
   const tempDirectory = mode === 'file' ? await mkdtemp(join(tmpdir(), 'zapgram-e2e-')) : undefined
