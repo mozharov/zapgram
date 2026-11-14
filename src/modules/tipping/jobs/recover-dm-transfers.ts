@@ -41,10 +41,15 @@ export async function runDmTransferRecovery(input: {
 }
 
 export async function recoverDmTransfers(): Promise<void> {
-  const {dmTransfers, log} = getRuntime()
+  const {dmTransfers, lnurlPays, log} = getRuntime()
   await runDmTransferRecovery({
     list: (limit, offset) => dmTransfers.listActionable(limit, offset),
     reconcile: id => dmTransfers.reconcile(id),
+    log,
+  })
+  await runDmTransferRecovery({
+    list: (limit, offset) => lnurlPays.listActionable(limit, offset),
+    reconcile: id => lnurlPays.reconcile(id),
     log,
   })
 }

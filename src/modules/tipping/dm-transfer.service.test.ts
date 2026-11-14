@@ -186,7 +186,7 @@ test('a notice that did not send stays in flight so recovery can continue', asyn
   expect(await world.service.reconcile(send.attemptId)).toBe('settled')
 })
 
-test('a settled notice is listed before a stuck unknown pay', async () => {
+test('a stuck unknown pay is listed before a settled notice', async () => {
   const world = await worldFor({donationPercent: 0})
   const created = new Date('2026-01-01T00:00:00Z')
   world.now = () => created
@@ -204,7 +204,7 @@ test('a settled notice is listed before a stuck unknown pay', async () => {
   })
   await world.transfers.markSettled('notice')
   const [first] = await world.service.listActionable(1, 0)
-  expect(first?.id).toBe('notice')
+  expect(first?.id).toBe('stuck')
 })
 
 test('reconciliation settles a paid unknown transfer and does not pay again', async () => {

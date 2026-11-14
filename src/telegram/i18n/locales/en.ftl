@@ -352,6 +352,10 @@ sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
     .still-confirming = <b>⏳ This confirmation is still being checked.</b>
 
         Nothing else will be sent for it. Do not start another send until this one is resolved.
+    .sender-settled = <b>✅ You sent {$amount} sats to @{$recipient}.</b>
+    .sender-not-paid = <b>⚠️ The send of {$amount} sats to @{$recipient} did not go through.</b>
+
+        You can send it again.
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
 
@@ -376,6 +380,15 @@ lnurl-pay-amount = {$exact ->
         The recipient accepts from <b>{$min}</b> to <b>{$max}</b>.
     }
     .invalid = <b>⚠️ Enter a whole number of sats from {$min} to {$max}.</b>
+
+lnurl-pay-still-checking = <b>⏳ A payment to <code>{$recipient}</code> is still being checked.</b>
+
+    Nothing else will be sent for it. Do not pay this recipient again until it is resolved.
+
+lnurl-pay-sender-settled = <b>✅ The payment of {$amount} sats to <code>{$recipient}</code> went through.</b>
+lnurl-pay-sender-not-paid = <b>⚠️ The payment of {$amount} sats to <code>{$recipient}</code> did not go through.</b>
+
+    You can pay them again.
 
 lnurl-pay-failed = {$reason ->
     [timeout] <b>⚠️ The recipient's server did not answer in time.</b>

@@ -1,7 +1,7 @@
 import type {AppDatabase} from '@infra/db/client.js'
 import {dmTransfersTable} from '@infra/db/schema.js'
 import type {DmTransfer} from '@infra/db/types.js'
-import {and, asc, desc, eq, isNull, lt, or} from 'drizzle-orm'
+import {and, asc, eq, isNull, lt, or} from 'drizzle-orm'
 
 export type DmTransferInvoice = {hash: string; bolt11: string}
 
@@ -49,8 +49,11 @@ export function createDmTransferRepository(database: AppDatabase) {
     async saveInvoice(id: string, expectedHash: string | null, next: DmTransferInvoice) {
       const expected =
         expectedHash === null
-          ? isNull(dmTransfersTable.invoiceHash)
-          : eq(dmTransfersTable.invoiceHash, expectedHash)
+          ? and(isNull(dmTransfersTable.invoiceHash), eq(dmTransfersTable.phase, 'reserved'))
+          : and(
+              eq(dmTransfersTable.invoiceHash, expectedHash),
+              eq(dmTransfersTable.phase, 'invoice_saved'),
+            )
       const [row] = await database
         .update(dmTransfersTable)
         .set({invoiceHash: next.hash, bolt11: next.bolt11, phase: 'invoice_saved'})
@@ -111,11 +114,22 @@ export function createDmTransferRepository(database: AppDatabase) {
         .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.status, 'pending')))
     },
 
+    /** Only a row that has not been accepted by the wallet can be abandoned. */
     async markAbandoned(id: string) {
       await database
         .update(dmTransfersTable)
         .set({phase: 'abandoned', reviewLogged: true})
-        .where(eq(dmTransfersTable.id, id))
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            or(
+              eq(dmTransfersTable.phase, 'reserved'),
+              eq(dmTransfersTable.phase, 'invoice_saved'),
+              eq(dmTransfersTable.phase, 'pay_unknown'),
+            ),
+          ),
+        )
     },
 
     async markNeedsReview(id: string): Promise<boolean> {
@@ -173,16 +187,53 @@ export function createDmTransferRepository(database: AppDatabase) {
         .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
     },
 
+    /**
+     * Count a failed notice. `drop` stops further retries: a 403, or the attempt cap.
+     * The claim is released either way so a non-dropped row can be taken again.
+     */
+    async recordNoticeFailure(id: string, drop: boolean) {
+      const row = await get(id)
+      await database
+        .update(dmTransfersTable)
+        .set({
+          noticeAttempts: row.noticeAttempts + 1,
+          noticeDropped: drop,
+          noticeClaimed: false,
+          noticeClaimExpiresAt: null,
+        })
+        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
+    },
+
+    async claimSenderNotice(id: string): Promise<boolean> {
+      const [row] = await database
+        .update(dmTransfersTable)
+        .set({senderNotified: true})
+        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.senderNotified, false)))
+        .returning()
+      return row !== undefined
+    },
+
+    async releaseSenderNotice(id: string) {
+      await database
+        .update(dmTransfersTable)
+        .set({senderNotified: false})
+        .where(eq(dmTransfersTable.id, id))
+    },
+
     async listActionable(limit: number, offset: number) {
       return database.query.dmTransfersTable.findMany({
         limit,
         offset,
-        // Settled rows still waiting on a notice come first. A page of
-        // `pay_unknown` rows must not hide them until the 24h review.
-        orderBy: [desc(dmTransfersTable.status), asc(dmTransfersTable.createdAt)],
+        // Pending pays come before notices. A page of blocked-recipient retries
+        // must not hide a payment whose outcome is still unknown.
+        orderBy: [asc(dmTransfersTable.status), asc(dmTransfersTable.createdAt)],
         where: or(
           and(eq(dmTransfersTable.status, 'pending'), eq(dmTransfersTable.reviewLogged, false)),
-          and(eq(dmTransfersTable.status, 'settled'), eq(dmTransfersTable.noticeSent, false)),
+          and(
+            eq(dmTransfersTable.status, 'settled'),
+            eq(dmTransfersTable.noticeSent, false),
+            eq(dmTransfersTable.noticeDropped, false),
+          ),
         ),
       })
     },

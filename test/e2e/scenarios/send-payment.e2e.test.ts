@@ -320,6 +320,35 @@ test('an old LNURL confirm does not pay the amount reopened on the same message'
   expectNoErrors(e2e.logs)
 })
 
+test('an unclear LNURL pay is not paid again on the next Send', async () => {
+  credit(USER_A, 1_000)
+  server = startServer({min: 10_000, max: 100_000})
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+    },
+    {status: 500, body: {detail: 'upstream timeout'}},
+  )
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(server.lnurl))
+  await e2e.send(privateText(String(AMOUNT)))
+  await e2e.send(pressWallet('internal', requiredMessageId()))
+
+  expect(joinedText()).toMatch(/still being checked/)
+  expect(outgoing()).toHaveLength(0)
+  expect(server.hits.callback).toBe(1)
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(server.lnurl))
+
+  expect(joinedText()).toMatch(/still being checked/)
+  expect(outgoing()).toHaveLength(0)
+  expect(server.hits.callback).toBe(1)
+})
+
 test('a lightning address is not a username and pays nothing when the recipient is unreachable', async () => {
   credit(USER_A, 1_000)
   await e2e.send(privateCallback(staticCallback.sendMenu))

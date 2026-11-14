@@ -352,6 +352,10 @@ sending-to-user = <b>✉️ Отправка сат пользователю Tel
     .still-confirming = <b>⏳ Это подтверждение ещё проверяется.</b>
 
         По нему больше ничего не спишется. Не начинай новую отправку, пока эта не разрешится.
+    .sender-settled = <b>✅ Отправлено {$amount} сат пользователю @{$recipient}.</b>
+    .sender-not-paid = <b>⚠️ Отправка {$amount} сат пользователю @{$recipient} не прошла.</b>
+
+        Можно отправить ещё раз.
 
 pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
 
@@ -376,6 +380,15 @@ lnurl-pay-amount = {$exact ->
         Получатель принимает от <b>{$min}</b> до <b>{$max}</b>.
     }
     .invalid = <b>⚠️ Введи целое число сат от {$min} до {$max}.</b>
+
+lnurl-pay-still-checking = <b>⏳ Платёж на <code>{$recipient}</code> ещё проверяется.</b>
+
+    По нему больше ничего не спишется. Не плати этому получателю снова, пока он не разрешится.
+
+lnurl-pay-sender-settled = <b>✅ Платёж {$amount} сат на <code>{$recipient}</code> прошёл.</b>
+lnurl-pay-sender-not-paid = <b>⚠️ Платёж {$amount} сат на <code>{$recipient}</code> не прошёл.</b>
+
+    Можно заплатить ещё раз.
 
 lnurl-pay-failed = {$reason ->
     [timeout] <b>⚠️ Сервер получателя не ответил вовремя.</b>

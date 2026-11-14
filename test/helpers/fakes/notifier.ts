@@ -19,6 +19,10 @@ export function createFakeNotifier(): Notifier & {calls: RecordedNotification[]}
       calls.push({kind: 'send', userId, text, opts})
       return true
     },
+    async sendOutcome(userId, text, opts) {
+      calls.push({kind: 'send', userId, text, opts})
+      return 'sent' as const
+    },
     async sendPhoto(userId, file, opts) {
       calls.push({kind: 'sendPhoto', userId, file, opts})
       return true

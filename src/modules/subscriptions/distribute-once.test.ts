@@ -84,6 +84,7 @@ function makeDistribute() {
     }),
     notifier: {
       send: async () => true,
+      sendOutcome: async () => 'sent' as const,
       sendPhoto: async () => true,
       copyMessage: async () => true,
     },

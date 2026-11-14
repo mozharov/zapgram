@@ -162,6 +162,13 @@
       "when": 1794671823462,
       "tag": "0022_dm_transfer_phase",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794676603829,
+      "tag": "0023_lnurl_pay_attempts",
+      "breakpoints": true
     }
   ]
 }

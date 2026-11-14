@@ -16,6 +16,8 @@ import {InlineKeyboard} from 'grammy'
 
 /** In-conversation only. Not a routed callback: a click after the wizard ends cannot pay. */
 export const CONFIRM_SEND = 'confirm-send'
+/** A confirm button older than this does not pay. The nonce itself is unchanged. */
+export const CONFIRM_TTL_MS = 15 * 60 * 1000
 
 /**
  * Explicit debit confirmation. Returns only after the button on this message.
@@ -33,8 +35,12 @@ export async function waitForTransferConfirm(
   // Stable for replays of this attempt, new after cancel and a new send.
   // The amount and the recipient are not in the payload. Millis collide across
   // conversations, so the id is one random UUID.
-  const nonce = await conversation.external(() => crypto.randomUUID())
-  const confirmData = `${CONFIRM_SEND}:${nonce}`
+  const issued = await conversation.external(() => ({
+    nonce: crypto.randomUUID(),
+    expiresAt: Date.now() + CONFIRM_TTL_MS,
+  }))
+  const {nonce, expiresAt} = issued
+  const confirmData = `${CONFIRM_SEND}:${nonce}:${expiresAt}`
   const keyboard = new InlineKeyboard()
     .text(ctx.t('button.confirm-send'), confirmData)
     .row()
@@ -59,6 +65,10 @@ export async function waitForTransferConfirm(
       const sameScreen =
         isCallbackFromPrompt(next, prompt) && next.callbackQuery?.message?.chat.id === prompt.chatId
       if (sameScreen && data === confirmData) {
+        if (Date.now() > expiresAt) {
+          await next.answerCallbackQuery({text: next.t('callback-answer.confirm-stale')})
+          continue
+        }
         await next.answerCallbackQuery()
         await clearPromptControls(conversation, prompt)
         return {host: confirmHost, nonce}

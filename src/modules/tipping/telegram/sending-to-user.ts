@@ -143,4 +143,6 @@ export async function payResolvedUser(
       ...disabledLinkPreview,
     }),
   )
+  // Recovery tells the sender only when this screen never landed.
+  await conversation.external(() => getRuntime().dmTransfers.markSenderNotified(confirmed.nonce))
 }

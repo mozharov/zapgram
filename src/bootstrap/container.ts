@@ -40,6 +40,11 @@ import {
   type FeatureRequestService,
   formatFeatureRequestAdminMeta,
 } from '@modules/feature-requests/submit.service.js'
+import {createLnurlPayAttemptRepository} from '@modules/invoices/lnurl-pay-attempt.repository.js'
+import {
+  createLnurlPayAttemptService,
+  type LnurlPayAttemptService,
+} from '@modules/invoices/lnurl-pay-attempt.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import {
@@ -83,7 +88,7 @@ import {
   createDmTransferService,
   type DmTransferService,
 } from '@modules/tipping/dm-transfer.service.js'
-import {notifySatsReceived} from '@modules/tipping/notify-sats-received.js'
+import {notifySatsReceivedOutcome} from '@modules/tipping/notify-sats-received.js'
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
@@ -134,6 +139,7 @@ export type AppContainer = {
   donationPay: DonationPayService
   donationCollect: DonationCollectService
   dmTransfers: DmTransferService
+  lnurlPays: LnurlPayAttemptService
   featureRequests: FeatureRequestService
   broadcasts: BroadcastRepository
   broadcastService: BroadcastService
@@ -257,7 +263,19 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     getUser: id => users.getOrThrow(id),
     notify: async ({toUserId, fromUserId, sats}) => {
       const from = await users.getOrThrow(fromUserId)
-      return notifySatsReceived(toUserId, sats, from.username)
+      return notifySatsReceivedOutcome(toUserId, sats, from.username)
+    },
+    notifySender: async ({fromUserId, toUserId, sats, outcome}) => {
+      const [from, to] = await Promise.all([
+        users.getOrThrow(fromUserId),
+        users.getOrThrow(toUserId),
+      ])
+      const key =
+        outcome === 'settled' ? 'sending-to-user.sender-settled' : 'sending-to-user.sender-not-paid'
+      return notifier.send(
+        fromUserId,
+        translate(key, from.languageCode, {amount: sats, recipient: to.username ?? ''}),
+      )
     },
     findDonation: hash => donations.findByPaymentHash(hash),
     insertDonation: input =>
@@ -281,6 +299,48 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     log,
     posthog,
+  })
+
+  const lnurlPays = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async (userId, hash, bolt11, rail) => {
+      if (rail === 'nwc') {
+        const payer = await users.getOrThrow(userId)
+        if (!payer.nwcUrl || !bolt11) return 'unknown'
+        try {
+          const wallet = new NostrWallet(payer.nwcUrl, config.memoFooter, log)
+          const found = await wallet.lookupInvoice(bolt11)
+          return found.preimage ? 'paid' : 'pending'
+        } catch (error) {
+          if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+          return 'unknown'
+        }
+      }
+      try {
+        const wallet = await getUserWallet(userId)
+        return classifyPayoutLookup(await wallet.lookupPayment(hash))
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+        return 'unknown'
+      }
+    },
+    notifySender: async ({fromUserId, recipient, sats, outcome}) => {
+      const from = await users.getOrThrow(fromUserId)
+      const key = outcome === 'settled' ? 'lnurl-pay-sender-settled' : 'lnurl-pay-sender-not-paid'
+      return notifier.send(fromUserId, translate(key, from.languageCode, {recipient, amount: sats}))
+    },
+    collectDonation: async ({userId, sats, rail}) => {
+      const payer = await users.getOrThrow(userId)
+      await donationCollect.tryCollect({
+        userId,
+        baseAmountSats: sats,
+        kind: 'invoice',
+        preferredRail: rail,
+        nwcUrl: payer.nwcUrl,
+        user: payer,
+      })
+    },
   })
 
   const featureRequests = createFeatureRequestService({
@@ -455,6 +515,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     donationPay,
     donationCollect,
     dmTransfers,
+    lnurlPays,
     featureRequests,
     broadcasts,
     broadcastService,

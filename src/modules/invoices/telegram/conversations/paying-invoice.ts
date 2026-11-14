@@ -1,3 +1,5 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {msatsToSats} from '@core/money/sats.js'
@@ -48,6 +50,12 @@ export async function payingInvoice(
     recheckExpiry?: boolean
     /** The send wizard stays open so the user can correct the paste or cancel. */
     invalid?: 'return'
+    /**
+     * LNURL and Lightning addresses mint a fresh invoice on every attempt.
+     * The hash is stored and the phase flips to `pay_unknown` before pay.
+     * A pasted BOLT11 leaves this unset: paying that same invoice again is safe.
+     */
+    lnurl?: {attemptId: string; recipient: string}
   },
 ) {
   const reviewPrefix = options?.reviewPrefix
@@ -162,15 +170,65 @@ export async function payingInvoice(
     await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest}),
   )
 
+  const lnurl = options?.lnurl
+  let skipPay = false
+  if (lnurl) {
+    const gate = await conversation.external(() =>
+      getRuntime().lnurlPays.beginPay({
+        attemptId: lnurl.attemptId,
+        fromUserId: ctx.user.id,
+        recipient: lnurl.recipient,
+        sats: invoice.satoshi ?? 0,
+        rail: isInternalWallet ? 'internal' : 'nwc',
+        paymentHash: invoice.paymentHash,
+        bolt11: invoice.paymentRequest,
+      }),
+    )
+    if (gate === 'blocked' || gate === 'in_flight') {
+      await showLnurlHold(
+        ctx,
+        host,
+        ctx.t('lnurl-pay-still-checking', {recipient: lnurl.recipient}),
+      )
+      return conversation.halt()
+    }
+    skipPay = gate === 'paid'
+  }
+
   let feesPaid = 0
-  if (isInternalWallet) {
-    const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
-    feesPaid = payment.fee < 0 ? -payment.fee : 0
-  } else {
-    if (!ctx.user.nwc) throw new NWCConnectionError()
-    await ctx.user.nwc.payInvoice(invoice.paymentRequest)
-    const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
-    feesPaid = lookupResponse.fees_paid
+  if (!skipPay) {
+    try {
+      if (isInternalWallet) {
+        const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+        feesPaid = payment.fee < 0 ? -payment.fee : 0
+      } else {
+        if (!ctx.user.nwc) throw new NWCConnectionError()
+        await ctx.user.nwc.payInvoice(invoice.paymentRequest)
+        const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
+        feesPaid = lookupResponse.fees_paid
+      }
+    } catch (error) {
+      if (!lnurl) throw error
+      const pays = getRuntime().lnurlPays
+      if (error instanceof InvoiceAlreadyPaidError) {
+        await conversation.external(() => pays.notePaid(lnurl.attemptId, invoice.paymentHash))
+      } else if (error instanceof InsufficientFundsError) {
+        await conversation.external(() => pays.noteRejected(lnurl.attemptId))
+        throw error
+      } else {
+        await showLnurlHold(
+          ctx,
+          host,
+          ctx.t('lnurl-pay-still-checking', {recipient: lnurl.recipient}),
+        )
+        return conversation.halt()
+      }
+    }
+  }
+  if (lnurl && !skipPay) {
+    await conversation.external(() =>
+      getRuntime().lnurlPays.notePaid(lnurl.attemptId, invoice.paymentHash),
+    )
   }
 
   // Past the last `conversation.wait()`, so this line is written once and not on every replay.
@@ -201,16 +259,19 @@ export async function payingInvoice(
     },
   })
 
-  // Best-effort voluntary platform donation — never blocks the invoice pay.
-  await getRuntime().donationCollect.tryCollect({
-    userId: ctx.user.id,
-    baseAmountSats: invoice.satoshi,
-    kind: 'invoice',
-    preferredRail: isInternalWallet ? 'internal' : 'nwc',
-    nwc: isInternalWallet ? undefined : ctx.user.nwc,
-    nwcUrl: ctx.user.nwcUrl,
-    user: ctx.user,
-  })
+  // LNURL records the donation when the attempt first settles, including a later
+  // reconcile. Calling it here as well would collect twice.
+  if (!lnurl) {
+    await getRuntime().donationCollect.tryCollect({
+      userId: ctx.user.id,
+      baseAmountSats: invoice.satoshi,
+      kind: 'invoice',
+      preferredRail: isInternalWallet ? 'internal' : 'nwc',
+      nwc: isInternalWallet ? undefined : ctx.user.nwc,
+      nwcUrl: ctx.user.nwcUrl,
+      user: ctx.user,
+    })
+  }
 
   if (!host) throw new Error('Paying invoice finished without a host message')
 
@@ -245,6 +306,23 @@ export async function payingInvoice(
     paidKeyboard(ctx, invoice.paymentRequest),
   )
   return undefined
+}
+
+async function showLnurlHold(
+  ctx: ConversationContext,
+  host: ConversationHost | undefined,
+  html: string,
+): Promise<void> {
+  if (!host) {
+    await ctx.reply(html, disabledLinkPreview)
+    return
+  }
+  await closeLivingMenu(ctx, host.messageId, markup =>
+    ctx.api.editMessageText(host.chatId, host.messageId, html, {
+      reply_markup: markup,
+      ...disabledLinkPreview,
+    }),
+  )
 }
 
 async function deleteRepliedInvoice(ctx: ConversationContext): Promise<void> {

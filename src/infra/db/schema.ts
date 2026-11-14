@@ -438,8 +438,63 @@ export const dmTransfersTable = sqliteTable(
     /** Lease end. A crash mid-send can be retried after this time. */
     noticeClaimExpiresAt: integer('notice_claim_expires_at', {mode: 'timestamp'}),
     noticeSent: integer('notice_sent', {mode: 'boolean'}).notNull().default(false),
+    /** Telegram 403 or the attempt cap. Recovery must not retry this notice. */
+    noticeDropped: integer('notice_dropped', {mode: 'boolean'}).notNull().default(false),
+    noticeAttempts: integer('notice_attempts', {mode: 'number'}).notNull().default(0),
+    /** The sender already saw the outcome, in the wizard or in a later message. */
+    senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
     reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`)],
+)
+
+/**
+ * One LNURL or Lightning-address pay. The id is this attempt, not the recipient,
+ * so a later send is a new row. `invoice_hash` is written before that bolt11 is paid.
+ * A new attempt cannot enter `pay_unknown` while another for the same recipient is unresolved.
+ */
+export const lnurlPayAttemptsTable = sqliteTable(
+  'lnurl_pay_attempts',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: integer('from_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    /** Normalized lightning address or LNURL. Not a ZapGram user id. */
+    recipient: text('recipient').notNull(),
+    sats: integer('sats', {mode: 'number'}).notNull(),
+    status: text('status', {enum: ['pending', 'settled']}).notNull(),
+    phase: text('phase', {
+      enum: [
+        'reserved',
+        'invoice_saved',
+        'pay_unknown',
+        'provider_accepted',
+        'needs_review',
+        'settled',
+        'abandoned',
+      ],
+    })
+      .notNull()
+      .default('reserved'),
+    rail: text('rail', {enum: ['internal', 'nwc']})
+      .notNull()
+      .default('internal'),
+    invoiceHash: text('invoice_hash'),
+    bolt11: text('bolt11'),
+    providerAccepted: integer('provider_accepted', {mode: 'boolean'}).notNull().default(false),
+    providerPaymentHash: text('provider_payment_hash'),
+    reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    check('lnurl_pay_attempts_status_check', sql`${table.status} in ('pending', 'settled')`),
+    uniqueIndex('lnurl_pay_attempts_one_open')
+      .on(table.fromUserId, table.recipient)
+      .where(
+        sql`${table.status} = 'pending' AND ${table.phase} in ('pay_unknown', 'provider_accepted', 'needs_review')`,
+      ),
+  ],
 )

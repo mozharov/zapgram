@@ -6,6 +6,7 @@ import type {
   dmTransfersTable,
   donationPlatformStatsTable,
   donationsTable,
+  lnurlPayAttemptsTable,
   onchainChatPaymentsTable,
   pendingInvoicesTable,
   subscriptionIntentsTable,
@@ -48,6 +49,7 @@ export type OnchainChatPaymentInsert = typeof onchainChatPaymentsTable.$inferIns
 export type NewOnchainChatPayment = Omit<OnchainChatPaymentInsert, 'id'>
 
 export type DmTransfer = typeof dmTransfersTable.$inferSelect
+export type LnurlPayAttempt = typeof lnurlPayAttemptsTable.$inferSelect
 
 export type Donation = typeof donationsTable.$inferSelect
 export type DonationInsert = typeof donationsTable.$inferInsert

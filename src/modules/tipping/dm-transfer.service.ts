@@ -13,6 +13,8 @@ export const NOTICE_LEASE_MS = 60_000
 export const INVOICE_GRACE_MS = 2 * 60_000
 /** An unknown pay is not retried. After this it is logged once for a person. */
 export const PAY_REVIEW_MS = 24 * 60 * 60_000
+/** Failed recipient notices stop after this many tries. A 403 stops on the first. */
+export const NOTICE_ATTEMPT_LIMIT = 8
 
 export type DmTransferSettlement =
   | {outcome: 'settled'; fee: 'collected' | 'skipped' | 'failed'; notice: 'sent' | 'failed'}
@@ -49,7 +51,17 @@ export type DmTransferDeps = {
     amountSats: number
     paymentHash: string
   }) => Promise<unknown>
-  notify: (input: {toUserId: number; fromUserId: number; sats: number}) => Promise<boolean>
+  notify: (input: {
+    toUserId: number
+    fromUserId: number
+    sats: number
+  }) => Promise<boolean | 'unreachable'>
+  notifySender?: (input: {
+    fromUserId: number
+    toUserId: number
+    sats: number
+    outcome: 'settled' | 'abandoned'
+  }) => Promise<boolean>
 }
 
 type Primary = 'paid' | 'in_flight' | 'rejected'
@@ -320,8 +332,10 @@ export function createDmTransferService(deps: DmTransferDeps) {
         fromUserId: input.fromUserId,
         sats: input.sats,
       })
-      if (!sent) {
-        await deps.transfers.releaseNotice(input.attemptId)
+      if (sent !== true) {
+        const current = await deps.transfers.get(input.attemptId)
+        const drop = sent === 'unreachable' || current.noticeAttempts + 1 >= NOTICE_ATTEMPT_LIMIT
+        await deps.transfers.recordNoticeFailure(input.attemptId, drop)
         return 'failed'
       }
       await deps.transfers.markNoticeSent(input.attemptId)
@@ -342,7 +356,10 @@ export function createDmTransferService(deps: DmTransferDeps) {
     id: string,
   ): Promise<'settled' | 'abandoned' | 'in_flight' | 'needs_review'> {
     const row = await deps.transfers.get(id)
-    if (row.phase === 'abandoned') return 'abandoned'
+    if (row.phase === 'abandoned') {
+      await tellSender(row, 'abandoned')
+      return 'abandoned'
+    }
     if (row.providerAccepted || row.phase === 'provider_accepted') {
       await settleMark(row.id)
       const latest = await deps.transfers.get(id)
@@ -351,17 +368,11 @@ export function createDmTransferService(deps: DmTransferDeps) {
     }
     if (row.status === 'settled') return finishSettled(row)
     if (!row.invoiceHash) {
-      if (ageMs(row) > graceMs) {
-        await deps.transfers.markAbandoned(row.id)
-        return 'abandoned'
-      }
+      if (ageMs(row) > graceMs) return abandon(row)
       return 'in_flight'
     }
     if (row.phase === 'invoice_saved' || row.phase === 'reserved') {
-      if (ageMs(row) > graceMs) {
-        await deps.transfers.markAbandoned(row.id)
-        return 'abandoned'
-      }
+      if (ageMs(row) > graceMs) return abandon(row)
       return 'in_flight'
     }
     const state = await lookupQuiet(row.toUserId, row.invoiceHash)
@@ -373,12 +384,11 @@ export function createDmTransferService(deps: DmTransferDeps) {
       return finishSettled(latest)
     }
     if (state === 'retryable' && ageMs(row) > reviewMs) {
-      await deps.transfers.markAbandoned(row.id)
       deps.log.error(
         {transferId: row.id},
         'DM transfer abandoned after the provider reported no payment',
       )
-      return 'abandoned'
+      return abandon(row)
     }
     if (row.phase === 'needs_review') return 'in_flight'
     if ((state === 'pending' || state === 'unknown') && ageMs(row) > reviewMs) {
@@ -398,7 +408,32 @@ export function createDmTransferService(deps: DmTransferDeps) {
    * Fee, then the recipient notice. `in_flight` means the notice is still due, so
    * recovery does not treat the row as gone and can read the rows after it.
    */
+  async function abandon(row: DmTransfer): Promise<'abandoned'> {
+    await deps.transfers.markAbandoned(row.id)
+    await tellSender({...row, phase: 'abandoned'}, 'abandoned')
+    return 'abandoned'
+  }
+
+  async function tellSender(row: DmTransfer, outcome: 'settled' | 'abandoned') {
+    if (!deps.notifySender || row.senderNotified) return
+    const claimed = await deps.transfers.claimSenderNotice(row.id)
+    if (!claimed) return
+    try {
+      const sent = await deps.notifySender({
+        fromUserId: row.fromUserId,
+        toUserId: row.toUserId,
+        sats: row.sats,
+        outcome,
+      })
+      if (!sent) await deps.transfers.releaseSenderNotice(row.id)
+    } catch (error) {
+      await deps.transfers.releaseSenderNotice(row.id)
+      deps.log.error({error, transferId: row.id}, 'DM transfer sender notice failed')
+    }
+  }
+
   async function finishSettled(row: DmTransfer): Promise<'settled' | 'in_flight'> {
+    await tellSender(row, 'settled')
     await settleFee({attemptId: row.id, fromUserId: row.fromUserId}).catch(error => {
       deps.log.error({error, fromUserId: row.fromUserId}, 'DM transfer fee failed')
     })
@@ -424,7 +459,11 @@ export function createDmTransferService(deps: DmTransferDeps) {
     return deps.transfers.listActionable(limit, offset)
   }
 
-  return {settle, reconcile, listActionable}
+  async function markSenderNotified(id: string) {
+    await deps.transfers.claimSenderNotice(id)
+  }
+
+  return {settle, reconcile, listActionable, markSenderNotified}
 }
 
 export type DmTransferService = ReturnType<typeof createDmTransferService>

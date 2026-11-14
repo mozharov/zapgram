@@ -25,6 +25,7 @@ import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
+import {getRuntime} from '../../../../runtime.js'
 import {lnurlPayeeParts} from '../lnurl-payee.js'
 import {payingInvoice} from './paying-invoice.js'
 
@@ -47,6 +48,18 @@ export async function payingLnurl(
   const request = recognizePaymentRequest(target)
   if (!request || request.kind === 'bolt11') {
     await refuse(ctx, 'bad-response')
+    return conversation.halt()
+  }
+
+  const unresolved = await conversation.external(() =>
+    getRuntime().lnurlPays.hasUnresolved(ctx.user.id, request.value),
+  )
+  if (unresolved) {
+    await ctx.reply(
+      ctx.t('lnurl-pay-still-checking', {recipient: request.value}),
+      disabledLinkPreview,
+    )
+    if (opts?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
 
@@ -159,12 +172,15 @@ export async function payingLnurl(
     hosts: [...quote.metadataHosts, ...invoiced.callbackHosts],
     serviceText: quote.serviceText,
   })
-  // Confirmation and the wallet pay edit `screen`. Nothing is paid before that button.
+  // Stable across the confirm-click replay. A new Send gets a new id.
+  const attemptId = await conversation.external(() => crypto.randomUUID())
+  // Confirmation and the wallet pay edit `screen`. The hash is stored before pay.
   const paid = await payingInvoice(conversation, ctx, invoiced.bolt11, {
     reviewPrefix: payee,
     host: screen,
     recheckExpiry: true,
     invalid: opts?.invalid,
+    lnurl: {attemptId, recipient: request.value},
   })
   if (paid === 'invalid') return 'invalid'
   return undefined
