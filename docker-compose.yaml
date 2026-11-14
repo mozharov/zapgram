@@ -58,15 +58,17 @@ services:
           memory: 500M
 
   lnbits:
-    # ops/lnbits wraps lnbits/lnbits:v1.5.6. The entrypoint runs the image
-    # command and, every LNBITS_RESTART_INTERVAL_HOURS (default 96, 0 disables),
+    # ops/lnbits wraps lnbits/lnbits:v1.7.1 (tag only: amd64 and arm64 have
+    # separate digests, and the deploy host arch is not recorded here).
+    # The entrypoint runs the upstream command, including `uv run --no-sync`,
+    # and, every LNBITS_RESTART_INTERVAL_HOURS (default 96, 0 disables),
     # SIGTERMs LNbits and exits 1. restart below starts a new container.
     # The clock starts with the container, so a deploy resets it.
     build:
       context: ./ops/lnbits
       dockerfile: Dockerfile
       args:
-        LNBITS_IMAGE: lnbits/lnbits:v1.5.6
+        LNBITS_IMAGE: lnbits/lnbits:v1.7.1
     restart: unless-stopped
     environment:
       HOST: "0.0.0.0"
@@ -76,6 +78,13 @@ services:
       # Installed extension code goes to $LNBITS_EXTENSIONS_PATH/extensions. Image default is
       # "lnbits" → /app/lnbits/extensions (not persisted), so keep it on the lnbits-data volume (#18).
       LNBITS_EXTENSIONS_PATH: "/app/data/extensions"
+      # Editable since 1.7.0 (default true). Env applies when the settings DB
+      # has no stored value for it. Updates installed extensions in place to the
+      # latest compatible stable release from the same source repo. Does not
+      # uninstall them and does not delete ext_*.sqlite3. SatsPay 1.0.2 and
+      # Watch Only 1.1.0 cannot load on 1.7.x; startup should move them to
+      # 1.2.0 and 1.2.1, which have no max_lnbits_version and still load on 1.7.1.
+      LNBITS_AUTOUPDATE_EXTENSIONS_ON_STARTUP: "true"
       LNBITS_HIDE_API: ${LNBITS_HIDE_API:-false}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY}
       # File logs under /app/data/logs/ (ENABLE_LOG_TO_FILE defaults on). Daily rotation; keep 7 days.

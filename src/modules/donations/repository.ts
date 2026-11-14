@@ -36,16 +36,20 @@ export function createDonationRepository(database: AppDatabase) {
     const id = data.id ?? crypto.randomUUID()
     const amountSats = data.amountSats
 
-    return database.transaction(async tx => {
-      const row = await tx
-        .insert(donationsTable)
-        .values({...data, id})
-        .returning()
-        .then(rows => firstOrThrow(rows, 'donation'))
+    // bun-sqlite commits when this callback returns. Awaiting inside it runs the second write
+    // after the commit, so a failed total update would leave the ledger row behind.
+    return database.transaction(tx => {
+      const row = firstOrThrow(
+        tx
+          .insert(donationsTable)
+          .values({...data, id})
+          .returning()
+          .all(),
+        'donation',
+      )
 
       // Keep singleton totals in lockstep with the ledger (O(1) /donate all-time read).
-      await tx
-        .insert(donationPlatformStatsTable)
+      tx.insert(donationPlatformStatsTable)
         .values({
           id: PLATFORM_STATS_ID,
           totalSats: amountSats,
@@ -59,6 +63,7 @@ export function createDonationRepository(database: AppDatabase) {
             updatedAt: new Date(),
           },
         })
+        .run()
 
       return row
     })

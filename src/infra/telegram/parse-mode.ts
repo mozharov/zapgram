@@ -16,6 +16,11 @@ export function parseMode(mode: ParseMode): Transformer {
     // carry this field do not accept the ordinary text `parse_mode` alongside it.
     if ('rich_message' in payload) return prev(method, payload, signal)
 
+    const methodName = method as string
+    if (methodName === 'editMessageWidgetData' || methodName === 'editSharedWidgetData') {
+      return prev(method, payload, signal)
+    }
+
     switch (method) {
       case 'editMessageMedia': {
         if (

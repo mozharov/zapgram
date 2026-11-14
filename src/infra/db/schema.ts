@@ -103,6 +103,9 @@ export const pendingInvoicesTable = sqliteTable('pending_invoices', {
     .notNull()
     .default(sql`(unixepoch() + 60 * 60 * 24 * 7)`), // 7 days
   createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  /** Private chat that holds the live invoice widget. Null when the QR photo fallback was used. */
+  widgetChatId: integer('widget_chat_id', {mode: 'number'}),
+  widgetMessageId: integer('widget_message_id', {mode: 'number'}),
 })
 
 // only for paid chats
