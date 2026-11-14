@@ -14,6 +14,7 @@ import {
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
+import {nwcInvoiceMissing} from '@infra/nostr/nwc-lookup.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
@@ -314,7 +315,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
           const found = await wallet.lookupInvoice(bolt11)
           return found.preimage ? 'paid' : 'pending'
         } catch (error) {
-          if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+          if (nwcInvoiceMissing(error)) return 'retryable'
           return 'unknown'
         }
       }
