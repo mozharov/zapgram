@@ -4,7 +4,6 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
-import {FundingSourceUnreadableError} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
@@ -176,9 +175,10 @@ describe('fake LNbits HTTP server', () => {
     await withFake(async fake => {
       fake.state.fundingSourceBalanceMsat = 42_000
       const walletKeyOnly = createMasterWallet(testConfig(fake.url))
-      await expect(walletKeyOnly.readFundingSourceBalanceMsat()).rejects.toBeInstanceOf(
-        FundingSourceUnreadableError,
-      )
+      expect(await walletKeyOnly.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'unauthorized',
+      })
       expect(
         (
           await fetch(`${fake.url}/api/v1/status`, {
@@ -190,7 +190,7 @@ describe('fake LNbits HTTP server', () => {
       const admin = createMasterWallet(
         testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
       )
-      expect(await admin.readFundingSourceBalanceMsat()).toBe(42_000)
+      expect(await admin.readFundingSource()).toEqual({ok: true, balanceMsat: 42_000})
       const adminBody = asRecord(
         await (
           await fetch(`${fake.url}/api/v1/status`, {
@@ -202,9 +202,7 @@ describe('fake LNbits HTTP server', () => {
       expect(adminBody?.funding_source_balance_msat).toBe(42_000)
 
       const member = createMasterWallet(testConfig(fake.url, {bearerToken: 'e2e-member'}))
-      await expect(member.readFundingSourceBalanceMsat()).rejects.toBeInstanceOf(
-        FundingSourceUnreadableError,
-      )
+      expect(await member.readFundingSource()).toEqual({ok: false, reason: 'balance_missing'})
       const memberBody = asRecord(
         await (
           await fetch(`${fake.url}/api/v1/status`, {
@@ -212,13 +210,14 @@ describe('fake LNbits HTTP server', () => {
           })
         ).json(),
       )
-      expect(memberBody?.version).toBe('1.5.6')
+      expect(memberBody?.version).toBe('1.7.1')
       expect(memberBody).not.toHaveProperty('funding_source_balance_msat')
 
       fake.state.fundingSourceError = 'backend unreachable'
-      await expect(admin.readFundingSourceBalanceMsat()).rejects.toThrow(
-        'Funding source balance unavailable',
-      )
+      expect(await admin.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'funding_source_error',
+      })
     })
   })
 

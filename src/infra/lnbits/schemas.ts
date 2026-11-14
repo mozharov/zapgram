@@ -91,7 +91,7 @@ export const lookupPaymentResponseSchema = z.object({
 })
 
 /**
- * Admin view of GET /api/v1/status on LNbits 1.5.6 and 1.7.0.
+ * Admin view of GET /api/v1/status. LNbits 1.5.6, 1.7.0, and 1.7.1 share this handler.
  * Timing fields differ by version (`up_time` is a string, same as /health) and are ignored.
  * Non-admin callers omit the funding-source fields; that parse failure is a failed read.
  */

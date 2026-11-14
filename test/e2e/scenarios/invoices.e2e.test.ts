@@ -365,12 +365,12 @@ test('an invoice the bot issued itself is paid with a zero fee', async () => {
 
   const receipt = String(e2e.tg.last('editMessageText')?.text)
   expect(receipt).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
-  // The review does not quote a routing reserve for an invoice this bot issued. The pay reads
-  // the reserve once so the backend-liquidity guard can compare amount + reserve. LNbits still
-  // settles the internal invoice with a zero fee, which is what the receipt shows.
+  // An invoice this instance issued is settled internally. The pay looks the hash up and does
+  // not ask the funding source for a balance or a routing reserve.
   const paths = lnPathsSince(mark)
-  expect(paths.filter(path => path === 'GET /api/v1/payments/fee-reserve')).toHaveLength(1)
-  expect(paths).toContain('GET /api/v1/status')
+  expect(paths.filter(path => path === 'GET /api/v1/payments/fee-reserve')).toHaveLength(0)
+  expect(paths).not.toContain('GET /api/v1/status')
+  expect(paths.some(path => path.startsWith('GET /api/v1/payments/'))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 

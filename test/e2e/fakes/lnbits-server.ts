@@ -130,7 +130,7 @@ function route({
     return json({server_time: Math.floor(Date.now() / 1000), up_time: '0 days, 0 hours, 1 minutes'})
   }
 
-  // LNbits 1.5.6 and 1.7.0: access token only. The wallet admin key is ignored.
+  // LNbits 1.7.1 (same handler as 1.5.6 and 1.7.0): access token only. The wallet key is ignored.
   // Admin token: funding_source_balance_msat. Any other token: timing fields only.
   if (method === 'GET' && path === '/api/v1/status') {
     const bearer = bearerOf(request)
@@ -139,7 +139,7 @@ function route({
       server_time: Math.floor(Date.now() / 1000),
       up_time: '0 days, 0 hours, 1 minutes',
       up_time_seconds: 1,
-      version: '1.5.6',
+      version: '1.7.1',
     }
     if (bearer !== FAKE_LNBITS_ADMIN_BEARER || !state.fundingSourceVisible) return json(status)
     return json({
@@ -199,9 +199,20 @@ function route({
 
   const paymentMatch = path.match(/^\/api\/v1\/payments\/([^/]+)$/)
   if (method === 'GET' && paymentMatch) {
-    const wallet = authenticatedWallet(request, state)
-    if (!wallet) return json({detail: 'Unauthorized.'}, 401)
     const paymentHash = paymentMatch[1]
+    const wallet = authenticatedWallet(request, state)
+    // No wallet key: LNbits 1.7.1 looks the hash up on the whole instance. That is how a
+    // payer learns the invoice was issued here (internal) before calling pay.
+    if (!wallet) {
+      const payment = state.payments.find(candidate => candidate.paymentHash === paymentHash)
+      if (!payment) return json({detail: 'Payment not found.'}, 404)
+      return json({
+        paid: payment.paid,
+        status: payment.paid ? 'success' : 'pending',
+        preimage: payment.paid ? '00'.repeat(32) : null,
+        details: paymentResponse(payment),
+      })
+    }
     const payment = state.payments.find(
       candidate => candidate.paymentHash === paymentHash && candidate.walletId === wallet.id,
     )

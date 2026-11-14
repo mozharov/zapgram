@@ -7,23 +7,34 @@ import type {AppLogger} from '../logger.js'
 export const BACKEND_LIQUIDITY_CACHE_MS = 45_000
 
 export const SEND_PAUSED_NO_BACKEND_LIQUIDITY = 'send_paused_no_backend_liquidity'
+export const BACKEND_LIQUIDITY_CHECK_FAILED = 'backend_liquidity_check_failed'
+export const BACKEND_LIQUIDITY_MODE = 'backend_liquidity_mode'
 
 /**
- * The status call succeeded as a non-admin view, or LNbits refused it (401/403).
- * The wallet admin key cannot see `funding_source_balance_msat`. That is not an empty node.
+ * Why a check did not produce a usable balance. The payment still proceeds.
+ * Values are codes, never response bodies: an NWC error string can contain the connection URL.
  */
-export class FundingSourceUnreadableError extends Error {
-  constructor() {
-    super('Funding source balance is not visible to this credential')
-    this.name = FundingSourceUnreadableError.name
-  }
-}
+export type LiquidityCheckReason =
+  | 'unauthorized'
+  | 'not_found'
+  | 'http_error'
+  | 'timeout'
+  | 'funding_source_error'
+  | 'balance_missing'
+  | 'invalid_response'
+  | 'classify_failed'
+  | 'fee_reserve'
+  | 'invalid_invoice'
 
-export type PausedLiquidity = {
-  reason: 'insufficient_backend_liquidity' | 'backend_liquidity_check_failed'
-  amount_msat: number | null
-  fee_reserve_msat: number | null
-  backend_balance_msat: number | null
+export type BalanceRead =
+  | {ok: true; balanceMsat: number}
+  | {ok: false; reason: LiquidityCheckReason}
+
+export type InvoiceOrigin = 'internal' | 'external' | 'unknown'
+
+export type LiquidityMode = {
+  mode: 'active' | 'disabled'
+  reason: 'ok' | 'missing_bearer' | LiquidityCheckReason | 'check_failed'
 }
 
 export type OutgoingLiquidityGuard = {
@@ -31,36 +42,52 @@ export type OutgoingLiquidityGuard = {
 }
 
 /**
- * Fail closed: a balance we could not read is treated like an empty backend.
- * Paying anyway is how a dead funding source turns into an opaque LNbits error,
- * and the pause copy is true in both cases — the wallet was not debited.
- * The error string from the funding source is never logged; NWC failures can embed the connection URL.
+ * Pause only an external payment whose funding-source balance was actually read and is short.
+ * Internal invoices never touch the funding source. Any failed or unreadable check lets the
+ * payment continue, the way it did before the check existed.
  */
 export function createOutgoingLiquidityGuard(deps: {
-  readBalanceMsat: () => Promise<number>
+  classifyInvoice: (bolt11: string) => Promise<InvoiceOrigin>
+  readBalance: () => Promise<BalanceRead>
   log?: AppLogger
-  capturePaused?: (properties: PausedLiquidity) => void
+  capturePaused?: (properties: {
+    amount_msat: number
+    fee_reserve_msat: number | null
+    backend_balance_msat: number
+  }) => void
+  captureCheckFailed?: (properties: {reason: LiquidityCheckReason}) => void
   now?: () => number
   ttlMs?: number
 }): OutgoingLiquidityGuard {
   const now = deps.now ?? (() => Date.now())
   const ttlMs = deps.ttlMs ?? BACKEND_LIQUIDITY_CACHE_MS
   let cached: {balanceMsat: number; at: number} | null = null
-  let inFlight: Promise<number> | null = null
-  let notedUnreadable = false
+  let inFlight: Promise<BalanceRead> | null = null
+  let tail: Promise<unknown> = Promise.resolve()
+  const lastFailureEventAt = new Map<string, number>()
 
-  async function balanceMsat(): Promise<number> {
+  function noteFailure(reason: LiquidityCheckReason): void {
+    deps.log?.warn({reason}, 'Backend liquidity check failed; payment continues')
     const at = now()
-    if (cached && at - cached.at < ttlMs) return cached.balanceMsat
+    const previous = lastFailureEventAt.get(reason)
+    if (previous !== undefined && at - previous < ttlMs) return
+    lastFailureEventAt.set(reason, at)
+    try {
+      deps.captureCheckFailed?.({reason})
+    } catch {
+      // Analytics must never decide whether the payment is attempted.
+    }
+  }
+
+  async function balance(): Promise<BalanceRead> {
+    const at = now()
+    if (cached && at - cached.at < ttlMs) return {ok: true, balanceMsat: cached.balanceMsat}
     if (!inFlight) {
       inFlight = deps
-        .readBalanceMsat()
-        .then(balance => {
-          if (!Number.isSafeInteger(balance) || balance < 0) {
-            throw new Error('Funding source balance unavailable')
-          }
-          cached = {balanceMsat: balance, at: now()}
-          return balance
+        .readBalance()
+        .then(read => {
+          if (read.ok) cached = {balanceMsat: read.balanceMsat, at: now()}
+          return read
         })
         .finally(() => {
           inFlight = null
@@ -69,12 +96,17 @@ export function createOutgoingLiquidityGuard(deps: {
     return inFlight
   }
 
-  function pause(properties: PausedLiquidity): never {
-    if (properties.reason === 'insufficient_backend_liquidity') {
-      deps.log?.info(properties, 'Outgoing payment paused: backend liquidity')
-    } else {
-      deps.log?.warn(properties, 'Outgoing payment paused: backend liquidity check failed')
+  function pause(
+    amountMsat: number,
+    feeReserveMsat: number | null,
+    backendBalanceMsat: number,
+  ): never {
+    const properties = {
+      amount_msat: amountMsat,
+      fee_reserve_msat: feeReserveMsat,
+      backend_balance_msat: backendBalanceMsat,
     }
+    deps.log?.info(properties, 'Outgoing payment paused: backend liquidity')
     try {
       deps.capturePaused?.(properties)
     } catch {
@@ -83,74 +115,98 @@ export function createOutgoingLiquidityGuard(deps: {
     throw new SendPausedError({analytics: properties})
   }
 
-  return {
-    async assertCanPay(input) {
-      let amountMsat: number
-      try {
-        amountMsat = decodeInvoice(input.bolt11).millisatoshi
-      } catch {
-        pause(paused('backend_liquidity_check_failed', null, null, null))
-      }
-      if (!Number.isSafeInteger(amountMsat) || amountMsat <= 0) {
-        pause(paused('backend_liquidity_check_failed', null, null, null))
-      }
+  async function assertExternal(
+    bolt11: string,
+    feeReserveMsat: () => Promise<number>,
+  ): Promise<void> {
+    let amountMsat: number
+    try {
+      amountMsat = decodeInvoice(bolt11).millisatoshi
+    } catch {
+      noteFailure('invalid_invoice')
+      return
+    }
+    if (!Number.isSafeInteger(amountMsat) || amountMsat <= 0) {
+      noteFailure('invalid_invoice')
+      return
+    }
 
-      let backendBalance: number
-      try {
-        backendBalance = await balanceMsat()
-      } catch (error) {
-        // A wallet admin key gets 401 or a body without the balance. Pausing on that
-        // would stop every send for as long as the credential stays non-admin.
-        if (error instanceof FundingSourceUnreadableError) {
-          if (!notedUnreadable) {
-            notedUnreadable = true
-            deps.log?.warn(
-              'Funding source balance is not visible to this credential; outgoing payments continue',
-            )
-          }
+    const read = await balance()
+    if (!read.ok) {
+      noteFailure(read.reason)
+      return
+    }
+
+    // A non-negative reserve cannot make a balance that is already under the invoice enough.
+    if (read.balanceMsat < amountMsat) {
+      pause(amountMsat, null, read.balanceMsat)
+    }
+
+    let reserveMsat: number
+    try {
+      reserveMsat = await feeReserveMsat()
+    } catch {
+      noteFailure('fee_reserve')
+      return
+    }
+    if (!Number.isSafeInteger(reserveMsat) || reserveMsat < 0) {
+      noteFailure('fee_reserve')
+      return
+    }
+    if (
+      !backendCoversOutgoingPayment({
+        balanceMsat: read.balanceMsat,
+        amountMsat,
+        feeReserveMsat: reserveMsat,
+      })
+    ) {
+      pause(amountMsat, reserveMsat, read.balanceMsat)
+    }
+
+    // Hold the amount against the cached balance so the next external pay in this process
+    // sees what this one is about to spend, until the cache expires and we re-read.
+    if (cached) {
+      const needed = amountMsat + reserveMsat
+      cached = {...cached, balanceMsat: Math.max(0, cached.balanceMsat - needed)}
+    }
+  }
+
+  return {
+    assertCanPay(input) {
+      // A previous pause rejects the chain. Swallow it so the next payment is still checked.
+      const settled = tail.then(
+        () => undefined,
+        () => undefined,
+      )
+      const run = settled.then(async () => {
+        const origin = await deps.classifyInvoice(input.bolt11)
+        if (origin === 'internal') return
+        if (origin === 'unknown') {
+          noteFailure('classify_failed')
           return
         }
-        pause(paused('backend_liquidity_check_failed', amountMsat, null, null))
-      }
-
-      // A non-negative fee reserve cannot close a gap that is already larger than the invoice.
-      if (backendBalance < amountMsat) {
-        pause(paused('insufficient_backend_liquidity', amountMsat, null, backendBalance))
-      }
-
-      let feeReserveMsat: number
-      try {
-        feeReserveMsat = await input.feeReserveMsat()
-      } catch {
-        pause(paused('backend_liquidity_check_failed', amountMsat, null, backendBalance))
-      }
-      if (!Number.isSafeInteger(feeReserveMsat) || feeReserveMsat < 0) {
-        pause(paused('backend_liquidity_check_failed', amountMsat, null, backendBalance))
-      }
-
-      if (
-        !backendCoversOutgoingPayment({
-          balanceMsat: backendBalance,
-          amountMsat,
-          feeReserveMsat,
-        })
-      ) {
-        pause(paused('insufficient_backend_liquidity', amountMsat, feeReserveMsat, backendBalance))
-      }
+        await assertExternal(input.bolt11, input.feeReserveMsat)
+      })
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      )
+      return run
     },
   }
 }
 
-function paused(
-  reason: PausedLiquidity['reason'],
-  amountMsat: number | null,
-  feeReserveMsat: number | null,
-  backendBalanceMsat: number | null,
-): PausedLiquidity {
-  return {
-    reason,
-    amount_msat: amountMsat,
-    fee_reserve_msat: feeReserveMsat,
-    backend_balance_msat: backendBalanceMsat,
+/** One startup sample. A thrown read must not take the process down. */
+export async function probeFundingSource(input: {
+  hasBearer: boolean
+  read: () => Promise<BalanceRead>
+}): Promise<LiquidityMode> {
+  if (!input.hasBearer) return {mode: 'disabled', reason: 'missing_bearer'}
+  try {
+    const read = await input.read()
+    if (read.ok) return {mode: 'active', reason: 'ok'}
+    return {mode: 'disabled', reason: read.reason}
+  } catch {
+    return {mode: 'disabled', reason: 'check_failed'}
   }
 }

@@ -3,9 +3,13 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
+import {createInvoiceOriginLookup} from '@infra/lnbits/invoice-origin.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
 import {
+  BACKEND_LIQUIDITY_CHECK_FAILED,
+  BACKEND_LIQUIDITY_MODE,
   createOutgoingLiquidityGuard,
+  probeFundingSource,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from '@infra/lnbits/outgoing-liquidity.js'
 import {
@@ -149,7 +153,8 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const masterWallet = createMasterWallet(config)
   const outgoingLiquidity = createOutgoingLiquidityGuard({
-    readBalanceMsat: () => masterWallet.readFundingSourceBalanceMsat(),
+    classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL),
+    readBalance: () => masterWallet.readFundingSource(),
     log,
     capturePaused: properties => {
       posthog?.capture({
@@ -158,8 +163,32 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
         properties: {$process_person_profile: false, ...properties},
       })
     },
+    captureCheckFailed: properties => {
+      posthog?.capture({
+        distinctId: 'lnbits-backend',
+        event: BACKEND_LIQUIDITY_CHECK_FAILED,
+        properties: {$process_person_profile: false, ...properties},
+      })
+    },
   })
   masterWallet.useOutgoingLiquidity(outgoingLiquidity)
+  const liquidityMode = await probeFundingSource({
+    hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
+    read: () => masterWallet.readFundingSource(),
+  })
+  log.info(
+    {liquidityMode: liquidityMode.mode, reason: liquidityMode.reason},
+    'Funding source liquidity check',
+  )
+  posthog?.capture({
+    distinctId: 'lnbits-backend',
+    event: BACKEND_LIQUIDITY_MODE,
+    properties: {
+      $process_person_profile: false,
+      mode: liquidityMode.mode,
+      reason: liquidityMode.reason,
+    },
+  })
   const health = await masterWallet.checkStatus()
   log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
 

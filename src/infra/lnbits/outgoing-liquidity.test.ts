@@ -1,186 +1,210 @@
 import {describe, expect, test} from 'bun:test'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
+import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-liquidity.js'
 import {
+  BACKEND_LIQUIDITY_CHECK_FAILED,
   createOutgoingLiquidityGuard,
-  FundingSourceUnreadableError,
+  probeFundingSource,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
 } from './outgoing-liquidity.js'
 
 const invoice = mintInvoice({sats: 21, description: 'liquidity'})
+const second = mintInvoice({sats: 21, description: 'second'})
+
+function guard(input: {
+  origin?: InvoiceOrigin
+  read?: () => Promise<BalanceRead>
+  fee?: () => Promise<number>
+  now?: () => number
+  ttlMs?: number
+}) {
+  const failed: LiquidityCheckReason[] = []
+  const paused: unknown[] = []
+  let clock = 1_000
+  const liquidity = createOutgoingLiquidityGuard({
+    classifyInvoice: async () => input.origin ?? 'external',
+    readBalance: input.read ?? (async () => ({ok: true, balanceMsat: 100_000})),
+    captureCheckFailed: event => {
+      failed.push(event.reason)
+    },
+    capturePaused: event => {
+      paused.push(event)
+    },
+    now: input.now ?? (() => clock),
+    ttlMs: input.ttlMs ?? 45_000,
+  })
+  return {
+    liquidity,
+    failed,
+    paused,
+    advance(ms: number) {
+      clock += ms
+    },
+    pay: (bolt11 = invoice.bolt11) =>
+      liquidity.assertCanPay({
+        bolt11,
+        feeReserveMsat: input.fee ?? (async () => 2_000),
+      }),
+  }
+}
 
 describe('createOutgoingLiquidityGuard', () => {
-  test('zero backend pauses without asking for the fee reserve', async () => {
-    let feeReads = 0
-    const captured: unknown[] = []
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => 0,
-      capturePaused: properties => {
-        captured.push(properties)
+  test('an internal invoice is not checked against the backend', async () => {
+    let reads = 0
+    const {pay} = guard({
+      origin: 'internal',
+      read: async () => {
+        reads += 1
+        return {ok: true, balanceMsat: 0}
       },
     })
 
-    await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => {
-          feeReads += 1
-          return 2_000
-        },
-      }),
-    ).rejects.toBeInstanceOf(SendPausedError)
-
-    // Balance is already short of the invoice, so the fee lookup is skipped.
-    // The comparison itself still includes a reserve when the balance might cover the amount.
-    expect(feeReads).toBe(0)
-    expect(captured).toEqual([
-      {
-        reason: 'insufficient_backend_liquidity',
-        amount_msat: 21_000,
-        fee_reserve_msat: null,
-        backend_balance_msat: 0,
-      },
-    ])
+    await expect(pay()).resolves.toBeUndefined()
+    expect(reads).toBe(0)
   })
 
-  test('enough balance plus the fee reserve lets the payment proceed', async () => {
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => 23_000,
+  test('zero backend balance pauses an external payment without the fee lookup', async () => {
+    let feeReads = 0
+    const {pay, paused} = guard({
+      read: async () => ({ok: true, balanceMsat: 0}),
+      fee: async () => {
+        feeReads += 1
+        return 2_000
+      },
     })
 
-    await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => 2_000,
-      }),
-    ).resolves.toBeUndefined()
+    await expect(pay()).rejects.toBeInstanceOf(SendPausedError)
+    expect(feeReads).toBe(0)
+    expect(paused).toEqual([{amount_msat: 21_000, fee_reserve_msat: null, backend_balance_msat: 0}])
+  })
+
+  test('enough balance plus the fee reserve lets the external payment proceed', async () => {
+    const {pay} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
+    await expect(pay()).resolves.toBeUndefined()
   })
 
   test('one millisatoshi under amount plus reserve pauses', async () => {
-    const guard = createOutgoingLiquidityGuard({readBalanceMsat: async () => 22_999})
+    const {pay} = guard({read: async () => ({ok: true, balanceMsat: 22_999})})
+    await expect(pay()).rejects.toBeInstanceOf(SendPausedError)
+  })
 
+  test('a status error does not pause the external payment', async () => {
+    const reasons = [
+      'http_error',
+      'timeout',
+      'unauthorized',
+      'not_found',
+      'funding_source_error',
+      'balance_missing',
+      'invalid_response',
+    ] as const
+    for (const reason of reasons) {
+      const {pay, failed, paused} = guard({read: async () => ({ok: false, reason})})
+      await expect(pay()).resolves.toBeUndefined()
+      expect(paused).toEqual([])
+      expect(failed).toEqual([reason])
+    }
+  })
+
+  test('a failed fee-reserve read does not pause when the balance covers the invoice', async () => {
+    const {pay, failed} = guard({
+      read: async () => ({ok: true, balanceMsat: 1_000_000}),
+      fee: async () => {
+        throw new Error('fee reserve down')
+      },
+    })
+    await expect(pay()).resolves.toBeUndefined()
+    expect(failed).toEqual(['fee_reserve'])
+  })
+
+  test('an unknown origin does not pause', async () => {
+    const {pay, failed} = guard({origin: 'unknown'})
+    await expect(pay()).resolves.toBeUndefined()
+    expect(failed).toEqual(['classify_failed'])
+  })
+
+  test('a check-failed event is not repeated inside the window', async () => {
+    const {pay, failed, advance} = guard({
+      read: async () => ({ok: false, reason: 'http_error'}),
+    })
+    await pay()
+    await pay()
+    expect(failed).toEqual(['http_error'])
+    advance(45_000)
+    await pay()
+    expect(failed).toEqual(['http_error', 'http_error'])
+  })
+
+  test('an approved external payment reduces the cached balance for the next one', async () => {
+    const {pay, liquidity} = guard({
+      read: async () => ({ok: true, balanceMsat: 30_000}),
+    })
+    await expect(pay()).resolves.toBeUndefined()
     await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
+      liquidity.assertCanPay({
+        bolt11: second.bolt11,
         feeReserveMsat: async () => 2_000,
-      }),
-    ).rejects.toBeInstanceOf(SendPausedError)
-  })
-
-  test('a credential that cannot see the balance does not pause the payment', async () => {
-    let reads = 0
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => {
-        reads += 1
-        throw new FundingSourceUnreadableError()
-      },
-    })
-
-    await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => {
-          throw new Error('fee reserve must not be required')
-        },
-      }),
-    ).resolves.toBeUndefined()
-    await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => 0,
-      }),
-    ).resolves.toBeUndefined()
-    expect(reads).toBe(2)
-  })
-
-  test('a failed balance read pauses and does not call pay-side work', async () => {
-    let feeReads = 0
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => {
-        throw new Error('status down')
-      },
-    })
-
-    const error = await guard
-      .assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => {
-          feeReads += 1
-          return 0
-        },
-      })
-      .then(
-        () => {
-          throw new Error('expected pause')
-        },
-        (caught: unknown) => caught,
-      )
-
-    expect(error).toBeInstanceOf(SendPausedError)
-    expect(feeReads).toBe(0)
-    if (!(error instanceof SendPausedError)) throw error
-    expect(error.analytics).toMatchObject({reason: 'backend_liquidity_check_failed'})
-  })
-
-  test('a failed fee-reserve read pauses even when the backend balance would cover the amount', async () => {
-    const guard = createOutgoingLiquidityGuard({readBalanceMsat: async () => 1_000_000})
-
-    await expect(
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => {
-          throw new Error('fee reserve down')
-        },
       }),
     ).rejects.toBeInstanceOf(SendPausedError)
   })
 
   test('a successful balance is reused until the cache window passes', async () => {
     let reads = 0
-    let clock = 1_000
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => {
+    const {pay, advance} = guard({
+      read: async () => {
         reads += 1
-        return 50_000
+        return {ok: true, balanceMsat: 100_000}
       },
-      now: () => clock,
-      ttlMs: 45_000,
     })
-    const pay = () =>
-      guard.assertCanPay({
-        bolt11: invoice.bolt11,
-        feeReserveMsat: async () => 1_000,
-      })
-
     await pay()
-    await pay()
+    await pay(second.bolt11)
     expect(reads).toBe(1)
-
-    clock += 45_000
+    advance(45_000)
     await pay()
     expect(reads).toBe(2)
   })
+})
 
-  test('a failed read is not cached', async () => {
+describe('probeFundingSource', () => {
+  test('no bearer disables the check without reading', async () => {
     let reads = 0
-    const guard = createOutgoingLiquidityGuard({
-      readBalanceMsat: async () => {
+    const mode = await probeFundingSource({
+      hasBearer: false,
+      read: async () => {
         reads += 1
+        return {ok: true, balanceMsat: 1}
+      },
+    })
+    expect(mode).toEqual({mode: 'disabled', reason: 'missing_bearer'})
+    expect(reads).toBe(0)
+  })
+
+  test('a readable balance is active', async () => {
+    const mode = await probeFundingSource({
+      hasBearer: true,
+      read: async () => ({ok: true, balanceMsat: 5}),
+    })
+    expect(mode).toEqual({mode: 'active', reason: 'ok'})
+  })
+
+  test('an unreadable balance disables without throwing', async () => {
+    const hidden = await probeFundingSource({
+      hasBearer: true,
+      read: async () => ({ok: false, reason: 'balance_missing'}),
+    })
+    expect(hidden).toEqual({mode: 'disabled', reason: 'balance_missing'})
+    const crashed = await probeFundingSource({
+      hasBearer: true,
+      read: async () => {
         throw new Error('down')
       },
-      ttlMs: 45_000,
     })
-
-    await expect(
-      guard.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 0}),
-    ).rejects.toBeInstanceOf(SendPausedError)
-    await expect(
-      guard.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 0}),
-    ).rejects.toBeInstanceOf(SendPausedError)
-    expect(reads).toBe(2)
+    expect(crashed).toEqual({mode: 'disabled', reason: 'check_failed'})
   })
+})
 
-  test('the capture callback receives the product event payload shape', () => {
-    expect(SEND_PAUSED_NO_BACKEND_LIQUIDITY).toBe('send_paused_no_backend_liquidity')
-  })
+test('event names stay stable', () => {
+  expect(SEND_PAUSED_NO_BACKEND_LIQUIDITY).toBe('send_paused_no_backend_liquidity')
+  expect(BACKEND_LIQUIDITY_CHECK_FAILED).toBe('backend_liquidity_check_failed')
 })
