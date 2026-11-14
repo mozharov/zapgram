@@ -201,11 +201,14 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       return 'in_flight'
     }
     const looked = await lookupQuiet(row)
+    // Paid with no timestamp is not a receipt. It still reaches the review
+    // window below, the same as an unknown lookup, instead of staying open forever.
+    let ambiguous = false
     if (looked.state === 'paid') {
       const claim = await finishPaidLookup(row, looked, 'recover')
-      if (claim === 'hold') return 'in_flight'
       if (claim === 'absent') return 'abandoned'
-      return finishSender(await deps.attempts.get(id))
+      if (claim === 'paid') return finishSender(await deps.attempts.get(id))
+      ambiguous = true
     }
     if (looked.state === 'retryable' && ageMs(row) > reviewMs) {
       await deps.attempts.markAbandoned(row.id)
@@ -217,7 +220,10 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       return 'abandoned'
     }
     if (row.phase === 'needs_review') return 'in_flight'
-    if ((looked.state === 'pending' || looked.state === 'unknown') && ageMs(row) > reviewMs) {
+    if (
+      (ambiguous || looked.state === 'pending' || looked.state === 'unknown') &&
+      ageMs(row) > reviewMs
+    ) {
       const logged = await deps.attempts.markNeedsReview(row.id)
       if (logged) {
         deps.log.error(

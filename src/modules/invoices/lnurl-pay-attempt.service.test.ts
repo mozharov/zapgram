@@ -133,10 +133,14 @@ test('a paid lookup without a time does not become a receipt', async () => {
   const db = createTestDb()
   const users = createUserRepository(db)
   await users.getOrCreate({id: 1, languageCode: 'en'})
+  const started = new Date('2026-01-01T00:00:00Z')
+  let now = started
   let donations = 0
   const service = createLnurlPayAttemptService({
     attempts: createLnurlPayAttemptRepository(db),
     log,
+    now: () => now,
+    payReviewMs: 1_000,
     lookup: async () => ({state: 'paid' as const}),
     collectDonation: async () => {
       donations += 1
@@ -146,6 +150,13 @@ test('a paid lookup without a time does not become a receipt', async () => {
   expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
   expect(await service.readPay('one')).toBe('ambiguous')
   expect(await service.resolveAlreadyPaid('one')).toBe('hold')
+  expect(await service.reconcile('one')).toBe('in_flight')
   expect(donations).toBe(0)
   expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('pay_unknown')
+
+  now = new Date(started.getTime() + 1_001)
+  expect(await service.reconcile('one')).toBe('needs_review')
+  expect(donations).toBe(0)
+  expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('needs_review')
+  expect((await createLnurlPayAttemptRepository(db).get('one')).status).toBe('pending')
 })
