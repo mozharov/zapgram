@@ -135,7 +135,9 @@ export function createOutgoingLiquidityGuard(deps: {
 
   function reservedMsat(): number {
     let sum = 0
-    for (const hold of outstanding.values()) sum += hold.msat
+    // A settled hold is already in the next server balance. Subtracting it again
+    // keeps the cache short after the duplicate pay releases without restoring.
+    for (const hold of outstanding.values()) if (!hold.spent) sum += hold.msat
     return sum
   }
 
@@ -261,6 +263,7 @@ export function createOutgoingLiquidityGuard(deps: {
       walletId,
       refs: 1,
       restore: true,
+      spent: false,
     })
     cached = {...cached, balanceMsat: cached.balanceMsat - needed}
     return {msat: needed, generation: cached.generation, paymentHash, walletId}
@@ -272,6 +275,7 @@ export function createOutgoingLiquidityGuard(deps: {
     if (!current) return
     // A success or an unknown result may have spent the backend. A later already-paid
     // refusal must not put that reservation back on the cache.
+    if (kind === 'settle') current.spent = true
     if (kind !== 'release') current.restore = false
     current.refs -= 1
     if (current.refs > 0) return
@@ -325,7 +329,7 @@ export function createOutgoingLiquidityGuard(deps: {
   }
 }
 
-type Reservation = LiquidityHold & {refs: number; restore: boolean}
+type Reservation = LiquidityHold & {refs: number; restore: boolean; spent: boolean}
 
 function reservationKey(walletId: string, paymentHash: string): string {
   return `${walletId}\n${paymentHash}`

@@ -279,6 +279,30 @@ describe('createOutgoingLiquidityGuard', () => {
     ).resolves.toEqual(held(23_000, 1, second.bolt11))
   })
 
+  test('a settled shared hold is not subtracted again after the balance is reread', async () => {
+    let balance = 46_000
+    const {liquidity, advance} = guard({
+      read: async () => ({ok: true, balanceMsat: balance}),
+      ttlMs: 1_000,
+    })
+    const [first, secondPay] = await Promise.all([
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+    ])
+    if (!first || !secondPay) throw new Error('Expected both live pays to share a hold')
+    await liquidity.settle(first)
+    balance = 23_000
+    advance(1_000)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).resolves.toEqual(held(23_000, 2, second.bolt11))
+    await liquidity.release(secondPay)
+    const third = mintInvoice({sats: 21, description: 'third-after-release'})
+    await expect(
+      liquidity.assertCanPay({bolt11: third.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+  })
+
   test('a settled pay keeps the reservation when the duplicate is already paid', async () => {
     const {liquidity} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
     const [first, secondPay] = await Promise.all([
