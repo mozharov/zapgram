@@ -81,7 +81,10 @@ export class UserWallet extends LNBitsAPI {
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {
-      if (hold && payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
+      if (hold) {
+        if (payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
+        else await this.outgoingLiquidity?.abandon(hold)
+      }
       throw error
     }
   }

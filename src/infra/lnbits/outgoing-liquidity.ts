@@ -60,6 +60,11 @@ export type OutgoingLiquidityGuard = {
   settle(hold: LiquidityHold): Promise<void>
   /** Put a hold back after LNbits refused the pay and this cache generation is still current. */
   release(hold: LiquidityHold): Promise<void>
+  /**
+   * The pay ended without a known result. Drop the hash so a retry can settle,
+   * but leave the current cache reduced until the next balance read.
+   */
+  abandon(hold: LiquidityHold): Promise<void>
 }
 
 /**
@@ -284,6 +289,11 @@ export function createOutgoingLiquidityGuard(deps: {
         outstanding.delete(hold.paymentHash)
         if (!cached || cached.generation !== current.generation) return
         cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
+      })
+    },
+    abandon(hold) {
+      return enqueue(() => {
+        outstanding.delete(hold.paymentHash)
       })
     },
   }

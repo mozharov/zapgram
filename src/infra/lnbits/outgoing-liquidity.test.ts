@@ -247,6 +247,21 @@ describe('createOutgoingLiquidityGuard', () => {
     expect(holds).toEqual([held(23_000, 1, invoice.bolt11)])
   })
 
+  test('a timed-out hold is not subtracted again after the balance is reread', async () => {
+    const {pay, liquidity, advance} = guard({
+      read: async () => ({ok: true, balanceMsat: 30_000}),
+      ttlMs: 1_000,
+    })
+    const hold = await pay()
+    if (!hold) throw new Error('Expected a liquidity hold')
+    await liquidity.abandon(hold)
+    advance(1_000)
+    await expect(pay()).resolves.toEqual(held(23_000, 2, invoice.bolt11))
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+  })
+
   test('a balance reread keeps an unfinished hold', async () => {
     let balance = 30_000
     const {pay, liquidity, advance} = guard({
