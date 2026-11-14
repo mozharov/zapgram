@@ -260,18 +260,23 @@ export function createOutgoingLiquidityGuard(deps: {
       paymentHash,
       walletId,
       refs: 1,
+      restore: true,
     })
     cached = {...cached, balanceMsat: cached.balanceMsat - needed}
     return {msat: needed, generation: cached.generation, paymentHash, walletId}
   }
 
-  function finish(hold: LiquidityHold, restore: boolean): void {
-    const current = outstanding.get(reservationKey(hold.walletId, hold.paymentHash))
+  function finish(hold: LiquidityHold, kind: 'settle' | 'release' | 'abandon'): void {
+    const key = reservationKey(hold.walletId, hold.paymentHash)
+    const current = outstanding.get(key)
     if (!current) return
+    // A success or an unknown result may have spent the backend. A later already-paid
+    // refusal must not put that reservation back on the cache.
+    if (kind !== 'release') current.restore = false
     current.refs -= 1
     if (current.refs > 0) return
-    outstanding.delete(reservationKey(hold.walletId, hold.paymentHash))
-    if (!restore) return
+    outstanding.delete(key)
+    if (!current.restore) return
     if (!cached || cached.generation !== current.generation) return
     cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
   }
@@ -304,23 +309,23 @@ export function createOutgoingLiquidityGuard(deps: {
     },
     settle(hold) {
       return enqueue(() => {
-        finish(hold, false)
+        finish(hold, 'settle')
       })
     },
     release(hold) {
       return enqueue(() => {
-        finish(hold, true)
+        finish(hold, 'release')
       })
     },
     abandon(hold) {
       return enqueue(() => {
-        finish(hold, false)
+        finish(hold, 'abandon')
       })
     },
   }
 }
 
-type Reservation = LiquidityHold & {refs: number}
+type Reservation = LiquidityHold & {refs: number; restore: boolean}
 
 function reservationKey(walletId: string, paymentHash: string): string {
   return `${walletId}\n${paymentHash}`

@@ -279,6 +279,20 @@ describe('createOutgoingLiquidityGuard', () => {
     ).resolves.toEqual(held(23_000, 1, second.bolt11))
   })
 
+  test('a settled pay keeps the reservation when the duplicate is already paid', async () => {
+    const {liquidity} = guard({read: async () => ({ok: true, balanceMsat: 23_000})})
+    const [first, secondPay] = await Promise.all([
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+      liquidity.assertCanPay({bolt11: invoice.bolt11, feeReserveMsat: async () => 2_000}),
+    ])
+    if (!first || !secondPay) throw new Error('Expected both live pays to share a hold')
+    await liquidity.settle(first)
+    await liquidity.release(secondPay)
+    await expect(
+      liquidity.assertCanPay({bolt11: second.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+  })
+
   test('a released hold does not inflate a clamped remainder', async () => {
     let balance = 30_000
     const {pay, liquidity, advance} = guard({
