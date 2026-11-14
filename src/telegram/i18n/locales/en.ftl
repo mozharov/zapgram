@@ -401,6 +401,8 @@ lnurl-pay-failed = {$reason ->
         Nothing was paid.
     [no-whole-sat] <b>⚠️ This recipient does not accept a whole number of sats.</b>
         Nothing was paid.
+    [already-paid] <b>⚠️ This invoice was already paid.</b>
+        Nothing was taken from your wallet. Ask for a new one.
    *[other] <b>⚠️ The recipient's server sent an unexpected response.</b>
         Nothing was paid.
     }

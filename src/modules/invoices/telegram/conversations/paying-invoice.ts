@@ -15,6 +15,7 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
+import {lnurlRecipientHtml} from '@modules/invoices/telegram/lnurl-payee.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -201,11 +202,15 @@ export async function payingInvoice(
       await showLnurlHold(
         ctx,
         host,
-        ctx.t('lnurl-pay-still-checking', {recipient: lnurl.recipient}),
+        ctx.t('lnurl-pay-still-checking', {recipient: lnurlRecipientHtml(lnurl.recipient)}),
       )
       return conversation.halt()
     }
     if (outcome.kind === 'rejected') throw new InsufficientFundsError()
+    if (outcome.kind === 'absent') {
+      await showLnurlHold(ctx, host, ctx.t('lnurl-pay-failed', {reason: 'already-paid'}))
+      return conversation.halt()
+    }
     feesPaid = outcome.feesPaid
   } else if (isInternalWallet) {
     const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
@@ -303,7 +308,11 @@ export async function payingInvoice(
   return undefined
 }
 
-type LnurlPayOutcome = {kind: 'paid'; feesPaid: number} | {kind: 'hold'} | {kind: 'rejected'}
+type LnurlPayOutcome =
+  | {kind: 'paid'; feesPaid: number}
+  | {kind: 'hold'}
+  | {kind: 'rejected'}
+  | {kind: 'absent'}
 
 /** Gate, debit, and settle mark. Runs once per attempt: the caller caches it. */
 async function payLnurlAttempt(input: {
@@ -334,8 +343,10 @@ async function payLnurlAttempt(input: {
     return {kind: 'paid', feesPaid}
   } catch (error) {
     if (error instanceof InvoiceAlreadyPaidError) {
-      await pays.notePaid(input.attemptId, input.paymentHash, true)
-      return {kind: 'paid', feesPaid: 0}
+      const resolved = await pays.resolveAlreadyPaid(input.attemptId)
+      if (resolved === 'paid') return {kind: 'paid', feesPaid: 0}
+      if (resolved === 'absent') return {kind: 'absent'}
+      return {kind: 'hold'}
     }
     if (error instanceof InsufficientFundsError) {
       await pays.noteRejected(input.attemptId)

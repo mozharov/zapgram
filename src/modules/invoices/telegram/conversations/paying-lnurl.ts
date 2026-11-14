@@ -26,7 +26,7 @@ import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
 import {getRuntime} from '../../../../runtime.js'
-import {lnurlPayeeParts} from '../lnurl-payee.js'
+import {lnurlPayeeParts, lnurlRecipientHtml} from '../lnurl-payee.js'
 import {payingInvoice} from './paying-invoice.js'
 
 /**
@@ -56,7 +56,7 @@ export async function payingLnurl(
   )
   if (unresolved) {
     await ctx.reply(
-      ctx.t('lnurl-pay-still-checking', {recipient: request.value}),
+      ctx.t('lnurl-pay-still-checking', {recipient: lnurlRecipientHtml(request.value)}),
       disabledLinkPreview,
     )
     if (opts?.invalid === 'return') return 'invalid'

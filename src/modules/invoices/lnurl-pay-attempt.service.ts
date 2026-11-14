@@ -121,6 +121,22 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     await deps.attempts.markAbandoned(id)
   }
 
+  /**
+   * "Already paid" means the invoice is settled, not that this wallet paid it.
+   * Only an outgoing payment on this wallet counts. Anything else is not a receipt.
+   */
+  async function resolveAlreadyPaid(id: string): Promise<'paid' | 'hold' | 'absent'> {
+    const row = await deps.attempts.get(id)
+    const state = await lookupQuiet(row)
+    if (state === 'paid') {
+      await notePaid(id, row.invoiceHash ?? undefined, true)
+      return 'paid'
+    }
+    if (state === 'pending' || state === 'unknown') return 'hold'
+    await noteRejected(id)
+    return 'absent'
+  }
+
   async function reconcile(
     id: string,
   ): Promise<'settled' | 'abandoned' | 'in_flight' | 'needs_review'> {
@@ -225,6 +241,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     beginPay,
     notePaid,
     noteRejected,
+    resolveAlreadyPaid,
     reconcile,
     isClearMiss,
     isAlreadyPaid,

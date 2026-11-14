@@ -46,6 +46,7 @@ import {
   type LnurlPayAttemptService,
 } from '@modules/invoices/lnurl-pay-attempt.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
+import {lnurlRecipientHtml} from '@modules/invoices/telegram/lnurl-payee.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import {
   type CompleteOnchainJoinService,
@@ -328,7 +329,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     notifySender: async ({fromUserId, recipient, sats, outcome}) => {
       const from = await users.getOrThrow(fromUserId)
       const key = outcome === 'settled' ? 'lnurl-pay-sender-settled' : 'lnurl-pay-sender-not-paid'
-      return notifier.send(fromUserId, translate(key, from.languageCode, {recipient, amount: sats}))
+      return notifier.send(
+        fromUserId,
+        translate(key, from.languageCode, {
+          recipient: lnurlRecipientHtml(recipient),
+          amount: sats,
+        }),
+      )
     },
     collectDonation: async ({userId, sats, rail}) => {
       const payer = await users.getOrThrow(userId)

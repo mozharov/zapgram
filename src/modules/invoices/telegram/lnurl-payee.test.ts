@@ -1,5 +1,12 @@
 import {describe, expect, test} from 'bun:test'
-import {LNURL_DISPLAY_LIMIT, lnurlPayeeParts} from './lnurl-payee.js'
+import {LNURL_DISPLAY_LIMIT, lnurlPayeeParts, lnurlRecipientHtml} from './lnurl-payee.js'
+
+test('a pasted lnurlp path cannot break out of the HTML code tag', () => {
+  const html = lnurlRecipientHtml('lnurlp://pay.example/x?<b>no</b>&amp=1')
+  expect(html).not.toContain('<b>')
+  expect(html).toContain('&lt;b&gt;')
+  expect(html).toContain('&amp;amp=1')
+})
 
 describe('lnurlPayeeParts', () => {
   test('names the address the user typed and the host that answered, not the metadata identifier', () => {

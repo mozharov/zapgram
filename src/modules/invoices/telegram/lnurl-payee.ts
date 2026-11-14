@@ -6,6 +6,11 @@ export function escapeTelegramHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
+/** A pasted LNURL or address, safe inside `<code>` in a Telegram HTML message. */
+export function lnurlRecipientHtml(value: string): string {
+  return escapeTelegramHtml(clipLnurlDisplay(flattenServiceText(value)))
+}
+
 /** Bidi isolates and overrides. Left in a note, they can redraw "Invoice from …" over the route. */
 const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
 
