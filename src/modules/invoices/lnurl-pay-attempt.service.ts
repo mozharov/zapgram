@@ -99,10 +99,12 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     return 'ready'
   }
 
-  async function notePaid(id: string, paymentHash?: string) {
+  async function notePaid(id: string, paymentHash?: string, senderNotified = false) {
     const before = await deps.attempts.get(id)
     await deps.attempts.markProviderAccepted(id, paymentHash)
-    await deps.attempts.markSettled(id)
+    // The wizard's receipt claims the sender in this same settle, so recovery
+    // cannot send a second message while the screen is still being painted.
+    await deps.attempts.markSettled(id, senderNotified && before.status !== 'settled')
     const row = await deps.attempts.get(id)
     if (row.status !== 'settled') return
     // The wizard shows the receipt itself. Recovery is what tells the sender
@@ -228,6 +230,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     isAlreadyPaid,
     /** The receipt is on screen. Recovery must not send a second success message. */
     markSenderNotified: (id: string) => deps.attempts.claimSenderNotice(id),
+    releaseSenderNotice: (id: string) => deps.attempts.releaseSenderNotice(id),
     listActionable: (limit: number, offset: number) => deps.attempts.listActionable(limit, offset),
   }
 }

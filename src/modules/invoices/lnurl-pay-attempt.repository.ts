@@ -122,10 +122,14 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
         )
     },
 
-    async markSettled(id: string) {
+    async markSettled(id: string, senderNotified = false) {
       await database
         .update(lnurlPayAttemptsTable)
-        .set({status: 'settled', phase: 'settled'})
+        .set({
+          status: 'settled',
+          phase: 'settled',
+          ...(senderNotified ? {senderNotified: true} : {}),
+        })
         .where(and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.status, 'pending')))
     },
 

@@ -281,18 +281,24 @@ export async function payingInvoice(
   })
   // The wizard's own screen becomes the receipt, so no extra message is sent, and it keeps the
   // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
-  await closeLivingMenu(
-    ctx,
-    host.messageId,
-    markup =>
-      ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
-        reply_markup: markup,
-        ...disabledLinkPreview,
-      }),
-    paidKeyboard(ctx, invoice.paymentRequest),
-  )
-  if (lnurl) {
-    await conversation.external(() => getRuntime().lnurlPays.markSenderNotified(lnurl.attemptId))
+  try {
+    await closeLivingMenu(
+      ctx,
+      host.messageId,
+      markup =>
+        ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
+          reply_markup: markup,
+          ...disabledLinkPreview,
+        }),
+      paidKeyboard(ctx, invoice.paymentRequest),
+    )
+  } catch (error) {
+    // The receipt did not land. Let recovery send the outcome instead of
+    // keeping a flag that says the sender already saw it.
+    if (lnurl) {
+      await conversation.external(() => getRuntime().lnurlPays.releaseSenderNotice(lnurl.attemptId))
+    }
+    throw error
   }
   return undefined
 }
@@ -324,11 +330,11 @@ async function payLnurlAttempt(input: {
   if (gate === 'paid') return {kind: 'paid', feesPaid: 0}
   try {
     const feesPaid = await input.pay()
-    await pays.notePaid(input.attemptId, input.paymentHash)
+    await pays.notePaid(input.attemptId, input.paymentHash, true)
     return {kind: 'paid', feesPaid}
   } catch (error) {
     if (error instanceof InvoiceAlreadyPaidError) {
-      await pays.notePaid(input.attemptId, input.paymentHash)
+      await pays.notePaid(input.attemptId, input.paymentHash, true)
       return {kind: 'paid', feesPaid: 0}
     }
     if (error instanceof InsufficientFundsError) {
