@@ -1,4 +1,5 @@
 import {describe, expect, test} from 'bun:test'
+import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import type {Context} from 'grammy'
 import {
   buildUpdateProperties,
@@ -12,6 +13,8 @@ import {
   resolveCallbackEventName,
   resolveUpdateEventName,
 } from './analytics.js'
+import {payPastedBackRoute, payPastedRoute} from './callback-data.js'
+import {pastedPaymentToken} from './helpers/pasted-payment.js'
 
 function ctx(partial: Record<string, unknown>): Context {
   return {
@@ -202,7 +205,40 @@ describe('buildUpdateProperties', () => {
       command: 'tip',
       from_username: 'alice',
       from_language_code: 'ru',
+      text_length: '/tip@zap_gram_bot 21'.length,
+      text_kind: 'other',
     })
+    expect(JSON.stringify(props)).not.toContain('/tip@zap_gram_bot 21')
+  })
+
+  test('a pasted Pay callback keeps the route name and drops the invoice token', () => {
+    const bolt11 = 'lnbc1puniquebodyzz'
+    const normalized = recognizePaymentRequest(bolt11)?.value
+    if (!normalized) throw new Error('expected a bolt11')
+    const token = pastedPaymentToken(7, normalized)
+    for (const route of [payPastedRoute, payPastedBackRoute]) {
+      const data = route.build({token})
+      const props = buildUpdateProperties(
+        ctx({
+          update: {update_id: 1, callback_query: {}},
+          callbackQuery: {data},
+        }),
+      )
+      expect(props.callback_data).toBe(route.name)
+      expect(props.callback_prefix).toBe(route.name)
+      const json = JSON.stringify(props)
+      expect(json).not.toContain(token)
+      expect(json).not.toContain(normalized)
+      expect(json).not.toContain('uniquebodyzz')
+    }
+
+    const plain = buildUpdateProperties(
+      ctx({
+        update: {update_id: 1, callback_query: {}},
+        callbackQuery: {data: 'pay-onchain:-100'},
+      }),
+    )
+    expect(plain.callback_data).toBe('pay-onchain:-100')
   })
 })
 
@@ -248,6 +284,28 @@ describe('resolveUpdateEventName', () => {
         }),
       ),
     ).toBe('command_tip')
+  })
+
+  test('an unregistered slash command does not keep its suffix', () => {
+    const secret = 'private_secret_123'
+    const name = resolveUpdateEventName(
+      ctx({
+        update: {update_id: 1, message: {}},
+        message: {text: `/${secret}`},
+      }),
+    )
+    const props = buildUpdateProperties(
+      ctx({
+        update: {update_id: 1, message: {}},
+        message: {text: `/${secret}`},
+      }),
+    )
+
+    expect(name).toBe('command_unknown')
+    expect(props.command).toBeUndefined()
+    const json = JSON.stringify({name, props})
+    expect(json).not.toContain(secret)
+    expect(json).not.toContain(`/${secret}`)
   })
 
   test('names callback queries', () => {

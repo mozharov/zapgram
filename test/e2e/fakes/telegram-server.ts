@@ -221,6 +221,7 @@ function defaultResult(
     case 'sendMessage':
     case 'sendRichMessage':
     case 'sendPhoto':
+    case 'sendWidget':
     case 'copyMessage':
       return message(payload, botInfo, nextMessageId())
     case 'editMessageText':

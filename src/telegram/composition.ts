@@ -38,8 +38,9 @@ import {lnbitsWallet} from '@telegram/middlewares/lnbits-wallet.js'
 import {logger} from '@telegram/middlewares/logger.js'
 import {posthogMiddleware} from '@telegram/middlewares/posthog.js'
 import type {Bot} from 'grammy'
+import {botCommand} from './bot-commands.js'
 
-export const shellCommands = ['start', 'help'] as const
+export const shellCommands = [botCommand.start, botCommand.help] as const
 
 /** Single source of truth for every persisted grammY conversation installed by the bot. */
 export const registeredConversations = [

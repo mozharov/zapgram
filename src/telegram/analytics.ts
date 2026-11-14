@@ -10,7 +10,9 @@ import {
 import type {Context} from 'grammy'
 import type {User as TgUser} from 'grammy/types'
 import type {PostHog} from 'posthog-node'
-import {parameterizedRoutes, staticCallback} from './callback-data.js'
+import {groupCommand, isUnregisteredSlash, registeredCommandName} from './bot-commands.js'
+import {callbackDataForAnalytics, parameterizedRoutes, staticCallback} from './callback-data.js'
+import {classifyTextKind} from './text-kind.js'
 
 export {TELEGRAM_CHAT_GROUP_TYPE, telegramChatGroups, telegramUserDistinctId}
 
@@ -28,7 +30,7 @@ type PersonPropertyPatch = {
  * Group slash commands that have handlers (see tipping/register + configure-bot).
  * Private-only commands (`/wallet`, `/start`, …) must not pollute group analytics.
  */
-const GROUP_HANDLED_COMMANDS = new Set(['tip'])
+const GROUP_HANDLED_COMMANDS = new Set<string>([groupCommand.tip])
 
 /**
  * Whether a group message is a slash command this bot would actually handle.
@@ -243,8 +245,9 @@ export function resolveUpdateEventName(ctx: Context): string {
 
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text) {
-    const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]?.split('@')[0]
+    const command = registeredCommandName(text)
     if (command) return `command_${command}`
+    if (isUnregisteredSlash(text)) return 'command_unknown'
     if (/(?:^|\s)lnbc[a-z0-9]+/i.test(text)) return 'ln_invoice_pasted'
   }
 
@@ -275,12 +278,15 @@ export function buildUpdateProperties(ctx: Context): Record<string, unknown> {
   const text = ctx.message?.text ?? ctx.message?.caption
   if (text !== undefined) {
     props.text_length = text.length
-    const command = text.match(/^\/([a-zA-Z0-9_]+)/)?.[1]
-    if (command) props.command = command.split('@')[0]
+    // Same label as dm_unrecognized_text. A pasted payment request has no product
+    // event of its own — this per-update capture is the intercept record. Kind only.
+    props.text_kind = classifyTextKind(text)
+    const command = registeredCommandName(text)
+    if (command) props.command = command
   }
 
   if (ctx.callbackQuery?.data !== undefined) {
-    props.callback_data = ctx.callbackQuery.data
+    props.callback_data = callbackDataForAnalytics(ctx.callbackQuery.data)
     props.callback_prefix = ctx.callbackQuery.data.split(':')[0]
   }
 

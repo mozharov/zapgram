@@ -126,7 +126,8 @@ update says nothing, so the transport line lives at `debug`
 - **Correlation.** The HTTP layer mints `reqId`, stamps it on the Telegram update body, and
   `src/telegram/middlewares/logger.ts` builds `ctx.log` as a child logger carrying
   `reqId` + `describeUpdate(ctx)` (`action`, `updateId`, `chatId`, `chatType`, `userId`,
-  `callbackData`, `command`). Every line written while handling that update inherits them, so no
+  `callbackData`, `command`, `textLength`, `textKind`, `looksLikeOnchain`, `textTruncated`).
+  Every line written while handling that update inherits them, so no
   handler has to repeat who/what it is working on.
 - **One outcome line per update.** `Update handled` (info, with `ms`) or `Update failed` (warn,
   with `ms`; the error itself comes from the error boundary). Updates the bot ignores — group
@@ -143,3 +144,5 @@ update says nothing, so the transport line lives at `debug`
 - **Never log:** raw message text, payment requests, LNURL metadata, NWC URLs, admin keys, or
   whole `ctx.user` / wallet objects — the user's NWC secret lives on that row. Log ids, amounts,
   kinds, and lengths instead.
+  `describeUpdate` does not carry the body. The `dm_unrecognized_text` PostHog event does, so
+  unrecognized pastes can be read; it keeps the original string up to 4000 Unicode code points.

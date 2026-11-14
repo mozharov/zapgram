@@ -469,6 +469,14 @@ paying-invoice = <b>🧾 Paying Lightning invoice...</b>
         }
         <blockquote expandable><code>{$invoice}</code></blockquote>
 
+invoice-widget-status =
+    .pending = Waiting for payment
+    .paid = Paid
+    .expired = Expired
+    .cancelled = Cancelled
+
+invoice-replaced = <b>This invoice was replaced by a new one.</b>
+
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
     .created = Amount: <b>{$amount} sats{$usdSuffix}</b>
 

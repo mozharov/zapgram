@@ -7,6 +7,7 @@ import {
   deletePendingInvoice,
   getPendingInvoices,
 } from '@modules/invoices/repository.js'
+import {syncInvoiceWidget} from '@modules/invoices/sync-invoice-widget.js'
 import {getUserWallet} from '@modules/wallet/user-wallet.service.js'
 import {HTTPError} from 'got'
 import {getRuntime} from '../../../runtime.js'
@@ -37,23 +38,25 @@ export async function checkPendingInvoices(): Promise<void> {
 
           if (error instanceof HTTPError && error.response.statusCode === 404) {
             getRuntime().log.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
-            // Only report 'done' if the row actually went away — otherwise offset would not
-            // advance past a row that is still there and the batch would never finish.
-            return deletePendingInvoice(invoice.paymentRequest)
-              .then((): 'done' | 'keep' => {
-                captureUserEvent(getRuntime().posthog, 'invoice_dropped', invoice.userId, {
-                  payment_hash: invoice.paymentHash,
+            // Delete first. The returned row is the pointer that still belonged to this
+            // request; a stale batch snapshot must not mark a message that now shows another invoice.
+            try {
+              const deleted = await deletePendingInvoice(invoice.paymentRequest)
+              if (deleted) {
+                await syncInvoiceWidget(deleted, 'cancelled')
+                captureUserEvent(getRuntime().posthog, 'invoice_dropped', deleted.userId, {
+                  payment_hash: deleted.paymentHash,
                   reason: 'not_found_on_lnbits',
                 })
-                return 'done'
-              })
-              .catch((deleteError: unknown): 'done' | 'keep' => {
-                getRuntime().log.error(
-                  {error: deleteError},
-                  `Failed to delete not-found invoice ${invoice.paymentRequest}`,
-                )
-                return 'keep'
-              })
+              }
+              return 'done'
+            } catch (deleteError: unknown) {
+              getRuntime().log.error(
+                {error: deleteError},
+                `Failed to delete not-found invoice ${invoice.paymentRequest}`,
+              )
+              return 'keep'
+            }
           }
           if (error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT') {
             getRuntime().log.warn(

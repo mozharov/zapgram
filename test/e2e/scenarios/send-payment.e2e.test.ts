@@ -12,6 +12,7 @@ const USER_C = 100004
 import {seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
 import {expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -352,6 +353,38 @@ test('an amount the wallet cannot cover pays nothing', async () => {
 
   expect(joinedText()).toMatch(/Insufficient funds/)
   expect(outgoing()).toHaveLength(0)
+})
+
+test('a BOLT11, address, LNURL, or @username inside Send is not unrecognized text', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  const events = recordPosthog(e2e)
+  const invoice = foreignInvoice(AMOUNT)
+  server = startServer({min: 10_000, max: 100_000})
+  const address = 'bob@localhost'
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  events.length = 0
+  await e2e.send(privateText(invoice.bolt11))
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredMessageId()}))
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(server.lnurl))
+  await e2e.send(privateCallback(staticCallback.cancel, {messageId: requiredMessageId()}))
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(address))
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+
+  expect(capturesOf(events, 'dm_unrecognized_text')).toEqual([])
+  const dumped = JSON.stringify(e2e.logs)
+  expect(dumped).not.toContain(invoice.bolt11)
+  expect(dumped).not.toContain(server.lnurl)
+  expect(dumped).not.toContain(address)
+  expect(outgoing()).toHaveLength(0)
+  expectNoErrors(e2e.logs)
 })
 
 test('@username outside Send does not transfer and does not swallow commands', async () => {

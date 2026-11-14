@@ -296,6 +296,20 @@ export const payPastedBackRoute = defineCallback(
   ({token}) => `pay-pasted-back:${token}`,
 )
 
+/**
+ * Label for analytics and logs. The Pay offer token is a hash of the user and the
+ * invoice, so those two routes keep only the route name. The button still sends
+ * the full callback_data; payment matching does not use this.
+ */
+const callbackRoutesWithoutPayload = [payPastedRoute, payPastedBackRoute] as const
+
+export function callbackDataForAnalytics(data: string): string {
+  for (const route of callbackRoutesWithoutPayload) {
+    if (route.pattern.test(data)) return route.name
+  }
+  return data
+}
+
 /** All parameterized routes — used by tests for round-trip coverage. */
 export const parameterizedRoutes = [
   chatsPageRoute,
