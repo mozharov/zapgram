@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = entering an amount
+    .enter-lnurl-amount = entering an amount for a Lightning address
     .enter-invoice = entering a Lightning invoice
     .connect-nwc = connecting an NWC wallet
     .select-recipient = selecting a recipient
@@ -18,6 +19,8 @@ conversation-action =
     .edit-message-en = editing the English join message
     .select-wallet = selecting a wallet
     .confirm-invoice-payment = confirming an invoice payment
+    .enter-send-target = entering where to send
+    .confirm-send = confirming a send
     .invoice-memo-options = adding an invoice description
     .enter-invoice-memo = entering an invoice description
     .enable-onchain = enabling on-chain payments
@@ -59,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Pay Invoice
+    .confirm-send = ✅ Send
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
     .prev = ⬅️
@@ -105,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Back to this step
     .pasted-payment-missing = The invoice message is gone. Send it again.
     .pasted-payment-stale = This offer is no longer active.
+    .confirm-stale = This confirmation is no longer active.
     .pasted-payment-retry = Telegram did not answer. Try again.
     .pasted-payment-closed = Closed.
 
@@ -325,16 +330,67 @@ settings-donation = ⚡️ <b>Auto % on payments</b>
 
 send-menu = <b>✉️ Send payment</b>
 
-        Pay a Lightning invoice or send payment to a Telegram user.
+    Send a Lightning invoice, a Lightning address, an LNURL, or the <code>@username</code> of someone who already uses {bot-name}.
+    .invalid = <b>⚠️ Send a Lightning invoice, a Lightning address, an LNURL, or @username.</b>
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
+    .confirm = <b>✅ Confirm this send</b>
+
+        Recipient: <b>@{$username}</b>
+        Amount: <b>{$amount} sats{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Wallet: <b>NWC</b>
+           *[other] Wallet: <b>{bot-name}</b>
+        }
+
+        Nothing is sent until you confirm.
+    .use-button = <b>⚠️ Use the buttons on the message above.</b>
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+    .completed-warning = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+
+        The send succeeded. A follow-up step did not finish. Do not send this amount again.
+    .still-confirming = <b>⏳ This confirmation is still being checked.</b>
+
+        Nothing else will be sent for it. Do not start another send until this one is resolved.
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
 
     Pay it, or go back to this step.
 
-pasted-payment-unsupported = <b>⚠️ Paying a Lightning address or LNURL isn't supported yet — ask the recipient for an invoice and send it.</b>
+pasted-payment-lnurl = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+    Pay it, or go back to this step.
+
+pasted-payment-lnurl-outside = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+lnurl-pay-address = Paying <code>{$address}</code>
+lnurl-pay-host = Paying host <code>{$host}</code>
+lnurl-pay-route = Reached via {$route}
+lnurl-pay-invoice-from = Invoice from <code>{$host}</code>
+lnurl-pay-service-note = Their note: {$note}
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 The recipient asks for {$min} sats.</b>
+        Enter that amount to continue.
+   *[other] <b>🔢 Enter the amount in sats.</b>
+        The recipient accepts from <b>{$min}</b> to <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Enter a whole number of sats from {$min} to {$max}.</b>
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ The recipient's server did not answer in time.</b>
+        Nothing was paid.
+    [server] <b>⚠️ The recipient's server could not complete the payment.</b>
+        Nothing was paid.
+    [amount] <b>⚠️ The invoice amount does not match the amount you entered.</b>
+        Nothing was paid.
+    [description-hash] <b>⚠️ The invoice does not match the recipient.</b>
+        Nothing was paid.
+    [no-whole-sat] <b>⚠️ This recipient does not accept a whole number of sats.</b>
+        Nothing was paid.
+   *[other] <b>⚠️ The recipient's server sent an unexpected response.</b>
+        Nothing was paid.
+    }
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>

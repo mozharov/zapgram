@@ -1,0 +1,492 @@
+import {describe, expect, spyOn, test} from 'bun:test'
+import {createHash} from 'node:crypto'
+import * as dnsPromises from 'node:dns/promises'
+import http from 'node:http'
+import https from 'node:https'
+import {LnurlPayError} from '@core/lightning/lnurl-pay.js'
+import type {PaymentRequest} from '@core/lightning/payment-request.js'
+import {encode, toWords} from 'bech32'
+import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
+import {
+  callbackUrlWithAmount,
+  fetchLnurlPay,
+  lnurlIpAllowed,
+  lnurlPinnedGet,
+  requestLnurlInvoice,
+  withDeadline,
+} from './lnurl-pay.js'
+
+const METADATA = JSON.stringify([
+  ['text/plain', 'Pay Alice'],
+  ['text/identifier', 'alice@example.com'],
+])
+const HASH = createHash('sha256').update(METADATA).digest('hex')
+
+function encodeLnurl(url: string): string {
+  return encode('lnurl', toWords(Buffer.from(url)), 5000)
+}
+
+function payDocument(callback: string, min = 1_000, max = 100_000) {
+  return {
+    tag: 'payRequest',
+    callback,
+    minSendable: min,
+    maxSendable: max,
+    metadata: METADATA,
+    commentAllowed: 40,
+  }
+}
+
+describe('lnurlIpAllowed', () => {
+  test('blocks loopback and private addresses unless NODE_ENV is exactly test', () => {
+    expect(lnurlIpAllowed('127.0.0.1', 'production')).toBe(false)
+    expect(lnurlIpAllowed('10.1.2.3', 'production')).toBe(false)
+    expect(lnurlIpAllowed('192.168.1.1', 'development')).toBe(false)
+    expect(lnurlIpAllowed('127.0.0.1', 'test')).toBe(true)
+    expect(lnurlIpAllowed('10.1.2.3', 'test')).toBe(true)
+    expect(lnurlIpAllowed('8.8.8.8', 'production')).toBe(true)
+  })
+
+  test('blocks link-local, NAT64, and 6to4 that embeds a private address', () => {
+    expect(lnurlIpAllowed('169.254.169.254', 'test')).toBe(false)
+    expect(lnurlIpAllowed('::ffff:169.254.169.254', 'test')).toBe(false)
+    expect(lnurlIpAllowed('::ffff:8.8.8.8', 'production')).toBe(false)
+    expect(lnurlIpAllowed('::8.8.8.8', 'production')).toBe(false)
+    expect(lnurlIpAllowed('::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2001:4860:4860::8888', 'production')).toBe(true)
+    expect(lnurlIpAllowed('64:ff9b::7f00:1', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2002:7f00:1::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('2002:0808:0808::', 'production')).toBe(true)
+    expect(lnurlIpAllowed('2001:0:0:0::', 'production')).toBe(false)
+    expect(lnurlIpAllowed('fec0::1', 'test')).toBe(false)
+    expect(lnurlIpAllowed('fec0::1', 'production')).toBe(false)
+  })
+})
+
+describe('fetchLnurlPay', () => {
+  test('does not look up an onion name', async () => {
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('https://pay.example.onion/lnurlp')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('http://pay.example.onion/lnurlp')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
+  })
+
+  test('connects to the checked address even when the hostname does not resolve', async () => {
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    if (server.port === undefined) throw new Error('no port')
+    port = server.port
+    try {
+      const response = await lnurlPinnedGet(
+        new URL(`http://pinned.invalid:${server.port}/pay`),
+        '127.0.0.1',
+        4,
+        AbortSignal.timeout(2_000),
+      )
+      expect(response.status).toBe(200)
+      expect(response.body).toContain('payRequest')
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test('follows a redirect to the pay request and refuses a redirect into a metadata address', async () => {
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === '/go') {
+          return Response.redirect(`http://127.0.0.1:${port}/pay`, 302)
+        }
+        if (url.pathname === '/trap') {
+          return Response.redirect('http://169.254.169.254/latest', 302)
+        }
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    if (server.port === undefined) throw new Error('LNURL test server has no port')
+    port = server.port
+    try {
+      const quote = await fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl(`http://127.0.0.1:${server.port}/go`),
+      })
+      expect(quote.callback).toContain('/callback')
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`http://127.0.0.1:${server.port}/trap`),
+        }),
+      ).rejects.toMatchObject({code: 'bad-response'})
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test('a second DNS answer that is private is not the address we connect to', async () => {
+    const handed: string[] = []
+    const hosts: string[] = []
+    let calls = 0
+    const lookup = spyOn(dnsPromises, 'lookup').mockImplementation((() => {
+      calls += 1
+      if (calls === 1) return Promise.resolve([{address: '127.0.0.1', family: 4}])
+      return Promise.resolve([{address: '169.254.169.254', family: 4}])
+    }) as unknown as typeof dnsPromises.lookup)
+    const restore = watchHanded(handed, hosts)
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(request) {
+        if (new URL(request.url).pathname === '/go') {
+          return Response.redirect('http://169.254.169.254/latest', 302)
+        }
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    port = server.port ?? 0
+    try {
+      // https is allowed for a public name; the socket must still use the vetted loopback IP.
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`https://rebind.test:${port}/pay`),
+        }),
+      ).rejects.toBeInstanceOf(LnurlPayError)
+      expect(calls).toBe(1)
+      expect(handed.length).toBeGreaterThan(0)
+      expect(handed.every(ip => ip === '127.0.0.1')).toBe(true)
+      expect(hosts).toEqual(['rebind.test'])
+
+      lookup.mockImplementation((() =>
+        Promise.resolve([
+          {address: '169.254.169.254', family: 4},
+        ])) as unknown as typeof dnsPromises.lookup)
+      handed.length = 0
+      hosts.length = 0
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`http://127.0.0.1:${port}/go`),
+        }),
+      ).rejects.toMatchObject({code: 'bad-response'})
+      expect(handed.includes('169.254.169.254')).toBe(false)
+      expect(hosts.includes('169.254.169.254')).toBe(false)
+    } finally {
+      lookup.mockRestore()
+      restore()
+      server.stop(true)
+    }
+  })
+
+  test('a vetted address that does not connect is followed by the next one', async () => {
+    const handed: string[] = []
+    const hosts: string[] = []
+    let calls = 0
+    const lookup = spyOn(dnsPromises, 'lookup').mockImplementation((() => {
+      calls += 1
+      return Promise.resolve([
+        {address: '127.0.0.2', family: 4},
+        {address: '127.0.0.1', family: 4},
+      ])
+    }) as unknown as typeof dnsPromises.lookup)
+    const restore = watchHanded(handed, hosts)
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    if (server.port === undefined) throw new Error('LNURL test server has no port')
+    port = server.port
+    try {
+      const quote = await fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl(`http://localhost:${port}/pay`),
+      })
+      expect(quote.callback).toContain('/callback')
+      expect(calls).toBe(1)
+      expect(handed.slice(0, 2)).toEqual(['127.0.0.2', '127.0.0.1'])
+      expect(handed.includes('169.254.169.254')).toBe(false)
+
+      calls = 0
+      handed.length = 0
+      lookup.mockImplementation((() => {
+        calls += 1
+        return Promise.resolve([
+          {address: '127.0.0.1', family: 4},
+          {address: '169.254.169.254', family: 4},
+        ])
+      }) as unknown as typeof dnsPromises.lookup)
+      await expect(
+        fetchLnurlPay({
+          kind: 'lnurl',
+          value: encodeLnurl(`http://localhost:${port}/pay`),
+        }),
+      ).rejects.toMatchObject({code: 'bad-response'})
+      expect(calls).toBe(1)
+      expect(handed).toEqual([])
+    } finally {
+      lookup.mockRestore()
+      restore()
+      server.stop(true)
+    }
+  })
+
+  test('does not connect to a metadata address or to clearnet http', async () => {
+    await expect(
+      fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl('http://169.254.169.254/latest'),
+      }),
+    ).rejects.toMatchObject({code: 'bad-response'})
+    await expect(
+      fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('http://example.com/pay')}),
+    ).rejects.toMatchObject({code: 'bad-response'})
+  })
+
+  test('reports a timeout, a server error, and a body that is not a pay request', async () => {
+    const closing = new AbortController()
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      async fetch(request) {
+        const path = new URL(request.url).pathname
+        if (path === '/hang') {
+          await new Promise(resolve => {
+            const timer = setTimeout(resolve, 30_000)
+            const done = () => {
+              clearTimeout(timer)
+              resolve(undefined)
+            }
+            closing.signal.addEventListener('abort', done)
+            request.signal.addEventListener('abort', done)
+          })
+          return new Response('late', {status: 504})
+        }
+        if (path === '/down') return new Response('down', {status: 500})
+        if (path === '/text') return new Response('not-json', {status: 200})
+        return Response.json({status: 'ERROR', reason: 'no'})
+      },
+    })
+    const lnurl = (path: string): PaymentRequest => ({
+      kind: 'lnurl',
+      value: encodeLnurl(`http://127.0.0.1:${server.port}${path}`),
+    })
+    try {
+      await expect(fetchLnurlPay(lnurl('/hang'))).rejects.toMatchObject({code: 'timeout'})
+      await expect(fetchLnurlPay(lnurl('/down'))).rejects.toMatchObject({code: 'server'})
+      await expect(fetchLnurlPay(lnurl('/text'))).rejects.toMatchObject({code: 'bad-response'})
+      await expect(fetchLnurlPay(lnurl('/error'))).rejects.toMatchObject({code: 'server'})
+    } finally {
+      closing.abort()
+      server.stop(true)
+    }
+  }, 20_000)
+})
+
+describe('LNURL chain deadlines', () => {
+  test('redirects inside metadata share one 10s budget, so 8s plus 8s times out', async () => {
+    const closing = new AbortController()
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      idleTimeout: 0,
+      async fetch(request) {
+        await sleepUntilAbort(8_000, request.signal, closing.signal)
+        if (request.signal.aborted) return new Response('late', {status: 504})
+        const path = new URL(request.url).pathname
+        if (path === '/meta') return Response.redirect(`http://127.0.0.1:${port}/meta2`, 302)
+        return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+      },
+    })
+    port = server.port ?? 0
+    const started = Date.now()
+    try {
+      await expect(
+        fetchLnurlPay({kind: 'lnurl', value: encodeLnurl(`http://127.0.0.1:${port}/meta`)}),
+      ).rejects.toMatchObject({code: 'timeout'})
+      const elapsed = Date.now() - started
+      expect(elapsed).toBeGreaterThanOrEqual(8_000)
+      expect(elapsed).toBeLessThan(16_000)
+    } finally {
+      closing.abort()
+      server.stop(true)
+    }
+  }, 20_000)
+
+  test('a slow metadata fetch does not eat the callback budget', async () => {
+    const closing = new AbortController()
+    let port = 0
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      idleTimeout: 0,
+      async fetch(request) {
+        await sleepUntilAbort(8_000, request.signal, closing.signal)
+        if (request.signal.aborted) return new Response('late', {status: 504})
+        const path = new URL(request.url).pathname
+        if (path === '/meta') {
+          return Response.json(payDocument(`http://127.0.0.1:${port}/callback`))
+        }
+        const invoice = mintInvoice({sats: 30, description: '', descriptionHash: HASH})
+        return Response.json({pr: invoice.bolt11})
+      },
+    })
+    port = server.port ?? 0
+    const started = Date.now()
+    try {
+      const quote = await fetchLnurlPay({
+        kind: 'lnurl',
+        value: encodeLnurl(`http://127.0.0.1:${port}/meta`),
+      })
+      const invoice = await requestLnurlInvoice(quote, 30)
+      expect(invoice.bolt11.startsWith('lnbc')).toBe(true)
+      const elapsed = Date.now() - started
+      expect(elapsed).toBeGreaterThanOrEqual(16_000)
+      expect(elapsed).toBeLessThan(22_000)
+    } finally {
+      closing.abort()
+      server.stop(true)
+    }
+  }, 25_000)
+})
+
+function sleepUntilAbort(ms: number, request: AbortSignal, closing: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms)
+    const done = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    closing.addEventListener('abort', done)
+    request.addEventListener('abort', done)
+  })
+}
+
+describe('callbackUrlWithAmount', () => {
+  test('replaces amount and leaves the rest of the query untouched', () => {
+    expect(
+      callbackUrlWithAmount('https://pay.example/Pay/Alice?token=AbC&foo=Bar%2Fbaz', 30_000),
+    ).toBe('https://pay.example/Pay/Alice?token=AbC&foo=Bar%2Fbaz&amount=30000')
+    expect(callbackUrlWithAmount('https://pay.example/cb?amount=1&token=AbC#Keep', 5)).toBe(
+      'https://pay.example/cb?token=AbC&amount=5#Keep',
+    )
+  })
+})
+
+describe('withDeadline', () => {
+  test('a call that never returns fails when the deadline passes', async () => {
+    await expect(
+      withDeadline(new Promise(() => {}), AbortSignal.timeout(30)),
+    ).rejects.toMatchObject({code: 'timeout'})
+  })
+})
+
+describe('requestLnurlInvoice', () => {
+  test('returns the bolt11 only when the amount and description hash match, and sends no comment', async () => {
+    const seen: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const url = new URL(request.url)
+        seen.push(`${url.pathname}?${url.searchParams.toString()}`)
+        const mode = url.pathname.slice(1)
+        if (mode === 'down') return new Response('no', {status: 503})
+        const asked = Number(url.searchParams.get('amount'))
+        const sats = mode === 'amount' ? asked / 1000 + 1 : asked / 1000
+        const hash = mode === 'hash' ? createHash('sha256').update('nope').digest('hex') : HASH
+        const invoice = mintInvoice({
+          sats,
+          description: '',
+          descriptionHash: mode === 'plain' ? undefined : hash,
+        })
+        return Response.json({pr: invoice.bolt11})
+      },
+    })
+    const callback = (mode: string) => `http://127.0.0.1:${server.port}/${mode}?keep=1`
+    const quote = {
+      minMsat: 1_000,
+      maxMsat: 100_000,
+      minSats: 1,
+      maxSats: 100,
+      metadata: METADATA,
+      serviceText: 'Pay Alice',
+      metadataHosts: ['127.0.0.1'],
+      callback: callback('ok'),
+    }
+    try {
+      const paid = await requestLnurlInvoice(quote, 30)
+      expect(paid.bolt11.startsWith('lnbc')).toBe(true)
+      expect(paid.callbackHosts[0]).toContain('127.0.0.1')
+      expect(seen[0]).toContain('amount=30000')
+      expect(seen[0]).toContain('keep=1')
+      expect(seen[0]).not.toContain('comment')
+
+      await expect(
+        requestLnurlInvoice({...quote, callback: callback('plain')}, 30),
+      ).rejects.toMatchObject({code: 'description-hash'})
+
+      await expect(
+        requestLnurlInvoice({...quote, callback: callback('amount')}, 30),
+      ).rejects.toMatchObject({code: 'amount'})
+      await expect(
+        requestLnurlInvoice({...quote, callback: callback('hash')}, 30),
+      ).rejects.toMatchObject({code: 'description-hash'})
+      await expect(
+        requestLnurlInvoice({...quote, callback: callback('down')}, 30),
+      ).rejects.toMatchObject({code: 'server'})
+      await expect(requestLnurlInvoice(quote, 0)).rejects.toBeInstanceOf(LnurlPayError)
+      expect(seen.some(url => url.includes('comment'))).toBe(false)
+    } finally {
+      server.stop(true)
+    }
+  })
+})
+
+function watchHanded(handed: string[], hosts: string[]): () => void {
+  const originalHttp = http.request
+  const originalHttps = https.request
+  const wrap =
+    (original: typeof http.request) => (options: http.RequestOptions, callback?: () => void) => {
+      hosts.push(String(options.hostname ?? ''))
+      const userLookup = options.lookup
+      if (typeof userLookup === 'function') {
+        const inner = userLookup
+        options.lookup = ((hostname, opts, cb) => {
+          inner(hostname, opts, (err, address, family) => {
+            if (typeof address === 'string' && address) handed.push(address)
+            if (Array.isArray(address)) {
+              for (const item of address) handed.push(item.address)
+            }
+            cb(err, address, family)
+          })
+        }) as NonNullable<http.RequestOptions['lookup']>
+      }
+      const call = original as (
+        options: http.RequestOptions,
+        callback?: () => void,
+      ) => ReturnType<typeof http.request>
+      return call(options, callback)
+    }
+  http.request = wrap(originalHttp) as typeof http.request
+  https.request = wrap(originalHttps as unknown as typeof http.request) as typeof https.request
+  return () => {
+    http.request = originalHttp
+    https.request = originalHttps
+  }
+}

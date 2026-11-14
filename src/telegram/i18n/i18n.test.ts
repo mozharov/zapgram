@@ -157,3 +157,36 @@ describe('stored Telegram language tags', () => {
     ).toMatch(/A repeated subscription payment/)
   })
 })
+
+describe('lnurl pay copy', () => {
+  const reasons = [
+    'timeout',
+    'server',
+    'amount',
+    'description-hash',
+    'no-whole-sat',
+    'bad-response',
+  ]
+
+  for (const language of ['en', 'ru']) {
+    test(`failure reasons resolve in ${language} and say nothing was paid`, () => {
+      for (const reason of reasons) {
+        const message = translate('lnurl-pay-failed', language, {reason})
+        expect(message).not.toContain('lnurl-pay-failed')
+        expect(message.toLowerCase()).toMatch(/nothing was paid|ничего не оплачено/)
+      }
+    })
+
+    test(`amount prompt resolves in ${language}`, () => {
+      const ranged = translate('lnurl-pay-amount', language, {min: 10, max: 80, exact: 'no'})
+      const exact = translate('lnurl-pay-amount', language, {min: 10, max: 10, exact: 'yes'})
+      const invalid = translate('lnurl-pay-amount.invalid', language, {min: 10, max: 80})
+      expect(ranged).not.toContain('lnurl-pay-amount')
+      expect(exact).not.toContain('lnurl-pay-amount')
+      expect(invalid).not.toContain('lnurl-pay-amount')
+      expect(ranged).toMatch(/10/)
+      expect(ranged).toMatch(/80/)
+      expect(exact).toMatch(/10/)
+    })
+  }
+})

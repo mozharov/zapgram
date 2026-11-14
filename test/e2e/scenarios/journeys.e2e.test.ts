@@ -76,10 +76,15 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     telegram: [{method: 'sendRichMessage', to: USER_A, text: /Balance:<\/b> 0 sats/}],
   })
 
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
-    db: {conversations: {added: 1}},
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
-  })
+  const walletMessageId = requiredMessageId('sendRichMessage')
+  await expectDelta(
+    e2e,
+    () => e2e.send(privateCallback(staticCallback.createInvoice, {messageId: walletMessageId})),
+    {
+      db: {conversations: {added: 1}},
+      telegram: [{method: 'editMessageText', to: USER_A, text: /Creating Lightning invoice/}],
+    },
+  )
 
   await expectDelta(e2e, () => e2e.send(privateText(String(PRICE))), {
     db: {conversations: {changed: 1}, pendingInvoices: {added: 1}},
@@ -382,14 +387,15 @@ test('a monthly subscription renews, expires and can begin again in one world', 
   await expectDelta(e2e, () => e2e.send(joinUpdate()), {
     telegram: [{method: 'sendRichMessage', to: USER_A, text: /Choose how you want to pay/}],
   })
-  const rejoinChooser = e2e.tg.last('sendMessage')
+  const rejoinChooserId = e2e.tg.lastMessageId('sendRichMessage')
+  if (rejoinChooserId === undefined) throw new Error('rejoin chooser was not sent')
   await expectDelta(
     e2e,
     () =>
       e2e.send(
         privateCallback(payLightningRoute.build({chatId: CHAT_GROUP}), {
           from: subscriberProfile(),
-          messageId: Number(rejoinChooser?.message_id ?? 1),
+          messageId: rejoinChooserId,
         }),
       ),
     {
@@ -431,13 +437,12 @@ test('private keyboard navigation keeps one world through screens and conversati
   await expectEditedScreen(staticCallback.settings, /NWC/)
   expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.connectNwc)
   await expectEditedScreen(staticCallback.wallet, /Wallet/)
-  await expectEditedScreen(staticCallback.sendMenu, /Send payment/)
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toContain(staticCallback.sendToUser)
-
-  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendToUser)), {
+  await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.sendMenu)), {
     db: {conversations: {added: 1}},
-    telegram: [{method: 'editMessageText', to: USER_A, text: /Sending sats to a Telegram user/}],
+    telegram: [{method: 'editMessageText', to: USER_A, text: /Send payment/}],
   })
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['cancel'])
+
   await expectDelta(
     e2e,
     () =>
@@ -448,7 +453,7 @@ test('private keyboard navigation keeps one world through screens and conversati
       db: {conversations: {removed: 1}},
       telegram: [
         {method: 'answerCallbackQuery'},
-        {method: 'editMessageText', to: USER_A, text: /Send payment/},
+        {method: 'editMessageText', to: USER_A, text: /Wallet/},
       ],
     },
   )
@@ -871,7 +876,13 @@ function richHtmlOf(payload: Record<string, unknown> | undefined): string {
 }
 
 function requiredMessageId(
-  method: 'sendMessage' | 'sendPhoto' | 'sendWidget' | 'editMessageText' | 'editMessageMedia',
+  method:
+    | 'sendMessage'
+    | 'sendPhoto'
+    | 'sendRichMessage'
+    | 'sendWidget'
+    | 'editMessageText'
+    | 'editMessageMedia',
 ): number {
   const messageId = e2e.tg.lastMessageId(method)
   if (messageId === undefined) throw new Error(`Expected an outbound ${method} message ID`)

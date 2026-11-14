@@ -151,7 +151,12 @@ const staticCases: {
   {data: staticCallback.settings, methods: ['editMessageText'], text: /NWC/},
   {data: staticCallback.help, methods: ['editMessageText'], text: /Lightning Network/},
   {data: staticCallback.groupSettings, methods: ['editMessageText'], text: /Chats/},
-  {data: staticCallback.sendMenu, methods: ['editMessageText'], text: /Send payment/},
+  {
+    data: staticCallback.sendMenu,
+    methods: ['editMessageText'],
+    text: /Send payment/,
+    conversation: true,
+  },
   {
     data: staticCallback.sendToUser,
     methods: ['editMessageText'],

@@ -384,3 +384,62 @@ export const broadcastRecipientsTable = sqliteTable(
       .where(sql`${table.status} = 'pending'`),
   ],
 )
+
+/**
+ * One private-send confirmation. The id is the attempt nonce, not sender/recipient/amount,
+ * so a later genuine send of the same amount is a new row.
+ * `invoice_hash` is written before that invoice is paid. Status is only pending or settled.
+ */
+export const dmTransfersTable = sqliteTable(
+  'dm_transfers',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: integer('from_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    toUserId: integer('to_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    sats: integer('sats', {mode: 'number'}).notNull(),
+    status: text('status', {enum: ['pending', 'settled']}).notNull(),
+    /**
+     * Where this attempt is. `invoice_saved` has not called pay. `pay_unknown` has.
+     * `provider_accepted` means the wallet accepted the debit even if a later lookup failed.
+     * `needs_review` is ambiguous and is not paid again. `abandoned` never left.
+     */
+    phase: text('phase', {
+      enum: [
+        'reserved',
+        'invoice_saved',
+        'pay_unknown',
+        'provider_accepted',
+        'needs_review',
+        'settled',
+        'abandoned',
+      ],
+    })
+      .notNull()
+      .default('reserved'),
+    rail: text('rail', {enum: ['internal', 'nwc']})
+      .notNull()
+      .default('internal'),
+    /** Recipient invoice, persisted before pay. */
+    invoiceHash: text('invoice_hash'),
+    bolt11: text('bolt11'),
+    providerAccepted: integer('provider_accepted', {mode: 'boolean'}).notNull().default(false),
+    providerPaymentHash: text('provider_payment_hash'),
+    /** Fee-collection invoice, persisted before that pay. Null until a fee is attempted. */
+    feeHash: text('fee_hash'),
+    feeBolt11: text('fee_bolt11'),
+    /** Insufficient balance for the optional fee. Not a failure of the send. */
+    feeSkipped: integer('fee_skipped', {mode: 'boolean'}).notNull().default(false),
+    /** True while one worker is sending the recipient notice. Not the same as delivered. */
+    noticeClaimed: integer('notice_claimed', {mode: 'boolean'}).notNull().default(false),
+    /** Lease end. A crash mid-send can be retried after this time. */
+    noticeClaimExpiresAt: integer('notice_claim_expires_at', {mode: 'timestamp'}),
+    noticeSent: integer('notice_sent', {mode: 'boolean'}).notNull().default(false),
+    reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`)],
+)

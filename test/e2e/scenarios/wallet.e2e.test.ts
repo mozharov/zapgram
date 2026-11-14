@@ -277,15 +277,13 @@ test('chats opens the common chat screen with paid chats and a way back to walle
   expectNoErrors(e2e.logs)
 })
 
-test('the send menu opens the send screen', async () => {
+test('the send menu opens one recipient prompt', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback('send-menu')), {
+    db: {conversations: {added: 1}},
     telegram: [{method: 'editMessageText', to: USER_A, text: /Send payment/}],
   })
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual([
-    'pay-invoice',
-    'send-to-user',
-    'wallet',
-  ])
+  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['cancel'])
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/@username/)
   expectNoErrors(e2e.logs)
 })
 
