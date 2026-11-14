@@ -46,6 +46,7 @@ export type LiquidityHold = {msat: number; generation: number}
 export type OutgoingLiquidityGuard = {
   assertCanPay(input: {
     bolt11: string
+    payerWalletId?: string
     feeReserveMsat: () => Promise<number>
   }): Promise<LiquidityHold | undefined>
   /** Put a hold back after LNbits refused the pay and this cache generation is still current. */
@@ -71,7 +72,7 @@ export function payLeftBackendUnspent(error: unknown): boolean {
  * payment continue, the way it did before the check existed.
  */
 export function createOutgoingLiquidityGuard(deps: {
-  classifyInvoice: (bolt11: string) => Promise<InvoiceOrigin>
+  classifyInvoice: (bolt11: string, payerWalletId?: string) => Promise<InvoiceOrigin>
   readBalance: () => Promise<BalanceRead>
   log?: AppLogger
   capturePaused?: (properties: {
@@ -208,7 +209,7 @@ export function createOutgoingLiquidityGuard(deps: {
         () => undefined,
       )
       const run = settled.then(async () => {
-        const origin = await deps.classifyInvoice(input.bolt11)
+        const origin = await deps.classifyInvoice(input.bolt11, input.payerWalletId)
         if (origin === 'internal') return
         if (origin === 'unknown') {
           noteFailure('classify_failed')

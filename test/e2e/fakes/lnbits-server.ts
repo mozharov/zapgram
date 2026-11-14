@@ -158,6 +158,25 @@ function route({
     return json({price, rate: 100_000_000 / price})
   }
 
+  // Admin list used to match check_internal. Must stay ahead of /api/v1/payments/{hash}.
+  // A non-admin token only sees its own user; the fake has no such user, so the page is empty.
+  if (method === 'GET' && path === '/api/v1/payments/all/paginated') {
+    if (bearerOf(request) !== FAKE_LNBITS_ADMIN_BEARER) return json({data: [], total: 0})
+    const paymentHash = url.searchParams.get('payment_hash')
+    const rows = state.payments.filter(
+      payment => paymentHash === null || payment.paymentHash === paymentHash,
+    )
+    return json({
+      data: rows.map(payment => ({
+        payment_hash: payment.paymentHash,
+        wallet_id: payment.walletId,
+        amount: payment.out ? -payment.amountMsat : payment.amountMsat,
+        status: payment.paid ? 'success' : 'pending',
+      })),
+      total: rows.length,
+    })
+  }
+
   // This exact route must be checked before /api/v1/payments/{hash}.
   if (method === 'GET' && path === '/api/v1/payments/fee-reserve') {
     const wallet = authenticatedWallet(request, state)

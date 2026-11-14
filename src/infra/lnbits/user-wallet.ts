@@ -21,6 +21,7 @@ export class UserWallet extends LNBitsAPI {
   private readonly memoFooter: string
   private readonly paymentWebhookUrl?: string
   private readonly outgoingLiquidity?: OutgoingLiquidityGuard
+  private payerWalletId: Promise<string | undefined> | undefined
 
   constructor(
     adminKey: string,
@@ -62,6 +63,7 @@ export class UserWallet extends LNBitsAPI {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
+          payerWalletId: await this.walletId(),
           feeReserveMsat: () => this.getFeeReserve(paymentRequest),
         })
       : undefined
@@ -89,6 +91,14 @@ export class UserWallet extends LNBitsAPI {
       {searchParams: {invoice: paymentRequest}},
     )
     return response.fee_reserve
+  }
+
+  /** Cached. A failed read leaves outgoing rows unmatched and the liquidity check still runs. */
+  private walletId(): Promise<string | undefined> {
+    this.payerWalletId ??= this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
+      .then(wallet => wallet.id)
+      .catch(() => undefined)
+    return this.payerWalletId
   }
 
   async lookupPayment(paymentHash: string) {

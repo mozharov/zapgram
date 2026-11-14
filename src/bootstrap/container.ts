@@ -153,7 +153,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
 
   const masterWallet = createMasterWallet(config)
   const outgoingLiquidity = createOutgoingLiquidityGuard({
-    classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL),
+    classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
     readBalance: () => masterWallet.readFundingSource(),
     log,
     capturePaused: properties => {

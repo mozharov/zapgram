@@ -10,6 +10,7 @@ import {
   payLeftBackendUnspent,
 } from './outgoing-liquidity.js'
 import {
+  balanceResponseSchema,
   feeReserveResponseSchema,
   healthResponseSchema,
   lookupPaymentResponseSchema,
@@ -24,6 +25,7 @@ class MasterWallet extends LNBitsAPI {
   private readonly feeCollectionInvoiceKey: string
   private readonly paymentWebhookUrl?: string
   private outgoingLiquidity?: OutgoingLiquidityGuard
+  private payerWalletId: Promise<string | undefined> | undefined
 
   constructor({
     baseUrl,
@@ -141,6 +143,7 @@ class MasterWallet extends LNBitsAPI {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
+          payerWalletId: await this.walletId(),
           feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
         })
       : undefined
@@ -165,6 +168,13 @@ class MasterWallet extends LNBitsAPI {
       {searchParams: {invoice: paymentRequest}},
     )
     return response.fee_reserve
+  }
+
+  private walletId(): Promise<string | undefined> {
+    this.payerWalletId ??= this.fetchWithSchema('/api/v1/wallet', balanceResponseSchema)
+      .then(wallet => wallet.id)
+      .catch(() => undefined)
+    return this.payerWalletId
   }
 
   async lookupPayment(paymentHash: string) {
