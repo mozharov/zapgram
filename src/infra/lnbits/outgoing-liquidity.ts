@@ -78,6 +78,12 @@ export type OutgoingLiquidityGuard = {
    * but leave the current cache reduced until the next balance read.
    */
   abandon(hold: LiquidityHold): Promise<void>
+  /**
+   * The invoice was already paid on a hold this cache had not marked spent.
+   * Putting that amount back can leave the estimate high for the rest of the
+   * cache window. Drop the hold and forget the estimate so the next check reads again.
+   */
+  invalidate(hold: LiquidityHold): Promise<void>
 }
 
 /**
@@ -90,6 +96,8 @@ const DEFINITE_LNBITS_REFUSAL = new Set([400, 401, 403, 404, 422])
  * True only when LNbits finished the request and the payment did not leave.
  * A definite client refusal (400, 401, 403, 404, 422) is before pay.
  * A 520 counts only when its body says `failed`.
+ * A 520 whose body is not `failed` is a retry of an already successful payment:
+ * the pay path abandons that hold instead of putting the amount back.
  * 408, 429, any other 4xx, a timeout, or a 5xx may still have spent the backend.
  */
 export function payLeftBackendUnspent(error: unknown): boolean {
@@ -103,6 +111,16 @@ export function payLeftBackendUnspent(error: unknown): boolean {
   const body = error.response.body
   if (!body || typeof body !== 'object') return false
   return (body as {status?: unknown}).status === 'failed'
+}
+
+/** Already-paid can mean the spend landed. Releasing that hold inflates the cached balance. */
+export function payAlreadyPaid(error: unknown): boolean {
+  if (error instanceof InvoiceAlreadyPaidError) return true
+  if (!(error instanceof HTTPError) || error.response.statusCode !== 520) return false
+  const body = error.response.body
+  if (!body || typeof body !== 'object') return false
+  const detail = (body as {detail?: unknown}).detail
+  return typeof detail === 'string' && detail.toLowerCase().includes('already paid')
 }
 
 /**
@@ -367,6 +385,13 @@ export function createOutgoingLiquidityGuard(deps: {
     abandon(hold) {
       return schedule(() => {
         finish(hold, 'abandon')
+      }, 'soon')
+    },
+    invalidate(hold) {
+      return schedule(() => {
+        finish(hold, 'abandon')
+        cached = null
+        failedRead = null
       }, 'soon')
     },
   }

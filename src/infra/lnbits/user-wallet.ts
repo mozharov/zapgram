@@ -5,7 +5,12 @@ import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
 import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
-import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
+import {
+  type LiquidityHold,
+  type OutgoingLiquidityGuard,
+  payAlreadyPaid,
+  payLeftBackendUnspent,
+} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
   feeReserveResponseSchema,
@@ -82,12 +87,21 @@ export class UserWallet extends LNBitsAPI {
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {
-      if (hold) {
-        if (payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
-        else await this.outgoingLiquidity?.abandon(hold)
-      }
+      if (hold) await this.finishHold(hold, error)
       throw error
     }
+  }
+
+  private async finishHold(hold: LiquidityHold, error: unknown): Promise<void> {
+    if (payAlreadyPaid(error)) {
+      await this.outgoingLiquidity?.invalidate(hold)
+      return
+    }
+    if (payLeftBackendUnspent(error)) {
+      await this.outgoingLiquidity?.release(hold)
+      return
+    }
+    await this.outgoingLiquidity?.abandon(hold)
   }
 
   /**

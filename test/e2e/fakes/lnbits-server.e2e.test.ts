@@ -3,6 +3,7 @@ import {Writable} from 'node:stream'
 import {createConfig} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {createInvoiceOriginLookup} from '@infra/lnbits/invoice-origin.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
 import {createOutgoingLiquidityGuard} from '@infra/lnbits/outgoing-liquidity.js'
@@ -358,6 +359,42 @@ describe('fake LNbits HTTP server', () => {
       const invoice = fake.state.createInvoice({wallet, sats: 1, memo: 'id', expirySec: 60})
       await master.payInvoice(invoice.bolt11)
       expect(seen).toBe(wallet.id)
+    })
+  })
+
+  test('a known-internal pay does not classify or read the wallet when those reads fail', async () => {
+    await withFake(async fake => {
+      fake.state.fundingSourceBalanceMsat = 0
+      fake.state.adminPaymentListEmpty = true
+      fake.state.failAlways(
+        {method: 'GET', path: '/api/v1/wallet'},
+        {status: 500, body: {status: 'failed', detail: 'wallet down'}},
+      )
+      const master = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      master.useOutgoingLiquidity(
+        createOutgoingLiquidityGuard({
+          classifyInvoice: createInvoiceOriginLookup(fake.url, FAKE_LNBITS_ADMIN_BEARER),
+          readBalance: () => master.readFundingSource(),
+          hasBearer: true,
+        }),
+      )
+      const wallet = fake.state.walletByApiKey(keys.adminKey)
+      if (!wallet) throw new Error('master wallet missing')
+      fake.state.credit(wallet.id, 100_000)
+      const invoice = fake.state.createInvoice({
+        wallet,
+        sats: 1,
+        memo: 'known internal',
+        expirySec: 60,
+      })
+      const before = fake.requests.length
+      await master.payInvoice(invoice.bolt11, {knownInternal: true})
+      const paths = fake.requests.slice(before).map(request => `${request.method} ${request.path}`)
+      expect(paths.some(path => path.includes('/api/v1/wallet'))).toBe(false)
+      expect(paths.some(path => path.includes('/payments/all/paginated'))).toBe(false)
+      expect(paths.some(path => path === 'POST /api/v1/payments')).toBe(true)
     })
   })
 

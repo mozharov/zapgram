@@ -154,7 +154,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   const masterWallet = createMasterWallet(config)
   if (config.backendLiquidityGuardUnrecognized !== undefined) {
     log.warn(
-      {value: config.backendLiquidityGuardUnrecognized},
+      {unrecognized: true, length: config.backendLiquidityGuardUnrecognized.length},
       'BACKEND_LIQUIDITY_GUARD is not recognized; using on',
     )
   }

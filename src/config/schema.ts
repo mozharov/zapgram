@@ -68,17 +68,17 @@ export type Env = z.infer<typeof envSchema>
 const GUARD_ON = new Set(['on', 'true', '1', 'yes'])
 const GUARD_OFF = new Set(['off', 'false', '0', 'no'])
 
-/** Map the env string. An unrecognized value stays on and is returned for one warning. */
+/** Map the env string. An unrecognized value stays on. Only its length is returned, never the text. */
 export function interpretBackendLiquidityGuard(value: unknown): {
   mode: 'on' | 'off'
-  unrecognized?: string
+  unrecognized?: {length: number}
 } {
   if (value === undefined || value === null || value === '') return {mode: 'on'}
-  if (typeof value !== 'string') return {mode: 'on', unrecognized: 'invalid'}
+  if (typeof value !== 'string') return {mode: 'on', unrecognized: {length: 0}}
   const text = value.trim().toLowerCase()
   if (GUARD_ON.has(text)) return {mode: 'on'}
   if (GUARD_OFF.has(text)) return {mode: 'off'}
-  return {mode: 'on', unrecognized: value.slice(0, 32)}
+  return {mode: 'on', unrecognized: {length: value.length}}
 }
 
 /** Trim, strip trailing slash, default missing scheme to https. */
