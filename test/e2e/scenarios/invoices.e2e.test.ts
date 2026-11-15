@@ -239,7 +239,7 @@ test('a failed widget edit on memo remint sends one photo and retires the old ca
       {method: 'editMessageWidgetData', to: USER_A},
       {method: 'sendPhoto', to: USER_A, text: /Description: <b>coffee<\/b>/},
       {method: 'editMessageReplyMarkup', to: USER_A},
-      {method: 'editMessageCaption', to: USER_A, text: /can still be paid/},
+      {method: 'editMessageCaption', to: USER_A, text: /sent as a separate message/},
     ],
   })
 
@@ -279,7 +279,7 @@ test('a memo remint does not retarget a widget whose invoice was already claimed
 
   const restored = String(e2e.tg.last('editMessageCaption')?.caption)
   expect(restored).not.toMatch(/Enter a memo/)
-  expect(restored).not.toMatch(/can still be paid/)
+  expect(restored).not.toMatch(/sent as a separate message/)
   expect(e2e.tg.of('editMessageWidgetData')).toHaveLength(0)
   expect(e2e.tg.of('sendPhoto')).toHaveLength(1)
   expect(e2e.tg.of('editMessageMedia')).toHaveLength(0)
