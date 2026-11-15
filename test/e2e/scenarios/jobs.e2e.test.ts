@@ -21,7 +21,7 @@ import {scenarioCoverage} from './coverage.js'
 
 /**
  * Cron jobs as batch walkers: empty ticks stay quiet, oversize queues finish, one bad row cannot
- * sink the rest, and the pending-invoice branches (paid / 404 / timeout / failed delete) leave the
+ * sink the rest, and the pending-invoice branches (paid / 404 / lookup failure / failed delete) leave the
  * world in the state the next tick can safely resume from.
  *
  * In-batch row order is UUID/`desc(id)` — never asserted. Default `batchSize` is 10 and is not
@@ -158,17 +158,12 @@ test('a pending invoice missing from LNbits is deleted', async () => {
   expect(errorMessages().some(message => message.includes('not found on LNBits'))).toBe(true)
 })
 
-test('a lookup timeout keeps the pending invoice for a later tick', async () => {
+test('a failed payment lookup keeps the pending invoice for a later tick', async () => {
   const pending = await seedPendingInvoice(e2e, {sats: PENDING_SATS})
-  const originalGetUserWallet = e2e.container.getUserWallet
-  e2e.container.getUserWallet = async userId => {
-    const wallet = await originalGetUserWallet(userId)
-    return Object.assign(wallet, {
-      lookupPayment: async () => {
-        throw Object.assign(new Error('Injected payment lookup timeout'), {code: 'ETIMEDOUT'})
-      },
-    })
-  }
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: `/api/v1/payments/${pending.paymentHash}`},
+    {status: 422, body: {detail: 'lookup failed'}},
+  )
   const before = await snapshot(e2e)
   const requestMark = e2e.ln.requests.length
 
@@ -177,15 +172,18 @@ test('a lookup timeout keeps the pending invoice for a later tick', async () => 
   const after = await snapshot(e2e)
   expectWorldUnchanged(before, after)
   expectLedgerBalanced(before, after)
-  // Wallet may still be resolved before the injected throw; no payment lookup is required.
   expect(e2e.ln.requests.length - requestMark).toBeLessThan(REQUEST_CAP)
+  expect(
+    e2e.ln.requests.some(
+      request =>
+        request.method === 'GET' && request.path === `/api/v1/payments/${pending.paymentHash}`,
+    ),
+  ).toBe(true)
   expect(await onlyPendingInvoice()).toMatchObject({paymentHash: pending.paymentHash})
   expect(e2e.tg.calls).toEqual([])
   expect(
-    e2e.logs.some(
-      log =>
-        (log.level === 'warn' || log.level === 40) &&
-        String(log.msg ?? '').includes(`Timeout checking invoice ${pending.paymentHash}`),
+    errorMessages().some(message =>
+      message.includes(`Unhandled error processing invoice ${pending.paymentHash}`),
     ),
   ).toBe(true)
 })
@@ -229,20 +227,11 @@ test('one failing pending invoice does not block the rest of the batch', async (
   payPendingInvoice(goodA)
   payPendingInvoice(goodB)
 
-  // Throw inside the wallet client so got cannot retry a 500 for ~3s per attempt.
-  const originalGetUserWallet = e2e.container.getUserWallet
-  e2e.container.getUserWallet = async userId => {
-    const wallet = await originalGetUserWallet(userId)
-    const lookupPayment = wallet.lookupPayment.bind(wallet)
-    return Object.assign(wallet, {
-      lookupPayment: async (paymentHash: string) => {
-        if (paymentHash === bad.paymentHash) {
-          throw new Error(`Injected lookup failure for ${paymentHash}`)
-        }
-        return lookupPayment(paymentHash)
-      },
-    })
-  }
+  // 422 is not retried by got. A 500 would back off for seconds inside the batch.
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: `/api/v1/payments/${bad.paymentHash}`},
+    {status: 422, body: {detail: 'lookup failed'}},
+  )
 
   await expectDelta(e2e, () => e2e.jobs.pendingInvoices(), {
     db: {pendingInvoices: {removed: 2}},
@@ -330,19 +319,10 @@ test('an expired invoice stays pending when LNbits cannot be checked', async () 
     widgetChatId: USER_A,
     widgetMessageId: 90,
   })
-  const originalGetUserWallet = e2e.container.getUserWallet
-  e2e.container.getUserWallet = async userId => {
-    const wallet = await originalGetUserWallet(userId)
-    const lookupPayment = wallet.lookupPayment.bind(wallet)
-    return Object.assign(wallet, {
-      lookupPayment: async (paymentHash: string) => {
-        if (paymentHash === expired.paymentHash) {
-          throw new Error(`Injected lookup failure for ${paymentHash}`)
-        }
-        return lookupPayment(paymentHash)
-      },
-    })
-  }
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: `/api/v1/payments/${expired.paymentHash}`},
+    {status: 422, body: {detail: 'lookup failed'}},
+  )
 
   await expectDelta(e2e, () => e2e.jobs.expiredInvoices(), {})
 
@@ -351,6 +331,91 @@ test('an expired invoice stays pending when LNbits cannot be checked', async () 
   expect(errorMessages().some(message => message.includes('Failed to check expired invoice'))).toBe(
     true,
   )
+
+  const requestsAfterFailure = e2e.ln.requests.length
+  const errorsAfterFailure = errorMessages().length
+  await e2e.jobs.expiredInvoices()
+  expect(e2e.ln.requests.length).toBe(requestsAfterFailure)
+  expect(errorMessages().length).toBe(errorsAfterFailure)
+  expect(await onlyPendingInvoice()).toMatchObject({paymentHash: expired.paymentHash})
+})
+
+test('a 404 from the user lookup does not delete an expired invoice', async () => {
+  const expired = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 92,
+  })
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: '/users/api/v1/user'},
+    {status: 404, body: {detail: 'User does not exist.'}},
+  )
+
+  await expectDelta(e2e, () => e2e.jobs.expiredInvoices(), {})
+
+  expect(await onlyPendingInvoice()).toMatchObject({paymentHash: expired.paymentHash})
+  expect(e2e.tg.calls).toEqual([])
+  expect(
+    e2e.ln.requests.some(request => request.path === `/api/v1/payments/${expired.paymentHash}`),
+  ).toBe(false)
+  expect(errorMessages().some(message => message.includes('Failed to check expired invoice'))).toBe(
+    true,
+  )
+  expect(e2e.logs.some(log => String(log.msg ?? '').includes('missing on LNbits'))).toBe(false)
+})
+
+test('an expired invoice missing on LNbits is deleted', async () => {
+  const expired = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 93,
+  })
+  const index = e2e.ln.state.payments.findIndex(
+    payment => payment.paymentHash === expired.paymentHash,
+  )
+  expect(index).toBeGreaterThanOrEqual(0)
+  e2e.ln.state.payments.splice(index, 1)
+
+  await expectDelta(e2e, () => e2e.jobs.expiredInvoices(), {
+    db: {pendingInvoices: {removed: 1}},
+    telegram: [{method: 'editMessageWidgetData', to: USER_A}],
+  })
+
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'expired',
+    b: expired.paymentRequest,
+  })
+  expect(e2e.logs.some(log => String(log.msg ?? '').includes('missing on LNbits'))).toBe(true)
+})
+
+test('an expired invoice that is paid on the recheck is claimed instead of deleted', async () => {
+  const expired = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 94,
+  })
+  e2e.ln.state.markPaidAfterLookups = {paymentHash: expired.paymentHash, after: 1}
+
+  await expectDelta(e2e, () => e2e.jobs.expiredInvoices(), {
+    db: {pendingInvoices: {removed: 1}},
+    lnbits: {payments: [{out: false, sats: PENDING_SATS, times: 1}]},
+    telegram: [
+      {method: 'sendMessage', to: USER_A, text: /You received payment for a Lightning invoice/},
+      {method: 'editMessageWidgetData', to: USER_A},
+    ],
+  })
+
+  expect(JSON.parse(String(e2e.tg.last('editMessageWidgetData')?.chat_data))).toMatchObject({
+    s: 'paid',
+    b: expired.paymentRequest,
+  })
+  expect(
+    e2e.logs.some(log => String(log.msg ?? '').includes('Expired invoice was already paid')),
+  ).toBe(true)
+  expect(e2e.logs.some(log => String(log.msg ?? '').includes('missing on LNbits'))).toBe(false)
 })
 
 test('a missing LNbits invoice marks its widget cancelled', async () => {

@@ -14,12 +14,12 @@ describe('interpretBackendLiquidityGuard', () => {
     expect(interpretBackendLiquidityGuard('')).toEqual({mode: 'on'})
   })
 
-  test('an unrecognized value stays on and is reported', () => {
+  test('an unrecognized value stays on and reports only its length', () => {
     expect(interpretBackendLiquidityGuard('maybe')).toEqual({
       mode: 'on',
-      unrecognized: 'maybe',
+      unrecognized: {length: 'maybe'.length},
     })
-    expect(interpretBackendLiquidityGuard(1)).toEqual({mode: 'on', unrecognized: 'invalid'})
+    expect(interpretBackendLiquidityGuard(1)).toEqual({mode: 'on', unrecognized: {length: 0}})
   })
 })
 
@@ -32,5 +32,5 @@ test('createConfig accepts false and does not throw on an unknown guard value', 
   ).toBe('off')
   const config = createConfig({...process.env, BACKEND_LIQUIDITY_GUARD: 'maybe'})
   expect(config.BACKEND_LIQUIDITY_GUARD).toBe('on')
-  expect(config.backendLiquidityGuardUnrecognized).toBe('maybe')
+  expect(config.backendLiquidityGuardUnrecognized).toEqual({length: 'maybe'.length})
 })

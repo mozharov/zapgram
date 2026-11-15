@@ -425,7 +425,7 @@ invoice-widget-status =
     .expired = Истёк
     .cancelled = Отменён
 
-invoice-replaced = <b>Этот счёт заменён новым.</b>
+invoice-replaced = <b>Этот счёт всё ещё можно оплатить.</b> Счёт с описанием — в другом сообщении.
 
 creating-invoice = <b>🧾 Создание счёта Lightning...</b>
     .created = Сумма: <b>{$amount} сат{$usdSuffix}</b>

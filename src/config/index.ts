@@ -5,8 +5,8 @@ import {type Env, envSchema, interpretBackendLiquidityGuard} from './schema.js'
 
 export type AppConfig = Omit<Env, 'BACKEND_LIQUIDITY_GUARD'> & {
   readonly BACKEND_LIQUIDITY_GUARD: 'on' | 'off'
-  /** Set when the env value was not a recognized on/off spelling. */
-  readonly backendLiquidityGuardUnrecognized?: string
+  /** Set when the env value was not a recognized on/off spelling. Length only: the text stays out of logs. */
+  readonly backendLiquidityGuardUnrecognized?: {length: number}
   readonly botInfo: UserFromGetMe | undefined
   readonly memoFooter: string
   readonly chatsPerPage: number

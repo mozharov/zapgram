@@ -506,18 +506,19 @@ async function renderFinalWidget(
     )
   }
   await closeWidget(ctx, sentChatId, sent.message_id, caption.html, keyboard)
+  // B is its own message. A must not keep the "enter a description" prompt.
+  await settlePreviousCaption(conversation, ctx, shown, wallet)
 }
 
 type WidgetMove = 'moved' | 'claimed' | 'failed'
 
 /**
- * Attach the live message to the reminted invoice. `claimed` means A was already taken, so the
- * caller must not edit that message. `failed` already sent B as a photo and retired A's caption
- * only when A still owns it.
+ * Attach the live message to the reminted invoice. `claimed` means A was already taken. The memo
+ * prompt is cleared, and the caption is not called replaced. `failed` sends B as a photo, then
+ * updates A's caption: still payable when A owns it, otherwise only the memo prompt is cleared.
  *
  * The photo send stays outside the move's try. A throw from `sendPhotoFallback` after a claim
- * must not be handled as a failed move: that path rewrites the caption, and the message is
- * already the paid receipt.
+ * must not be handled as a failed move: that path rewrites the caption.
  */
 async function takeWidgetMessage(
   conversation: BotConversation,
@@ -549,6 +550,8 @@ async function takeWidgetMessage(
     await conversation.external(() => {
       ctx.log.info({messageId: shown.message.message_id}, 'Invoice widget stayed with invoice A')
     })
+    // Paid during memo entry: the bubble still asks for a description. Put the invoice caption back.
+    await settlePreviousCaption(conversation, ctx, shown, 'internal')
     await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
     return 'claimed'
   }
@@ -564,13 +567,46 @@ async function handOffReplacement(
   wallet: 'internal' | 'nwc',
 ): Promise<void> {
   await sendPhotoFallback(ctx, shown.message.chat.id, caption, keyboard)
-  // A claim during memo entry already turned this bubble into the paid receipt. Captioning it
-  // "replaced" would hide that. NWC invoices are not pending rows, so nothing else updates them.
+  await settlePreviousCaption(conversation, ctx, shown, wallet)
+}
+
+/**
+ * The memo prompt is temporary. If A was paid, restore its invoice caption. If A is still
+ * payable, say so: it was not replaced, a described copy went out separately.
+ */
+async function settlePreviousCaption(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+  wallet: 'internal' | 'nwc',
+): Promise<void> {
   if (wallet === 'internal') {
     const stillOwns = await conversation.external(() => originalInvoiceStillOwnsWidget(shown))
-    if (!stillOwns) return
+    if (!stillOwns) {
+      await restoreInvoiceCaption(conversation, ctx, shown)
+      return
+    }
   }
   await retireReplacedInvoice(conversation, ctx, shown)
+}
+
+async function restoreInvoiceCaption(
+  conversation: BotConversation,
+  ctx: ConversationContext,
+  shown: ShownInvoice,
+): Promise<void> {
+  const keyboard = invoiceKeyboard(ctx, shown.paymentRequest, false, {includeWalletButton: false})
+  try {
+    await ctx.api.editMessageCaption(shown.message.chat.id, shown.message.message_id, {
+      caption: shown.html,
+      reply_markup: keyboard,
+    })
+  } catch (error) {
+    const description = errorText(error)
+    await conversation.external(() => {
+      ctx.log.warn({description}, 'Failed to clear the memo prompt on the paid invoice')
+    })
+  }
 }
 
 async function originalInvoiceStillOwnsWidget(shown: ShownInvoice): Promise<boolean> {

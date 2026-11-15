@@ -140,6 +140,14 @@ export class LnbitsState {
   adminPaymentListEmpty = false
 
   /**
+   * After this many lookups of the hash, mark the incoming invoice paid.
+   * The first `after` lookups still see it unpaid, so a job can recheck.
+   */
+  markPaidAfterLookups?: {paymentHash: string; after: number}
+
+  private readonly lookupHits = new Map<string, number>()
+
+  /**
    * When set, `payment_hash` is ignored. A startup probe that asks for an unused hash
    * must then fail once any payment exists.
    */
@@ -329,6 +337,17 @@ export class LnbitsState {
     charge.pending = 0
     charge.paid = true
     if (opts?.txid) charge.extra = JSON.stringify({txids: [opts.txid]})
+  }
+
+  notePaymentLookup(paymentHash: string): void {
+    const rule = this.markPaidAfterLookups
+    if (!rule || rule.paymentHash !== paymentHash) return
+    const seen = (this.lookupHits.get(paymentHash) ?? 0) + 1
+    this.lookupHits.set(paymentHash, seen)
+    if (seen <= rule.after) return
+    for (const payment of this.payments) {
+      if (payment.paymentHash === paymentHash && !payment.out) payment.paid = true
+    }
   }
 
   failNext(match: FakeRequestMatch, failure: FakeFailure): void {
