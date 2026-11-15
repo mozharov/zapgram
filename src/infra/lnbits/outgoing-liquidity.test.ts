@@ -352,6 +352,84 @@ describe('createOutgoingLiquidityGuard', () => {
     ).rejects.toBeInstanceOf(SendPausedError)
   })
 
+  test('a settled pay does not wait behind a balance check that has not started', async () => {
+    let reads = 0
+    let releaseSecond: () => void = () => undefined
+    const secondRead = new Promise<void>(resolve => {
+      releaseSecond = resolve
+    })
+    let markSecondStarted: () => void = () => undefined
+    const secondStarted = new Promise<void>(resolve => {
+      markSecondStarted = resolve
+    })
+    const order: string[] = []
+    const third = mintInvoice({sats: 5, description: 'third-queued'})
+    const {liquidity} = guard({
+      ttlMs: 0,
+      read: async () => {
+        reads += 1
+        if (reads === 1) return {ok: true, balanceMsat: 100_000}
+        if (reads === 2) {
+          markSecondStarted()
+          await secondRead
+          return {ok: true, balanceMsat: 100_000}
+        }
+        order.push('read3')
+        return {ok: true, balanceMsat: 100_000}
+      },
+    })
+    const hold = await liquidity.assertCanPay({
+      bolt11: invoice.bolt11,
+      feeReserveMsat: async () => 2_000,
+    })
+    if (!hold) throw new Error('Expected a hold')
+    const pendingSecond = liquidity.assertCanPay({
+      bolt11: second.bolt11,
+      feeReserveMsat: async () => 2_000,
+    })
+    await secondStarted
+    const pendingThird = liquidity.assertCanPay({
+      bolt11: third.bolt11,
+      feeReserveMsat: async () => 2_000,
+    })
+    const settling = liquidity.settle(hold).then(() => {
+      order.push('settle')
+    })
+    releaseSecond()
+    await settling
+    await pendingSecond
+    await pendingThird
+    expect(order[0]).toBe('settle')
+    expect(order).toContain('read3')
+  })
+
+  test('no bearer does not classify or warn', async () => {
+    let classified = 0
+    const failed: string[] = []
+    const liquidity = createOutgoingLiquidityGuard({
+      hasBearer: false,
+      classifyInvoice: async () => {
+        classified += 1
+        return 'unknown'
+      },
+      readBalance: async () => ({ok: true, balanceMsat: 0}),
+      captureCheckFailed: event => {
+        failed.push(event.reason)
+      },
+    })
+    await liquidity.assertCanPay({
+      bolt11: invoice.bolt11,
+      feeReserveMsat: async () => 2_000,
+    })
+    await liquidity.assertCanPay({
+      bolt11: second.bolt11,
+      knownInternal: true,
+      feeReserveMsat: async () => 2_000,
+    })
+    expect(classified).toBe(0)
+    expect(failed).toEqual([])
+  })
+
   test('a balance reread keeps an unfinished hold', async () => {
     let balance = 30_000
     const {pay, liquidity, advance} = guard({
@@ -493,10 +571,26 @@ describe('payLeftBackendUnspent', () => {
       expect(refused).toBeInstanceOf(HTTPError)
       expect(failed).toBeInstanceOf(HTTPError)
       expect(crashed).toBeInstanceOf(HTTPError)
+      const timeout = await got(`http://127.0.0.1:${server.port}/408`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      const limited = await got(`http://127.0.0.1:${server.port}/429`, {
+        retry: {limit: 0},
+        throwHttpErrors: true,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
       expect(payLeftBackendUnspent(refused)).toBe(true)
       expect(payLeftBackendUnspent(failed)).toBe(true)
       expect(payLeftBackendUnspent(open)).toBe(false)
       expect(payLeftBackendUnspent(crashed)).toBe(false)
+      expect(payLeftBackendUnspent(timeout)).toBe(false)
+      expect(payLeftBackendUnspent(limited)).toBe(false)
     } finally {
       server.stop(true)
     }

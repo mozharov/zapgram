@@ -247,6 +247,7 @@ function route({
       // preimage are returned only when the key belongs to the payment's wallet.
       const payment = state.payments.find(candidate => candidate.paymentHash === paymentHash)
       if (!payment) return json({detail: 'Payment does not exist.'}, 404)
+      if (payment.failed) return json({paid: false, status: 'failed'})
       if (payment.paid) return json({paid: true})
       return json({paid: false})
     }

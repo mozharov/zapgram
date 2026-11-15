@@ -142,11 +142,12 @@ class MasterWallet extends LNBitsAPI {
     }
   }
 
-  async payInvoice(paymentRequest: string) {
+  async payInvoice(paymentRequest: string, options?: {knownInternal?: boolean}) {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
           payerWalletId: await this.walletIdForPay(),
+          knownInternal: options?.knownInternal,
           feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
         })
       : undefined

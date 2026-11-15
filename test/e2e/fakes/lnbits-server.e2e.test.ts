@@ -194,6 +194,16 @@ describe('fake LNbits HTTP server', () => {
 
       const missing = await fetch(`${fake.url}/api/v1/payments/${'ab'.repeat(32)}`)
       expect(missing.status).toBe(404)
+
+      const failedInvoice = await receiver.client.createInvoice({sats: 5, memo: 'failed-row'})
+      const failedRow = fake.state.payments.find(
+        payment => payment.paymentHash === failedInvoice.payment_hash,
+      )
+      if (!failedRow) throw new Error('failed payment row missing')
+      failedRow.failed = true
+      const failed = await fetch(`${fake.url}/api/v1/payments/${failedInvoice.payment_hash}`)
+      expect(failed.status).toBe(200)
+      expect(await failed.json()).toEqual({paid: false, status: 'failed'})
     })
   })
 

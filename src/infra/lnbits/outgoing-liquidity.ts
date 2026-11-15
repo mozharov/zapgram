@@ -65,6 +65,8 @@ export type OutgoingLiquidityGuard = {
   assertCanPay(input: {
     bolt11: string
     payerWalletId?: string
+    /** This process just created the invoice on this LNbits. Skip the admin-list lookup. */
+    knownInternal?: boolean
     feeReserveMsat: () => Promise<number>
   }): Promise<LiquidityHold | undefined>
   /** Drop a hold after the pay succeeded. The cache already counts it as spent. */
@@ -79,9 +81,16 @@ export type OutgoingLiquidityGuard = {
 }
 
 /**
+ * Status codes LNbits returns before it calls the funding source.
+ * 408 and 429 can come from a proxy after the pay was forwarded, so they do not count.
+ */
+const DEFINITE_LNBITS_REFUSAL = new Set([400, 401, 403, 404, 422])
+
+/**
  * True only when LNbits finished the request and the payment did not leave.
- * A 4xx is a refusal before pay. A 520 counts only when its body says `failed`.
- * Any other 520, a timeout, or a 5xx may still have spent the backend.
+ * A definite client refusal (400, 401, 403, 404, 422) is before pay.
+ * A 520 counts only when its body says `failed`.
+ * 408, 429, any other 4xx, a timeout, or a 5xx may still have spent the backend.
  */
 export function payLeftBackendUnspent(error: unknown): boolean {
   if (error instanceof InvoiceAlreadyPaidError || error instanceof InsufficientFundsError) {
@@ -89,7 +98,7 @@ export function payLeftBackendUnspent(error: unknown): boolean {
   }
   if (!(error instanceof HTTPError)) return false
   const status = error.response.statusCode
-  if (status >= 400 && status < 500) return true
+  if (DEFINITE_LNBITS_REFUSAL.has(status)) return true
   if (status !== 520) return false
   const body = error.response.body
   if (!body || typeof body !== 'object') return false
@@ -111,18 +120,20 @@ export function createOutgoingLiquidityGuard(deps: {
     backend_balance_msat: number
   }) => void
   captureCheckFailed?: (properties: {reason: LiquidityCheckReason}) => void
+  /** When false, classification cannot run. Startup already logged that; pays stay quiet. */
+  hasBearer?: boolean
   now?: () => number
   ttlMs?: number
   failureTtlMs?: number
 }): OutgoingLiquidityGuard {
   const now = deps.now ?? (() => Date.now())
+  const hasBearer = deps.hasBearer !== false
   const ttlMs = deps.ttlMs ?? BACKEND_LIQUIDITY_CACHE_MS
   const failureTtlMs = deps.failureTtlMs ?? BACKEND_LIQUIDITY_FAILURE_CACHE_MS
   let generation = 0
   let cached: {balanceMsat: number; at: number; generation: number} | null = null
   let failedRead: {reason: LiquidityCheckReason; at: number} | null = null
   let inFlight: Promise<BalanceRead> | null = null
-  let tail: Promise<unknown> = Promise.resolve()
   const outstanding = new Map<string, Reservation>()
   const lastFailureEventAt = new Map<string, number>()
 
@@ -258,8 +269,9 @@ export function createOutgoingLiquidityGuard(deps: {
       pause(amountMsat, reserveMsat, read.balanceMsat)
     }
 
-    // Hold the amount against this cache generation. A later re-read replaces the generation,
-    // so releasing a failed pay cannot add the amount on top of a fresh server balance.
+    // Hold the amount against the current cache. A later re-read keeps this hold and
+    // moves it onto the new generation, so a refused pay is added back onto that total.
+    // A settled hold is marked spent and is not subtracted from the fresh server balance.
     if (!cached) return
     const needed = amountMsat + reserveMsat
     outstanding.set(key, {
@@ -291,21 +303,41 @@ export function createOutgoingLiquidityGuard(deps: {
     cached = {...cached, balanceMsat: cached.balanceMsat + current.msat}
   }
 
-  function enqueue<T>(task: () => Promise<T> | T): Promise<T> {
-    const settled = tail.then(
-      () => undefined,
-      () => undefined,
-    )
-    const run = settled.then(task)
-    tail = run.then(
-      () => undefined,
-      () => undefined,
-    )
-    return run
+  let active: Promise<void> | null = null
+  const soon: Array<() => Promise<unknown>> = []
+  const checks: Array<() => Promise<unknown>> = []
+
+  function drain(): void {
+    if (active) return
+    const run = soon.shift() ?? checks.shift()
+    if (!run) return
+    active = Promise.resolve()
+      .then(run)
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        active = null
+        drain()
+      })
+  }
+
+  function schedule<T>(task: () => Promise<T> | T, lane: 'soon' | 'check'): Promise<T> {
+    const queued = new Promise<T>((resolve, reject) => {
+      const jobs = lane === 'soon' ? soon : checks
+      jobs.push(() => Promise.resolve().then(task).then(resolve, reject))
+    })
+    drain()
+    return queued
   }
 
   return {
     async assertCanPay(input) {
+      // A just-created local invoice never touches the funding source.
+      if (input.knownInternal) return
+      // No bearer means classification cannot succeed. Startup already said so.
+      if (!hasBearer) return
       // Classification stays outside the pay queue. An internal transfer must not wait
       // while an external pay is stuck on a hung funding-source status.
       const origin = await deps.classifyInvoice(input.bolt11, input.payerWalletId)
@@ -315,22 +347,27 @@ export function createOutgoingLiquidityGuard(deps: {
         return
       }
       // A previous pause rejects the chain. Swallow it so the next payment is still checked.
-      return enqueue(() => assertExternal(input.bolt11, input.feeReserveMsat, input.payerWalletId))
+      return schedule(
+        () => assertExternal(input.bolt11, input.feeReserveMsat, input.payerWalletId),
+        'check',
+      )
     },
     settle(hold) {
-      return enqueue(() => {
+      // Ahead of balance checks that have not started. Still after the check already in flight,
+      // because both mutate the same cache.
+      return schedule(() => {
         finish(hold, 'settle')
-      })
+      }, 'soon')
     },
     release(hold) {
-      return enqueue(() => {
+      return schedule(() => {
         finish(hold, 'release')
-      })
+      }, 'soon')
     },
     abandon(hold) {
-      return enqueue(() => {
+      return schedule(() => {
         finish(hold, 'abandon')
-      })
+      }, 'soon')
     },
   }
 }

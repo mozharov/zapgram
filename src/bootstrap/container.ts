@@ -152,6 +152,12 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
+  if (config.backendLiquidityGuardUnrecognized !== undefined) {
+    log.warn(
+      {value: config.backendLiquidityGuardUnrecognized},
+      'BACKEND_LIQUIDITY_GUARD is not recognized; using on',
+    )
+  }
   const guardEnabled = config.BACKEND_LIQUIDITY_GUARD === 'on'
   const outgoingLiquidity = guardEnabled
     ? createOutgoingLiquidityGuard({
@@ -172,6 +178,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
             properties: {$process_person_profile: false, ...properties},
           })
         },
+        hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
       })
     : undefined
   if (outgoingLiquidity) masterWallet.useOutgoingLiquidity(outgoingLiquidity)

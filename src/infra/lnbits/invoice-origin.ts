@@ -10,10 +10,10 @@ const MAX_CLASSIFY_ROWS = 200
  * LNbits 1.7.1 calls the funding source only from `_pay_external_invoice`.
  * `pay_invoice` never gets there when an incoming row (`amount > 0`) is pending
  * (`check_internal`) or already successful (`is_internal_status_success`).
- * A pending, successful, or failed outgoing row on the payer's own wallet is
- * returned by `_verify_external_payment` without a new funding-source pay.
- * A failed row raises "retrying is not possible"; the guard must not replace
- * that refusal with a pause.
+ * LNbits 1.7.1 answers a retry of the payer's own failed or successful outgoing
+ * row with HTTP 520 and does not send it to the funding source again. A pending
+ * own outgoing row is returned as the old payment, also without a second send.
+ * The guard must not replace that refusal with a pause.
  * Anything else, including another wallet's outgoing row, still pays externally.
  *
  * `GET /api/v1/payments/all/paginated` with the admin access token lists every

@@ -62,11 +62,12 @@ export class UserWallet extends LNBitsAPI {
     })
   }
 
-  async payInvoice(paymentRequest: string) {
+  async payInvoice(paymentRequest: string, options?: {knownInternal?: boolean}) {
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
           payerWalletId: this.payerWalletId,
+          knownInternal: options?.knownInternal,
           feeReserveMsat: () => this.feeReserveForPause(paymentRequest),
         })
       : undefined

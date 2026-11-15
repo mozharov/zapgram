@@ -1,7 +1,12 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
-import {donateAmountRoute, featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
+import {
+  donateAmountRoute,
+  donateMonthlyAmountRoute,
+  featureFundAmountRoute,
+  staticCallback,
+} from '@telegram/callback-data.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import {expectPayoutsExactly} from '../asserts.js'
 import {mintInvoice} from '../fakes/bolt11.js'
@@ -189,8 +194,16 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
     await e2e.container.chats.getOrThrow(CHAT_GROUP),
   )
   expect(renewal.status).not.toBe('failed')
-  // Subscriber charge, then settle pays the owner and the fee wallet.
-  expect(outgoingPaysSince(renewalMark)).toHaveLength(3)
+  expectPayoutsExactly(e2e.ln, {toWallet: `${OWNER} wallet`, sats: 95, times: 1})
+  const fees = e2e.ln.state.wallets.find(wallet => wallet.name === 'fees wallet')
+  if (!fees) throw new Error('fees wallet missing')
+  const feeLegs = e2e.ln.state.payments.filter(
+    payment =>
+      !payment.out && payment.paid && payment.walletId === fees.id && payment.amountMsat === 5_000,
+  )
+  expect(feeLegs).toHaveLength(1)
+  expectPayoutsExactly(e2e.ln, {toWallet: `${USER_A} wallet`, sats: 100, times: 0})
+  expect(pathsSince(renewalMark).some(path => path.includes('/payments/all/paginated'))).toBe(false)
 
   const settled = await seedSubscriptionPayment(e2e, {
     userId: USER_A,
@@ -245,6 +258,50 @@ test('a non-admin status body does not pause payments even when the stored balan
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
   expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
+})
+
+test('enabling a monthly donation while sends are paused keeps the subscription on', async () => {
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+  const mark = e2e.ln.requests.length
+
+  await e2e.send(privateCallback(donateMonthlyAmountRoute.build({amountSats: 21})))
+
+  expect(
+    messageTexts().some(text => /Monthly donation of 21 sats/.test(text) && /paused/.test(text)),
+  ).toBe(true)
+  expect(outgoingPaysSince(mark)).toEqual([])
+  const user = await e2e.container.users.findById(USER_A)
+  expect(user?.monthlyDonationSats).toBe(21)
+  expect(user?.monthlyDonationNextAt).toBeInstanceOf(Date)
+})
+
+test('an optional tip donation pauses after the tip itself is paid', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 5,
+    donationScope: 'tips',
+  })
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+  const mark = e2e.ln.requests.length
+
+  await e2e.send(groupText('/tip 100 @user_b'))
+
+  expect(
+    e2e.tg.of('sendMessage').some(call => /sent 100 sats to @user_b/.test(String(call.text))),
+  ).toBe(true)
+  expect(
+    messageTexts().some(text => /support tip was not sent/.test(text) && /5 sat/.test(text)),
+  ).toBe(true)
+  expect(outgoingPaysSince(mark)).toHaveLength(1)
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(0)
+  expect(pathsSince(mark).filter(path => path.includes('/payments/all/paginated'))).toHaveLength(1)
 })
 
 test('a one-shot donation pauses before pay when the invoice is external and the backend is empty', async () => {
@@ -375,6 +432,41 @@ test('startup names a zero balance with an empty error and still pauses external
   await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
   expect(messageTexts()).toContain(translate('error.send-paused', 'en'))
   expect(outgoingPaysSince(mark)).toEqual([])
+})
+
+test('an unrecognized guard value warns once and leaves the check on', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    env: {LOG_LEVEL: 'info', BACKEND_LIQUIDITY_GUARD: 'maybe'},
+  })
+  const warned = e2e.logs.filter(entry =>
+    String(entry.msg).includes('BACKEND_LIQUIDITY_GUARD is not recognized'),
+  )
+  expect(warned).toHaveLength(1)
+  expect(e2e.container.config.BACKEND_LIQUIDITY_GUARD).toBe('on')
+})
+
+test('a missing bearer is logged once and an internal tip does not warn again', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({
+    env: {LOG_LEVEL: 'info', LNBITS_BEARER_TOKEN: ''},
+  })
+  await seedUser(e2e, {id: USER_A, username: 'user_a', firstName: 'User A', donationPercent: 0})
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  const startup = e2e.logs.find(entry => String(entry.msg) === 'Funding source liquidity check')
+  expect(startup).toMatchObject({
+    liquidityMode: 'disabled',
+    reason: 'missing_bearer',
+    classify: 'missing_bearer',
+  })
+  credit(USER_A, 1000)
+  await e2e.send(groupText('/tip 21 @user_b'))
+  expect(
+    e2e.tg.of('sendMessage').some(call => /sent 21 sats to @user_b/.test(String(call.text))),
+  ).toBe(true)
+  expect(e2e.logs.some(entry => String(entry.msg).includes('Backend liquidity check failed'))).toBe(
+    false,
+  )
 })
 
 test('BACKEND_LIQUIDITY_GUARD=off disables the check and lets an external send through', async () => {

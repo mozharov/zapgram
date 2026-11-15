@@ -21,6 +21,8 @@ export type FakePayment = {
   amountMsat: number
   out: boolean
   paid: boolean
+  /** LNbits status `failed`. Keyless lookup then includes `status`. */
+  failed?: boolean
   feeMsat: number
   expiresAt: Date
   memo: string

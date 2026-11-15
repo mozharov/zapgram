@@ -35,7 +35,7 @@ export type RenewalServiceDeps = {
     lookupPayment: (paymentHash: string) => Promise<{paid: boolean}>
   }
   getUserWallet: (userId: number) => Promise<{
-    payInvoice: (bolt11: string) => Promise<unknown>
+    payInvoice: (bolt11: string, options?: {knownInternal?: boolean}) => Promise<unknown>
   }>
   /** Stored NWC connection string for the subscriber, if any. */
   getUserNwcUrl: (userId: number) => Promise<string | null | undefined>
@@ -176,10 +176,12 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     try {
       deps.log.info(`Attempting payment from balance for subscription ${subscription.id}`)
       const wallet = await deps.getUserWallet(subscription.userId)
-      const result = await wallet.payInvoice(invoice).catch((error: unknown) => {
-        deps.log.error({error}, 'Error paying invoice from balance')
-        return null
-      })
+      const result = await wallet
+        .payInvoice(invoice, {knownInternal: true})
+        .catch((error: unknown) => {
+          deps.log.error({error}, 'Error paying invoice from balance')
+          return null
+        })
       return {success: !!result}
     } catch (error) {
       deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptPaymentFromBalance')
