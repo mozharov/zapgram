@@ -418,6 +418,44 @@ test('an expired invoice that is paid on the recheck is claimed instead of delet
   expect(e2e.logs.some(log => String(log.msg ?? '').includes('missing on LNbits'))).toBe(false)
 })
 
+test('a claim failure on one expired invoice does not skip the rest', async () => {
+  const blocked = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 95,
+  })
+  const other = await seedPendingInvoice(e2e, {
+    sats: PENDING_SATS + 1,
+    expiresAt: new Date(Date.now() - HOUR_MS),
+    widgetChatId: USER_A,
+    widgetMessageId: 96,
+  })
+  payPendingInvoice(blocked)
+  payPendingInvoice(other)
+  const original = e2e.container.invoices.claimByPaymentHash.bind(e2e.container.invoices)
+  e2e.container.invoices.claimByPaymentHash = async paymentHash => {
+    if (paymentHash === blocked.paymentHash) throw new Error('Injected expiry claim failure')
+    return original(paymentHash)
+  }
+
+  await e2e.jobs.expiredInvoices()
+
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  expect(rows.map(row => row.paymentHash)).toEqual([blocked.paymentHash])
+  expect(
+    e2e.tg
+      .of('sendMessage')
+      .some(call => /You received payment for a Lightning invoice/.test(String(call.text))),
+  ).toBe(true)
+  expect(errorMessages().some(message => message.includes('Failed to claim expired invoice'))).toBe(
+    true,
+  )
+  expect(errorMessages().some(message => message === 'Error in deleteExpiredInvoices job')).toBe(
+    false,
+  )
+})
+
 test('a missing LNbits invoice marks its widget cancelled', async () => {
   const pending = await seedPendingInvoice(e2e, {
     sats: PENDING_SATS,

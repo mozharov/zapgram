@@ -67,11 +67,11 @@ async function settleExpiredInvoice(
     return 'kept'
   }
 
-  if (payment.paid) return claimExpiredInvoice(invoice)
+  if (payment.paid) return claimExpiredInvoiceSafely(invoice)
 
   try {
     const again = await wallet.lookupPayment(invoice.paymentHash)
-    if (again.paid) return claimExpiredInvoice(invoice)
+    if (again.paid) return claimExpiredInvoiceSafely(invoice)
   } catch (error) {
     if (!isMissingPayment(error)) {
       noteExpiryLookupFailure(invoice, error)
@@ -80,6 +80,21 @@ async function settleExpiredInvoice(
   }
 
   return removeExpiredInvoice(invoice, 'unpaid')
+}
+
+/** A claim throw must not abort the rest of the expired batch. The row stays for the next tick. */
+async function claimExpiredInvoiceSafely(
+  invoice: Pick<PendingInvoice, 'userId' | 'paymentHash'>,
+): Promise<'claimed' | 'kept'> {
+  try {
+    return await claimExpiredInvoice(invoice)
+  } catch (error) {
+    getRuntime().log.error(
+      {error, userId: invoice.userId, paymentHash: invoice.paymentHash},
+      'Failed to claim expired invoice',
+    )
+    return 'kept'
+  }
 }
 
 async function claimExpiredInvoice(
