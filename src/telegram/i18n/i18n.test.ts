@@ -33,6 +33,20 @@ describe('settlement messages', () => {
     })
   }
 
+  test('a paused optional donation does not promise another collection', () => {
+    const en = translate('donation.paused', 'en', {donationSats: 5, usdSuffix: ''})
+    const ru = translate('donation.paused', 'ru', {donationSats: 5, usdSuffix: ''})
+    expect(en).not.toMatch(/later|retry|again|collect/i)
+    expect(ru).not.toMatch(/позже|повтор|собер/)
+    expect(en).toContain('safe')
+    expect(ru).toContain('безопасности')
+  })
+
+  test('a paused monthly donation says the subscription stays on', () => {
+    expect(translate('donate.monthly-paused', 'en', {sats: 21, usdSuffix: ''})).toMatch(/is on/i)
+    expect(translate('donate.monthly-paused', 'ru', {sats: 21, usdSuffix: ''})).toMatch(/включ/)
+  })
+
   test('the renewal message does not claim the renewal was automatic', () => {
     // Also sent when a subscriber pays a renewal invoice by hand.
     expect(translate('subscription-renewal.renewed', 'en', context)).not.toContain('automatic')

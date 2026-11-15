@@ -1,13 +1,16 @@
 import {describe, expect, test} from 'bun:test'
+import {Writable} from 'node:stream'
 import {createConfig} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
+import {createOutgoingLiquidityGuard} from '@infra/lnbits/outgoing-liquidity.js'
 import {UserWallet} from '@infra/lnbits/user-wallet.js'
+import {createLogger} from '@infra/logger.js'
 import {HTTPError} from 'got'
 import {mintInvoice} from './bolt11.js'
-import {type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
+import {FAKE_LNBITS_ADMIN_BEARER, type FakeLnbits, startFakeLnbits} from './lnbits-server.js'
 
 const keys = {adminKey: 'master-admin-key', feeCollectionKey: 'fee-collection-key'}
 
@@ -37,6 +40,38 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
+  test('the admin payment list without a token is unauthorized', async () => {
+    await withFake(async fake => {
+      const response = await fetch(`${fake.url}/api/v1/payments/all/paginated`)
+      expect(response.status).toBe(401)
+    })
+  })
+
+  test('a paid invoice debug log omits bolt11 and payment_request', async () => {
+    await withFake(async fake => {
+      const lines: string[] = []
+      const log = createLogger(
+        {LOG_LEVEL: 'debug', NODE_ENV: 'test'},
+        new Writable({
+          write(chunk, _encoding, callback) {
+            lines.push(String(chunk))
+            callback()
+          },
+        }),
+      )
+      const user = fake.state.ensureUser('100009')
+      const wallet = fake.state.walletsOfUser(user.id)[0]
+      if (!wallet) throw new Error('wallet missing')
+      fake.state.credit(wallet.id, 100_000)
+      const external = mintInvoice({sats: 21, description: 'logged'})
+      const client = new UserWallet(wallet.adminkey, wallet.balanceMsat, fake.url, '', log)
+      await client.payInvoice(external.bolt11)
+      const text = lines.join('\n')
+      expect(text).not.toContain(external.bolt11)
+      expect(text).not.toContain('payment_request')
+    })
+  })
+
   test('serves BTC/USD rate without an API key', async () => {
     await withFake(async fake => {
       const response = await fetch(`${fake.url}/api/v1/rate/USD`)
@@ -62,6 +97,10 @@ describe('fake LNbits HTTP server', () => {
       if (!created.id) throw new Error('Fake LNbits did not return a user id')
       expect((await master.getUserByUsername('100001'))?.id).toBe(created.id)
       expect((await master.getWallet(created.id)).user).toBe(created.id)
+      const userCalls = fake.requests.filter(request => request.path.startsWith('/users/api/'))
+      expect(userCalls.length).toBeGreaterThan(0)
+      expect(userCalls.every(request => request.apiKey === null)).toBe(true)
+      expect(userCalls.every(request => request.authorization === 'Bearer e2e-token')).toBe(true)
     })
   })
 
@@ -135,6 +174,39 @@ describe('fake LNbits HTTP server', () => {
     })
   })
 
+  test('a keyless payment lookup matches LNbits 1.7.1 and omits details and preimage', async () => {
+    await withFake(async fake => {
+      const receiver = userWallet(fake, '100002')
+      const invoice = await receiver.client.createInvoice({sats: 21})
+
+      const unpaid = await fetch(`${fake.url}/api/v1/payments/${invoice.payment_hash}`)
+      expect(unpaid.status).toBe(200)
+      expect(await unpaid.json()).toEqual({paid: false})
+
+      fake.state.credit(receiver.walletId, 21_000)
+      const payer = userWallet(fake, '100001')
+      fake.state.credit(payer.walletId, 21_000)
+      await payer.client.payInvoice(invoice.bolt11)
+
+      const paid = await fetch(`${fake.url}/api/v1/payments/${invoice.payment_hash}`)
+      expect(paid.status).toBe(200)
+      expect(await paid.json()).toEqual({paid: true})
+
+      const missing = await fetch(`${fake.url}/api/v1/payments/${'ab'.repeat(32)}`)
+      expect(missing.status).toBe(404)
+
+      const failedInvoice = await receiver.client.createInvoice({sats: 5, memo: 'failed-row'})
+      const failedRow = fake.state.payments.find(
+        payment => payment.paymentHash === failedInvoice.payment_hash,
+      )
+      if (!failedRow) throw new Error('failed payment row missing')
+      failedRow.failed = true
+      const failed = await fetch(`${fake.url}/api/v1/payments/${failedInvoice.payment_hash}`)
+      expect(failed.status).toBe(200)
+      expect(await failed.json()).toEqual({paid: false, status: 'failed'})
+    })
+  })
+
   test('scopes payment lookup to the authenticated wallet', async () => {
     await withFake(async fake => {
       const master = createMasterWallet(testConfig(fake.url))
@@ -168,6 +240,56 @@ describe('fake LNbits HTTP server', () => {
       expect(await payer.client.getBalance()).toBe(0)
       expect(await receiver.client.getBalance()).toBe(21_000)
       expect(totalBalance(fake)).toBe(before)
+    })
+  })
+
+  test('only an admin access token can see the funding-source balance', async () => {
+    await withFake(async fake => {
+      fake.state.fundingSourceBalanceMsat = 42_000
+      const walletKeyOnly = createMasterWallet(testConfig(fake.url))
+      expect(await walletKeyOnly.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'unauthorized',
+      })
+      expect(
+        (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {'X-Api-Key': keys.adminKey},
+          })
+        ).status,
+      ).toBe(401)
+
+      const admin = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      expect(await admin.readFundingSource()).toEqual({ok: true, balanceMsat: 42_000})
+      const adminBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: `Bearer ${FAKE_LNBITS_ADMIN_BEARER}`},
+          })
+        ).json(),
+      )
+      expect(adminBody?.up_time).toBe('0 days, 0 hours, 1 minutes')
+      expect(adminBody?.funding_source_balance_msat).toBe(42_000)
+
+      const member = createMasterWallet(testConfig(fake.url, {bearerToken: 'e2e-member'}))
+      expect(await member.readFundingSource()).toEqual({ok: false, reason: 'balance_missing'})
+      const memberBody = asRecord(
+        await (
+          await fetch(`${fake.url}/api/v1/status`, {
+            headers: {Authorization: 'Bearer e2e-member'},
+          })
+        ).json(),
+      )
+      expect(memberBody?.version).toBe('1.7.1')
+      expect(memberBody).not.toHaveProperty('funding_source_balance_msat')
+
+      fake.state.fundingSourceError = 'backend unreachable'
+      expect(await admin.readFundingSource()).toEqual({
+        ok: false,
+        reason: 'funding_source_error',
+      })
     })
   })
 
@@ -207,6 +329,35 @@ describe('fake LNbits HTTP server', () => {
       await expect(payer.client.payInvoice(external.bolt11)).rejects.toBeInstanceOf(
         InvoiceAlreadyPaidError,
       )
+    })
+  })
+
+  test('reads the master wallet id on the next pay when startup missed it', async () => {
+    await withFake(async fake => {
+      fake.state.failNext(
+        {method: 'GET', path: '/api/v1/wallet'},
+        {status: 500, body: {detail: 'down'}},
+      )
+      const master = createMasterWallet(
+        testConfig(fake.url, {bearerToken: FAKE_LNBITS_ADMIN_BEARER}),
+      )
+      await expect(master.readWalletId()).rejects.toBeInstanceOf(HTTPError)
+      let seen: string | undefined
+      master.useOutgoingLiquidity(
+        createOutgoingLiquidityGuard({
+          classifyInvoice: async (_bolt11, walletId) => {
+            seen = walletId
+            return 'internal'
+          },
+          readBalance: async () => ({ok: true, balanceMsat: 0}),
+        }),
+      )
+      const wallet = fake.state.walletByApiKey(keys.adminKey)
+      if (!wallet) throw new Error('master wallet missing')
+      fake.state.credit(wallet.id, 100_000)
+      const invoice = fake.state.createInvoice({wallet, sats: 1, memo: 'id', expirySec: 60})
+      await master.payInvoice(invoice.bolt11)
+      expect(seen).toBe(wallet.id)
     })
   })
 

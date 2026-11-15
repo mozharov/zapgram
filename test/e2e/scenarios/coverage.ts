@@ -64,6 +64,7 @@ export const scenarioCoverage = {
       'user_has_no_wallet',
       'not_found',
       'unknown',
+      'send_paused',
     ],
   },
   http: {
@@ -471,6 +472,14 @@ export const scenarioCoverage = {
     writes: ['users.insert', 'conversations.insert', 'conversations.delete'],
     jobs: [],
     errors: ['insufficient_funds', 'to_yourself', 'user_has_no_wallet'],
+  },
+  'backend-liquidity': {
+    routes: [],
+    commands: [],
+    updates: ['message', 'callback_query'],
+    writes: ['users.insert'],
+    jobs: [],
+    errors: ['send_paused'],
   },
   wallet: {
     routes: [

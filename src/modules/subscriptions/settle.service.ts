@@ -39,7 +39,7 @@ export type SettleServiceDeps = {
   markRefundCredited: (id: string, refundedAt?: Date) => Promise<void>
   masterWallet: {
     lookupPayment: (hash: string) => Promise<{paid: boolean; status?: string}>
-    payInvoice: (bolt11: string) => Promise<unknown>
+    payInvoice: (bolt11: string, options?: {knownInternal?: boolean}) => Promise<unknown>
     createFeeCollectionInvoice: (sats: number) => Promise<{payment_hash: string; bolt11: string}>
   }
   getUserWallet: (userId: number) => Promise<{
@@ -182,7 +182,7 @@ export function createSettleService(deps: SettleServiceDeps): SettleService {
 
     const invoice = await createInvoice()
     await persistHash(invoice.payment_hash)
-    await deps.masterWallet.payInvoice(invoice.bolt11)
+    await deps.masterWallet.payInvoice(invoice.bolt11, {knownInternal: true})
     return 'paid'
   }
 

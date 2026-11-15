@@ -4,6 +4,9 @@ import type {ZodType} from 'zod'
 import type {AppLogger} from '../logger.js'
 import {validateData} from '../validate.js'
 
+/** Pause reads (status and fee quote). A hung funding source must not hold a send for 15s. */
+export const GUARD_UPSTREAM_TIMEOUT_MS = 3_000
+
 /** Shared 30 rps budget against LNbits. Exported so tests can lift it; do not change in prod. */
 export const limiter = new Bottleneck({
   reservoir: 30,
@@ -35,13 +38,13 @@ export class LNBitsAPI {
   ) {
     const logHttpError = options?.logHttpError ?? true
     const quietStatuses = options?.quietStatuses ?? []
-    const headers = {...this.headers, ...init?.headers}
+    const headers = omitEmptyHeaders({...this.headers, ...init?.headers})
     return limiter.schedule(() =>
       got(`${this.url}${path}`, {
         ...init,
         headers,
         responseType: 'json',
-        timeout: {request: 15000},
+        timeout: {request: 15_000, ...init?.timeout},
       }).catch((error: unknown) => {
         if (
           logHttpError &&
@@ -69,11 +72,30 @@ export class LNBitsAPI {
   ) {
     const response = await this.fetch(path, init, options)
     this.log?.debug(
-      {body: response.body as unknown},
-      `${init?.method ?? 'GET'} ${path}: response body`,
+      {statusCode: response.statusCode, bodyLength: bodyLength(response.body)},
+      `${init?.method ?? 'GET'} ${path}: response`,
     )
     return validateData(response.body, schema)
   }
+}
+
+function bodyLength(body: unknown): number {
+  if (typeof body === 'string') return body.length
+  try {
+    return JSON.stringify(body).length
+  } catch {
+    return 0
+  }
+}
+
+function omitEmptyHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string | string[]> {
+  const kept: Record<string, string | string[]> = {}
+  for (const [name, value] of Object.entries(headers)) {
+    if (value !== undefined) kept[name] = value
+  }
+  return kept
 }
 
 interface LNBitsAPIConfig {

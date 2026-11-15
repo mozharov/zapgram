@@ -38,8 +38,17 @@ export type DmTransferDeps = {
   lookupRecipient: (toUserId: number, hash: string) => Promise<PayoutState>
   createFeeInvoice: (sats: number) => Promise<Invoice>
   lookupFee: (hash: string) => Promise<PayoutState>
-  /** Pays a bolt11 from the sender. Used by recovery as well as the wizard. */
-  pay: (userId: number, bolt11: string, rail: DmTransferRail) => Promise<PayResult>
+  /**
+   * Pays a bolt11 from the sender. The recipient invoice was just created on this
+   * LNbits, so that pay passes `knownInternal` and skips the funding-source guard.
+   * The fee invoice does not: it is classified like any other outgoing pay.
+   */
+  pay: (
+    userId: number,
+    bolt11: string,
+    rail: DmTransferRail,
+    options?: {knownInternal?: boolean},
+  ) => Promise<PayResult>
   getUser: (userId: number) => Promise<{
     donationPercent: number
     donationScope: DonationScope
@@ -177,7 +186,7 @@ export function createDmTransferService(deps: DmTransferDeps) {
   async function submitPay(row: DmTransfer, fromUserId: number): Promise<Primary> {
     if (!row.bolt11) return 'in_flight'
     try {
-      const paid = await deps.pay(fromUserId, row.bolt11, row.rail)
+      const paid = await deps.pay(fromUserId, row.bolt11, row.rail, {knownInternal: true})
       await deps.transfers.markProviderAccepted(row.id, paid?.paymentHash)
       if (row.invoiceHash) await lookupQuiet(row.toUserId, row.invoiceHash)
       await settleMark(row.id)

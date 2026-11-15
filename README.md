@@ -199,6 +199,8 @@ bun run start:dev
 
 **Feature requests:** users submit them from the main menu. Set `ADMIN_TELEGRAM_IDS` (comma-separated Telegram user ids) so new requests are DMed to you. Optional sats tips use the same rails as `/donate`. Events land in PostHog as `feature_requested` (filter Activity / build an insight). Without admin ids, requests still capture analytics only.
 
+**Outgoing liquidity:** with `LNBITS_BEARER_TOKEN` set, external BOLT11 sends pause before `POST /api/v1/payments` when the funding-source balance was read and is short. Internal transfers are not paused. Any failed read fails open. `BACKEND_LIQUIDITY_GUARD=off` skips the check (default `on`; also `true`/`false`, `1`/`0`, `yes`/`no`). An unrecognized value logs a warning and stays on. Use `off` when the funding source is NWC without `get_balance`: LNbits then reports balance `0` and an empty `funding_source_error`, which would pause every external send. Startup records `backend_liquidity_mode`. `off` is `mode=disabled`, `reason=guard_off`. A first read of exactly `0` with an empty error stays active and sets `reason=zero_balance`, and the process logs a warning. See `.env.example`.
+
 ### On-chain pay (self-host / ops)
 
 Requires LNbits extensions **Watch Only** + **SatsPay** on the same instance as `LNBITS_URL`.

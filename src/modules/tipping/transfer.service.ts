@@ -16,7 +16,7 @@ export async function internalTransfer(fromUserId: User['id'], toUserId: User['i
   }
   const toUserWallet = await getUserWallet(toUserId)
   const invoice = await toUserWallet.createInvoice({sats})
-  await fromUserWallet.payInvoice(invoice.bolt11)
+  await fromUserWallet.payInvoice(invoice.bolt11, {knownInternal: true})
   log.info(
     {fromUserId, toUserId, sats, paymentHash: invoice.payment_hash},
     'Internal transfer settled',

@@ -877,7 +877,7 @@ async function issueJoinInvoice(options: JoinInvoiceOptions) {
   const invoiceRequests = e2e.ln.requests
     .slice(requestMark)
     .filter(request => request.method === 'POST' && request.path === '/api/v1/payments')
-  expect(invoiceRequests).toEqual([
+  expect(invoiceRequests).toMatchObject([
     {
       method: 'POST',
       path: '/api/v1/payments',

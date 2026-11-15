@@ -18,6 +18,13 @@ export const envSchema = z.object({
   LNBITS_ADMIN_KEY: z.string().min(1),
   LNBITS_FEE_COLLECTION_INVOICE_KEY: z.string().min(1),
   LNBITS_BEARER_TOKEN: z.string().optional(),
+  /**
+   * Pause external Lightning sends when the funding-source balance is short.
+   * Accepted: on/off, true/false, 1/0, yes/no. Anything else is ignored and the
+   * check stays on. `off` skips the check. NWC without get_balance reports 0
+   * and an empty error, which would otherwise pause every external send.
+   */
+  BACKEND_LIQUIDITY_GUARD: z.string().optional(),
   /** Network string accepted by Watch-Only / SatsPay (Mainnet | Testnet). */
   LNBITS_ONCHAIN_NETWORK: z.enum(['Mainnet', 'Testnet']).default('Mainnet'),
   SUBSCRIPTION_FEE_PERCENT: z.coerce.number().default(0.05), // 5%. if 0 - no fee
@@ -57,6 +64,22 @@ function parseAdminTelegramIds(value: unknown): number[] {
 }
 
 export type Env = z.infer<typeof envSchema>
+
+const GUARD_ON = new Set(['on', 'true', '1', 'yes'])
+const GUARD_OFF = new Set(['off', 'false', '0', 'no'])
+
+/** Map the env string. An unrecognized value stays on and is returned for one warning. */
+export function interpretBackendLiquidityGuard(value: unknown): {
+  mode: 'on' | 'off'
+  unrecognized?: string
+} {
+  if (value === undefined || value === null || value === '') return {mode: 'on'}
+  if (typeof value !== 'string') return {mode: 'on', unrecognized: 'invalid'}
+  const text = value.trim().toLowerCase()
+  if (GUARD_ON.has(text)) return {mode: 'on'}
+  if (GUARD_OFF.has(text)) return {mode: 'off'}
+  return {mode: 'on', unrecognized: value.slice(0, 32)}
+}
 
 /** Trim, strip trailing slash, default missing scheme to https. */
 function normalizePublicOrigin(value: unknown): unknown {

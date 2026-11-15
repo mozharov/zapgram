@@ -90,15 +90,6 @@ export const lookupPaymentResponseSchema = z.object({
   details: paymentResponseSchema,
 })
 
-export const statusResponseSchema = z.object({
-  server_time: z.number(),
-  up_time: z.number(),
-  version: z.string(),
-  funding_source: z.string(),
-  funding_source_error: z.string().nullable(),
-  funding_source_balance_msat: z.number(),
-})
-
 export const healthResponseSchema = z.object({
   server_time: z.number(),
   up_time: z.string(),

@@ -1,6 +1,7 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {msatsToSats} from '@core/money/sats.js'
 import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
@@ -366,6 +367,11 @@ async function payLnurlAttempt(input: {
     if (error instanceof InsufficientFundsError) {
       await pays.noteRejected(input.attemptId)
       return {kind: 'rejected'}
+    }
+    // The guard refused before the wallet was called. Nothing is in flight.
+    if (error instanceof SendPausedError) {
+      await pays.noteRejected(input.attemptId)
+      throw error
     }
     return {kind: 'hold'}
   }
