@@ -199,6 +199,8 @@ bun run start:dev
 
 **Запросы фич:** пользователи отправляют их из главного меню. Задай `ADMIN_TELEGRAM_IDS` (Telegram user id через запятую) — новые запросы придут в личку. Опциональные сатоши идут теми же rails, что и `/donate`. В PostHog событие `feature_requested`. Без admin id запросы всё равно пишутся в аналитику.
 
+**Исходящая ликвидность:** при заданном `LNBITS_BEARER_TOKEN` внешние BOLT11 ставятся на паузу до `POST /api/v1/payments`, если баланс funding source прочитан и его не хватает. Внутренние переводы не ставятся на паузу. Любая ошибка чтения — fail-open. `BACKEND_LIQUIDITY_GUARD=off` выключает проверку (по умолчанию `on`; ещё `true`/`false`, `1`/`0`, `yes`/`no`). Неизвестное значение пишет warning и остаётся `on`. `off` нужен, когда funding source — NWC без `get_balance`: LNbits отвечает балансом `0` и пустым `funding_source_error`, и иначе на паузе окажется каждая внешняя отправка. Старт пишет `backend_liquidity_mode`. `off` — это `mode=disabled`, `reason=guard_off`. Первое чтение ровно `0` без ошибки оставляет режим активным и ставит `reason=zero_balance`, процесс пишет warning. См. `.env.example`.
+
 ### On-chain оплата (self-host / ops)
 
 Нужны расширения LNbits **Watch Only** + **SatsPay** на том же инстансе, что и `LNBITS_URL`.

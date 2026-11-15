@@ -355,7 +355,7 @@ test('an invoice pasted from Send is deleted and folded into the host review', a
   expectNoErrors(e2e.logs)
 })
 
-test('an invoice the bot issued itself is paid without a fee-reserve lookup', async () => {
+test('an invoice the bot issued itself is paid with a zero fee', async () => {
   const pending = await seedRecipientInvoice()
   credit(USER_A, 1000)
   const mark = e2e.ln.requests.length
@@ -365,7 +365,12 @@ test('an invoice the bot issued itself is paid without a fee-reserve lookup', as
 
   const receipt = String(e2e.tg.last('editMessageText')?.text)
   expect(receipt).toMatch(/Fee: <b>0 sats(?: \(\$[^)]+\))?<\/b>/)
-  expect(lnPathsSince(mark)).not.toContain('GET /api/v1/payments/fee-reserve')
+  // An invoice this instance issued is settled internally. The pay looks the hash up and does
+  // not ask the funding source for a balance or a routing reserve.
+  const paths = lnPathsSince(mark)
+  expect(paths.filter(path => path === 'GET /api/v1/payments/fee-reserve')).toHaveLength(0)
+  expect(paths).not.toContain('GET /api/v1/status')
+  expect(paths.some(path => path.startsWith('GET /api/v1/payments/'))).toBe(true)
   expectNoErrors(e2e.logs)
 })
 

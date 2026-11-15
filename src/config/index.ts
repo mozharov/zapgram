@@ -1,9 +1,12 @@
 import 'dotenv/config'
 import type {UserFromGetMe} from 'grammy/types'
 import {z} from 'zod'
-import {type Env, envSchema} from './schema.js'
+import {type Env, envSchema, interpretBackendLiquidityGuard} from './schema.js'
 
-export type AppConfig = Env & {
+export type AppConfig = Omit<Env, 'BACKEND_LIQUIDITY_GUARD'> & {
+  readonly BACKEND_LIQUIDITY_GUARD: 'on' | 'off'
+  /** Set when the env value was not a recognized on/off spelling. */
+  readonly backendLiquidityGuardUnrecognized?: string
   readonly botInfo: UserFromGetMe | undefined
   readonly memoFooter: string
   readonly chatsPerPage: number
@@ -14,9 +17,12 @@ export function createConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (!parsed.success) {
     throw new Error(`Invalid environment variables:\n${z.prettifyError(parsed.error)}`)
   }
+  const guard = interpretBackendLiquidityGuard(parsed.data.BACKEND_LIQUIDITY_GUARD)
 
   return {
     ...parsed.data,
+    BACKEND_LIQUIDITY_GUARD: guard.mode,
+    backendLiquidityGuardUnrecognized: guard.unrecognized,
 
     get botInfo(): UserFromGetMe | undefined {
       if (!this.BOT_ID || !this.BOT_NAME || !this.BOT_USERNAME) return undefined

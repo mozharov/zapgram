@@ -1,4 +1,5 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import type {DonationLedgerKind} from '@core/money/donation.js'
 import {isValidDonationAmountSats} from '@core/money/donation.js'
 import {satsToMsats} from '@core/money/sats.js'
@@ -73,6 +74,10 @@ export function createDonationPayService(deps: DonationPayDeps) {
       stage: 'pay_internal' | 'pay_nwc',
       logMessage: string,
     ): PayDonationResult => {
+      // The liquidity guard already logged and captured the pause. Don't file it as a pay exception.
+      if (error instanceof SendPausedError) {
+        return {status: 'failed', error, reason: 'pay_failed'}
+      }
       deps.log.error({error, userId, amountSats}, logMessage)
       // Short balance is expected. Keep the pay_failed reason; do not open an exception.
       if (!(error instanceof InsufficientFundsError)) {
@@ -228,7 +233,8 @@ export function createDonationPayService(deps: DonationPayDeps) {
       if (
         result.reason === 'pay_failed' &&
         result.error &&
-        !(result.error instanceof InsufficientFundsError)
+        !(result.error instanceof InsufficientFundsError) &&
+        !(result.error instanceof SendPausedError)
       ) {
         captureUserException(deps.posthog, result.error, input.userId, {
           ...baseProps,

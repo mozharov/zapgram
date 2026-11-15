@@ -1,3 +1,4 @@
+import {SendPausedError} from '@core/errors/send-paused.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
@@ -18,6 +19,8 @@ export type SubmitFeatureRequestResult = {
   fundStatus: FeatureFundStatus
   amountPaidSats: number
   adminNotified: number
+  /** The optional fund was not sent because the LNbits backend could not be spent. */
+  sendPaused: boolean
 }
 
 export type FeatureRequestSubmitDeps = {
@@ -61,6 +64,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     let fundStatus: FeatureFundStatus = 'skipped'
     let amountPaidSats = 0
     let rail: string | null = null
+    let sendPaused = false
 
     if (input.amountSats > 0) {
       try {
@@ -79,6 +83,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
           rail = result.rail
         } else {
           fundStatus = 'pay_failed'
+          sendPaused = result.error instanceof SendPausedError
           deps.log.warn(
             {userId: input.userId, reason: result.reason, amountSats: input.amountSats},
             'Feature request fund payment failed; submitting without sats',
@@ -143,7 +148,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
       deps.log.info({userId: input.userId}, 'Feature request submitted; no ADMIN_TELEGRAM_IDS set')
     }
 
-    return {fundStatus, amountPaidSats, adminNotified}
+    return {fundStatus, amountPaidSats, adminNotified, sendPaused}
   }
 
   return {submit}

@@ -4,12 +4,12 @@ import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
-import {LNBitsAPI} from './lnbits-api.js'
+import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
+import {type OutgoingLiquidityGuard, payLeftBackendUnspent} from './outgoing-liquidity.js'
 import {
   balanceResponseSchema,
   feeReserveResponseSchema,
   lookupPaymentResponseSchema,
-  type PaymentResponse,
   paymentResponseSchema,
 } from './schemas.js'
 
@@ -20,6 +20,9 @@ export class UserWallet extends LNBitsAPI {
   public readonly balance: number
   private readonly memoFooter: string
   private readonly paymentWebhookUrl?: string
+  private readonly outgoingLiquidity?: OutgoingLiquidityGuard
+  /** LNbits wallet id from the factory. Not fetched again: a failed read must not drop it. */
+  private readonly payerWalletId?: string
 
   constructor(
     adminKey: string,
@@ -28,11 +31,15 @@ export class UserWallet extends LNBitsAPI {
     memoFooter = '',
     log?: AppLogger,
     paymentWebhookUrl?: string,
+    outgoingLiquidity?: OutgoingLiquidityGuard,
+    walletId?: string,
   ) {
     super({baseUrl, adminKey, log})
     this.balance = balance
     this.memoFooter = memoFooter
     this.paymentWebhookUrl = paymentWebhookUrl
+    this.outgoingLiquidity = outgoingLiquidity
+    this.payerWalletId = walletId
   }
 
   /**
@@ -55,24 +62,63 @@ export class UserWallet extends LNBitsAPI {
     })
   }
 
-  async payInvoice(paymentRequest: string) {
-    return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
-      method: 'POST',
-      body: JSON.stringify({
-        out: true,
-        bolt11: paymentRequest,
-      }),
-    }).catch(error => handlePayInvoiceError(error, this.log)) as Promise<PaymentResponse>
+  async payInvoice(paymentRequest: string, options?: {knownInternal?: boolean}) {
+    const hold = this.outgoingLiquidity
+      ? await this.outgoingLiquidity.assertCanPay({
+          bolt11: paymentRequest,
+          payerWalletId: this.payerWalletId,
+          knownInternal: options?.knownInternal,
+          feeReserveMsat: () => this.feeReserveForPause(paymentRequest),
+        })
+      : undefined
+    try {
+      const payment = await this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
+        method: 'POST',
+        body: JSON.stringify({
+          out: true,
+          bolt11: paymentRequest,
+        }),
+      }).catch(error => handlePayInvoiceError(error, this.log))
+      if (hold) await this.outgoingLiquidity?.settle(hold)
+      return payment
+    } catch (error) {
+      if (hold) {
+        if (payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
+        else await this.outgoingLiquidity?.abandon(hold)
+      }
+      throw error
+    }
   }
 
   /**
    * @returns millisatoshis
    */
   async getFeeReserve(paymentRequest: string) {
+    return this.quoteFeeReserve(paymentRequest)
+  }
+
+  /** Pause quote only. The review screen keeps the ordinary client timeout. */
+  private feeReserveForPause(paymentRequest: string) {
+    return this.quoteFeeReserve(
+      paymentRequest,
+      {
+        retry: {limit: 0},
+        timeout: {request: GUARD_UPSTREAM_TIMEOUT_MS},
+      },
+      {logHttpError: false},
+    )
+  }
+
+  private async quoteFeeReserve(
+    paymentRequest: string,
+    init?: {retry: {limit: number}; timeout: {request: number}},
+    options?: {logHttpError?: boolean},
+  ) {
     const response = await this.fetchWithSchema(
       '/api/v1/payments/fee-reserve',
       feeReserveResponseSchema,
-      {searchParams: {invoice: paymentRequest}},
+      {searchParams: {invoice: paymentRequest}, ...init},
+      options,
     )
     return response.fee_reserve
   }
@@ -95,8 +141,8 @@ interface CreateInvoiceParams {
   expiry?: number
 }
 
-function handlePayInvoiceError(error: unknown, log?: AppLogger) {
-  log?.error({error}, 'Error paying invoice')
+function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
+  log?.error(safePayError(error), 'Error paying invoice')
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {
       const {detail, status} = error.response.body as {detail: string; status: string}
@@ -112,4 +158,15 @@ function handlePayInvoiceError(error: unknown, log?: AppLogger) {
     }
   }
   throw error
+}
+
+function safePayError(error: unknown): {message: string; code?: string; statusCode?: number} {
+  if (error instanceof HTTPError) {
+    return {message: error.message, code: error.code, statusCode: error.response.statusCode}
+  }
+  if (error instanceof Error) {
+    const code = 'code' in error && error.code != null ? String(error.code) : undefined
+    return {message: error.message, code}
+  }
+  return {message: 'unknown'}
 }

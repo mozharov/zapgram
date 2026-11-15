@@ -21,6 +21,8 @@ export type FakePayment = {
   amountMsat: number
   out: boolean
   paid: boolean
+  /** LNbits status `failed`. Keyless lookup then includes `status`. */
+  failed?: boolean
   feeMsat: number
   expiresAt: Date
   memo: string
@@ -112,6 +114,36 @@ export class LnbitsState {
    * Default 100_000 so 1000 sats → $1.00. Set null to make the rate endpoint fail (500).
    */
   btcUsdRate: number | null = 100_000
+
+  /**
+   * Funding-source balance returned by GET /api/v1/status, in millisatoshis.
+   * Default is large so existing payments are not paused. Set 0 to simulate an empty backend.
+   */
+  fundingSourceBalanceMsat = 1_000_000_000_000_000
+
+  /** When set, /api/v1/status reports a funding-source error and the balance is not trusted. */
+  fundingSourceError: string | null = null
+
+  /**
+   * When false, even the admin bearer gets the non-admin status body (no balance field).
+   * That is the production shape for a wallet admin key or a non-admin token.
+   */
+  fundingSourceVisible = true
+
+  /** When set, GET /api/v1/status never answers. The startup probe must already have run. */
+  hangFundingSourceStatus = false
+
+  /** When set, GET /api/v1/payments/fee-reserve never answers. */
+  hangFeeReserve = false
+
+  /** When set, the admin payment list returns an empty page, so pays look external. */
+  adminPaymentListEmpty = false
+
+  /**
+   * When set, `payment_hash` is ignored. A startup probe that asks for an unused hash
+   * must then fail once any payment exists.
+   */
+  ignorePaymentHashFilter = false
 
   private readonly users: FakeUser[] = []
   private readonly failures: FailureRule[] = []

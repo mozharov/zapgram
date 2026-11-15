@@ -3,7 +3,15 @@ import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
+import {createInvoiceOriginLookup, probeAdminPaymentList} from '@infra/lnbits/invoice-origin.js'
 import {createMasterWallet, type MasterWalletInstance} from '@infra/lnbits/master-wallet.js'
+import {
+  BACKEND_LIQUIDITY_CHECK_FAILED,
+  BACKEND_LIQUIDITY_MODE,
+  createOutgoingLiquidityGuard,
+  probeFundingSource,
+  SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+} from '@infra/lnbits/outgoing-liquidity.js'
 import {
   createLnbitsRateFetcher,
   createRateService,
@@ -144,8 +152,78 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   if (config.DB_MIGRATE) migrateDb(db, './drizzle', log)
 
   const masterWallet = createMasterWallet(config)
+  if (config.backendLiquidityGuardUnrecognized !== undefined) {
+    log.warn(
+      {value: config.backendLiquidityGuardUnrecognized},
+      'BACKEND_LIQUIDITY_GUARD is not recognized; using on',
+    )
+  }
+  const guardEnabled = config.BACKEND_LIQUIDITY_GUARD === 'on'
+  const outgoingLiquidity = guardEnabled
+    ? createOutgoingLiquidityGuard({
+        classifyInvoice: createInvoiceOriginLookup(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
+        readBalance: () => masterWallet.readFundingSource(),
+        log,
+        capturePaused: properties => {
+          posthog?.capture({
+            distinctId: 'lnbits-backend',
+            event: SEND_PAUSED_NO_BACKEND_LIQUIDITY,
+            properties: {$process_person_profile: false, ...properties},
+          })
+        },
+        captureCheckFailed: properties => {
+          posthog?.capture({
+            distinctId: 'lnbits-backend',
+            event: BACKEND_LIQUIDITY_CHECK_FAILED,
+            properties: {$process_person_profile: false, ...properties},
+          })
+        },
+        hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
+      })
+    : undefined
+  if (outgoingLiquidity) masterWallet.useOutgoingLiquidity(outgoingLiquidity)
+  const liquidityMode = outgoingLiquidity
+    ? await probeFundingSource({
+        hasBearer: Boolean(config.LNBITS_BEARER_TOKEN),
+        read: () => masterWallet.readFundingSource(),
+        probeClassify: () => probeAdminPaymentList(config.LNBITS_URL, config.LNBITS_BEARER_TOKEN),
+      })
+    : {mode: 'disabled' as const, reason: 'guard_off' as const, classify: 'skipped' as const}
+  if (liquidityMode.reason === 'zero_balance') {
+    log.warn(
+      {
+        liquidityMode: liquidityMode.mode,
+        reason: liquidityMode.reason,
+        classify: liquidityMode.classify,
+      },
+      'Funding source balance is 0 with an empty error; NWC without get_balance looks the same',
+    )
+  }
+  log.info(
+    {
+      liquidityMode: liquidityMode.mode,
+      reason: liquidityMode.reason,
+      classify: liquidityMode.classify,
+    },
+    'Funding source liquidity check',
+  )
+  posthog?.capture({
+    distinctId: 'lnbits-backend',
+    event: BACKEND_LIQUIDITY_MODE,
+    properties: {
+      $process_person_profile: false,
+      mode: liquidityMode.mode,
+      reason: liquidityMode.reason,
+      classify: liquidityMode.classify,
+    },
+  })
   const health = await masterWallet.checkStatus()
   log.info({lnbitsUpTime: health.up_time}, 'LNbits reachable')
+  try {
+    masterWallet.adoptWalletId(await masterWallet.readWalletId())
+  } catch {
+    log.warn('Master wallet id was not read')
+  }
 
   const rates = createRateService({
     fetchUsdBtcRate: createLnbitsRateFetcher(config.LNBITS_URL, log),
@@ -196,6 +274,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     memoFooter: config.memoFooter,
     log,
     paymentWebhookUrl,
+    outgoingLiquidity,
   })
 
   const donationPay = createDonationPayService({
@@ -211,10 +290,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     payService: donationPay,
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
-    notifyDonationFailed: async (userId, donationSats, languageCode) => {
+    notifyDonationFailed: async (userId, donationSats, languageCode, reason) => {
       const btcUsd = await rates.getBtcUsd()
       const usdSuffix = btcUsd === null ? '' : formatUsdSuffix(satsToUsd(donationSats, btcUsd))
-      const text = translate('donation.failed', languageCode, {donationSats, usdSuffix})
+      const text =
+        reason === 'paused'
+          ? translate('donation.paused', languageCode, {donationSats, usdSuffix})
+          : translate('donation.failed', languageCode, {donationSats, usdSuffix})
       await notifier.send(userId, text)
     },
     log,

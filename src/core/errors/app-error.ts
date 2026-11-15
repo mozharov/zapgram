@@ -14,6 +14,7 @@ export type AppErrorCode =
   | 'user_has_no_wallet'
   | 'not_found'
   | 'unknown'
+  | 'send_paused'
 
 export type AppErrorParams = Record<string, string | number>
 

@@ -112,7 +112,7 @@ describe('attemptAutoRenewal', () => {
     const {service, payBalance, payNwc, completePayment, getUserNwcUrl} = makeDeps()
     const result = await service.attemptAutoRenewal(subscription(), chat())
     expect(result).toEqual({status: 'renewed'})
-    expect(payBalance).toHaveBeenCalledWith('lnbc1000')
+    expect(payBalance).toHaveBeenCalledWith('lnbc1000', {knownInternal: true})
     expect(getUserNwcUrl).not.toHaveBeenCalled()
     expect(payNwc).not.toHaveBeenCalled()
     expect(completePayment).toHaveBeenCalled()
