@@ -172,6 +172,134 @@ test('a provider acceptance settles even when the lookup then fails', async () =
   expect(world.created('user')).toBe(1)
 })
 
+for (const answer of ['success', 'already_paid'] as const) {
+  for (const state of ['pending', 'retryable', 'unknown'] as const) {
+    for (const recovery of ['observe', 'reconcile'] as const) {
+      test(`NWC ${answer} with ${state} lookup waits for trusted receipt (${recovery})`, async () => {
+        const world = await worldFor({donationPercent: 10})
+        const input = {...send, rail: 'nwc' as const}
+        let primaryCalls = 0
+        let feeCalls = 0
+        let notices = 0
+        world.notify = async () => {
+          notices += 1
+          return true
+        }
+        world.lookupRecipient = async (to, hash) => {
+          expect(to).toBe(send.toUserId)
+          expect(await world.transfers.get(send.attemptId)).toMatchObject({invoiceHash: hash})
+          if (state === 'unknown') throw new Error('LNbits unavailable')
+          return state
+        }
+        world.payImpl = async (_user, bolt11) => {
+          if (world.stored.find(row => row.bolt11 === bolt11)?.kind === 'fee') {
+            feeCalls += 1
+            await world.pay(bolt11)
+            return
+          }
+          primaryCalls += 1
+          if (answer === 'already_paid') throw new InvoiceAlreadyPaidError()
+          return {paymentHash: 'untrusted-nwc-hash'}
+        }
+
+        expect(await world.service.settle(input)).toEqual({outcome: 'in_flight'})
+        expect(await world.transfers.get(send.attemptId)).toMatchObject({
+          phase: 'pay_unknown',
+          status: 'pending',
+          providerAccepted: false,
+          providerPaymentHash: null,
+        })
+        expect(await world.service.settle(input)).toEqual({outcome: 'in_flight'})
+        expect(await world.service.reconcile(send.attemptId)).toBe('in_flight')
+        expect(world.paid('user')).toHaveLength(0)
+        expect(world.paid('fee')).toHaveLength(0)
+        expect(world.created('fee')).toBe(0)
+        expect(world.donations).toHaveLength(0)
+        expect(notices).toBe(0)
+        expect(feeCalls).toBe(0)
+
+        const row = await world.transfers.get(send.attemptId)
+        if (!row.bolt11) throw new Error('missing recipient invoice')
+        // The recipient LNbits now sees the external payment, independently of NWC.
+        await world.pay(row.bolt11)
+        world.lookupRecipient = async (_to, hash) => world.lookup(hash)
+        if (recovery === 'observe') {
+          expect(await world.service.settle(input)).toMatchObject({outcome: 'settled'})
+        } else {
+          expect(await world.service.reconcile(send.attemptId)).toBe('settled')
+        }
+        expect(await world.service.reconcile(send.attemptId)).toBe('settled')
+        expect(await world.service.settle(input)).toMatchObject({outcome: 'settled'})
+        expect((await world.transfers.get(send.attemptId)).phase).toBe('settled')
+        expect(primaryCalls).toBe(1)
+        expect(world.created('user')).toBe(1)
+        expect(world.paid('user')).toHaveLength(1)
+        expect(feeCalls).toBe(1)
+        expect(world.paid('fee')).toHaveLength(1)
+        expect(world.donations).toHaveLength(1)
+        expect(notices).toBe(1)
+      })
+    }
+  }
+
+  for (const state of ['pending', 'retryable', 'unknown'] as const) {
+    test(`unconfirmed NWC ${answer} with ${state} lookup follows the review deadline`, async () => {
+      const world = await worldFor({donationPercent: 10, payReviewMs: 1_000})
+      let now = new Date()
+      world.now = () => now
+      let calls = 0
+      let notices = 0
+      world.notify = async () => {
+        notices += 1
+        return true
+      }
+      world.payImpl = async () => {
+        calls += 1
+        if (answer === 'already_paid') throw new InvoiceAlreadyPaidError()
+        return undefined
+      }
+      world.lookupRecipient = async () => {
+        if (state === 'unknown') throw new Error('LNbits unavailable')
+        return state
+      }
+      expect(await world.service.settle({...send, rail: 'nwc'})).toEqual({outcome: 'in_flight'})
+      now = new Date(now.getTime() + 2_000)
+      const abandoned = state === 'retryable'
+      expect(await world.service.reconcile(send.attemptId)).toBe(
+        abandoned ? 'abandoned' : 'needs_review',
+      )
+      expect(await world.service.reconcile(send.attemptId)).toBe(
+        abandoned ? 'abandoned' : 'in_flight',
+      )
+      expect(await world.transfers.get(send.attemptId)).toMatchObject({
+        phase: abandoned ? 'abandoned' : 'needs_review',
+        providerAccepted: false,
+      })
+      expect(calls).toBe(1)
+      expect(notices).toBe(0)
+      expect(world.paid('user')).toHaveLength(0)
+      expect(world.paid('fee')).toHaveLength(0)
+      expect(world.donations).toHaveLength(0)
+    })
+  }
+}
+
+test('internal already-paid acceptance still settles without a recipient lookup', async () => {
+  const world = await worldFor({donationPercent: 0})
+  let lookups = 0
+  world.lookupRecipient = async () => {
+    lookups += 1
+    return 'pending'
+  }
+  world.payImpl = async () => {
+    throw new InvoiceAlreadyPaidError()
+  }
+  expect(await world.service.settle(send)).toMatchObject({outcome: 'settled'})
+  expect(lookups).toBe(0)
+  expect(world.paid('fee')).toHaveLength(0)
+  expect(world.donations).toHaveLength(0)
+})
+
 test('an unknown pay is in flight and is not paid again', async () => {
   const world = await worldFor({donationPercent: 0})
   world.payImpl = async () => {

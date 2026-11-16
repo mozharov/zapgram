@@ -212,11 +212,14 @@ export function createDmTransferService(deps: DmTransferDeps) {
     if (!row.bolt11) return {status: 'in_flight', settledNow: false}
     try {
       const paid = await deps.pay(fromUserId, row.bolt11, row.rail, {knownInternal: true})
+      // The sender controls NWC. Only our recipient LNbits can confirm receipt.
+      if (row.rail === 'nwc') return observePay(row)
       await deps.transfers.markProviderAccepted(row.id, paid?.paymentHash)
       if (row.invoiceHash) await lookupQuiet(row.toUserId, row.invoiceHash)
       return {status: 'paid', settledNow: await settleMark(row.id)}
     } catch (error) {
       if (error instanceof InvoiceAlreadyPaidError) {
+        if (row.rail === 'nwc') return observePay(row)
         await deps.transfers.markProviderAccepted(row.id, undefined)
         return {status: 'paid', settledNow: await settleMark(row.id)}
       }
