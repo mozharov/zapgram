@@ -6,7 +6,7 @@ import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import type {AppLogger} from '@infra/logger.js'
-import {and, eq, isNotNull, lte, ne, sql} from 'drizzle-orm'
+import {and, eq, isNotNull, lte, ne, or, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserRepositoryOptions = {
@@ -113,10 +113,13 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         .select({count: sql<number>`count(*)`})
         .from(usersTable)
         .where(
-          and(
-            sql`${usersTable.monthlyDonationSats} > 0`,
-            isNotNull(usersTable.monthlyDonationNextAt),
-            lte(usersTable.monthlyDonationNextAt, now),
+          or(
+            isNotNull(usersTable.monthlyDonationLastHash),
+            and(
+              sql`${usersTable.monthlyDonationSats} > 0`,
+              isNotNull(usersTable.monthlyDonationNextAt),
+              lte(usersTable.monthlyDonationNextAt, now),
+            ),
           ),
         )
       return Number(row?.count ?? 0)
@@ -124,10 +127,13 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
 
     async findDueMonthlyDonations(limit: number, offset: number, now: Date = new Date()) {
       return database.query.usersTable.findMany({
-        where: and(
-          sql`${usersTable.monthlyDonationSats} > 0`,
-          isNotNull(usersTable.monthlyDonationNextAt),
-          lte(usersTable.monthlyDonationNextAt, now),
+        where: or(
+          isNotNull(usersTable.monthlyDonationLastHash),
+          and(
+            sql`${usersTable.monthlyDonationSats} > 0`,
+            isNotNull(usersTable.monthlyDonationNextAt),
+            lte(usersTable.monthlyDonationNextAt, now),
+          ),
         ),
         limit,
         offset,

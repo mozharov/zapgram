@@ -37,8 +37,8 @@ export async function donateMonthlyDisableCallback(ctx: BotContext) {
   await getRuntime().users.update(ctx.user.id, {
     monthlyDonationSats: 0,
     monthlyDonationNextAt: null,
-    monthlyDonationLastHash: null,
   })
+  ctx.log.info('Monthly donation disabled')
   captureBotEvent(getRuntime().posthog, 'monthly_donate_disabled', {
     feature: 'donations',
     flow: 'monthly',

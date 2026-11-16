@@ -359,6 +359,98 @@ test('monthly job charges when nextAt is due', async () => {
   expectNoErrors(e2e.logs)
 })
 
+for (const outcome of ['paid', 'failed', '404'] as const) {
+  test(`disabled monthly donation reconciles a later ${outcome} without another charge`, async () => {
+    await seedUser(e2e, {id: USER_A, donationPercent: 0})
+    credit(USER_A, STARTING)
+    e2e.ln.state.pendingNextPay = true
+    await e2e.send(privateCallback(donateMonthlyAmountRoute.build({amountSats: 100})))
+    const pending = await e2e.container.users.getOrThrow(USER_A)
+    const hash = pending.monthlyDonationLastHash
+    if (!hash) throw new Error('Expected a pending monthly payment')
+    expect((await e2e.container.donations.getUserStats(USER_A)).count).toBe(0)
+    // The intentional uncertain pay logs this error; reconciliation itself must log no errors.
+    expect(
+      e2e.logs.filter(log => log.level === 'error' || log.level === 50).map(log => log.msg),
+    ).toEqual(['Internal donation pay failed'])
+    const logsAfterPending = e2e.logs.length
+
+    await e2e.send(privateCallback(staticCallback.donateMonthlyDisable))
+    expect(await e2e.container.users.getOrThrow(USER_A)).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: hash,
+    })
+    const invoiceCount = e2e.ln.state.payments.length
+    await processMonthlyDonations()
+    expect((await e2e.container.users.getOrThrow(USER_A)).monthlyDonationLastHash).toBe(hash)
+
+    // Enable must wait for reconciliation, including when the subscription is off.
+    await e2e.send(privateCallback(donateMonthlyAmountRoute.build({amountSats: 200})))
+    expect(await e2e.container.users.getOrThrow(USER_A)).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: hash,
+    })
+    expect(e2e.ln.state.payments).toHaveLength(invoiceCount)
+
+    const lookupPath = `/api/v1/payments/${hash}`
+    if (outcome === 'paid') {
+      for (const payment of e2e.ln.state.payments.filter(row => row.paymentHash === hash)) {
+        payment.paid = true
+      }
+    } else {
+      e2e.ln.state.failAlways(
+        {method: 'GET', path: lookupPath},
+        {
+          status: outcome === '404' ? 404 : 200,
+          body:
+            outcome === '404'
+              ? {detail: 'Payment not found.'}
+              : {
+                  ...(await e2e.container.masterWallet.lookupFeePayment(hash)),
+                  paid: false,
+                  status: 'failed',
+                },
+        },
+      )
+    }
+    await processMonthlyDonations()
+    await processMonthlyDonations()
+    expect(await e2e.container.users.getOrThrow(USER_A)).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: null,
+    })
+    const stats = await e2e.container.donations.getUserStats(USER_A)
+    expect(stats.count).toBe(outcome === 'paid' ? 1 : 0)
+    expect(stats.totalSats).toBe(outcome === 'paid' ? 100 : 0)
+    if (outcome === 'paid') {
+      expect(await e2e.container.donations.findByPaymentHash(hash)).toMatchObject({
+        userId: USER_A,
+        amountSats: 100,
+        kind: 'monthly',
+        paymentHash: hash,
+      })
+    }
+    expect(e2e.ln.state.payments).toHaveLength(invoiceCount)
+    // One donor debit and one fee invoice; owner payouts and duplicate refunds stay at zero.
+    const outgoing = e2e.ln.state.payments.filter(payment => payment.out)
+    expect(outgoing).toHaveLength(1)
+    expect(outgoing[0]).toMatchObject({paymentHash: hash, amountMsat: 100_000})
+    const incoming = e2e.ln.state.payments.filter(payment => !payment.out)
+    expect(incoming).toHaveLength(1)
+    expect(incoming[0]).toMatchObject({paymentHash: hash, amountMsat: 100_000})
+    const reconciliationErrors = e2e.logs
+      .slice(logsAfterPending)
+      .filter(log => log.level === 'error' || log.level === 50)
+    // A 404 is a definitive miss: cron may log the HTTP lookup, but must not emit other errors.
+    expect(reconciliationErrors.every(log => outcome === '404' && log.statusCode === 404)).toBe(
+      true,
+    )
+  })
+}
+
 function credit(userId: number, sats: number): void {
   const lnUser = e2e.ln.state.ensureUser(String(userId))
   const wallet = e2e.ln.state.walletsOfUser(lnUser.id)[0]

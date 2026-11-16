@@ -127,3 +127,30 @@ test('getOrCreate does not mutate the caller object', async () => {
   await users.getOrCreate(data)
   expect(data.username).toBe('MiXeD')
 })
+
+test('monthly work includes unresolved hashes even when disabled or not yet due', async () => {
+  const users = repo()
+  const now = new Date()
+  const past = new Date(now.getTime() - 60_000)
+  const future = new Date(now.getTime() + 60_000)
+  await users.createOrUpdate({id: 1, monthlyDonationSats: 50, monthlyDonationNextAt: past})
+  await users.createOrUpdate({id: 2, monthlyDonationLastHash: 'disabled-pending'})
+  await users.createOrUpdate({
+    id: 3,
+    monthlyDonationSats: 50,
+    monthlyDonationNextAt: future,
+    monthlyDonationLastHash: 'future-pending',
+  })
+  await users.createOrUpdate({id: 4, monthlyDonationSats: 50, monthlyDonationNextAt: future})
+  await users.createOrUpdate({id: 5})
+  await users.createOrUpdate({id: 6, monthlyDonationSats: 0, monthlyDonationNextAt: past})
+  expect(await users.countDueMonthlyDonations(now)).toBe(3)
+  expect((await users.findDueMonthlyDonations(10, 0, now)).map(user => user.id).sort()).toEqual([
+    1, 2, 3,
+  ])
+  await users.update(2, {monthlyDonationLastHash: null})
+  expect(await users.countDueMonthlyDonations(now)).toBe(2)
+  expect((await users.findDueMonthlyDonations(10, 0, now)).map(user => user.id).sort()).toEqual([
+    1, 3,
+  ])
+})

@@ -1,3 +1,4 @@
+import {Database} from 'bun:sqlite'
 import {expect, test} from 'bun:test'
 import {existsSync, readFileSync} from 'node:fs'
 
@@ -38,4 +39,46 @@ test('migration journal entries are in index order and each has its sql file', (
     .filter(tag => !existsSync(new URL(`../../../drizzle/${tag}.sql`, import.meta.url)))
 
   expect(missing).toEqual([])
+})
+
+test('0027 clears legacy successful donation hashes without changing schedules or the ledger', () => {
+  const sqlite = new Database(':memory:')
+  const sqlFor = (tag: string) =>
+    readFileSync(new URL(`../../../drizzle/${tag}.sql`, import.meta.url), 'utf8')
+  try {
+    for (const entry of journal.entries.filter(entry => entry.idx <= 26)) {
+      sqlite.exec(sqlFor(entry.tag))
+    }
+    sqlite.exec(`
+      INSERT INTO users (id, monthly_donation_sats, monthly_donation_next_at,
+        monthly_donation_last_hash) VALUES
+        (1, 50, unixepoch() - 10, 'legacy-paid'),
+        (2, 0, NULL, 'legacy-disabled'),
+        (3, 100, unixepoch() + 100, NULL);
+      INSERT INTO donations (id, user_id, amount_sats, kind, payment_hash)
+        VALUES ('previous-month', 1, 50, 'monthly', 'legacy-paid');
+    `)
+    const before = sqlite.query('SELECT * FROM users ORDER BY id').all() as Record<
+      string,
+      unknown
+    >[]
+    const ledger = sqlite.query('SELECT * FROM donations').all()
+    sqlite.exec(sqlFor('0027_monthly_donation_pending_hash'))
+    expect(sqlite.query('SELECT * FROM users ORDER BY id').all()).toEqual(
+      before.map(row => ({...row, monthly_donation_last_hash: null})),
+    )
+    expect(sqlite.query('SELECT * FROM donations').all()).toEqual(ledger)
+
+    const previous = JSON.parse(
+      readFileSync(new URL('../../../drizzle/meta/0026_snapshot.json', import.meta.url), 'utf8'),
+    )
+    const current = JSON.parse(
+      readFileSync(new URL('../../../drizzle/meta/0027_snapshot.json', import.meta.url), 'utf8'),
+    )
+    expect(current.prevId).toBe(previous.id)
+    expect(current.id).not.toBe(previous.id)
+    expect({...current, id: previous.id, prevId: previous.prevId}).toEqual(previous)
+  } finally {
+    sqlite.close()
+  }
 })

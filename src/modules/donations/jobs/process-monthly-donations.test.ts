@@ -46,9 +46,10 @@ function harness() {
   })
   const payDonation = mock(donationPay.payDonation)
   const lookupFeePayment = mock(
-    async (): Promise<{paid: boolean; status?: string}> => ({
+    async (): Promise<{paid: boolean; status?: string; details: {amount: number}}> => ({
       paid: false,
       status: 'pending',
+      details: {amount: 50_000},
     }),
   )
   const send = mock(async () => true)
@@ -93,7 +94,10 @@ test('unknown pay saves its hash; pending lookups never create or pay another in
   expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
   expect(h.ledger).toHaveLength(0)
 
-  for (const lookup of [{paid: false, status: 'pending'}, {paid: false}]) {
+  for (const lookup of [
+    {paid: false, status: 'pending', details: {amount: 50_000}},
+    {paid: false, details: {amount: 50_000}},
+  ]) {
     h.lookupFeePayment.mockResolvedValue(lookup)
     expect(await h.tick()).toBe('keep')
   }
@@ -112,7 +116,7 @@ test('unknown then paid records the ledger and advances the period without payin
   const h = harness()
   await h.tick()
   const hash = h.user.monthlyDonationLastHash
-  h.lookupFeePayment.mockResolvedValue({paid: true, status: 'success'})
+  h.lookupFeePayment.mockResolvedValue({paid: true, status: 'success', details: {amount: 50_000}})
   const later = new Date(h.now.getTime() + 60 * 60 * 1000)
   expect(await h.tick(later)).toBe('done')
   expect(h.user.monthlyDonationNextAt?.getTime()).toBe(later.getTime() + MONTHLY_DONATION_PERIOD_MS)
@@ -136,7 +140,7 @@ test('unknown then definitively failed allows a fresh invoice and payment attemp
   const h = harness()
   await h.tick()
   const oldHash = h.user.monthlyDonationLastHash
-  h.lookupFeePayment.mockResolvedValue({paid: false, status: 'failed'})
+  h.lookupFeePayment.mockResolvedValue({paid: false, status: 'failed', details: {amount: 50_000}})
   expect(await h.tick()).toBe('keep')
   expect(h.user.monthlyDonationLastHash).toBeTruthy()
   expect(h.user.monthlyDonationLastHash).not.toBe(oldHash)
@@ -150,7 +154,7 @@ test('unknown then definitively failed allows a fresh invoice and payment attemp
 test('a successful retry clears the hash so the next due period can be charged', async () => {
   const h = harness()
   await h.tick()
-  h.lookupFeePayment.mockResolvedValue({paid: false, status: 'failed'})
+  h.lookupFeePayment.mockResolvedValue({paid: false, status: 'failed', details: {amount: 50_000}})
   h.payInvoice.mockResolvedValue({})
   expect(await h.tick()).toBe('done')
   expect(h.ledger).toHaveLength(1)
@@ -210,7 +214,7 @@ for (const error of [new Error('timeout'), httpError(401), httpError(500)]) {
 test('recovery after a failed schedule write does not duplicate the ledger', async () => {
   const h = harness()
   await h.tick()
-  h.lookupFeePayment.mockResolvedValue({paid: true})
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
   h.update.mockRejectedValueOnce(new Error('db temporarily unavailable'))
   await expect(h.tick()).rejects.toThrow('db temporarily unavailable')
   expect(h.ledger).toHaveLength(1)
@@ -220,3 +224,75 @@ test('recovery after a failed schedule write does not duplicate the ledger', asy
   expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
   expect(h.payInvoice).toHaveBeenCalledTimes(1)
 })
+
+test('a recovered invoice clears its hash so the next due period is charged', async () => {
+  const h = harness()
+  await h.tick()
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(await h.tick()).toBe('done')
+  const nextDue = h.user.monthlyDonationNextAt
+  if (!nextDue) throw new Error('Expected a next period')
+  h.payInvoice.mockResolvedValue({})
+  expect(await h.tick(nextDue)).toBe('done')
+  expect(h.lookupFeePayment).toHaveBeenCalledTimes(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+  expect(h.payInvoice).toHaveBeenCalledTimes(2)
+  expect(h.ledger.map(row => row.amountSats)).toEqual([50, 50])
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+})
+
+test('disabled donor keeps a pending invoice, then records its actual paid amount only once', async () => {
+  const h = harness()
+  await h.tick()
+  const hash = h.user.monthlyDonationLastHash
+  h.user.monthlyDonationSats = 0
+  h.user.monthlyDonationNextAt = null
+  expect(await h.tick()).toBe('keep')
+  expect(h.user.monthlyDonationLastHash).toBe(hash)
+  expect(h.insertDonation).not.toHaveBeenCalled()
+
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  // A failed hash-clear write must not insert the same donation twice on the next tick.
+  h.update.mockRejectedValueOnce(new Error('db temporarily unavailable'))
+  await expect(h.tick()).rejects.toThrow('db temporarily unavailable')
+  expect(await h.tick()).toBe('done')
+  expect(await h.tick()).toBe('done')
+  expect(h.user.monthlyDonationSats).toBe(0)
+  expect(h.user.monthlyDonationNextAt).toBeNull()
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.ledger).toEqual([
+    expect.objectContaining({amountSats: 50, kind: 'monthly', paymentHash: hash}),
+  ])
+  expect(h.insertDonation).toHaveBeenCalledTimes(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payDonation).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
+})
+
+for (const outcome of ['failed', '404'] as const) {
+  test(`disabled donor clears a ${outcome} hash without creating another invoice`, async () => {
+    const h = harness()
+    await h.tick()
+    h.user.monthlyDonationSats = 0
+    h.user.monthlyDonationNextAt = null
+    if (outcome === '404') h.lookupFeePayment.mockRejectedValue(httpError(404))
+    else
+      h.lookupFeePayment.mockResolvedValue({
+        paid: false,
+        status: 'failed',
+        details: {amount: 50_000},
+      })
+    expect(await h.tick()).toBe('done')
+    expect(await h.tick()).toBe('done')
+    expect(h.user.monthlyDonationSats).toBe(0)
+    expect(h.user.monthlyDonationNextAt).toBeNull()
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.lookupFeePayment).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payDonation).toHaveBeenCalledTimes(1)
+    expect(h.insertDonation).not.toHaveBeenCalled()
+    expect(h.send).not.toHaveBeenCalled()
+  })
+}

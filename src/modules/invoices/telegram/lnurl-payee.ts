@@ -66,6 +66,6 @@ export function lnurlPayeeParts(view: LnurlPayeeView): {
   }
 }
 
-function clipServiceNote(value: string): string {
+export function clipServiceNote(value: string): string {
   return value.length <= LNURL_DISPLAY_LIMIT ? value : `${value.slice(0, LNURL_DISPLAY_LIMIT - 1)}…`
 }

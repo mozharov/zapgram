@@ -11,7 +11,8 @@ import {getRuntime} from '../../../runtime.js'
 const FAIL_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
 /**
- * Charge due monthly donations. Advances nextAt only after a successful pay.
+ * Reconcile in-flight invoices, including disabled donors, and charge due monthly donations.
+ * Advances nextAt only after a successful pay.
  * Failure: stay due, throttled PM (once per 24h).
  */
 export async function processMonthlyDonations(now: Date = new Date()): Promise<void> {
@@ -33,7 +34,11 @@ export type MonthlyDonationDeps = Pick<Runtime, 'log' | 'posthog' | 'translate'>
   users: Pick<Runtime['users'], 'update'>
   donations: Pick<Runtime['donations'], 'findByPaymentHash' | 'insertDonation'>
   donationPay: Pick<Runtime['donationPay'], 'payDonation'>
-  masterWallet: {lookupFeePayment: (hash: string) => Promise<{paid: boolean; status?: string}>}
+  masterWallet: {
+    lookupFeePayment: (
+      hash: string,
+    ) => Promise<{paid: boolean; status?: string; details: {amount: number}}>
+  }
   notifier: Pick<Runtime['notifier'], 'send'>
   rates: Pick<Runtime['rates'], 'getBtcUsd'>
 }
@@ -56,15 +61,16 @@ export async function processMonthlyDonation(
     language_code: user.languageCode,
   }
 
-  if (amount <= 0) return 'done'
-
-  // An uncertain pay owns this period until the fee wallet proves it settled or failed.
+  // Migration 0027 clears legacy successful hashes: those do not pay the current period.
+  // From then on, only an unresolved invoice may own this period via lastHash.
+  const enabled = amount > 0 && user.monthlyDonationNextAt !== null
   if (user.monthlyDonationLastHash) {
     let state: PayoutState
+    let paidAmountSats: number | undefined
     try {
-      state = classifyPayoutLookup(
-        await masterWallet.lookupFeePayment(user.monthlyDonationLastHash),
-      )
+      const payment = await masterWallet.lookupFeePayment(user.monthlyDonationLastHash)
+      state = classifyPayoutLookup(payment)
+      paidAmountSats = payment.details.amount / 1000
     } catch (error) {
       if (error instanceof HTTPError && error.response.statusCode === 404) {
         state = 'retryable'
@@ -81,16 +87,20 @@ export async function processMonthlyDonation(
     if (state === 'paid') {
       // A previous tick may have inserted the ledger before its schedule update failed.
       if (!(await donations.findByPaymentHash(user.monthlyDonationLastHash))) {
+        // Disable clears the configured amount, so use the fee invoice's actual amount.
+        if (!Number.isSafeInteger(paidAmountSats) || !paidAmountSats || paidAmountSats <= 0) {
+          throw new Error('Invalid monthly donation invoice amount')
+        }
         await donations.insertDonation({
           userId: user.id,
-          amountSats: amount,
+          amountSats: paidAmountSats,
           kind: 'monthly',
           paymentHash: user.monthlyDonationLastHash,
         })
       }
-      const nextAt = advanceMonthlyNextAt(user.monthlyDonationNextAt ?? now, now)
+      const nextAt = enabled ? advanceMonthlyNextAt(user.monthlyDonationNextAt ?? now, now) : null
       await users.update(user.id, {
-        monthlyDonationNextAt: nextAt,
+        ...(enabled ? {monthlyDonationNextAt: nextAt} : {}),
         monthlyDonationLastHash: null,
       })
       log.info(
@@ -100,14 +110,17 @@ export async function processMonthlyDonation(
       captureUserEvent(posthog, 'monthly_donate_recovered', user.id, {
         ...baseProps,
         payment_hash: user.monthlyDonationLastHash,
-        next_at: nextAt.toISOString(),
+        next_at: nextAt?.toISOString() ?? null,
         recovery: 'already_paid_hash',
       })
       return 'done'
     }
     // Release a definitively failed hash before attempting another payment.
     await users.update(user.id, {monthlyDonationLastHash: null})
+    log.info({userId: user.id}, 'Failed monthly donation hash cleared')
   }
+
+  if (!enabled || (user.monthlyDonationNextAt && user.monthlyDonationNextAt > now)) return 'done'
 
   const result = await donationPay.payDonation({
     userId: user.id,
