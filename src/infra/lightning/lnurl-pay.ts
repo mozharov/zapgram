@@ -432,7 +432,9 @@ function isLoopback(ip: string): boolean {
   const bare = ip.replace(/^\[|\]$/g, '').toLowerCase()
   const v4 = ipv4Of(bare)
   if (v4) return v4.startsWith('127.')
-  return bare === '::1'
+  const groups = expandIpv6(bare)
+  if (!groups) return bare === '::1'
+  return groups.every((g, i) => (i < 7 ? g === 0 : g === 1))
 }
 
 function disallowedV4(ip: string, nodeEnv: string | undefined): boolean {
@@ -455,20 +457,12 @@ function disallowedV6(ip: string, nodeEnv: string | undefined): boolean {
   if (isLoopback(bare)) return !lnurlLocalTargetsAllowed(nodeEnv)
   const groups = expandIpv6(ip)
   if (!groups) return true
-  const [g0, g1, g2, g3, g4, g5, g6, g7] = groups
+  const [g0, g1, g2, g3, g4, g5, g6] = groups
   if (g0 === undefined || g1 === undefined || g2 === undefined || g5 === undefined) return true
   // ::/96 (IPv4-compatible) and ::ffff:0:0/96 (IPv4-mapped) are not globally
   // routable IPv6. Mapping them onto the embedded v4 would let a public v4
-  // through a check that is supposed to be v6-only. ::1 is loopback, not ::/96.
-  if (
-    g0 === 0 &&
-    g1 === 0 &&
-    g2 === 0 &&
-    g3 === 0 &&
-    g4 === 0 &&
-    (g5 === 0 || g5 === 0xffff) &&
-    !(g5 === 0 && g6 === 0 && g7 === 1)
-  ) {
+  // through a check that is supposed to be v6-only. Loopback is handled above.
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0 || g5 === 0xffff)) {
     return true
   }
   // Well-known and local-use NAT64. A reply can embed a metadata or loopback v4.
