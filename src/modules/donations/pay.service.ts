@@ -1,9 +1,11 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import type {DonationLedgerKind} from '@core/money/donation.js'
 import {isValidDonationAmountSats} from '@core/money/donation.js'
 import {satsToMsats} from '@core/money/sats.js'
 import type {User} from '@infra/db/types.js'
+import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
@@ -92,10 +94,12 @@ export function createDonationPayService(deps: DonationPayDeps) {
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
+    let internalPayStarted = false
     const tryInternal = async (): Promise<PayDonationResult | null> => {
       try {
         const wallet = await deps.getUserWallet(userId)
         if (wallet.balance < satsToMsats(amountSats)) return null
+        internalPayStarted = true
         const payment = await wallet.payInvoice(invoice.bolt11)
         return {
           status: 'paid',
@@ -153,9 +157,14 @@ export function createDonationPayService(deps: DonationPayDeps) {
     // auto: internal first, then NWC
     const internal = await tryInternal()
     if (internal?.status === 'paid') return internal
-    if (internal?.status === 'failed' && internal.reason === 'pay_failed') {
-      // Balance was enough but pay failed — still try NWC if available
-    }
+    // A timeout or uncertain provider response may already have debited this rail.
+    if (
+      internal?.status === 'failed' &&
+      internalPayStarted &&
+      !(internal.error instanceof SendPausedError) &&
+      (internal.error instanceof InvoiceAlreadyPaidError || !payLeftBackendUnspent(internal.error))
+    )
+      return internal
     const nwcResult = await tryNwc()
     if (nwcResult) return nwcResult
     if (internal?.status === 'failed') return internal

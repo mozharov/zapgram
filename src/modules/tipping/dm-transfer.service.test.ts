@@ -2,6 +2,7 @@ import {expect, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import type {PayoutState} from '@core/payments/payout-state.js'
 import type {AppLogger} from '@infra/logger.js'
 import {createDmTransferRepository} from '@modules/tipping/dm-transfer.repository.js'
@@ -44,7 +45,7 @@ test('a second send waits while the first pay is unresolved', async () => {
   }
   expect(await world.service.settle(send)).toEqual({outcome: 'in_flight'})
   const again = await world.service.settle({...send, attemptId: 'attempt-2'})
-  expect(again).toEqual({outcome: 'in_flight'})
+  expect(again).toEqual({outcome: 'blocked'})
   expect(world.created('user')).toBe(1)
   expect(world.payCalls).toBe(0)
 })
@@ -342,6 +343,7 @@ async function worldFor(opts: {
   let payCalls = 0
   let now = () => new Date()
   let notify: DmTransferDeps['notify'] = async () => true
+  let notifySender: NonNullable<DmTransferDeps['notifySender']> = async () => true
   let lookupRecipient: DmTransferDeps['lookupRecipient'] = async (_to, hash) => lookup(hash)
   let payImpl: DmTransferDeps['pay'] = async (_user, bolt11) => {
     await pay(bolt11)
@@ -390,6 +392,7 @@ async function worldFor(opts: {
       donations.push({amountSats: input.amountSats, paymentHash: input.paymentHash})
     },
     notify: input => notify(input),
+    notifySender: input => notifySender(input),
   })
 
   return {
@@ -414,6 +417,9 @@ async function worldFor(opts: {
     set notify(next: DmTransferDeps['notify']) {
       notify = next
     },
+    set notifySender(next: NonNullable<DmTransferDeps['notifySender']>) {
+      notifySender = next
+    },
     set lookupRecipient(next: DmTransferDeps['lookupRecipient']) {
       lookupRecipient = next
     },
@@ -422,3 +428,208 @@ async function worldFor(opts: {
     },
   }
 }
+
+for (const final of ['paid', 'retryable'] as const) {
+  test(`needs_review retries its notice and later tells the DM sender ${final}`, async () => {
+    const world = await worldFor({donationPercent: 10, payReviewMs: 1_000})
+    let now = new Date()
+    world.now = () => now
+    world.payImpl = async () => {
+      throw new PaymentPendingError()
+    }
+    let delivered = false
+    const notices: string[] = []
+    world.notifySender = async ({outcome}) => {
+      notices.push(outcome)
+      return delivered
+    }
+    expect(await world.service.settle(send)).toEqual({outcome: 'in_flight'})
+    now = new Date(now.getTime() + 2_000)
+    expect(await world.service.reconcile(send.attemptId)).toBe('needs_review')
+    expect((await world.service.listActionable(20, 0)).map(row => row.id)).toEqual([send.attemptId])
+    delivered = true
+    await world.service.reconcile(send.attemptId)
+    expect((await world.transfers.get(send.attemptId)).senderNotified).toBe(false)
+    expect((await world.transfers.get(send.attemptId)).reviewNotified).toBe(true)
+    expect(await world.service.listActionable(20, 0)).toEqual([])
+    now = new Date(now.getTime() + 60 * 60_000 + 1_000)
+    expect((await world.service.listActionable(20, 0)).map(row => row.id)).toEqual([send.attemptId])
+    world.lookupRecipient = async () => final
+    world.payImpl = async (_user, bolt11) => {
+      await world.pay(bolt11)
+      return undefined
+    }
+    expect(await world.service.reconcile(send.attemptId)).toBe(
+      final === 'paid' ? 'settled' : 'abandoned',
+    )
+    expect(notices).toEqual([
+      'needs_review',
+      'needs_review',
+      final === 'paid' ? 'settled' : 'abandoned',
+    ])
+    expect(world.paid('fee')).toHaveLength(final === 'paid' ? 1 : 0)
+    expect(world.donations).toHaveLength(final === 'paid' ? 1 : 0)
+    expect(world.paid('user')).toHaveLength(0)
+    expect(await world.service.listActionable(20, 0)).toEqual([])
+  })
+}
+
+for (const phase of ['reserved', 'invoice_saved', 'pay_unknown'] as const) {
+  test(`an undelivered abandoned DM ${phase} notice is retried until delivered`, async () => {
+    const world = await worldFor({donationPercent: 0, invoiceGraceMs: 1_000, payReviewMs: 1_000})
+    let now = new Date()
+    world.now = () => now
+    let tries = 0
+    world.notifySender = async () => {
+      tries += 1
+      if (tries === 1) throw new Error('Telegram unavailable')
+      return true
+    }
+    await world.transfers.reserve({...send, id: send.attemptId, createdAt: now})
+    if (phase !== 'reserved')
+      await world.transfers.saveInvoice(send.attemptId, null, {hash: 'abandon', bolt11: 'bolt'})
+    if (phase === 'pay_unknown')
+      await world.transfers.markPhase(send.attemptId, 'pay_unknown', 'invoice_saved')
+    world.lookupRecipient = async () => 'retryable'
+    now = new Date(now.getTime() + 2_000)
+    expect(await world.service.reconcile(send.attemptId)).toBe('abandoned')
+    expect((await world.service.listActionable(20, 0)).map(row => row.id)).toEqual([send.attemptId])
+    await world.service.reconcile(send.attemptId)
+    expect(tries).toBe(2)
+    expect(await world.service.listActionable(20, 0)).toEqual([])
+    expect(world.paid('user')).toHaveLength(0)
+    expect(world.paid('fee')).toHaveLength(0)
+  })
+}
+
+test('the wizard claims its sender receipt at settle and releases a failed screen', async () => {
+  const world = await worldFor({donationPercent: 0})
+  let notices = 0
+  world.notifySender = async () => {
+    notices += 1
+    return true
+  }
+  await world.service.settle(send)
+  expect((await world.transfers.get(send.attemptId)).senderNotified).toBe(true)
+  await world.service.reconcile(send.attemptId)
+  expect(notices).toBe(0)
+  await world.service.releaseSenderNotice(send.attemptId)
+  await world.service.reconcile(send.attemptId)
+  expect(notices).toBe(1)
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(0)
+})
+
+test('a wizard losing settle to recovery reads the collected fee without warning or repaying', async () => {
+  const world = await worldFor({donationPercent: 10})
+  let recovered = false
+  world.lookupRecipient = async (_to, hash) => {
+    if (!recovered) {
+      recovered = true
+      await world.service.reconcile(send.attemptId)
+    }
+    return world.lookup(hash)
+  }
+  expect(await world.service.settle(send)).toEqual({
+    outcome: 'settled',
+    fee: 'collected',
+    notice: 'sent',
+  })
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(1)
+  expect(world.donations).toHaveLength(1)
+})
+
+test('a pending DM fee is not recorded, paid again, or mistaken for a failed primary', async () => {
+  const world = await worldFor({donationPercent: 10})
+  let feeCalls = 0
+  world.payImpl = async (_user, bolt11) => {
+    if (world.stored.find(row => row.bolt11 === bolt11)?.kind === 'fee') {
+      feeCalls += 1
+      throw new PaymentPendingError()
+    }
+    await world.pay(bolt11)
+    return undefined
+  }
+  expect(await world.service.settle(send)).toMatchObject({outcome: 'settled', fee: 'failed'})
+  await world.service.reconcile(send.attemptId)
+  expect(world.donations).toHaveLength(0)
+  expect(feeCalls).toBe(1)
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(0)
+})
+
+test('losing the fee invoice claim observes recovery payment without a false warning', async () => {
+  const world = await worldFor({donationPercent: 10})
+  const save = world.transfers.saveFeeInvoice.bind(world.transfers)
+  let raced = false
+  world.transfers.saveFeeInvoice = async (id, invoice) => {
+    if (!raced) {
+      raced = true
+      await world.service.reconcile(send.attemptId)
+    }
+    return save(id, invoice)
+  }
+  expect(await world.service.settle(send)).toEqual({
+    outcome: 'settled',
+    fee: 'collected',
+    notice: 'sent',
+  })
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(1)
+  expect(world.donations).toHaveLength(1)
+})
+
+test('the unique open-send index blocks a simultaneous new attempt before its debit', async () => {
+  const world = await worldFor({donationPercent: 0})
+  let now = new Date()
+  world.now = () => now
+  const notices: string[] = []
+  world.notifySender = async ({outcome}) => {
+    notices.push(outcome)
+    return true
+  }
+  const ids = [send.attemptId, 'concurrent-new-attempt']
+  const results = await Promise.all(
+    ids.map(attemptId => world.service.settle({...send, attemptId})),
+  )
+  expect(results.some(result => result.outcome === 'blocked')).toBe(true)
+  expect(results.some(result => result.outcome === 'settled')).toBe(true)
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(0)
+  expect(world.payCalls).toBe(1)
+  const blockedId = ids[results.findIndex(result => result.outcome === 'blocked')]
+  if (!blockedId) throw new Error('missing blocked transfer')
+  const blocked = await world.transfers.get(blockedId)
+  expect(blocked.phase).toBe('abandoned')
+  expect(blocked.senderNotified).toBe(true)
+  now = new Date(now.getTime() + 3 * 60_000)
+  await world.service.reconcile(blockedId)
+  expect(notices).toEqual([])
+  expect(await world.service.listActionable(20, 0)).toEqual([])
+  expect(await world.transfers.findOpen(send.fromUserId, send.toUserId)).toBeUndefined()
+})
+
+test('a wizard insufficient-funds refusal is not announced again by DM recovery', async () => {
+  const world = await worldFor({donationPercent: 10})
+  let notices = 0
+  world.notifySender = async () => {
+    notices += 1
+    return true
+  }
+  world.payImpl = async () => {
+    throw new InsufficientFundsError()
+  }
+  expect(await world.service.settle(send)).toEqual({
+    outcome: 'rejected',
+    reason: 'insufficient_funds',
+  })
+  expect((await world.transfers.get(send.attemptId)).senderNotified).toBe(true)
+  await world.service.reconcile(send.attemptId)
+  await world.service.reconcile(send.attemptId)
+  expect(notices).toBe(0)
+  expect(await world.service.listActionable(20, 0)).toEqual([])
+  expect(await world.transfers.findOpen(send.fromUserId, send.toUserId)).toBeUndefined()
+  expect(world.paid('user')).toHaveLength(0)
+  expect(world.paid('fee')).toHaveLength(0)
+})

@@ -14,3 +14,17 @@ test('a page of in-flight rows does not hide a later notice', async () => {
   })
   expect(seen).toContain('notice')
 })
+
+test('review rows that remain actionable are processed once and do not hide later rows', async () => {
+  const rows = Array.from({length: 45}, (_, index) => `review-${index}`)
+  const seen: string[] = []
+  await runDmTransferRecovery({
+    list: async (limit, offset) => rows.slice(offset, offset + limit).map(id => ({id})),
+    reconcile: async id => {
+      seen.push(id)
+      return 'needs_review'
+    },
+    log: {error() {}},
+  })
+  expect(seen).toEqual(rows)
+})

@@ -230,7 +230,7 @@ function route({
       const bolt11 = bodyValue(body, 'bolt11')
       if (typeof bolt11 !== 'string') return json({detail: 'bolt11 is required'}, 400)
       const payment = state.payInvoice({payerWallet: wallet, bolt11})
-      return json(paymentResponse(payment, {out: true, wallet}))
+      return json(paymentResponse(payment, {out: true, wallet}), 201)
     }
 
     return json({detail: 'out is required'}, 400)

@@ -183,6 +183,13 @@
       "when": 1794682000000,
       "tag": "0025_dm_transfers_one_open",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794799139697,
+      "tag": "0026_sender_review_notices",
+      "breakpoints": true
     }
   ]
 }

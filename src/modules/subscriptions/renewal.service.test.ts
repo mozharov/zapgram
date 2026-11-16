@@ -1,4 +1,7 @@
 import {describe, expect, mock, test} from 'bun:test'
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import type {Chat, Subscription, SubscriptionPayment} from '@infra/db/types.js'
 import {createRenewalService, type RenewalServiceDeps} from './renewal.service.js'
 
@@ -120,7 +123,7 @@ describe('attemptAutoRenewal', () => {
 
   test('falls back to NWC when internal balance payment fails', async () => {
     const payBalance = mock(async () => {
-      throw new Error('insufficient funds')
+      throw new InsufficientFundsError()
     })
     const {service, payNwc, completePayment, lookupPayment, getUserNwcUrl} = makeDeps({
       getUserWallet: mock(async () => ({payInvoice: payBalance})),
@@ -155,7 +158,7 @@ describe('attemptAutoRenewal', () => {
 
   test('fails without settle when neither balance nor NWC can pay', async () => {
     const payBalance = mock(async () => {
-      throw new Error('insufficient funds')
+      throw new InsufficientFundsError()
     })
     const payNwc = mock(async () => {
       throw new Error('nwc failed')
@@ -172,7 +175,7 @@ describe('attemptAutoRenewal', () => {
 
   test('fails without NWC attempt when user has no nwc_url', async () => {
     const payBalance = mock(async () => {
-      throw new Error('insufficient funds')
+      throw new InsufficientFundsError()
     })
     const payNwc = mock(async () => undefined)
     const createNwc = mock(() => ({payInvoice: payNwc}))
@@ -190,7 +193,7 @@ describe('attemptAutoRenewal', () => {
 
   test('settles when NWC throws but the master invoice is paid', async () => {
     const payBalance = mock(async () => {
-      throw new Error('insufficient funds')
+      throw new InsufficientFundsError()
     })
     const payNwc = mock(async () => {
       throw new Error('already been paid')
@@ -224,3 +227,23 @@ describe('attemptAutoRenewal', () => {
     expect(completePayment).not.toHaveBeenCalled()
   })
 })
+
+for (const error of [
+  new PaymentPendingError(),
+  new Error('transport timeout'),
+  new InvoiceAlreadyPaidError(),
+]) {
+  test(`an uncertain balance renewal (${error.message}) is handed off without charging NWC`, async () => {
+    const {service, payNwc, completePayment, createSubscriptionPayment} = makeDeps({
+      getUserWallet: async () => ({
+        payInvoice: async () => {
+          throw error
+        },
+      }),
+    })
+    expect(await service.attemptAutoRenewal(subscription(), chat())).toEqual({status: 'handed_off'})
+    expect(createSubscriptionPayment).toHaveBeenCalledTimes(1)
+    expect(payNwc).not.toHaveBeenCalled()
+    expect(completePayment).not.toHaveBeenCalled()
+  })
+}

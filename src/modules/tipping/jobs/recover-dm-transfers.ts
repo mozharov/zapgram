@@ -11,32 +11,27 @@ type RecoveryResult = 'settled' | 'abandoned' | 'in_flight' | 'needs_review'
 
 /**
  * Walk the actionable rows. A page that only stays in flight does not end the
- * run: the next page is still read. A row that leaves the set pulls the front
- * forward, so the following read starts at the beginning again.
+ * run: the next page is still read. Each selected row is reconciled once per run.
  */
 export async function runDmTransferRecovery(input: {
   list: (limit: number, offset: number) => Promise<{id: string}[]>
   reconcile: (id: string) => Promise<RecoveryResult>
   log: {error: (obj: unknown, msg: string) => void}
 }): Promise<void> {
-  let offset = 0
+  // Snapshot the bounded batch before reconciling: review and failed notices stay
+  // actionable, while settled rows may disappear or move in the ordering.
+  const pending = new Set<string>()
   for (let batch = 0; batch < PAGE; batch++) {
-    const rows = await input.list(PAGE, offset)
-    if (rows.length === 0) return
-    let progressed = 0
-    for (const row of rows) {
-      try {
-        const result = await input.reconcile(row.id)
-        if (result === 'settled' || result === 'abandoned' || result === 'needs_review') {
-          progressed += 1
-        }
-      } catch (error) {
-        input.log.error({error, transferId: row.id}, 'DM transfer recovery failed')
-      }
+    const rows = await input.list(PAGE, batch * PAGE)
+    for (const row of rows) pending.add(row.id)
+    if (rows.length < PAGE) break
+  }
+  for (const id of pending) {
+    try {
+      await input.reconcile(id)
+    } catch (error) {
+      input.log.error({error, transferId: id}, 'DM transfer recovery failed')
     }
-    if (progressed === 0) offset += rows.length
-    else offset = 0
-    if (rows.length < PAGE && progressed === 0) return
   }
 }
 

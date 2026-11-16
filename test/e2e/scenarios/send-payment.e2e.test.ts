@@ -1,7 +1,8 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
 import {createHash} from 'node:crypto'
-import {conversationsTable, usersTable} from '@infra/db/schema.js'
+import {conversationsTable, dmTransfersTable, usersTable} from '@infra/db/schema.js'
 import {creatingInvoice} from '@modules/invoices/telegram/conversations/creating-invoice.js'
+import {recoverDmTransfers} from '@modules/tipping/jobs/recover-dm-transfers.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {encode, toWords} from 'bech32'
 import {expectNoConversations, expectNoErrors, expectPayoutsExactly} from '../asserts.js'
@@ -583,3 +584,100 @@ async function conversationNames(): Promise<string[]> {
   if (!state || typeof state !== 'object') return []
   return Object.keys(state)
 }
+
+test('a new DM send blocked by an unresolved one says that nothing new was debited', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+    },
+    {status: 500, body: {detail: 'uncertain outcome'}},
+  )
+  await e2e.send(confirm())
+  expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(
+    /This confirmation is still being checked/,
+  )
+  const balance = e2e.ln.state.wallets.find(
+    wallet => wallet.username === String(USER_A),
+  )?.balanceMsat
+  replyRecipient()
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  await e2e.send(confirm())
+  expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(/previous transfer/)
+  expect(visibleHtml(e2e.tg.last('editMessageText'))).toMatch(
+    /new transfer was not started and nothing was debited/,
+  )
+  expect(e2e.ln.state.wallets.find(wallet => wallet.username === String(USER_A))?.balanceMsat).toBe(
+    balance,
+  )
+  expect(await e2e.db.select().from(dmTransfersTable)).toHaveLength(1)
+  expect(outgoing()).toHaveLength(0)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 0})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+  await expectNoConversations(e2e.db)
+})
+
+for (const receiptFails of [false, true]) {
+  test(`DM recovery sends ${receiptFails ? 'one fallback' : 'no duplicate'} sender receipt`, async () => {
+    await seedRecipient()
+    credit(USER_A, 1_000)
+    await e2e.send(privateCallback(staticCallback.sendMenu))
+    await e2e.send(privateText('@user_b'))
+    await e2e.send(privateText(String(AMOUNT)))
+    if (receiptFails)
+      e2e.tg.fail('editMessageText', {
+        error_code: 400,
+        description: 'Bad Request: receipt rejected',
+      })
+    await e2e.send(confirm())
+    const [row] = await e2e.db.select().from(dmTransfersTable)
+    expect(row?.status).toBe('settled')
+    expect(row?.senderNotified).toBe(!receiptFails)
+    await recoverDmTransfers()
+    await recoverDmTransfers()
+    const senderReceipts = e2e.tg
+      .of('sendMessage')
+      .filter(call => Number(call.chat_id) === USER_A && /You sent/.test(String(call.text)))
+    expect(senderReceipts).toHaveLength(receiptFails ? 1 : 0)
+    expect(outgoing()).toHaveLength(1)
+    expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 1})
+    expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+  })
+}
+
+test('a DM insufficient-funds refusal is not followed by an unpaid recovery notice', async () => {
+  await seedRecipient()
+  credit(USER_A, 1_000)
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(AMOUNT)))
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+    },
+    {status: 520, body: {status: 'failed', detail: 'Insufficient balance.'}},
+  )
+  await e2e.send(confirm())
+  const [row] = await e2e.db.select().from(dmTransfersTable)
+  expect(row?.phase).toBe('abandoned')
+  expect(row?.senderNotified).toBe(true)
+  const messages = e2e.tg.of('sendMessage').length
+  await recoverDmTransfers()
+  await recoverDmTransfers()
+  expect(e2e.tg.of('sendMessage')).toHaveLength(messages)
+  expect(await e2e.container.dmTransfers.listActionable(20, 0)).toEqual([])
+  expect(outgoing()).toHaveLength(0)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: AMOUNT, times: 0})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+  await expectNoConversations(e2e.db)
+})

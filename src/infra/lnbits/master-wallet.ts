@@ -1,5 +1,6 @@
 import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {HTTPError} from 'got'
 import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
@@ -164,6 +165,7 @@ class MasterWallet extends LNBitsAPI {
           bolt11: paymentRequest,
         }),
       })
+      if (payment.status !== 'success') throw new PaymentPendingError()
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {

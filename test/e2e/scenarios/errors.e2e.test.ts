@@ -71,6 +71,7 @@ const ALL_CODES: AppErrorCode[] = [
   'not_found',
   'unknown',
   'send_paused',
+  'payment_pending',
 ]
 
 export const COVERS = scenarioCoverage.errors
@@ -156,6 +157,31 @@ test('send_paused is shown when the LNbits backend cannot cover an outgoing paym
   expectPrivateError('send_paused', 'en')
   await expectMoneyUnchanged(before)
   expect(outgoingPays()).toEqual([])
+})
+
+test('payment_pending shows its copy through the subscription error handler', async () => {
+  credit(USER_A, 1_000)
+  e2e.ln.state.failNext(
+    {
+      method: 'POST',
+      path: '/api/v1/payments',
+      body: body => Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+    },
+    {status: 520, body: {status: 'pending', detail: 'Payment is still pending.'}},
+  )
+  // The join payment route pays the stored invoice before granting access.
+  await seedUser(e2e, {id: OWNER, username: 'owner', firstName: 'Owner'})
+  await seedChat(e2e, {id: CHAT_GROUP, ownerId: OWNER, status: 'active', price: 21})
+  const payment = await seedSubscriptionPayment(e2e, {
+    userId: USER_A,
+    chatId: CHAT_GROUP,
+    price: 21,
+    paid: false,
+  })
+  await e2e.send(
+    privateCallback(paySubscriptionRoute.build({paymentId: payment.id, from: 'wallet'})),
+  )
+  expectPrivateError('payment_pending', 'en')
 })
 
 test('invoice_already_paid keeps the payee pending row and shows the dedicated copy', async () => {
@@ -542,6 +568,7 @@ test('every AppErrorCode has a real e2e path in this file', () => {
     'not_found',
     'unknown',
     'send_paused',
+    'payment_pending',
   ] satisfies AppErrorCode[])
   expect([...covered].sort()).toEqual([...ALL_CODES].sort())
 })

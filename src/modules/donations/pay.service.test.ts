@@ -1,5 +1,7 @@
 import {describe, expect, mock, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {createDonationPayService} from './pay.service.js'
 
 function makeDeps(overrides: Partial<Parameters<typeof createDonationPayService>[0]> = {}) {
@@ -171,3 +173,30 @@ describe('payDonation', () => {
     )
   })
 })
+
+for (const error of [
+  new PaymentPendingError(),
+  new Error('transport timeout'),
+  new InvoiceAlreadyPaidError(),
+]) {
+  test(`an uncertain donation (${error.message}) is not recorded or retried through NWC`, async () => {
+    const nwcPay = mock(async () => undefined)
+    const {deps, insertDonation} = makeDeps({
+      getUserWallet: async () => ({
+        balance: 100_000,
+        payInvoice: async () => {
+          throw error
+        },
+      }),
+    })
+    const result = await deps.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot',
+      nwc: {payInvoice: nwcPay} as never,
+    })
+    expect(result).toMatchObject({status: 'failed', error})
+    expect(insertDonation).not.toHaveBeenCalled()
+    expect(nwcPay).not.toHaveBeenCalled()
+  })
+}

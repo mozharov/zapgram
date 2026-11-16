@@ -1,5 +1,6 @@
 import {describe, expect, mock, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {createDonationCollectService} from './collect.service.js'
 
 function makeCollect(
@@ -177,4 +178,24 @@ describe('tryCollect', () => {
       expect.objectContaining({stage: 'try_collect_pay', expected: false}),
     )
   })
+})
+
+test('a pending collection does not write the successful donation ledger', async () => {
+  const {service, insertDonation, capture} = makeCollect({
+    payToFeeCollection: mock(async () => ({
+      status: 'failed',
+      reason: 'pay_failed',
+      error: new PaymentPendingError(),
+    })),
+  })
+  expect(
+    await service.tryCollect({
+      userId: 1,
+      baseAmountSats: 100,
+      kind: 'invoice',
+      preferredRail: 'internal',
+    }),
+  ).toMatchObject({status: 'failed'})
+  expect(insertDonation).not.toHaveBeenCalled()
+  expect(capture).not.toHaveBeenCalledWith(expect.objectContaining({event: 'donation_collected'}))
 })

@@ -1,6 +1,7 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {isSendPaused, SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
@@ -51,8 +52,6 @@ export async function payingInvoice(
      * be adopted again on replay and delete the receipt the payment just wrote.
      */
     host?: ConversationHost
-    /** LNURL invoices can expire while the confirm button is on screen. */
-    recheckExpiry?: boolean
     /** The send wizard stays open so the user can correct the paste or cancel. */
     invalid?: 'return'
     /**
@@ -119,13 +118,11 @@ export async function payingInvoice(
     }),
   )
 
-  // Freeze the open-time answer for an LNURL invoice. A live check here would take a
+  // Freeze the open-time answer for every invoice. A live check here would take a
   // different branch when the confirm click replays the conversation after expiry,
   // and grammY would throw instead of reaching the click. The pay itself is refused
   // after that click, below.
-  const expiredAtOpen = options?.recheckExpiry
-    ? await conversation.external(() => invoice.hasExpired())
-    : invoice.hasExpired()
+  const expiredAtOpen = await conversation.external(() => invoice.hasExpired())
   if (expiredAtOpen) {
     await waitForInvoiceReview(conversation, ctx, invoice, true, {
       host,
@@ -168,33 +165,31 @@ export async function payingInvoice(
     })
     host = confirmed.host
   }
-  if (options?.recheckExpiry) {
-    // Frozen like the open-time check. A live call here diverges on replay after pay.
-    const expiredBeforePay = await conversation.external(() => invoice.hasExpired())
-    if (expiredBeforePay) {
-      const expiredHtml = joinWizardHtml(
-        reviewPrefix,
-        invoiceReviewHtml(ctx, invoice, {
-          usdSuffix: previewUsdSuffix,
-          fee: 'no',
-          feeUsdSuffix: '',
-        }),
-      )
-      // The confirm button was on this message. Take it off so the expired invoice
-      // cannot be clicked again; the conversation is halted either way.
-      const expiredKeyboard = new InlineKeyboard()
-      if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
-      else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
-      return conversation.halt()
-    }
+  // Frozen like the open-time check. A live call here diverges on replay after pay.
+  const expiredBeforePay = await conversation.external(() => invoice.hasExpired())
+  if (expiredBeforePay) {
+    const expiredHtml = joinWizardHtml(
+      reviewPrefix,
+      invoiceReviewHtml(ctx, invoice, {
+        usdSuffix: previewUsdSuffix,
+        fee: 'no',
+        feeUsdSuffix: '',
+      }),
+    )
+    // The confirm button was on this message. Take it off so the expired invoice
+    // cannot be clicked again; the conversation is halted either way.
+    const expiredKeyboard = new InlineKeyboard()
+    if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
+    else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
+    return conversation.halt()
   }
   const isInternalWallet = wallet === 'internal'
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 
   // Snapshot before pay: a concurrent LNbits webhook may claim the row the instant pay settles.
-  const isInternalRecipient = Boolean(
-    await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest}),
+  const isInternalRecipient = await conversation.external(async () =>
+    Boolean(await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest})),
   )
 
   const lnurl = options?.lnurl
@@ -246,8 +241,14 @@ export async function payingInvoice(
     }
     feesPaid = outcome.feesPaid
   } else if (isInternalWallet) {
-    const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
-    feesPaid = payment.fee < 0 ? -payment.fee : 0
+    try {
+      const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+      feesPaid = payment.fee < 0 ? -payment.fee : 0
+    } catch (error) {
+      if (!(error instanceof PaymentPendingError)) throw error
+      await showLnurlHold(ctx, host, ctx.t('error.payment-pending'))
+      return conversation.halt()
+    }
   } else {
     if (!ctx.user.nwc) throw new NWCConnectionError()
     await ctx.user.nwc.payInvoice(invoice.paymentRequest)

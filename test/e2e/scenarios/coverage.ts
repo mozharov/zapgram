@@ -65,6 +65,7 @@ export const scenarioCoverage = {
       'not_found',
       'unknown',
       'send_paused',
+      'payment_pending',
     ],
   },
   http: {

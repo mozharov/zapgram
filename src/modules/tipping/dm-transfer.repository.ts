@@ -1,7 +1,7 @@
 import type {AppDatabase} from '@infra/db/client.js'
 import {dmTransfersTable} from '@infra/db/schema.js'
 import type {DmTransfer} from '@infra/db/types.js'
-import {and, asc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
+import {and, asc, eq, inArray, isNull, lt, lte, ne, or} from 'drizzle-orm'
 
 const OPEN_PHASES = ['pay_unknown', 'provider_accepted', 'needs_review'] as const
 
@@ -106,15 +106,31 @@ export function createDmTransferRepository(database: AppDatabase) {
           phase: 'provider_accepted',
           ...(paymentHash ? {providerPaymentHash: paymentHash} : {}),
         })
-        .where(eq(dmTransfersTable.id, id))
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            inArray(dmTransfersTable.phase, ['pay_unknown', 'needs_review', 'provider_accepted']),
+          ),
+        )
     },
 
     /** True only when this call moved a pending row to settled. */
-    async markSettled(id: string): Promise<boolean> {
+    async markSettled(id: string, senderNotified = false): Promise<boolean> {
       const [row] = await database
         .update(dmTransfersTable)
-        .set({status: 'settled', phase: 'settled'})
-        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.status, 'pending')))
+        .set({
+          status: 'settled',
+          phase: 'settled',
+          ...(senderNotified ? {senderNotified: true} : {}),
+        })
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            ne(dmTransfersTable.phase, 'abandoned'),
+          ),
+        )
         .returning()
       return row !== undefined
     },
@@ -133,11 +149,16 @@ export function createDmTransferRepository(database: AppDatabase) {
 
     async abandonIfPhase(
       id: string,
-      expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+      expected: 'reserved' | 'invoice_saved' | 'pay_unknown' | 'needs_review',
+      senderNotified = false,
     ): Promise<boolean> {
       const [row] = await database
         .update(dmTransfersTable)
-        .set({phase: 'abandoned', reviewLogged: true})
+        .set({
+          phase: 'abandoned',
+          reviewLogged: true,
+          ...(senderNotified ? {senderNotified: true} : {}),
+        })
         .where(
           and(
             eq(dmTransfersTable.id, id),
@@ -149,29 +170,18 @@ export function createDmTransferRepository(database: AppDatabase) {
       return row !== undefined
     },
 
-    /** Only a row that has not been accepted by the wallet can be abandoned. */
-    async markAbandoned(id: string) {
-      await database
-        .update(dmTransfersTable)
-        .set({phase: 'abandoned', reviewLogged: true})
-        .where(
-          and(
-            eq(dmTransfersTable.id, id),
-            eq(dmTransfersTable.status, 'pending'),
-            or(
-              eq(dmTransfersTable.phase, 'reserved'),
-              eq(dmTransfersTable.phase, 'invoice_saved'),
-              eq(dmTransfersTable.phase, 'pay_unknown'),
-            ),
-          ),
-        )
-    },
-
     async markNeedsReview(id: string): Promise<boolean> {
       const [row] = await database
         .update(dmTransfersTable)
         .set({phase: 'needs_review', reviewLogged: true})
-        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.reviewLogged, false)))
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            eq(dmTransfersTable.phase, 'pay_unknown'),
+            eq(dmTransfersTable.reviewLogged, false),
+          ),
+        )
         .returning()
       return row !== undefined
     },
@@ -239,23 +249,44 @@ export function createDmTransferRepository(database: AppDatabase) {
         .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.noticeSent, false)))
     },
 
-    async claimSenderNotice(id: string): Promise<boolean> {
+    async claimSenderNotice(id: string, review = false): Promise<boolean> {
       const [row] = await database
         .update(dmTransfersTable)
-        .set({senderNotified: true})
-        .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.senderNotified, false)))
+        .set(review ? {reviewNotified: true} : {senderNotified: true})
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            ...(review
+              ? [eq(dmTransfersTable.status, 'pending'), eq(dmTransfersTable.phase, 'needs_review')]
+              : []),
+            eq(review ? dmTransfersTable.reviewNotified : dmTransfersTable.senderNotified, false),
+          ),
+        )
         .returning()
       return row !== undefined
     },
 
-    async releaseSenderNotice(id: string) {
+    async releaseSenderNotice(id: string, review = false) {
       await database
         .update(dmTransfersTable)
-        .set({senderNotified: false})
+        .set(review ? {reviewNotified: false} : {senderNotified: false})
         .where(eq(dmTransfersTable.id, id))
     },
 
-    async listActionable(limit: number, offset: number) {
+    async deferReview(id: string, until: Date) {
+      await database
+        .update(dmTransfersTable)
+        .set({reviewAfter: until})
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            eq(dmTransfersTable.phase, 'needs_review'),
+          ),
+        )
+    },
+
+    async listActionable(limit: number, offset: number, now = new Date()) {
       return database.query.dmTransfersTable.findMany({
         limit,
         offset,
@@ -263,7 +294,29 @@ export function createDmTransferRepository(database: AppDatabase) {
         // must not hide a payment whose outcome is still unknown.
         orderBy: [asc(dmTransfersTable.status), asc(dmTransfersTable.createdAt)],
         where: or(
-          and(eq(dmTransfersTable.status, 'pending'), eq(dmTransfersTable.reviewLogged, false)),
+          and(
+            eq(dmTransfersTable.status, 'pending'),
+            or(
+              inArray(dmTransfersTable.phase, [
+                'reserved',
+                'invoice_saved',
+                'pay_unknown',
+                'provider_accepted',
+              ]),
+              and(
+                eq(dmTransfersTable.phase, 'abandoned'),
+                eq(dmTransfersTable.senderNotified, false),
+              ),
+              and(
+                eq(dmTransfersTable.phase, 'needs_review'),
+                or(
+                  eq(dmTransfersTable.reviewNotified, false),
+                  isNull(dmTransfersTable.reviewAfter),
+                  lte(dmTransfersTable.reviewAfter, now),
+                ),
+              ),
+            ),
+          ),
           and(
             eq(dmTransfersTable.status, 'settled'),
             eq(dmTransfersTable.noticeSent, false),

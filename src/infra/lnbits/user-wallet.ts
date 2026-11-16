@@ -1,6 +1,7 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
@@ -84,6 +85,7 @@ export class UserWallet extends LNBitsAPI {
           bolt11: paymentRequest,
         }),
       }).catch(error => handlePayInvoiceError(error, this.log))
+      if (payment.status !== 'success') throw new PaymentPendingError()
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {
@@ -165,6 +167,7 @@ function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {
       const {detail, status} = error.response.body as {detail: string; status: string}
+      if (status === 'pending') throw new PaymentPendingError()
       if (status !== 'failed') throw error
       const message = detail.toLowerCase()
       if (message.includes('already paid')) throw new InvoiceAlreadyPaidError()

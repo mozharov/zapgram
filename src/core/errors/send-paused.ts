@@ -8,10 +8,6 @@ export class SendPausedError extends AppError {
   }
 }
 
-export function throwIfSendPaused(error: unknown): void {
-  if (isSendPaused(error)) throw error instanceof SendPausedError ? error : new SendPausedError()
-}
-
 /**
  * grammY conversations 2.x runs `structuredClone` on a throw from `conversation.external`.
  * That copy keeps `message` and drops `name` and `code`, so `instanceof` is not enough.

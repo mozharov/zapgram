@@ -96,7 +96,7 @@ const DEFINITE_LNBITS_REFUSAL = new Set([400, 401, 403, 404, 422])
  * True only when LNbits finished the request and the payment did not leave.
  * A definite client refusal (400, 401, 403, 404, 422) is before pay.
  * A 520 counts only when its body says `failed`.
- * A 520 whose body is not `failed` is a retry of an already successful payment:
+ * A 520 whose body is not `failed` may be a pending or successful payment:
  * the pay path abandons that hold instead of putting the amount back.
  * 408, 429, any other 4xx, a timeout, or a 5xx may still have spent the backend.
  */

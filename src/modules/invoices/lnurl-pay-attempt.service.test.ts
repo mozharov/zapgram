@@ -219,3 +219,276 @@ test('a paid lookup without a time does not become a receipt', async () => {
   expect((await createLnurlPayAttemptRepository(db).get('one')).phase).toBe('needs_review')
   expect((await createLnurlPayAttemptRepository(db).get('one')).status).toBe('pending')
 })
+
+for (const final of ['paid', 'retryable'] as const) {
+  test(`needs_review retries its notice and later tells the LNURL sender ${final}`, async () => {
+    const db = createTestDb()
+    await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    let now = new Date()
+    let state: 'pending' | 'paid' | 'retryable' = 'pending'
+    let deliver = false
+    let donations = 0
+    const notices: string[] = []
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      now: () => now,
+      payReviewMs: 1_000,
+      lookup: async () => ({state, ...(state === 'paid' ? {paidAt: now} : {})}),
+      collectDonation: async () => {
+        donations += 1
+      },
+      notifySender: async ({outcome}) => {
+        notices.push(outcome)
+        return deliver
+      },
+    })
+    await service.beginPay({...attempt, attemptId: 'review'})
+    now = new Date(now.getTime() + 2_000)
+    expect(await service.reconcile('review')).toBe('needs_review')
+    expect((await attempts.get('review')).senderNotified).toBe(false)
+    expect((await service.listActionable(20, 0)).map(row => row.id)).toEqual(['review'])
+    deliver = true
+    await service.reconcile('review')
+    expect((await attempts.get('review')).reviewNotified).toBe(true)
+    expect((await attempts.get('review')).senderNotified).toBe(false)
+    expect(await service.listActionable(20, 0)).toEqual([])
+    now = new Date(now.getTime() + 60 * 60_000 + 1_000)
+    expect((await service.listActionable(20, 0)).map(row => row.id)).toEqual(['review'])
+    state = final
+    expect(await service.reconcile('review')).toBe(final === 'paid' ? 'settled' : 'abandoned')
+    expect(notices).toEqual([
+      'needs_review',
+      'needs_review',
+      final === 'paid' ? 'settled' : 'abandoned',
+    ])
+    expect(donations).toBe(final === 'paid' ? 1 : 0)
+    expect(await service.listActionable(20, 0)).toEqual([])
+    const before = await attempts.get('review')
+    expect(await attempts.markNeedsReview('review')).toBe(false)
+    expect(await attempts.get('review')).toEqual(before)
+  })
+}
+
+for (const phase of ['reserved', 'invoice_saved', 'pay_unknown'] as const) {
+  test(`an undelivered abandoned LNURL ${phase} notice is retried until delivered`, async () => {
+    const db = createTestDb()
+    await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    let now = new Date()
+    let tries = 0
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      now: () => now,
+      invoiceGraceMs: 1_000,
+      payReviewMs: 1_000,
+      lookup: async () => ({state: 'retryable'}),
+      notifySender: async () => {
+        tries += 1
+        if (tries === 1) throw new Error('Telegram unavailable')
+        return true
+      },
+    })
+    await attempts.reserve({...attempt, id: 'abandon', createdAt: now})
+    if (phase !== 'reserved')
+      await attempts.saveInvoice('abandon', null, {hash: 'abandon', bolt11: 'bolt'})
+    if (phase === 'pay_unknown') await attempts.markPhase('abandon', 'pay_unknown', 'invoice_saved')
+    now = new Date(now.getTime() + 2_000)
+    expect(await service.reconcile('abandon')).toBe('abandoned')
+    expect((await service.listActionable(20, 0)).map(row => row.id)).toEqual(['abandon'])
+    await service.reconcile('abandon')
+    expect(tries).toBe(2)
+    expect(await service.listActionable(20, 0)).toEqual([])
+  })
+}
+
+test('markNeedsReview only claims an unresolved LNURL pay', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+  const attempts = createLnurlPayAttemptRepository(db)
+  await attempts.reserve({...attempt, id: 'guard'})
+  expect(await attempts.markNeedsReview('guard')).toBe(false)
+  await attempts.saveInvoice('guard', null, {hash: 'guard', bolt11: 'bolt'})
+  await attempts.markPhase('guard', 'pay_unknown', 'invoice_saved')
+  await attempts.markProviderAccepted('guard', 'guard')
+  expect(await attempts.markNeedsReview('guard')).toBe(false)
+  await attempts.markSettled('guard')
+  expect(await attempts.markNeedsReview('guard')).toBe(false)
+  expect((await attempts.get('guard')).phase).toBe('settled')
+})
+
+test('a wizard rejection is not announced again by LNURL recovery', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+  const attempts = createLnurlPayAttemptRepository(db)
+  let notices = 0
+  const service = createLnurlPayAttemptService({
+    attempts,
+    log,
+    lookup: async () => ({state: 'retryable'}),
+    notifySender: async () => {
+      notices += 1
+      return true
+    },
+  })
+  await service.beginPay({...attempt, attemptId: 'refused'})
+  await service.noteRejected('refused')
+  expect((await attempts.get('refused')).senderNotified).toBe(true)
+  await service.reconcile('refused')
+  await service.reconcile('refused')
+  expect(notices).toBe(0)
+  expect(await service.listActionable(20, 0)).toEqual([])
+  expect(await service.hasUnresolved(1, attempt.recipient)).toBe(false)
+})
+for (const lookup of ['retryable', 'prior', 'claimed'] as const) {
+  test(`wizard already-paid resolution (${lookup}) does not send a second refusal`, async () => {
+    const db = createTestDb()
+    await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    let notices = 0
+    let donations = 0
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      lookup: async () =>
+        lookup === 'retryable'
+          ? {state: 'retryable'}
+          : {state: 'paid', paidAt: new Date(Date.now() - (lookup === 'prior' ? 60_000 : 0))},
+      notifySender: async () => {
+        notices += 1
+        return true
+      },
+      collectDonation: async () => {
+        donations += 1
+      },
+    })
+    if (lookup === 'claimed') {
+      await service.beginPay({...attempt, attemptId: 'owner', recipient: 'owner@pay.example'})
+      await service.notePaid('owner', attempt.paymentHash, true)
+    }
+    await service.beginPay({...attempt, attemptId: 'refused'})
+    expect(await service.resolveAlreadyPaid('refused')).toBe('absent')
+    expect((await attempts.get('refused')).senderNotified).toBe(true)
+    await service.reconcile('refused')
+    expect(notices).toBe(0)
+    expect(donations).toBe(lookup === 'claimed' ? 1 : 0)
+    expect(await service.listActionable(20, 0)).toEqual([])
+  })
+}
+
+for (const race of [false, true]) {
+  test(`wizard notePaid losing the invoice ${race ? 'during settle' : 'before settle'} is already notified`, async () => {
+    const db = createTestDb()
+    await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    let notices = 0
+    let donations = 0
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      lookup: async () => ({state: 'unknown'}),
+      notifySender: async () => {
+        notices += 1
+        return true
+      },
+      collectDonation: async () => {
+        donations += 1
+      },
+    })
+    await service.beginPay({...attempt, attemptId: 'owner', recipient: 'owner@pay.example'})
+    await service.beginPay({...attempt, attemptId: 'loser'})
+    if (race) {
+      const mark = attempts.markSettled.bind(attempts)
+      attempts.markSettled = async (id, senderNotified) => {
+        if (id === 'loser') await service.notePaid('owner', attempt.paymentHash, true)
+        return mark(id, senderNotified)
+      }
+    } else await service.notePaid('owner', attempt.paymentHash, true)
+    expect(await service.notePaid('loser', attempt.paymentHash, true)).toBe(false)
+    expect((await attempts.get('loser')).phase).toBe('abandoned')
+    expect((await attempts.get('loser')).senderNotified).toBe(true)
+    await service.reconcile('loser')
+    expect(notices).toBe(0)
+    expect(donations).toBe(1)
+    expect(await service.listActionable(20, 0)).toEqual([])
+  })
+}
+
+test('LNURL settle cannot resurrect an abandoned attempt or collect a donation', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+  const attempts = createLnurlPayAttemptRepository(db)
+  let donations = 0
+  const service = createLnurlPayAttemptService({
+    attempts,
+    log,
+    lookup: async () => ({state: 'unknown'}),
+    collectDonation: async () => {
+      donations += 1
+    },
+  })
+  await service.beginPay({...attempt, attemptId: 'abandoned'})
+  await service.noteRejected('abandoned')
+  expect(await service.notePaid('abandoned', attempt.paymentHash)).toBe(false)
+  expect((await attempts.get('abandoned')).phase).toBe('abandoned')
+  expect(donations).toBe(0)
+})
+
+test('an LNURL invoice losing the open-attempt index is closed without a recovery notice', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+  const attempts = createLnurlPayAttemptRepository(db)
+  let notices = 0
+  const service = createLnurlPayAttemptService({
+    attempts,
+    log,
+    lookup: async () => ({state: 'unknown'}),
+    notifySender: async () => {
+      notices += 1
+      return true
+    },
+  })
+  const ids = ['first', 'second']
+  const results = await Promise.all(ids.map(attemptId => service.beginPay({...attempt, attemptId})))
+  expect(results.filter(result => result === 'ready')).toHaveLength(1)
+  expect(results.filter(result => result === 'blocked')).toHaveLength(1)
+  const blockedId = ids[results.indexOf('blocked')]
+  if (!blockedId) throw new Error('missing blocked attempt')
+  expect((await attempts.get(blockedId)).phase).toBe('abandoned')
+  expect((await attempts.get(blockedId)).senderNotified).toBe(true)
+  await service.reconcile(blockedId)
+  expect(notices).toBe(0)
+})
+
+for (const phase of ['pay_unknown', 'provider_accepted'] as const) {
+  test(`recovery still notifies a ${phase} LNURL attempt losing its invoice claim`, async () => {
+    const db = createTestDb()
+    await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    const notices: string[] = []
+    let deliver = false
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      lookup: async () => ({state: 'paid', paidAt: new Date()}),
+      notifySender: async ({outcome}) => {
+        notices.push(outcome)
+        return deliver
+      },
+    })
+    await service.beginPay({...attempt, attemptId: 'owner', recipient: 'owner@pay.example'})
+    await service.notePaid('owner', attempt.paymentHash, true)
+    await service.beginPay({...attempt, attemptId: 'loser'})
+    if (phase === 'provider_accepted')
+      await attempts.markProviderAccepted('loser', attempt.paymentHash)
+    expect(await service.reconcile('loser')).toBe('abandoned')
+    expect((await attempts.get('loser')).senderNotified).toBe(false)
+    expect((await service.listActionable(20, 0)).map(row => row.id)).toEqual(['loser'])
+    deliver = true
+    await service.reconcile('loser')
+    expect(notices).toEqual(['abandoned', 'abandoned'])
+    expect(await service.listActionable(20, 0)).toEqual([])
+  })
+}

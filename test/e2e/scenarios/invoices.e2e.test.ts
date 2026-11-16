@@ -14,7 +14,7 @@ import {
 } from '@telegram/callback-data.js'
 import {registeredConversations} from '@telegram/composition.js'
 import type {Update} from 'grammy/types'
-import {expectNoConversations, expectNoErrors} from '../asserts.js'
+import {expectNoConversations, expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {decodeMintedInvoice, mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
@@ -1914,3 +1914,52 @@ function privatePhoto(): Update {
   })
   return update
 }
+
+test('a 201 pending BOLT11 payment shows checking without a receipt or donation', async () => {
+  credit(USER_A, 1_000)
+  await e2e.container.users.update(USER_A, {donationPercent: 10, donationScope: 'all'})
+  const invoice = foreignInvoice()
+  await e2e.send(privateText(invoice.bolt11))
+  e2e.ln.state.pendingNextPay = true
+  await e2e.send(confirmWallet())
+  const screen = String(e2e.tg.last('editMessageText')?.text)
+  expect(screen).toMatch(/still being checked/)
+  expect(screen).toMatch(/wallet history/)
+  expect(screen).toMatch(/Do not pay again/)
+  expect(screen).not.toMatch(/Invoice paid/)
+  expect(e2e.logs.some(record => record.msg === 'Lightning invoice paid')).toBe(false)
+  expect(await e2e.container.donations.findByPaymentHash(invoice.paymentHash)).toBeUndefined()
+  expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: FOREIGN_SATS, times: 0})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(1)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('BOLT11 replay after expiry reaches the same confirmation and refuses pay', async () => {
+  credit(USER_A, 1_000)
+  const invoice = mintInvoice({
+    sats: FOREIGN_SATS,
+    description: 'expires during review',
+    expirySec: 2,
+  })
+  await e2e.send(privateText(invoice.bolt11))
+  expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Confirm the payment/)
+  const confirm = confirmWallet()
+  await Bun.sleep(2_500)
+  await e2e.send(confirm)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice expired/)
+  expect(
+    e2e.ln.requests.filter(
+      request =>
+        request.method === 'POST' &&
+        request.path === '/api/v1/payments' &&
+        request.body &&
+        Reflect.get(request.body, 'out') === true,
+    ),
+  ).toHaveLength(0)
+  expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: FOREIGN_SATS, times: 0})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+}, 15_000)

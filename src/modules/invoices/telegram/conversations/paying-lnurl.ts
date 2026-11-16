@@ -187,7 +187,6 @@ export async function payingLnurl(
   const paid = await payingInvoice(conversation, ctx, invoiced.bolt11, {
     reviewPrefix: payee,
     host: screen,
-    recheckExpiry: true,
     invalid: opts?.invalid,
     lnurl: {attemptId, recipient},
   })

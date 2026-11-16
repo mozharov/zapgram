@@ -136,6 +136,9 @@ error =
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
     .from-bot = <b>⚠️ You can't send from a bot, channel, group, or anonymous profile.</b>
         Use your personal account.
+    .payment-pending = <b>⏳ The payment is still being checked.</b>
+
+        Its result will appear in your wallet history. Do not pay again.
     .send-paused = <b>⏸ Sending is temporarily paused.</b>
         Your funds are safe. Try again later.
 
@@ -355,6 +358,12 @@ sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
     .completed-warning = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
 
         The send succeeded. A follow-up step did not finish. Do not send this amount again.
+    .blocked = {$hasRecipient ->
+        [true] <b>⏳ Your previous transfer to @{$recipient} is still being checked.</b>
+        *[false] <b>⏳ Your previous transfer to this recipient is still being checked.</b>
+        }
+
+        The new transfer was not started and nothing was debited.
     .still-confirming = <b>⏳ This confirmation is still being checked.</b>
 
         Nothing else will be sent for it. Do not start another send until this one is resolved.

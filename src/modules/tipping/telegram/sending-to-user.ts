@@ -93,12 +93,17 @@ export async function payResolvedUser(
     }),
   )
   if (result.outcome === 'rejected') throw new InsufficientFundsError()
-  if (result.outcome === 'in_flight') {
+  if (result.outcome === 'in_flight' || result.outcome === 'blocked') {
     await closeLivingMenu(ctx, host.messageId, markup =>
       ctx.api.editMessageText(
         host.chatId,
         host.messageId,
-        ctx.t('sending-to-user.still-confirming'),
+        ctx.t(
+          result.outcome === 'blocked'
+            ? 'sending-to-user.blocked'
+            : 'sending-to-user.still-confirming',
+          {recipient: toUser.username ?? '', hasRecipient: Boolean(toUser.username).toString()},
+        ),
         {
           reply_markup: markup,
           ...disabledLinkPreview,
@@ -108,41 +113,44 @@ export async function payResolvedUser(
     return
   }
 
-  await conversation.external(() => {
-    try {
-      captureBotEvent(
-        getRuntime().posthog,
-        'dm_transfer_sent',
-        {
-          amount_sats: sats,
-          payment_method: usedNwc ? 'nwc' : 'internal',
-        },
-        {distinctId: String(ctx.user.id)},
-      )
-    } catch {
-      // Analytics must never throw into the money path.
-    }
-  })
+  try {
+    await conversation.external(() => {
+      try {
+        captureBotEvent(
+          getRuntime().posthog,
+          'dm_transfer_sent',
+          {
+            amount_sats: sats,
+            payment_method: usedNwc ? 'nwc' : 'internal',
+          },
+          {distinctId: String(ctx.user.id)},
+        )
+      } catch {
+        // Analytics must never throw into the money path.
+      }
+    })
 
-  const reportHtml = ctx.t(
-    result.fee === 'failed' || result.notice === 'failed'
-      ? 'sending-to-user.completed-warning'
-      : 'sending-to-user.completed',
-    {
-      amount: sats,
-      usdSuffix,
-      recipient: toUser.username ?? '',
-    },
-  )
+    const reportHtml = ctx.t(
+      result.fee === 'failed' || result.notice === 'failed'
+        ? 'sending-to-user.completed-warning'
+        : 'sending-to-user.completed',
+      {
+        amount: sats,
+        usdSuffix,
+        recipient: toUser.username ?? '',
+      },
+    )
 
-  // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
-  // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
-  await closeLivingMenu(ctx, host.messageId, markup =>
-    ctx.api.editMessageText(host.chatId, host.messageId, reportHtml, {
-      reply_markup: markup,
-      ...disabledLinkPreview,
-    }),
-  )
-  // Recovery tells the sender only when this screen never landed.
-  await conversation.external(() => getRuntime().dmTransfers.markSenderNotified(confirmed.nonce))
+    // The wizard's own screen becomes the report, so no extra message is sent, and it keeps the
+    // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
+    await closeLivingMenu(ctx, host.messageId, markup =>
+      ctx.api.editMessageText(host.chatId, host.messageId, reportHtml, {
+        reply_markup: markup,
+        ...disabledLinkPreview,
+      }),
+    )
+  } catch (error) {
+    await conversation.external(() => getRuntime().dmTransfers.releaseSenderNotice(confirmed.nonce))
+    throw error
+  }
 }

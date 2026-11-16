@@ -1,7 +1,8 @@
 import {afterAll, afterEach, beforeEach, expect, mock, test} from 'bun:test'
 import {createHash} from 'node:crypto'
-import {conversationsTable} from '@infra/db/schema.js'
+import {conversationsTable, donationsTable, lnurlPayAttemptsTable} from '@infra/db/schema.js'
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
+import {recoverDmTransfers} from '@modules/tipping/jobs/recover-dm-transfers.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {encode, toWords} from 'bech32'
 import {expectNoConversations, expectNoErrors, expectPayoutsExactly} from '../asserts.js'
@@ -664,4 +665,96 @@ async function conversationNames(): Promise<string[]> {
   const state = rows[0]?.state
   if (!state || typeof state !== 'object') throw new Error('conversation state missing')
   return Object.keys(state)
+}
+
+for (const response of ['201 pending', '520 pending'] as const) {
+  test(`LNURL ${response} holds the attempt without notePaid or a donation`, async () => {
+    server = startServer('ok')
+    credit(USER_A, 1_000)
+    await e2e.container.users.update(USER_A, {donationPercent: 10, donationScope: 'all'})
+    const pasted = privateText(server.lnurl)
+    await e2e.send(pasted)
+    const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+    const offerId = requiredMessageId('sendMessage')
+    await e2e.send(payCallback(payData, offerId, pasted))
+    await e2e.send(privateText(String(AMOUNT), {messageId: 50_005}))
+    if (response === '201 pending') e2e.ln.state.pendingNextPay = true
+    else
+      e2e.ln.state.failNext(
+        {
+          method: 'POST',
+          path: '/api/v1/payments',
+          body: body =>
+            Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+        },
+        {status: 520, body: {detail: 'Payment is still pending.', status: 'pending'}},
+      )
+    await e2e.send(pressWallet('internal', editedScreen().id))
+    expect(editedScreen().text).toMatch(/still being checked/)
+    expect(editedScreen().text).not.toMatch(/Invoice paid/)
+    const [row] = await e2e.db.select().from(lnurlPayAttemptsTable)
+    expect(row?.phase).toBe('pay_unknown')
+    expect(row?.status).toBe('pending')
+    expect(row?.providerAccepted).toBe(false)
+    expect(row?.senderNotified).toBe(false)
+    expect(await e2e.db.select().from(donationsTable)).toHaveLength(0)
+    expect(e2e.logs.some(record => record.msg === 'Lightning invoice paid')).toBe(false)
+    expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 0})
+    expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+    expect(outgoing()).toHaveLength(response === '201 pending' ? 1 : 0)
+    await expectNoConversations(e2e.db)
+  })
+}
+
+for (const refusal of ['insufficient', 'declined', 'paused', 'already-paid'] as const) {
+  test(`LNURL wizard ${refusal} is not followed by an unpaid recovery notice`, async () => {
+    server = startServer('ok')
+    credit(USER_A, 1_000)
+    await e2e.container.users.update(USER_A, {donationPercent: 10, donationScope: 'all'})
+    const pasted = privateText(server.lnurl)
+    await e2e.send(pasted)
+    const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+    const offerId = requiredMessageId('sendMessage')
+    await e2e.send(payCallback(payData, offerId, pasted))
+    await e2e.send(privateText(String(AMOUNT), {messageId: 50_005}))
+    if (refusal === 'paused') {
+      e2e.ln.state.adminPaymentListEmpty = true
+      e2e.ln.state.fundingSourceBalanceMsat = 0
+    } else {
+      e2e.ln.state.failNext(
+        {
+          method: 'POST',
+          path: '/api/v1/payments',
+          body: body =>
+            Boolean(body && typeof body === 'object' && Reflect.get(body, 'out') === true),
+        },
+        {
+          status: 520,
+          body: {
+            status: 'failed',
+            detail:
+              refusal === 'insufficient'
+                ? 'Insufficient balance.'
+                : refusal === 'already-paid'
+                  ? 'Invoice already paid.'
+                  : 'No route.',
+          },
+        },
+      )
+    }
+    await e2e.send(pressWallet('internal', editedScreen().id))
+    const [row] = await e2e.db.select().from(lnurlPayAttemptsTable)
+    expect(row?.phase).toBe('abandoned')
+    expect(row?.senderNotified).toBe(true)
+    const messages = e2e.tg.of('sendMessage').length
+    await recoverDmTransfers()
+    await recoverDmTransfers()
+    expect(e2e.tg.of('sendMessage')).toHaveLength(messages)
+    expect(await e2e.container.lnurlPays.listActionable(20, 0)).toEqual([])
+    expect(outgoing()).toHaveLength(0)
+    expect(await e2e.db.select().from(donationsTable)).toHaveLength(0)
+    expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 0})
+    expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+    await expectNoConversations(e2e.db)
+  })
 }

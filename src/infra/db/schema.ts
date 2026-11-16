@@ -444,6 +444,8 @@ export const dmTransfersTable = sqliteTable(
     /** The sender already saw the outcome, in the wizard or in a later message. */
     senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
     reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    reviewNotified: integer('review_notified', {mode: 'boolean'}).notNull().default(false),
+    reviewAfter: integer('review_after', {mode: 'timestamp'}),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [
@@ -493,6 +495,8 @@ export const lnurlPayAttemptsTable = sqliteTable(
     providerAccepted: integer('provider_accepted', {mode: 'boolean'}).notNull().default(false),
     providerPaymentHash: text('provider_payment_hash'),
     reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    reviewNotified: integer('review_notified', {mode: 'boolean'}).notNull().default(false),
+    reviewAfter: integer('review_after', {mode: 'timestamp'}),
     senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },

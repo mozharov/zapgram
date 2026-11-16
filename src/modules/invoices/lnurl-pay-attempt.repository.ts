@@ -1,7 +1,7 @@
 import type {AppDatabase} from '@infra/db/client.js'
 import {lnurlPayAttemptsTable} from '@infra/db/schema.js'
 import type {LnurlPayAttempt} from '@infra/db/types.js'
-import {and, asc, eq, inArray, isNull, ne, or} from 'drizzle-orm'
+import {and, asc, eq, inArray, isNull, lte, ne, or} from 'drizzle-orm'
 
 const OPEN_PHASES = ['pay_unknown', 'provider_accepted', 'needs_review'] as const
 
@@ -142,7 +142,13 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
           phase: 'settled',
           ...(senderNotified ? {senderNotified: true} : {}),
         })
-        .where(and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.status, 'pending')))
+        .where(
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            ne(lnurlPayAttemptsTable.phase, 'abandoned'),
+          ),
+        )
         .returning()
       return row !== undefined
     },
@@ -153,11 +159,16 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
      */
     async abandonIfPhase(
       id: string,
-      expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+      expected: 'reserved' | 'invoice_saved' | 'pay_unknown' | 'needs_review',
+      senderNotified = false,
     ): Promise<boolean> {
       const [row] = await database
         .update(lnurlPayAttemptsTable)
-        .set({phase: 'abandoned', reviewLogged: true})
+        .set({
+          phase: 'abandoned',
+          reviewLogged: true,
+          ...(senderNotified ? {senderNotified: true} : {}),
+        })
         .where(
           and(
             eq(lnurlPayAttemptsTable.id, id),
@@ -173,10 +184,14 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
      * Drop a pending row that lost the claim on its invoice, including one that
      * already flipped to provider_accepted. A settled row is left alone.
      */
-    async dropUnclaimed(id: string) {
+    async dropUnclaimed(id: string, senderNotified = false) {
       await database
         .update(lnurlPayAttemptsTable)
-        .set({phase: 'abandoned', reviewLogged: true})
+        .set({
+          phase: 'abandoned',
+          reviewLogged: true,
+          ...(senderNotified ? {senderNotified: true} : {}),
+        })
         .where(
           and(
             eq(lnurlPayAttemptsTable.id, id),
@@ -186,24 +201,8 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
               'invoice_saved',
               'pay_unknown',
               'provider_accepted',
+              'needs_review',
             ]),
-          ),
-        )
-    },
-
-    async markAbandoned(id: string) {
-      await database
-        .update(lnurlPayAttemptsTable)
-        .set({phase: 'abandoned', reviewLogged: true})
-        .where(
-          and(
-            eq(lnurlPayAttemptsTable.id, id),
-            eq(lnurlPayAttemptsTable.status, 'pending'),
-            or(
-              eq(lnurlPayAttemptsTable.phase, 'reserved'),
-              eq(lnurlPayAttemptsTable.phase, 'invoice_saved'),
-              eq(lnurlPayAttemptsTable.phase, 'pay_unknown'),
-            ),
           ),
         )
     },
@@ -212,30 +211,62 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
       const [row] = await database
         .update(lnurlPayAttemptsTable)
         .set({phase: 'needs_review', reviewLogged: true})
-        .where(and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.reviewLogged, false)))
-        .returning()
-      return row !== undefined
-    },
-
-    async claimSenderNotice(id: string): Promise<boolean> {
-      const [row] = await database
-        .update(lnurlPayAttemptsTable)
-        .set({senderNotified: true})
         .where(
-          and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.senderNotified, false)),
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            eq(lnurlPayAttemptsTable.phase, 'pay_unknown'),
+            eq(lnurlPayAttemptsTable.reviewLogged, false),
+          ),
         )
         .returning()
       return row !== undefined
     },
 
-    async releaseSenderNotice(id: string) {
+    async claimSenderNotice(id: string, review = false): Promise<boolean> {
+      const [row] = await database
+        .update(lnurlPayAttemptsTable)
+        .set(review ? {reviewNotified: true} : {senderNotified: true})
+        .where(
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            ...(review
+              ? [
+                  eq(lnurlPayAttemptsTable.status, 'pending'),
+                  eq(lnurlPayAttemptsTable.phase, 'needs_review'),
+                ]
+              : []),
+            eq(
+              review ? lnurlPayAttemptsTable.reviewNotified : lnurlPayAttemptsTable.senderNotified,
+              false,
+            ),
+          ),
+        )
+        .returning()
+      return row !== undefined
+    },
+
+    async releaseSenderNotice(id: string, review = false) {
       await database
         .update(lnurlPayAttemptsTable)
-        .set({senderNotified: false})
+        .set(review ? {reviewNotified: false} : {senderNotified: false})
         .where(eq(lnurlPayAttemptsTable.id, id))
     },
 
-    async listActionable(limit: number, offset: number) {
+    async deferReview(id: string, until: Date) {
+      await database
+        .update(lnurlPayAttemptsTable)
+        .set({reviewAfter: until})
+        .where(
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            eq(lnurlPayAttemptsTable.phase, 'needs_review'),
+          ),
+        )
+    },
+
+    async listActionable(limit: number, offset: number, now = new Date()) {
       return database.query.lnurlPayAttemptsTable.findMany({
         limit,
         offset,
@@ -244,7 +275,26 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
         where: or(
           and(
             eq(lnurlPayAttemptsTable.status, 'pending'),
-            eq(lnurlPayAttemptsTable.reviewLogged, false),
+            or(
+              inArray(lnurlPayAttemptsTable.phase, [
+                'reserved',
+                'invoice_saved',
+                'pay_unknown',
+                'provider_accepted',
+              ]),
+              and(
+                eq(lnurlPayAttemptsTable.phase, 'abandoned'),
+                eq(lnurlPayAttemptsTable.senderNotified, false),
+              ),
+              and(
+                eq(lnurlPayAttemptsTable.phase, 'needs_review'),
+                or(
+                  eq(lnurlPayAttemptsTable.reviewNotified, false),
+                  isNull(lnurlPayAttemptsTable.reviewAfter),
+                  lte(lnurlPayAttemptsTable.reviewAfter, now),
+                ),
+              ),
+            ),
           ),
           and(
             eq(lnurlPayAttemptsTable.status, 'settled'),

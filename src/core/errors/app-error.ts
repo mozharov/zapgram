@@ -15,6 +15,7 @@ export type AppErrorCode =
   | 'not_found'
   | 'unknown'
   | 'send_paused'
+  | 'payment_pending'
 
 export type AppErrorParams = Record<string, string | number>
 
