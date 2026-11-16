@@ -9,6 +9,7 @@ import {
   lnurlInvoiceProblem,
   lnurlPayEndpoint,
   lnurlRecipientKey,
+  lnurlRecipientLabel,
   payableSatRange,
 } from './lnurl-pay.js'
 
@@ -71,6 +72,7 @@ describe('lnurlPayEndpoint', () => {
     )
     const address = {kind: 'lightning-address' as const, value: 'alice@example.com'}
     expect(lnurlRecipientKey(address)).toBe('https://example.com/.well-known/lnurlp/alice')
+    expect(lnurlRecipientLabel(lnurlRecipientKey(address))).toBe('alice@example.com')
     expect(lnurlRecipientKey({kind: 'lnurl', value: 'lnurlp://alice@example.com'})).toBe(
       lnurlRecipientKey(address),
     )

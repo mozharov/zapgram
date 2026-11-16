@@ -60,6 +60,21 @@ export function lnurlRecipientKey(request: PaymentRequest): string {
   return canonicalPayUrl(lnurlPayEndpoint(request))
 }
 
+/** What the user typed, when the lock key is the LUD-16 well-known URL. */
+export function lnurlRecipientLabel(recipient: string): string {
+  try {
+    const url = new URL(recipient)
+    const match = /^\/\.well-known\/lnurlp\/([^/]+)$/.exec(url.pathname)
+    const name = match?.[1]
+    if (url.protocol === 'https:' && !url.port && name && !url.search) {
+      return `${decodeURIComponent(name)}@${url.hostname}`
+    }
+  } catch {
+    return recipient
+  }
+  return recipient
+}
+
 export function canonicalPayUrl(endpoint: string): string {
   const url = new URL(endpoint)
   url.hostname = url.hostname.replace(/\.$/, '').toLowerCase()

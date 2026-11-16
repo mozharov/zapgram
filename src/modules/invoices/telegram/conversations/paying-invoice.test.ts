@@ -10,7 +10,7 @@ test('a cloned send-paused error is still the pause, and a definite refusal is n
   const cloned = {name: 'Error', message: 'send_paused'}
   expect(lnurlPayFailureKind(cloned)).toBe('paused')
   expect(lnurlPayFailureKind(new SendPausedError())).toBe('paused')
-  expect(lnurlPayFailureKind(new NWCPaymentFailedError())).toBe('declined')
+  expect(lnurlPayFailureKind(new NWCPaymentFailedError())).toBe('hold')
   expect(lnurlPayFailureKind(new InsufficientFundsError())).toBe('rejected')
   expect(lnurlPayFailureKind(new NWCTimeoutError())).toBe('hold')
 

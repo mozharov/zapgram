@@ -1,5 +1,6 @@
 import {type AppConfig, createConfig} from '@config'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import {classifyPayoutLookup} from '@core/payments/payout-state.js'
@@ -432,7 +433,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
       return notifier.send(
         fromUserId,
         translate(key, from.languageCode, {
-          recipient: lnurlRecipientHtml(recipient),
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(recipient)),
           amount: sats,
         }),
       )

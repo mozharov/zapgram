@@ -1,9 +1,9 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
-import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {isSendPaused, SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
+import {lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
 import {msatsToSats} from '@core/money/sats.js'
 import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
 import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
@@ -233,7 +233,9 @@ export async function payingInvoice(
       await showLnurlHold(
         ctx,
         host,
-        ctx.t('lnurl-pay-still-checking', {recipient: lnurlRecipientHtml(lnurl.recipient)}),
+        ctx.t('lnurl-pay-still-checking', {
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(lnurl.recipient)),
+        }),
       )
       return conversation.halt()
     }
@@ -354,8 +356,9 @@ export function lnurlPayFailureKind(
   if (isSendPaused(error)) return 'paused'
   if (error instanceof InsufficientFundsError) return 'rejected'
   if (error instanceof InvoiceAlreadyPaidError) return 'already_paid'
-  if (error instanceof NWCPaymentFailedError) return 'declined'
-  if (payLeftBackendUnspent(error)) return 'declined'
+  // "Could not pay" from NWC is not proof the debit never left. Only a finished
+  // LNbits refusal (4xx, or 520 with status failed) abandons the attempt.
+  if (payLeftBackendUnspent(error) && !(error instanceof InsufficientFundsError)) return 'declined'
   return 'hold'
 }
 

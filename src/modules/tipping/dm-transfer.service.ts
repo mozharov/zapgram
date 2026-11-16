@@ -355,6 +355,7 @@ export function createDmTransferService(deps: DmTransferDeps) {
   }): Promise<'sent' | 'failed'> {
     const row = await deps.transfers.get(input.attemptId)
     if (row.noticeSent) return 'sent'
+    if (row.noticeDropped) return 'failed'
     if (row.status !== 'settled') return 'failed'
     const claimed = await deps.transfers.claimNotice(input.attemptId, now(), leaseMs)
     if (!claimed) return 'failed'
