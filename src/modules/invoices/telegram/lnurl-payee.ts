@@ -22,7 +22,7 @@ export function flattenServiceText(value: string): string {
 export function clipLnurlDisplay(value: string, limit = LNURL_DISPLAY_LIMIT): string {
   const trimmed = value.trim()
   if (trimmed.length <= limit) return trimmed
-  return `${trimmed.slice(0, limit - 1)}…`
+  return `…${trimmed.slice(-(limit - 1))}`
 }
 
 export type LnurlPayeeView = {
@@ -54,14 +54,18 @@ export function lnurlPayeeParts(view: LnurlPayeeView): {
     hosts.push(host)
   }
   return {
-    entered: escapeTelegramHtml(clipLnurlDisplay(view.entered)),
+    entered: escapeTelegramHtml(
+      view.enteredKind === 'host' ? view.entered : clipLnurlDisplay(view.entered),
+    ),
     route:
       hosts.length > 1
-        ? hosts
-            .map(host => `<code>${escapeTelegramHtml(clipLnurlDisplay(host))}</code>`)
-            .join(' → ')
+        ? hosts.map(host => `<code>${escapeTelegramHtml(host)}</code>`).join(' → ')
         : '',
-    invoiceHost: escapeTelegramHtml(clipLnurlDisplay(hosts.at(-1) ?? '')),
-    note: escapeTelegramHtml(clipLnurlDisplay(flattenServiceText(view.serviceText))),
+    invoiceHost: escapeTelegramHtml(hosts.at(-1) ?? ''),
+    note: escapeTelegramHtml(clipServiceNote(flattenServiceText(view.serviceText))),
   }
+}
+
+function clipServiceNote(value: string): string {
+  return value.length <= LNURL_DISPLAY_LIMIT ? value : `${value.slice(0, LNURL_DISPLAY_LIMIT - 1)}…`
 }

@@ -2,6 +2,7 @@ import {describe, expect, mock, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {createDonationPayService} from './pay.service.js'
 
 function makeDeps(overrides: Partial<Parameters<typeof createDonationPayService>[0]> = {}) {
@@ -164,7 +165,7 @@ describe('payDonation', () => {
       amountSats: 50,
       rail: 'internal',
     })
-    expect(result).toMatchObject({status: 'failed', reason: 'pay_failed', error: boom})
+    expect(result).toMatchObject({status: 'pending', paymentHash: 'fee-50', error: boom})
     expect(captureException).toHaveBeenCalledTimes(1)
     expect(captureException).toHaveBeenCalledWith(
       boom,
@@ -195,8 +196,89 @@ for (const error of [
       kind: 'one_shot',
       nwc: {payInvoice: nwcPay} as never,
     })
-    expect(result).toMatchObject({status: 'failed', error})
+    expect(result).toMatchObject({status: 'pending', paymentHash: 'fee-50', error})
     expect(insertDonation).not.toHaveBeenCalled()
     expect(nwcPay).not.toHaveBeenCalled()
   })
 }
+
+for (const rail of ['internal', 'nwc'] as const) {
+  for (const error of [
+    new PaymentPendingError(),
+    new Error('timeout'),
+    new InvoiceAlreadyPaidError(),
+  ]) {
+    test(`${rail} returns the fee invoice hash on unknown pay: ${error.message}`, async () => {
+      const payInvoice = mock(async () => {
+        throw error
+      })
+      const {deps, insertDonation} = makeDeps({
+        getUserWallet: async () => ({balance: 100_000, payInvoice}),
+      })
+      expect(
+        await deps.payToFeeCollection({
+          userId: 1,
+          amountSats: 50,
+          rail,
+          nwc: {payInvoice} as never,
+        }),
+      ).toEqual({status: 'pending', paymentHash: 'fee-50', error})
+      expect(payInvoice).toHaveBeenCalledTimes(1)
+      expect(insertDonation).not.toHaveBeenCalled()
+    })
+  }
+}
+
+test('a wallet read failure before pay is a definitive failure without a hash', async () => {
+  const {deps} = makeDeps({
+    getUserWallet: async () => {
+      throw new Error('wallet unavailable')
+    },
+  })
+  expect(await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toMatchObject({
+    status: 'failed',
+    reason: 'pay_failed',
+  })
+})
+
+test('SendPaused is a definitive failure without a hash', async () => {
+  const error = new SendPausedError()
+  const {deps, insertDonation} = makeDeps({
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw error
+      },
+    }),
+  })
+  expect(await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toEqual({
+    status: 'failed',
+    reason: 'pay_failed',
+    error,
+  })
+  expect(insertDonation).not.toHaveBeenCalled()
+})
+
+test('pending donations emit no failed or successful event', async () => {
+  const capture = mock(() => undefined)
+  const {deps, insertDonation} = makeDeps({
+    posthog: {capture, captureException: mock(() => undefined)} as never,
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw new PaymentPendingError()
+      },
+    }),
+  })
+  await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})
+  expect(capture).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'donation_pending',
+      properties: expect.objectContaining({status: 'pending', payment_hash: 'fee-50'}),
+    }),
+  )
+  for (const event of ['donation_failed', 'donate_sent']) {
+    expect(capture).not.toHaveBeenCalledWith(expect.objectContaining({event}))
+  }
+  expect(insertDonation).not.toHaveBeenCalled()
+})

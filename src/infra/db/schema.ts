@@ -20,7 +20,7 @@ export const usersTable = sqliteTable(
     monthlyDonationSats: integer('monthly_donation_sats', {mode: 'number'}).notNull().default(0),
     /** Next due time for monthly donation; null when off. */
     monthlyDonationNextAt: integer('monthly_donation_next_at', {mode: 'timestamp'}),
-    /** Last successful monthly donation payment hash (idempotency for cron). */
+    /** In-flight monthly donation hash; reconcile before retrying and clear after settlement. */
     monthlyDonationLastHash: text('monthly_donation_last_hash'),
     /** Last time we sent a monthly-fail PM (throttle). */
     monthlyDonationLastFailNotifyAt: integer('monthly_donation_last_fail_notify_at', {

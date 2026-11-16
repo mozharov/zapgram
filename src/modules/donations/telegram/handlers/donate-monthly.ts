@@ -97,6 +97,18 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     return
   }
 
+  // A due payment may already be in flight. Let cron reconcile it before changing the amount.
+  if (current.monthlyDonationLastHash) {
+    await ctx.reply(
+      ctx.t('donate.monthly-pending', {
+        sats: current.monthlyDonationSats,
+        usdSuffix: await usdSuffixForSats(current.monthlyDonationSats),
+      }),
+    )
+    await replyDonateHub(ctx)
+    return
+  }
+
   await ctx.replyWithChatAction('typing').catch(() => null)
   const result = await donationPay.payDonation({
     userId: ctx.user.id,
@@ -113,7 +125,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     await users.update(ctx.user.id, {
       monthlyDonationSats: amountSats,
       monthlyDonationNextAt: nextAt,
-      monthlyDonationLastHash: result.paymentHash ?? null,
+      monthlyDonationLastHash: null,
     })
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
@@ -130,6 +142,13 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       $set: {monthly_donation_sats: amountSats},
     })
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
+  } else if (result.status === 'pending') {
+    await users.update(ctx.user.id, {
+      monthlyDonationSats: amountSats,
+      monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
+      monthlyDonationLastHash: result.paymentHash,
+    })
+    await ctx.reply(ctx.t('donate.monthly-pending', {sats: amountSats, usdSuffix}))
   } else {
     await users.update(ctx.user.id, {
       monthlyDonationSats: amountSats,

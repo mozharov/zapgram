@@ -181,10 +181,10 @@ describe('tryCollect', () => {
 })
 
 test('a pending collection does not write the successful donation ledger', async () => {
-  const {service, insertDonation, capture} = makeCollect({
+  const {service, insertDonation, capture, notifyDonationFailed} = makeCollect({
     payToFeeCollection: mock(async () => ({
-      status: 'failed',
-      reason: 'pay_failed',
+      status: 'pending',
+      paymentHash: 'fee-pending',
       error: new PaymentPendingError(),
     })),
   })
@@ -195,7 +195,8 @@ test('a pending collection does not write the successful donation ledger', async
       kind: 'invoice',
       preferredRail: 'internal',
     }),
-  ).toMatchObject({status: 'failed'})
+  ).toMatchObject({status: 'pending', paymentHash: 'fee-pending'})
+  expect(notifyDonationFailed).not.toHaveBeenCalled()
   expect(insertDonation).not.toHaveBeenCalled()
   expect(capture).not.toHaveBeenCalledWith(expect.objectContaining({event: 'donation_collected'}))
 })

@@ -97,6 +97,22 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     return
   }
 
+  // Keep the in-flight period's amount until cron resolves its saved hash.
+  if (current.monthlyDonationLastHash) {
+    const pendingUsdSuffix = await conversation.external(() =>
+      usdSuffixForSats(current.monthlyDonationSats),
+    )
+    await ctx.reply(
+      ctx.t('donate.monthly-pending', {
+        sats: current.monthlyDonationSats,
+        usdSuffix: pendingUsdSuffix,
+      }),
+    )
+    await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
+    return
+  }
+
   await ctx.replyWithChatAction('typing')
   const result = await conversation.external(() =>
     getRuntime().donationPay.payDonation({
@@ -118,7 +134,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       getRuntime().users.update(ctx.user.id, {
         monthlyDonationSats: sats,
         monthlyDonationNextAt: nextAt,
-        monthlyDonationLastHash: result.paymentHash ?? null,
+        monthlyDonationLastHash: null,
       }),
     )
     await conversation.external(() =>
@@ -138,6 +154,15 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       }),
     )
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
+  } else if (result.status === 'pending') {
+    await conversation.external(() =>
+      getRuntime().users.update(ctx.user.id, {
+        monthlyDonationSats: sats,
+        monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
+        monthlyDonationLastHash: result.paymentHash,
+      }),
+    )
+    await ctx.reply(ctx.t('donate.monthly-pending', {sats, usdSuffix}))
   } else {
     await conversation.external(() =>
       getRuntime().users.update(ctx.user.id, {

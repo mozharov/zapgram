@@ -78,3 +78,39 @@ describe('lnurlPayeeParts', () => {
     expect(parts.route).toBe('')
   })
 })
+
+test('long hosts keep their real suffix in the entered host, invoice host and route', () => {
+  const prefix = `trusted.com.${'a'.repeat(60)}.${'b'.repeat(60)}.${'c'.repeat(60)}.${'d'.repeat(40)}`
+  const first = `${prefix}.evil.test`
+  const second = `${prefix}.other.org`
+  expect(first.length).toBeGreaterThan(LNURL_DISPLAY_LIMIT)
+  expect(first.length).toBeLessThanOrEqual(253)
+  const parts = lnurlPayeeParts({
+    entered: first,
+    enteredKind: 'host',
+    hosts: [first, second],
+    serviceText: '',
+  })
+  expect(parts.entered).toBe(first)
+  expect(parts.invoiceHost).toBe(second)
+  expect(parts.route).toBe(`<code>${first}</code> → <code>${second}</code>`)
+  expect(parts.entered).not.toBe(parts.invoiceHost)
+})
+
+test('long addresses and pasted payees drop the prefix and retain the actual @host', () => {
+  const prefix = `trusted.com${'x'.repeat(500)}`
+  const first = `${prefix}@evil.test`
+  const second = `${prefix}@other.org`
+  const parts = lnurlPayeeParts({
+    entered: first,
+    enteredKind: 'address',
+    hosts: ['evil.test'],
+    serviceText: '',
+  })
+  expect(parts.entered.startsWith('…')).toBe(true)
+  expect(parts.entered.endsWith('@evil.test')).toBe(true)
+  expect(parts.entered).not.toContain('trusted.com')
+  expect(parts.entered.length).toBe(LNURL_DISPLAY_LIMIT)
+  expect(lnurlRecipientHtml(first)).toBe(parts.entered)
+  expect(lnurlRecipientHtml(first)).not.toBe(lnurlRecipientHtml(second))
+})

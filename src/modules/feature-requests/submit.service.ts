@@ -85,7 +85,11 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
           fundStatus = 'pay_failed'
           sendPaused = result.error instanceof SendPausedError
           deps.log.warn(
-            {userId: input.userId, reason: result.reason, amountSats: input.amountSats},
+            {
+              userId: input.userId,
+              reason: result.status === 'failed' ? result.reason : 'pending',
+              amountSats: input.amountSats,
+            },
             'Feature request fund payment failed; submitting without sats',
           )
         }

@@ -15,6 +15,7 @@ export type DonationPayRail = 'internal' | 'nwc'
 
 export type PayDonationResult =
   | {status: 'paid'; paymentHash?: string; rail: DonationPayRail}
+  | {status: 'pending'; paymentHash: string; error: unknown}
   | {status: 'failed'; error: unknown; reason: 'invalid_amount' | 'no_funds' | 'pay_failed'}
 
 type PayInvoiceResult = {payment_hash?: string | null}
@@ -75,6 +76,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       error: unknown,
       stage: 'pay_internal' | 'pay_nwc',
       logMessage: string,
+      payStarted: boolean,
     ): PayDonationResult => {
       // The liquidity guard already logged and captured the pause. Don't file it as a pay exception.
       if (error instanceof SendPausedError) {
@@ -90,6 +92,12 @@ export function createDonationPayService(deps: DonationPayDeps) {
           requested_rail: input.rail,
           invoice_payment_hash: invoice.payment_hash,
         })
+      }
+      if (
+        payStarted &&
+        (error instanceof InvoiceAlreadyPaidError || !payLeftBackendUnspent(error))
+      ) {
+        return {status: 'pending', paymentHash: invoice.payment_hash, error}
       }
       return {status: 'failed', error, reason: 'pay_failed'}
     }
@@ -107,7 +115,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
           rail: 'internal',
         }
       } catch (error) {
-        return failedPay(error, 'pay_internal', 'Internal donation pay failed')
+        return failedPay(error, 'pay_internal', 'Internal donation pay failed', internalPayStarted)
       }
     }
 
@@ -123,7 +131,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
           rail: 'nwc',
         }
       } catch (error) {
-        return failedPay(error, 'pay_nwc', 'NWC donation pay failed')
+        return failedPay(error, 'pay_nwc', 'NWC donation pay failed', true)
       }
     }
 
@@ -156,15 +164,8 @@ export function createDonationPayService(deps: DonationPayDeps) {
 
     // auto: internal first, then NWC
     const internal = await tryInternal()
-    if (internal?.status === 'paid') return internal
     // A timeout or uncertain provider response may already have debited this rail.
-    if (
-      internal?.status === 'failed' &&
-      internalPayStarted &&
-      !(internal.error instanceof SendPausedError) &&
-      (internal.error instanceof InvoiceAlreadyPaidError || !payLeftBackendUnspent(internal.error))
-    )
-      return internal
+    if (internal?.status === 'paid' || internal?.status === 'pending') return internal
     const nwcResult = await tryNwc()
     if (nwcResult) return nwcResult
     if (internal?.status === 'failed') return internal
@@ -231,6 +232,16 @@ export function createDonationPayService(deps: DonationPayDeps) {
         rail: result.rail,
         payment_hash: result.paymentHash ?? null,
         ledger_written: ledgerOk,
+      })
+    } else if (result.status === 'pending') {
+      deps.log.info(
+        {userId: input.userId, paymentHash: result.paymentHash},
+        'Donation payment awaiting confirmation',
+      )
+      captureUserEvent(deps.posthog, 'donation_pending', input.userId, {
+        ...baseProps,
+        status: 'pending',
+        payment_hash: result.paymentHash,
       })
     } else {
       captureUserEvent(deps.posthog, 'donation_failed', input.userId, {

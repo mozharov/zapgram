@@ -47,6 +47,18 @@ describe('settlement messages', () => {
     expect(translate('donate.monthly-paused', 'ru', {sats: 21, usdSuffix: ''})).toMatch(/включ/)
   })
 
+  for (const language of ['en', 'ru']) {
+    test(`pending donation messages resolve without claiming failure in ${language}`, () => {
+      for (const key of ['donate.pending', 'donate.monthly-pending']) {
+        const message = translate(key, language, {sats: 21, usdSuffix: ''})
+        expect(message).not.toContain(key)
+        expect(message).toContain('21')
+        expect(message).toMatch(/confirmation|подтверждения/)
+        expect(message).not.toMatch(/failed|не прошёл|не удалось/i)
+      }
+    })
+  }
+
   test('the renewal message does not claim the renewal was automatic', () => {
     // Also sent when a subscriber pays a renewal invoice by hand.
     expect(translate('subscription-renewal.renewed', 'en', context)).not.toContain('automatic')

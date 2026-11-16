@@ -94,7 +94,12 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
   )
 
   const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
-  if (result.status !== 'paid') {
+  if (result.status === 'pending') {
+    await ctx.reply(ctx.t('donate.pending', {sats, usdSuffix}))
+    await replyDonateHub(ctx)
+    return
+  }
+  if (result.status === 'failed') {
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'donate_one_shot_ui_failed', {
         feature: 'donations',

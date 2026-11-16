@@ -16,6 +16,7 @@ import type {DonationPayRail, DonationPayService, PayDonationResult} from './pay
 export type CollectDonationResult =
   | {status: 'skipped'; reason: 'off' | 'zero' | 'scope' | 'user_missing'}
   | {status: 'collected'; amountSats: number; rail: DonationPayRail; paymentHash?: string}
+  | {status: 'pending'; amountSats: number; paymentHash: string}
   | {status: 'failed'; amountSats: number; error: unknown}
 
 export type CollectDonationDeps = {
@@ -164,6 +165,15 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
           rail: payResult.rail,
           paymentHash: payResult.paymentHash,
         }
+      }
+
+      if (payResult.status === 'pending') {
+        captureUserEvent(deps.posthog, 'donation_pending', input.userId, {
+          ...collectProps,
+          status: 'pending',
+          payment_hash: payResult.paymentHash,
+        })
+        return {status: 'pending', amountSats, paymentHash: payResult.paymentHash}
       }
 
       captureUserEvent(deps.posthog, 'donation_failed', input.userId, {
