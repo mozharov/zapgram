@@ -22,6 +22,7 @@ export const usersTable = sqliteTable(
     monthlyDonationNextAt: integer('monthly_donation_next_at', {mode: 'timestamp'}),
     /** In-flight monthly donation hash; reconcile before retrying and clear after settlement. */
     monthlyDonationLastHash: text('monthly_donation_last_hash'),
+    monthlyDonationExpiresAt: integer('monthly_donation_expires_at', {mode: 'timestamp'}),
     /** Last time we sent a monthly-fail PM (throttle). */
     monthlyDonationLastFailNotifyAt: integer('monthly_donation_last_fail_notify_at', {
       mode: 'timestamp',
@@ -68,6 +69,28 @@ export const donationsTable = sqliteTable(
     index('donations_user_id_idx').on(table.userId),
     /** Rolling window aggregates (e.g. last 30 days on /donate). */
     index('donations_created_at_idx').on(table.createdAt),
+  ],
+)
+
+/** Unresolved fee invoices, kept separately for every independent collection. */
+export const pendingDonationPaymentsTable = sqliteTable(
+  'pending_donation_payments',
+  {
+    paymentHash: text('payment_hash').primaryKey(),
+    userId: integer('user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    kind: text('kind', {enum: ['one_shot', 'percent', 'feature_request']}).notNull(),
+    amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
+    expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    index('pending_donation_payments_user_kind_idx').on(table.userId, table.kind),
+    check(
+      'pending_donation_payments_kind_check',
+      sql`${table.kind} in ('one_shot', 'percent', 'feature_request')`,
+    ),
   ],
 )
 

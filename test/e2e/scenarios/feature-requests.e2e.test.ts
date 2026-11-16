@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {reconcilePendingDonations} from '@modules/donations/jobs/reconcile-pending-donations.js'
 import {featureFundAmountRoute, staticCallback} from '@telegram/callback-data.js'
 import {expectNoConversations, expectNoErrors} from '../asserts.js'
 import {OWNER, USER_A} from '../fixtures/ids.js'
@@ -421,3 +422,75 @@ function richHtmlOf(payload: Record<string, unknown> | undefined): string {
   if (!richMessage || typeof richMessage !== 'object' || Array.isArray(richMessage)) return ''
   return String(Reflect.get(richMessage, 'html') ?? '')
 }
+
+test('pending feature funding waits in UI and admin meta, retries by lookup, then cron records it once', async () => {
+  await seedUser(e2e, {id: USER_A, donationPercent: 0})
+  await seedUser(e2e, {id: OWNER})
+  credit(USER_A, STARTING)
+  e2e.ln.state.pendingNextPay = true
+  await openFeatureRequest()
+  await e2e.send(privateText('Pending funded idea'))
+  await e2e.send(
+    privateCallback(featureFundAmountRoute.build({amountSats: 21}), {
+      messageId: requiredPromptMessageId(),
+    }),
+  )
+  const [pending] = await e2e.container.donations.listPending(USER_A, 'feature_request')
+  if (!pending) throw new Error('Expected pending feature payment')
+  expect(pending.amountSats).toBe(21)
+  expect(pending.expiresAt > new Date()).toBe(true)
+  const report = e2e.tg
+    .of('editMessageText')
+    .filter(call => Number(call.chat_id) === USER_A)
+    .at(-1)
+  expect(String(report?.text)).toMatch(/awaiting payment confirmation/i)
+  expect(String(report?.text)).not.toMatch(/could not|without funding/i)
+  const meta = e2e.tg
+    .of('sendMessage')
+    .filter(call => Number(call.chat_id) === OWNER)
+    .at(-1)
+  expect(String(meta?.text)).toMatch(/Fund: awaiting payment confirmation/i)
+  expect(String(meta?.text)).not.toMatch(/failed|Fund: none|still free/i)
+  expect((await e2e.container.donations.getUserStats(USER_A)).count).toBe(0)
+
+  // A separate ordinary donation must not consume or overwrite the feature funding hash.
+  await e2e.container.donationPay.payDonation({userId: USER_A, amountSats: 50, kind: 'one_shot'})
+  await openFeatureRequest()
+  await e2e.send(privateText('Retry funding while the first invoice is live'))
+  await e2e.send(
+    privateCallback(featureFundAmountRoute.build({amountSats: 100}), {
+      messageId: requiredPromptMessageId(),
+    }),
+  )
+  expect(await e2e.container.donations.listPending(USER_A, 'feature_request')).toHaveLength(1)
+  expect(e2e.ln.state.payments.filter(payment => !payment.out)).toHaveLength(2)
+  await reconcilePendingDonations()
+  expect(await e2e.container.donations.listPending()).toHaveLength(1)
+  for (const payment of e2e.ln.state.payments.filter(
+    row => row.paymentHash === pending.paymentHash,
+  )) {
+    if (!payment.out) e2e.ln.state.credit(payment.walletId, payment.amountMsat)
+    payment.paid = true
+    payment.expiresAt = new Date(Date.now() - 1000) // paid takes precedence over expiry
+  }
+  await Promise.all([reconcilePendingDonations(), reconcilePendingDonations()])
+  expect(await e2e.container.donations.listPending()).toHaveLength(0)
+  expect(await e2e.container.donations.findByPaymentHash(pending.paymentHash)).toMatchObject({
+    amountSats: 21,
+    kind: 'one_shot',
+    userId: USER_A,
+  })
+  expect(await e2e.container.donations.getUserStats(USER_A)).toMatchObject({
+    count: 2,
+    totalSats: 71,
+  })
+  const fees = e2e.ln.state.wallets.find(wallet => wallet.name === FEES)?.id
+  const donor = e2e.ln.state.wallets.find(wallet => wallet.name === `${USER_A} wallet`)?.id
+  const incoming = e2e.ln.state.payments.filter(payment => !payment.out)
+  const outgoing = e2e.ln.state.payments.filter(payment => payment.out)
+  expect(incoming).toHaveLength(2)
+  expect(incoming.filter(payment => payment.walletId === fees)).toHaveLength(2)
+  expect(outgoing).toHaveLength(2)
+  expect(outgoing.filter(payment => payment.walletId === donor)).toHaveLength(2)
+  expect(outgoing.filter(payment => payment.walletId !== donor)).toHaveLength(0)
+})

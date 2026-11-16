@@ -129,3 +129,38 @@ describe('createFeatureRequestService', () => {
     expect(copyMessage).toHaveBeenCalled()
   })
 })
+
+test('pending funding submits with explicit waiting status and no failed/free claim', async () => {
+  const notify = mock(async () => true)
+  const warn = mock(() => {})
+  const payDonation = mock(async () => ({
+    status: 'pending' as const,
+    paymentHash: 'pending-feature',
+    expiresAt: new Date(),
+    error: new Error('timeout'),
+  }))
+  const capture = mock(() => {})
+  const service = createFeatureRequestService({
+    payDonation,
+    notify,
+    copyMessage: async () => true,
+    adminTelegramIds: [7],
+    formatAdminMeta: formatFeatureRequestAdminMeta,
+    log: {info: () => {}, warn, error: () => {}, debug: () => {}} as never,
+    posthog: {capture, captureException: () => {}} as never,
+  })
+  const result = await service.submit({userId: 1, source, amountSats: 21})
+  expect(result).toMatchObject({fundStatus: 'pending', amountPaidSats: 0, sendPaused: false})
+  expect(payDonation).toHaveBeenCalledWith(
+    expect.objectContaining({kind: 'one_shot', pendingKind: 'feature_request'}),
+  )
+  expect(notify).toHaveBeenCalledWith(7, expect.stringContaining('awaiting payment confirmation'))
+  expect(notify).not.toHaveBeenCalledWith(7, expect.stringMatching(/failed|still free|Fund: none/))
+  expect(warn).not.toHaveBeenCalled()
+  expect(capture).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'feature_requested',
+      properties: expect.objectContaining({fund_status: 'pending'}),
+    }),
+  )
+})

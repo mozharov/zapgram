@@ -1,7 +1,12 @@
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {advanceMonthlyNextAt} from '@core/money/donation.js'
+import {
+  classifyDonationLookup,
+  type DonationPaymentLookup,
+  donationInvoiceExpiresAt,
+} from '@core/money/donation-payment.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
-import {classifyPayoutLookup, type PayoutState} from '@core/payments/payout-state.js'
+import type {PayoutState} from '@core/payments/payout-state.js'
 import type {User} from '@infra/db/types.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 import {runBatch} from '@jobs/run-batch.js'
@@ -35,9 +40,7 @@ export type MonthlyDonationDeps = Pick<Runtime, 'log' | 'posthog' | 'translate'>
   donations: Pick<Runtime['donations'], 'findByPaymentHash' | 'insertDonation'>
   donationPay: Pick<Runtime['donationPay'], 'payDonation'>
   masterWallet: {
-    lookupFeePayment: (
-      hash: string,
-    ) => Promise<{paid: boolean; status?: string; details: {amount: number}}>
+    lookupFeePayment: (hash: string) => Promise<DonationPaymentLookup>
   }
   notifier: Pick<Runtime['notifier'], 'send'>
   rates: Pick<Runtime['rates'], 'getBtcUsd'>
@@ -63,13 +66,19 @@ export async function processMonthlyDonation(
 
   // Migration 0027 clears legacy successful hashes: those do not pay the current period.
   // From then on, only an unresolved invoice may own this period via lastHash.
-  const enabled = amount > 0 && user.monthlyDonationNextAt !== null
+  const enabled = amount > 0
   if (user.monthlyDonationLastHash) {
+    const expiresAt = user.monthlyDonationExpiresAt ?? donationInvoiceExpiresAt(null, now)
+    if (!user.monthlyDonationExpiresAt) {
+      // Older processes can still write a hash without a TTL during rollout. Initialize once.
+      await users.update(user.id, {monthlyDonationExpiresAt: expiresAt})
+      log.info({userId: user.id}, 'Legacy monthly donation TTL saved')
+    }
     let state: PayoutState
     let paidAmountSats: number | undefined
     try {
       const payment = await masterWallet.lookupFeePayment(user.monthlyDonationLastHash)
-      state = classifyPayoutLookup(payment)
+      state = classifyDonationLookup(payment, expiresAt, now)
       paidAmountSats = payment.details.amount / 1000
     } catch (error) {
       if (error instanceof HTTPError && error.response.statusCode === 404) {
@@ -98,10 +107,15 @@ export async function processMonthlyDonation(
           paymentHash: user.monthlyDonationLastHash,
         })
       }
-      const nextAt = enabled ? advanceMonthlyNextAt(user.monthlyDonationNextAt ?? now, now) : null
+      const nextAt = enabled
+        ? user.monthlyDonationNextAt && user.monthlyDonationNextAt > now
+          ? user.monthlyDonationNextAt
+          : advanceMonthlyNextAt(user.monthlyDonationNextAt ?? now, now)
+        : null
       await users.update(user.id, {
         ...(enabled ? {monthlyDonationNextAt: nextAt} : {}),
         monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
       })
       log.info(
         {userId: user.id, paymentHash: user.monthlyDonationLastHash},
@@ -116,7 +130,7 @@ export async function processMonthlyDonation(
       return 'done'
     }
     // Release a definitively failed hash before attempting another payment.
-    await users.update(user.id, {monthlyDonationLastHash: null})
+    await users.update(user.id, {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
     log.info({userId: user.id}, 'Failed monthly donation hash cleared')
   }
 
@@ -137,6 +151,7 @@ export async function processMonthlyDonation(
     await users.update(user.id, {
       monthlyDonationNextAt: nextAt,
       monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
     })
     log.info({userId: user.id, paymentHash: result.paymentHash}, 'Monthly donation paid')
     captureUserEvent(posthog, 'monthly_donate_charged', user.id, {
@@ -150,7 +165,10 @@ export async function processMonthlyDonation(
   }
 
   if (result.status === 'pending') {
-    await users.update(user.id, {monthlyDonationLastHash: result.paymentHash})
+    await users.update(user.id, {
+      monthlyDonationLastHash: result.paymentHash,
+      monthlyDonationExpiresAt: result.expiresAt,
+    })
     return 'keep'
   }
 

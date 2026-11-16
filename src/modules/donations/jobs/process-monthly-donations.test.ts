@@ -1,4 +1,5 @@
 import {expect, mock, test} from 'bun:test'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
 import type {Donation, User} from '@infra/db/types.js'
@@ -39,6 +40,7 @@ function harness() {
     }),
   )
   const donationPay = createDonationPayService({
+    pending: {save: async () => {}, reconcileUser: async () => []},
     createFeeCollectionInvoice,
     getUserWallet: async () => ({balance: 100_000, payInvoice}),
     insertDonation,
@@ -46,7 +48,11 @@ function harness() {
   })
   const payDonation = mock(donationPay.payDonation)
   const lookupFeePayment = mock(
-    async (): Promise<{paid: boolean; status?: string; details: {amount: number}}> => ({
+    async (): Promise<{
+      paid: boolean
+      status?: string
+      details: {amount: number; expiry?: Date | null}
+    }> => ({
       paid: false,
       status: 'pending',
       details: {amount: 50_000},
@@ -296,3 +302,112 @@ for (const outcome of ['failed', '404'] as const) {
     expect(h.send).not.toHaveBeenCalled()
   })
 }
+
+for (const source of ['lookup', 'saved'] as const) {
+  test(`pending monthly ${source} expiry releases the hash and allows a new invoice`, async () => {
+    const h = harness()
+    await h.tick()
+    const oldHash = h.user.monthlyDonationLastHash
+    const expired = new Date(h.now.getTime() - 1000)
+    if (source === 'lookup')
+      h.lookupFeePayment.mockResolvedValue({
+        paid: false,
+        status: 'pending',
+        details: {amount: 50_000, expiry: expired},
+      })
+    else h.user.monthlyDonationExpiresAt = expired
+    h.payInvoice.mockResolvedValue({})
+    expect(await h.tick()).toBe('done')
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.update).toHaveBeenCalledWith(1, {
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+    expect(h.ledger).toHaveLength(1)
+    expect(h.ledger[0]?.paymentHash).not.toBe(oldHash)
+  })
+}
+
+test('pending with live lookup and saved expiry waits without a new invoice', async () => {
+  const h = harness()
+  await h.tick()
+  const hash = h.user.monthlyDonationLastHash
+  expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+  h.lookupFeePayment.mockResolvedValue({
+    paid: false,
+    details: {amount: 50_000, expiry: new Date(h.now.getTime() + 60_000)},
+  })
+  expect(await h.tick()).toBe('keep')
+  expect(h.user.monthlyDonationLastHash).toBe(hash)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+})
+
+test('definite NWC refusal does not save lastHash and the following tick tries again', async () => {
+  const h = harness()
+  const payInvoice = mock(async () => {
+    throw new NWCPaymentFailedError()
+  })
+  h.user.nwcUrl = 'unit-test-nwc'
+  h.deps.donationPay = createDonationPayService({
+    pending: {save: async () => {}, reconcileUser: async () => []},
+    createFeeCollectionInvoice: h.createFeeCollectionInvoice,
+    getUserWallet: async () => ({balance: 0, payInvoice}),
+    createNwc: () => ({payInvoice}) as never,
+    insertDonation: h.insertDonation,
+    log: h.deps.log,
+  })
+  for (let i = 0; i < 2; i++) {
+    expect(await h.tick()).toBe('keep')
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+  }
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+  expect(payInvoice).toHaveBeenCalledTimes(2)
+  expect(h.lookupFeePayment).not.toHaveBeenCalled()
+  expect(h.ledger).toHaveLength(0)
+})
+
+test('paid recovery preserves a future nextAt and clears hash and TTL without charging', async () => {
+  const h = harness()
+  await h.tick()
+  h.user.monthlyDonationNextAt = new Date(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS)
+  const nextAt = h.user.monthlyDonationNextAt
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(await h.tick()).toBe('done')
+  expect(h.user.monthlyDonationNextAt).toEqual(nextAt)
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.user.monthlyDonationExpiresAt).toBeNull()
+  expect(await h.tick()).toBe('done')
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.ledger).toHaveLength(1)
+})
+
+test('paid recovery schedules an enabled donor with null nextAt', async () => {
+  const h = harness()
+  h.user.monthlyDonationLastHash = 'old-success'
+  h.user.monthlyDonationNextAt = null
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(await h.tick()).toBe('done')
+  expect((h.user.monthlyDonationNextAt as Date | null)?.getTime()).toBe(
+    h.now.getTime() + MONTHLY_DONATION_PERIOD_MS,
+  )
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.ledger).toHaveLength(1)
+  expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
+})
+
+test('legacy pending without lookup expiry gets a stored TTL once and eventually retries', async () => {
+  const h = harness()
+  h.user.monthlyDonationLastHash = 'legacy-pending'
+  h.user.monthlyDonationExpiresAt = null
+  expect(await h.tick()).toBe('keep')
+  const expiresAt = h.user.monthlyDonationExpiresAt as Date | null
+  if (!expiresAt) throw new Error('Expected stored TTL')
+  expect(await h.tick(new Date(h.now.getTime() + 1000))).toBe('keep')
+  expect(h.user.monthlyDonationExpiresAt as Date | null).toEqual(expiresAt)
+  h.payInvoice.mockResolvedValue({})
+  expect(await h.tick(new Date(expiresAt.getTime() + 1000))).toBe('done')
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+})

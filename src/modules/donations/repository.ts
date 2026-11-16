@@ -1,9 +1,13 @@
 import {type DonationLedgerKind, MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
 import type {AppDatabase} from '@infra/db/client.js'
-import {donationPlatformStatsTable, donationsTable} from '@infra/db/schema.js'
-import type {Donation, NewDonation} from '@infra/db/types.js'
+import {
+  donationPlatformStatsTable,
+  donationsTable,
+  pendingDonationPaymentsTable,
+} from '@infra/db/schema.js'
+import type {Donation, NewDonation, PendingDonationPayment} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {desc, eq, gte, sql} from 'drizzle-orm'
+import {and, asc, desc, eq, gte, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserDonationStats = {
@@ -33,39 +37,92 @@ export function createDonationRepository(database: AppDatabase) {
   }
 
   async function insert(data: NewDonation & {id?: string}): Promise<Donation> {
-    const id = data.id ?? crypto.randomUUID()
-    const amountSats = data.amountSats
-
     // bun-sqlite commits when this callback returns. Awaiting inside it runs the second write
     // after the commit, so a failed total update would leave the ledger row behind.
-    return database.transaction(tx => {
-      const row = firstOrThrow(
-        tx
-          .insert(donationsTable)
-          .values({...data, id})
-          .returning()
-          .all(),
-        'donation',
+    return database.transaction(tx => insertRow(tx, data))
+  }
+
+  function insertRow(tx: Pick<AppDatabase, 'insert'>, data: NewDonation & {id?: string}): Donation {
+    const amountSats = data.amountSats
+    const row = firstOrThrow(
+      tx
+        .insert(donationsTable)
+        .values({...data, id: data.id ?? crypto.randomUUID()})
+        .returning()
+        .all(),
+      'donation',
+    )
+
+    // Keep singleton totals in lockstep with the ledger (O(1) /donate all-time read).
+    tx.insert(donationPlatformStatsTable)
+      .values({
+        id: PLATFORM_STATS_ID,
+        totalSats: amountSats,
+        totalCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: donationPlatformStatsTable.id,
+        set: {
+          totalSats: sql`${donationPlatformStatsTable.totalSats} + ${amountSats}`,
+          totalCount: sql`${donationPlatformStatsTable.totalCount} + 1`,
+          updatedAt: new Date(),
+        },
+      })
+      .run()
+
+    return row
+  }
+
+  async function savePending(data: Omit<PendingDonationPayment, 'createdAt'>) {
+    await database.insert(pendingDonationPaymentsTable).values(data).onConflictDoNothing()
+  }
+
+  async function listPending(userId?: number, kind?: PendingDonationPayment['kind']) {
+    return database
+      .select()
+      .from(pendingDonationPaymentsTable)
+      .where(
+        and(
+          userId === undefined ? undefined : eq(pendingDonationPaymentsTable.userId, userId),
+          kind === undefined ? undefined : eq(pendingDonationPaymentsTable.kind, kind),
+        ),
       )
+      .orderBy(
+        asc(pendingDonationPaymentsTable.createdAt),
+        asc(pendingDonationPaymentsTable.paymentHash),
+      )
+  }
 
-      // Keep singleton totals in lockstep with the ledger (O(1) /donate all-time read).
-      tx.insert(donationPlatformStatsTable)
-        .values({
-          id: PLATFORM_STATS_ID,
-          totalSats: amountSats,
-          totalCount: 1,
+  async function removePending(hash: string) {
+    await database
+      .delete(pendingDonationPaymentsTable)
+      .where(eq(pendingDonationPaymentsTable.paymentHash, hash))
+  }
+
+  /** Ledger, totals and pending removal commit together; UI and cron may reconcile concurrently. */
+  async function completePending(hash: string) {
+    return database.transaction(tx => {
+      const pending = tx
+        .select()
+        .from(pendingDonationPaymentsTable)
+        .where(eq(pendingDonationPaymentsTable.paymentHash, hash))
+        .get()
+      if (!pending) return
+      const existing = tx
+        .select()
+        .from(donationsTable)
+        .where(eq(donationsTable.paymentHash, hash))
+        .get()
+      if (!existing)
+        insertRow(tx, {
+          userId: pending.userId,
+          amountSats: pending.amountSats,
+          kind: pending.kind === 'percent' ? 'percent' : 'one_shot',
+          paymentHash: hash,
         })
-        .onConflictDoUpdate({
-          target: donationPlatformStatsTable.id,
-          set: {
-            totalSats: sql`${donationPlatformStatsTable.totalSats} + ${amountSats}`,
-            totalCount: sql`${donationPlatformStatsTable.totalCount} + 1`,
-            updatedAt: new Date(),
-          },
-        })
+      tx.delete(pendingDonationPaymentsTable)
+        .where(eq(pendingDonationPaymentsTable.paymentHash, hash))
         .run()
-
-      return row
     })
   }
 
@@ -122,6 +179,10 @@ export function createDonationRepository(database: AppDatabase) {
 
   return {
     insert,
+    savePending,
+    listPending,
+    removePending,
+    completePending,
     getUserStats,
     getPlatformStats,
     findByPaymentHash,

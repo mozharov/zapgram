@@ -1,8 +1,10 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import type {DonationLedgerKind} from '@core/money/donation.js'
 import {isValidDonationAmountSats} from '@core/money/donation.js'
+import {donationInvoiceExpiresAt} from '@core/money/donation-payment.js'
 import {satsToMsats} from '@core/money/sats.js'
 import type {User} from '@infra/db/types.js'
 import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
@@ -10,18 +12,22 @@ import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
+import type {PendingDonationService} from './pending.service.js'
 
 export type DonationPayRail = 'internal' | 'nwc'
 
 export type PayDonationResult =
-  | {status: 'paid'; paymentHash?: string; rail: DonationPayRail}
-  | {status: 'pending'; paymentHash: string; error: unknown}
+  | {status: 'paid'; paymentHash?: string; rail: DonationPayRail | 'recovered'; amountSats?: number}
+  | {status: 'pending'; paymentHash: string; expiresAt: Date; amountSats?: number; error: unknown}
   | {status: 'failed'; error: unknown; reason: 'invalid_amount' | 'no_funds' | 'pay_failed'}
 
 type PayInvoiceResult = {payment_hash?: string | null}
 
 export type DonationPayDeps = {
-  createFeeCollectionInvoice: (sats: number) => Promise<{payment_hash: string; bolt11: string}>
+  createFeeCollectionInvoice: (
+    sats: number,
+  ) => Promise<{payment_hash: string; bolt11: string; expiry?: Date | null}>
+  pending: Pick<PendingDonationService, 'save' | 'reconcileUser'>
   getUserWallet: (userId: User['id']) => Promise<{
     balance: number
     payInvoice: (bolt11: string) => Promise<PayInvoiceResult>
@@ -58,7 +64,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       return {status: 'failed', error: new Error('invalid amount'), reason: 'invalid_amount'}
     }
 
-    let invoice: {payment_hash: string; bolt11: string}
+    let invoice: {payment_hash: string; bolt11: string; expiry?: Date | null}
     try {
       invoice = await deps.createFeeCollectionInvoice(amountSats)
     } catch (error) {
@@ -72,6 +78,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       return {status: 'failed', error, reason: 'pay_failed'}
     }
 
+    const expiresAt = donationInvoiceExpiresAt(invoice.expiry)
     const failedPay = (
       error: unknown,
       stage: 'pay_internal' | 'pay_nwc',
@@ -93,11 +100,9 @@ export function createDonationPayService(deps: DonationPayDeps) {
           invoice_payment_hash: invoice.payment_hash,
         })
       }
-      if (
-        payStarted &&
-        (error instanceof InvoiceAlreadyPaidError || !payLeftBackendUnspent(error))
-      ) {
-        return {status: 'pending', paymentHash: invoice.payment_hash, error}
+      const unspent = error instanceof NWCPaymentFailedError || payLeftBackendUnspent(error)
+      if (payStarted && (error instanceof InvoiceAlreadyPaidError || !unspent)) {
+        return {status: 'pending', paymentHash: invoice.payment_hash, expiresAt, error}
       }
       return {status: 'failed', error, reason: 'pay_failed'}
     }
@@ -172,16 +177,38 @@ export function createDonationPayService(deps: DonationPayDeps) {
     return {status: 'failed', error: new Error('no funds'), reason: 'no_funds'}
   }
 
-  async function payDonation(input: {
+  async function doPayDonation(input: {
     userId: number
     amountSats: number
     kind: 'one_shot' | 'monthly'
+    pendingKind?: 'one_shot' | 'feature_request'
     rail?: DonationPayRail | 'auto'
     nwcUrl?: string | null
     nwc?: NostrWallet
     /** Extra product context (source UI, job, etc.). */
     analytics?: Record<string, unknown>
   }): Promise<PayDonationResult> {
+    const pendingKind = input.pendingKind ?? 'one_shot'
+    if (input.kind === 'one_shot') {
+      const previous = await deps.pending.reconcileUser(input.userId, pendingKind)
+      const unresolved = previous.find(item => item.state === 'pending')
+      if (unresolved)
+        return {
+          status: 'pending',
+          paymentHash: unresolved.row.paymentHash,
+          expiresAt: unresolved.row.expiresAt,
+          amountSats: unresolved.row.amountSats,
+          error: new Error('Awaiting donation confirmation'),
+        }
+      const paid = previous.find(item => item.state === 'paid')
+      if (paid)
+        return {
+          status: 'paid',
+          paymentHash: paid.row.paymentHash,
+          rail: 'recovered',
+          amountSats: paid.row.amountSats,
+        }
+    }
     const requestedRail = input.rail ?? 'auto'
     const hasNwc = Boolean(input.nwc || input.nwcUrl)
     const baseProps = {
@@ -234,6 +261,14 @@ export function createDonationPayService(deps: DonationPayDeps) {
         ledger_written: ledgerOk,
       })
     } else if (result.status === 'pending') {
+      if (input.kind === 'one_shot')
+        await deps.pending.save({
+          userId: input.userId,
+          kind: pendingKind,
+          amountSats: input.amountSats,
+          paymentHash: result.paymentHash,
+          expiresAt: result.expiresAt,
+        })
       deps.log.info(
         {userId: input.userId, paymentHash: result.paymentHash},
         'Donation payment awaiting confirmation',
@@ -265,6 +300,25 @@ export function createDonationPayService(deps: DonationPayDeps) {
     }
 
     return result
+  }
+
+  // Serialize explicit retries so two callbacks cannot both pass the pending check before pay.
+  const inFlight = new Map<string, Promise<PayDonationResult>>()
+  async function payDonation(
+    input: Parameters<typeof doPayDonation>[0],
+  ): Promise<PayDonationResult> {
+    const key = `${input.userId}:${input.kind}:${input.pendingKind ?? 'one_shot'}`
+    const previous = inFlight.get(key)
+    const current = (async () => {
+      if (previous) await previous.catch(() => undefined)
+      return doPayDonation(input)
+    })()
+    inFlight.set(key, current)
+    try {
+      return await current
+    } finally {
+      if (inFlight.get(key) === current) inFlight.delete(key)
+    }
   }
 
   return {payToFeeCollection, payDonation}

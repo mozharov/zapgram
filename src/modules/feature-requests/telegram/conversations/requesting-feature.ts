@@ -96,9 +96,11 @@ export async function requestingFeature(conversation: BotConversation, ctx: Conv
     ? `${ctx.t('error.send-paused')}\n\n${ctx.t('feature.fund-failed-submitted')}`
     : result.fundStatus === 'paid'
       ? ctx.t('feature.submitted-funded', {sats: result.amountPaidSats, usdSuffix})
-      : result.fundStatus === 'pay_failed'
-        ? ctx.t('feature.fund-failed-submitted')
-        : ctx.t('feature.submitted')
+      : result.fundStatus === 'pending'
+        ? ctx.t('feature.fund-pending-submitted')
+        : result.fundStatus === 'pay_failed'
+          ? ctx.t('feature.fund-failed-submitted')
+          : ctx.t('feature.submitted')
 
   // The wizard's own screen becomes the report, so no extra message is sent. It keeps the open-menu
   // button and stays put; the user's feature message stays too — it is the `copyMessage` source.

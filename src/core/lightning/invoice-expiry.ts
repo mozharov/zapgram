@@ -1,0 +1,1 @@
+export const DEFAULT_INVOICE_EXPIRY_SECONDS = 24 * 60 * 60

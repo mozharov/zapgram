@@ -44,6 +44,10 @@ import {
   type DonationCollectService,
 } from '@modules/donations/collect.service.js'
 import {createDonationPayService, type DonationPayService} from '@modules/donations/pay.service.js'
+import {
+  createPendingDonationService,
+  type PendingDonationService,
+} from '@modules/donations/pending.service.js'
 import {createDonationRepository, type DonationRepository} from '@modules/donations/repository.js'
 import {
   createFeatureRequestService,
@@ -147,6 +151,7 @@ export type AppContainer = {
   onchainJoinPaymentService: OnchainJoinPaymentService
   completeOnchainJoin: CompleteOnchainJoinService
   donations: DonationRepository
+  pendingDonations: PendingDonationService
   donationPay: DonationPayService
   donationCollect: DonationCollectService
   dmTransfers: DmTransferService
@@ -296,7 +301,13 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     outgoingLiquidity,
   })
 
+  const pendingDonations = createPendingDonationService({
+    donations,
+    lookupFeePayment: hash => masterWallet.lookupFeePayment(hash),
+    log,
+  })
   const donationPay = createDonationPayService({
+    pending: pendingDonations,
     createFeeCollectionInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
     getUserWallet,
     insertDonation: input => donations.insertDonation(input),
@@ -376,6 +387,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
   })
 
   const donationCollect = createDonationCollectService({
+    pending: pendingDonations,
     payService: donationPay,
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
@@ -621,6 +633,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     completeOnchainJoin,
     donations,
     donationPay,
+    pendingDonations,
     donationCollect,
     dmTransfers,
     lnurlPays,

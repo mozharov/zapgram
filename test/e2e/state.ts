@@ -9,6 +9,7 @@ import type {
   DonationPlatformStats,
   LnurlPayAttempt,
   OnchainChatPayment,
+  PendingDonationPayment,
   PendingInvoice,
   Subscription,
   SubscriptionIntent,
@@ -36,6 +37,7 @@ export type WorldState = {
     lnurlPayAttempts: LnurlPayAttempt[]
     donations: Donation[]
     donationPlatformStats: DonationPlatformStats[]
+    pendingDonationPayments: PendingDonationPayment[]
     broadcasts: Broadcast[]
     broadcastRecipients: BroadcastRecipient[]
   }
@@ -355,7 +357,13 @@ function diffRows(key: DbKey, before: unknown[], after: unknown[]) {
 function rowIdentity(key: DbKey, value: unknown): string | number {
   const row = asRecord(value)
   const field =
-    key === 'pendingInvoices' ? 'paymentRequest' : key === 'conversations' ? 'key' : 'id'
+    key === 'pendingInvoices'
+      ? 'paymentRequest'
+      : key === 'conversations'
+        ? 'key'
+        : key === 'pendingDonationPayments'
+          ? 'paymentHash'
+          : 'id'
   const id = row[field]
   if (typeof id !== 'string' && typeof id !== 'number') {
     throw new Error(`Cannot identify ${key} row: ${format(value)}`)
@@ -405,6 +413,7 @@ function emptyDbState(): WorldState['db'] {
     lnurlPayAttempts: [],
     donations: [],
     donationPlatformStats: [],
+    pendingDonationPayments: [],
     broadcasts: [],
     broadcastRecipients: [],
   }
@@ -424,6 +433,7 @@ function dbKey(tableName: string): DbKey {
     lnurl_pay_attempts: 'lnurlPayAttempts',
     donations: 'donations',
     donation_platform_stats: 'donationPlatformStats',
+    pending_donation_payments: 'pendingDonationPayments',
     broadcasts: 'broadcasts',
     broadcast_recipients: 'broadcastRecipients',
   }

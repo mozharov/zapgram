@@ -12,14 +12,21 @@ import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
 import type {DonationPayRail, DonationPayService, PayDonationResult} from './pay.service.js'
+import type {PendingDonationService} from './pending.service.js'
 
 export type CollectDonationResult =
   | {status: 'skipped'; reason: 'off' | 'zero' | 'scope' | 'user_missing'}
-  | {status: 'collected'; amountSats: number; rail: DonationPayRail; paymentHash?: string}
+  | {
+      status: 'collected'
+      amountSats: number
+      rail: DonationPayRail | 'recovered'
+      paymentHash?: string
+    }
   | {status: 'pending'; amountSats: number; paymentHash: string}
   | {status: 'failed'; amountSats: number; error: unknown}
 
 export type CollectDonationDeps = {
+  pending: Pick<PendingDonationService, 'save' | 'reconcileUser'>
   payService: Pick<DonationPayService, 'payToFeeCollection'>
   insertDonation: (input: {
     userId: number
@@ -66,6 +73,7 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
     }
 
     try {
+      await deps.pending.reconcileUser(input.userId, 'percent')
       const user =
         input.user ??
         (await deps.getUser(input.userId).catch(error => {
@@ -168,6 +176,13 @@ export function createDonationCollectService(deps: CollectDonationDeps) {
       }
 
       if (payResult.status === 'pending') {
+        await deps.pending.save({
+          userId: input.userId,
+          kind: 'percent',
+          amountSats,
+          paymentHash: payResult.paymentHash,
+          expiresAt: payResult.expiresAt,
+        })
         captureUserEvent(deps.posthog, 'donation_pending', input.userId, {
           ...collectProps,
           status: 'pending',

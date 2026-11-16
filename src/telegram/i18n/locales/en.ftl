@@ -167,6 +167,7 @@ feature =
     .submitted = ✅ Thanks! Your feature request was sent.
     .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.
     .fund-failed-submitted = ⚠️ Could not charge sats, but your feature request was still sent without funding.
+    .fund-pending-submitted = ⏳ Your feature request was sent. Funding is awaiting payment confirmation; we will check it automatically.
 
 broadcast =
     .pick-locale = 📣 <b>Broadcast</b>
@@ -226,6 +227,7 @@ donate =
         Choose an amount. Enabling charges once now, then every 30 days.
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
     .monthly-pending = ⏳ Monthly donation of {$sats} sats{$usdSuffix} is on. The current payment is awaiting confirmation; we will check it automatically.
+    .previous-payment-pending = ⏳ Your previous payment is awaiting confirmation. We will check it automatically.
     .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
     .monthly-paused = ✅ Monthly donation of {$sats} sats{$usdSuffix} is on. The first charge is paused and will be collected later. Your funds are safe.
     .monthly-charge-paused = ⏸ This month's {$sats} sat{$usdSuffix} donation was not charged. Monthly support stays on, and your funds are safe. We will try again later.

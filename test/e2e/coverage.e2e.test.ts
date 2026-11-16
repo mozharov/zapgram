@@ -52,6 +52,8 @@ const writeOperations = [
   'onchain_chat_payments.update',
   'onchain_chat_payments.delete',
   'donations.insert',
+  'pending_donation_payments.insert',
+  'pending_donation_payments.delete',
   'donation_platform_stats.insert',
   'donation_platform_stats.update',
   'broadcasts.insert',

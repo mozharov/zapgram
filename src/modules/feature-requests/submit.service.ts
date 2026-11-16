@@ -6,7 +6,7 @@ import {captureUserEvent, captureUserException, errorProperties} from '@infra/po
 import type {DonationPayService} from '@modules/donations/pay.service.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 
-export type FeatureFundStatus = 'skipped' | 'paid' | 'pay_failed'
+export type FeatureFundStatus = 'skipped' | 'paid' | 'pending' | 'pay_failed'
 
 export type FeatureRequestSourceMessage = {
   chatId: number
@@ -72,6 +72,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
           userId: input.userId,
           amountSats: input.amountSats,
           kind: 'one_shot',
+          pendingKind: 'feature_request',
           rail: 'auto',
           nwc: input.nwc,
           nwcUrl: input.nwcUrl,
@@ -79,15 +80,17 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
         })
         if (result.status === 'paid') {
           fundStatus = 'paid'
-          amountPaidSats = input.amountSats
+          amountPaidSats = result.amountSats ?? input.amountSats
           rail = result.rail
+        } else if (result.status === 'pending') {
+          fundStatus = 'pending'
         } else {
           fundStatus = 'pay_failed'
           sendPaused = result.error instanceof SendPausedError
           deps.log.warn(
             {
               userId: input.userId,
-              reason: result.status === 'failed' ? result.reason : 'pending',
+              reason: result.reason,
               amountSats: input.amountSats,
             },
             'Feature request fund payment failed; submitting without sats',
@@ -175,9 +178,11 @@ export function formatFeatureRequestAdminMeta(input: {
   const fundLine =
     input.fundStatus === 'paid'
       ? `💰 Funded: <b>${input.amountPaidSats}</b> sats`
-      : input.fundStatus === 'pay_failed'
-        ? '💰 Fund: attempted, payment failed (request still free)'
-        : '💰 Fund: none'
+      : input.fundStatus === 'pending'
+        ? '💰 Fund: awaiting payment confirmation'
+        : input.fundStatus === 'pay_failed'
+          ? '💰 Fund: attempted, payment failed (request still free)'
+          : '💰 Fund: none'
 
   return [
     '💡 <b>New feature request</b>',

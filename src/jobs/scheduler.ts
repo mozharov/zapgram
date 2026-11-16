@@ -2,6 +2,7 @@ import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
 import {processBroadcasts} from '@modules/broadcast/jobs/process-broadcasts.js'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
+import {reconcilePendingDonations} from '@modules/donations/jobs/reconcile-pending-donations.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
@@ -78,6 +79,12 @@ export function defaultJobDefinitions(): JobDefinition[] {
       cronTime: '0 30 * * * *',
       runOnInit: true,
       tick: processExpiringSubscriptions,
+    },
+    {
+      name: 'reconcile-pending-donations',
+      cronTime: '0 */3 * * * *',
+      runOnInit: false,
+      tick: () => reconcilePendingDonations(),
     },
     {
       name: 'process-monthly-donations',

@@ -1,6 +1,7 @@
 import type {AppConfig} from '@config'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {DEFAULT_INVOICE_EXPIRY_SECONDS} from '@core/lightning/invoice-expiry.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {HTTPError} from 'got'
 import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
@@ -243,7 +244,12 @@ class MasterWallet extends LNBitsAPI {
   async createFeeCollectionInvoice(sats: number) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
-      body: JSON.stringify({out: false, amount: sats, unit: 'sat'}),
+      body: JSON.stringify({
+        out: false,
+        amount: sats,
+        unit: 'sat',
+        expiry: DEFAULT_INVOICE_EXPIRY_SECONDS,
+      }),
       headers: {
         'X-Api-Key': this.feeCollectionInvoiceKey,
       },

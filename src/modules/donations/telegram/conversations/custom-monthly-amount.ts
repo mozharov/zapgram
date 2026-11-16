@@ -103,10 +103,15 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       usdSuffixForSats(current.monthlyDonationSats),
     )
     await ctx.reply(
-      ctx.t('donate.monthly-pending', {
-        sats: current.monthlyDonationSats,
-        usdSuffix: pendingUsdSuffix,
-      }),
+      ctx.t(
+        current.monthlyDonationSats > 0
+          ? 'donate.monthly-pending'
+          : 'donate.previous-payment-pending',
+        {
+          sats: current.monthlyDonationSats,
+          usdSuffix: pendingUsdSuffix,
+        },
+      ),
     )
     await replyDonateHub(ctx)
     if (input?.message) await deleteMessageSafely(input)
@@ -135,6 +140,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         monthlyDonationSats: sats,
         monthlyDonationNextAt: nextAt,
         monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
       }),
     )
     await conversation.external(() =>
@@ -160,6 +166,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
         monthlyDonationSats: sats,
         monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
         monthlyDonationLastHash: result.paymentHash,
+        monthlyDonationExpiresAt: result.expiresAt,
       }),
     )
     await ctx.reply(ctx.t('donate.monthly-pending', {sats, usdSuffix}))

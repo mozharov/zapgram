@@ -772,7 +772,7 @@ function expectPaymentRequestOrder(mark: number, price: number): void {
   expect(requests[1]?.body).toMatchObject({out: true})
   expect(requests[2]?.body).toMatchObject({out: false, amount: OWNER_PAYOUT, unit: 'sat'})
   expect(requests[3]?.body).toMatchObject({out: true})
-  expect(requests[4]?.body).toEqual({out: false, amount: FEE, unit: 'sat'})
+  expect(requests[4]?.body).toEqual({out: false, amount: FEE, unit: 'sat', expiry: 24 * 60 * 60})
   expect(requests[5]?.body).toMatchObject({out: true})
 }
 

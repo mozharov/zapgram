@@ -100,10 +100,15 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
   // A due payment may already be in flight. Let cron reconcile it before changing the amount.
   if (current.monthlyDonationLastHash) {
     await ctx.reply(
-      ctx.t('donate.monthly-pending', {
-        sats: current.monthlyDonationSats,
-        usdSuffix: await usdSuffixForSats(current.monthlyDonationSats),
-      }),
+      ctx.t(
+        current.monthlyDonationSats > 0
+          ? 'donate.monthly-pending'
+          : 'donate.previous-payment-pending',
+        {
+          sats: current.monthlyDonationSats,
+          usdSuffix: await usdSuffixForSats(current.monthlyDonationSats),
+        },
+      ),
     )
     await replyDonateHub(ctx)
     return
@@ -126,6 +131,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       monthlyDonationSats: amountSats,
       monthlyDonationNextAt: nextAt,
       monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
     })
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
@@ -147,6 +153,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       monthlyDonationSats: amountSats,
       monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
       monthlyDonationLastHash: result.paymentHash,
+      monthlyDonationExpiresAt: result.expiresAt,
     })
     await ctx.reply(ctx.t('donate.monthly-pending', {sats: amountSats, usdSuffix}))
   } else {

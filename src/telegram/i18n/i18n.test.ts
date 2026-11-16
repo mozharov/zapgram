@@ -216,3 +216,16 @@ describe('lnurl pay copy', () => {
     })
   }
 })
+
+for (const language of ['en', 'ru']) {
+  test(`disabled monthly and feature pending copy in ${language} promises confirmation without failure or zero sats`, () => {
+    for (const key of ['donate.previous-payment-pending', 'feature.fund-pending-submitted']) {
+      const message = translate(key, language)
+      expect(message).not.toContain(key)
+      expect(message).toMatch(/confirmation|подтверждения/)
+      expect(message).not.toMatch(
+        /failed|without funding|не удалось|без финансирования|0\s*(sats|сат)/i,
+      )
+    }
+  })
+}

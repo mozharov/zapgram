@@ -8,6 +8,7 @@ import type {
   donationsTable,
   lnurlPayAttemptsTable,
   onchainChatPaymentsTable,
+  pendingDonationPaymentsTable,
   pendingInvoicesTable,
   subscriptionIntentsTable,
   subscriptionPaymentsTable,
@@ -63,3 +64,5 @@ export type NewBroadcast = Omit<BroadcastInsert, 'id'> & {id?: string}
 
 export type BroadcastRecipient = typeof broadcastRecipientsTable.$inferSelect
 export type BroadcastRecipientInsert = typeof broadcastRecipientsTable.$inferInsert
+
+export type PendingDonationPayment = typeof pendingDonationPaymentsTable.$inferSelect

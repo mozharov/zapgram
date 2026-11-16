@@ -82,3 +82,57 @@ test('0027 clears legacy successful donation hashes without changing schedules o
     sqlite.close()
   }
 })
+
+test('0028 upgrades 0027 with pending storage and monthly TTL while preserving existing rows', () => {
+  const sqlite = new Database(':memory:')
+  try {
+    for (const entry of journal.entries.filter(entry => entry.idx <= 27)) {
+      sqlite.exec(
+        readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'),
+      )
+    }
+    sqlite.exec(`INSERT INTO users (id, monthly_donation_last_hash) VALUES (1, 'in-flight');
+      INSERT INTO donations (id, user_id, amount_sats, kind, payment_hash) VALUES
+      ('a', 1, 21, 'one_shot', 'legacy-duplicate'), ('b', 1, 21, 'one_shot', 'legacy-duplicate'),
+      ('c', 1, 5, 'percent', NULL), ('d', 1, 5, 'percent', NULL);`)
+    const before = sqlite.query('SELECT * FROM donations ORDER BY id').all()
+    sqlite.exec(
+      readFileSync(
+        new URL('../../../drizzle/0028_donation_payment_expiry.sql', import.meta.url),
+        'utf8',
+      ),
+    )
+    expect(
+      sqlite
+        .query('SELECT monthly_donation_last_hash, monthly_donation_expires_at FROM users')
+        .get(),
+    ).toEqual({monthly_donation_last_hash: 'in-flight', monthly_donation_expires_at: null})
+    expect(sqlite.query('SELECT * FROM donations ORDER BY id').all()).toEqual(before)
+    for (const hash of ['tip-a', 'tip-b'])
+      sqlite
+        .query(`INSERT INTO pending_donation_payments
+      (payment_hash, user_id, kind, amount_sats, expires_at) VALUES (?, 1, 'percent', 5, unixepoch() + 60)`)
+        .run(hash)
+    expect(sqlite.query('SELECT * FROM pending_donation_payments').all()).toHaveLength(2)
+    expect(() =>
+      sqlite.exec(`INSERT INTO pending_donation_payments
+      (payment_hash, user_id, kind, amount_sats, expires_at) VALUES ('tip-a', 1, 'percent', 5, unixepoch())`),
+    ).toThrow()
+    expect(() =>
+      sqlite.exec(`INSERT INTO pending_donation_payments
+      (payment_hash, user_id, kind, amount_sats, expires_at) VALUES ('bad', 1, 'monthly', 5, unixepoch())`),
+    ).toThrow()
+    const previous = JSON.parse(
+      readFileSync(new URL('../../../drizzle/meta/0027_snapshot.json', import.meta.url), 'utf8'),
+    )
+    const current = JSON.parse(
+      readFileSync(new URL('../../../drizzle/meta/0028_snapshot.json', import.meta.url), 'utf8'),
+    )
+    expect(current.prevId).toBe(previous.id)
+    expect(current.tables.donations).toEqual(previous.tables.donations)
+    expect(current.tables.pending_donation_payments.columns.payment_hash.primaryKey).toBe(true)
+    expect(current.tables.users.columns.monthly_donation_expires_at.notNull).toBe(false)
+  } finally {
+    sqlite.close()
+  }
+})

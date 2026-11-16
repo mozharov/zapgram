@@ -2,6 +2,7 @@ import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {DEFAULT_INVOICE_EXPIRY_SECONDS} from '@core/lightning/invoice-expiry.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
@@ -18,8 +19,6 @@ import {
   lookupPaymentResponseSchema,
   paymentResponseSchema,
 } from './schemas.js'
-
-const DEFAULT_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 export class UserWallet extends LNBitsAPI {
   /** Balance in millisatoshis */
@@ -51,7 +50,11 @@ export class UserWallet extends LNBitsAPI {
   /**
    * @param expiry - number of seconds until the invoice expires
    */
-  async createInvoice({sats, memo = '', expiry = DEFAULT_EXPIRY}: CreateInvoiceParams) {
+  async createInvoice({
+    sats,
+    memo = '',
+    expiry = DEFAULT_INVOICE_EXPIRY_SECONDS,
+  }: CreateInvoiceParams) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
       body: JSON.stringify({

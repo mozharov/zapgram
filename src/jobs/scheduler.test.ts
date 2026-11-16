@@ -1,5 +1,10 @@
 import {describe, expect, test} from 'bun:test'
-import {createScheduler, JOB_ANALYTICS_DISTINCT_ID, type JobDefinition} from './scheduler.js'
+import {
+  createScheduler,
+  getJobDefinitions,
+  JOB_ANALYTICS_DISTINCT_ID,
+  type JobDefinition,
+} from './scheduler.js'
 
 function silentLog() {
   return {info: () => {}, error: () => {}, warn: () => {}, debug: () => {}}
@@ -133,4 +138,13 @@ describe('createScheduler', () => {
       },
     ])
   })
+})
+
+test('pending donation reconciliation is registered without running at startup', () => {
+  expect(getJobDefinitions().find(job => job.name === 'reconcile-pending-donations')).toMatchObject(
+    {
+      runOnInit: false,
+      cronTime: '0 */3 * * * *',
+    },
+  )
 })

@@ -62,7 +62,12 @@ test('a paid one-time invoice grants access and distributes the exact price once
     expiry: 24 * 60 * 60,
   })
   expect(payoutRequests[1]?.body).toMatchObject({out: true})
-  expect(payoutRequests[2]?.body).toEqual({out: false, amount: FEE, unit: 'sat'})
+  expect(payoutRequests[2]?.body).toEqual({
+    out: false,
+    amount: FEE,
+    unit: 'sat',
+    expiry: 24 * 60 * 60,
+  })
   expect(payoutRequests[3]?.body).toMatchObject({out: true})
 
   const [subscriberMessage, ownerMessage] = e2e.tg.of('sendMessage')
