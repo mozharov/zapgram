@@ -496,7 +496,7 @@ invoice-widget-status =
     .expired = Expired
     .cancelled = Cancelled
 
-invoice-replaced = <b>This invoice was replaced by a new one.</b>
+invoice-replaced = The invoice with a description was sent as a separate message.
 
 creating-invoice = <b>🧾 Creating Lightning invoice...</b>
     .created = Amount: <b>{$amount} sats{$usdSuffix}</b>

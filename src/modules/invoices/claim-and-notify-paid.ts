@@ -4,7 +4,11 @@ import {captureUserEvent} from '@infra/posthog.js'
 import {notifyInvoicePaid} from '@modules/invoices/notify-invoice-paid.js'
 import {getRuntime} from '../../runtime.js'
 
-export type PaidInvoiceNotifySource = 'pending_invoice_job' | 'lnbits_webhook' | 'internal_pay'
+export type PaidInvoiceNotifySource =
+  | 'pending_invoice_job'
+  | 'expired_invoice_job'
+  | 'lnbits_webhook'
+  | 'internal_pay'
 
 /**
  * Claim the pending row, then notify. Caller must only invoke this after knowing the invoice is

@@ -217,9 +217,17 @@ test('a donation, a renewal, and a settlement still pay when the backend balance
     kind: 'renewal',
   })
   e2e.ln.state.fundingSourceBalanceMsat = 0
+  // Empty admin list would classify the payout as external and pause it. knownInternal must not ask.
+  e2e.ln.state.adminPaymentListEmpty = true
+  e2e.ln.state.failAlways(
+    {method: 'GET', path: '/api/v1/wallet'},
+    {status: 500, body: {status: 'failed', detail: 'wallet id unread'}},
+  )
   const settleMark = e2e.ln.requests.length
   expect(await e2e.container.settleService.complete(settled)).toBe('settled')
   expect(outgoingPaysSince(settleMark)).toHaveLength(2)
+  expect(pathsSince(settleMark).some(path => path.includes('/payments/all/paginated'))).toBe(false)
+  expect(pathsSince(settleMark).some(path => path === 'GET /api/v1/wallet')).toBe(false)
   expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
 })
 
@@ -447,6 +455,8 @@ test('an unrecognized guard value warns once and leaves the check on', async () 
     String(entry.msg).includes('BACKEND_LIQUIDITY_GUARD is not recognized'),
   )
   expect(warned).toHaveLength(1)
+  expect(warned[0]).toMatchObject({unrecognized: true, length: 'maybe'.length})
+  expect(JSON.stringify(warned[0])).not.toContain('maybe')
   expect(e2e.container.config.BACKEND_LIQUIDITY_GUARD).toBe('on')
 })
 

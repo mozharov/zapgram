@@ -6,7 +6,9 @@ import {GUARD_UPSTREAM_TIMEOUT_MS, LNBitsAPI} from './lnbits-api.js'
 import {
   type BalanceRead,
   type LiquidityCheckReason,
+  type LiquidityHold,
   type OutgoingLiquidityGuard,
+  payAlreadyPaid,
   payLeftBackendUnspent,
 } from './outgoing-liquidity.js'
 import {
@@ -143,11 +145,14 @@ class MasterWallet extends LNBitsAPI {
   }
 
   async payInvoice(paymentRequest: string, options?: {knownInternal?: boolean}) {
+    const knownInternal = options?.knownInternal === true
     const hold = this.outgoingLiquidity
       ? await this.outgoingLiquidity.assertCanPay({
           bolt11: paymentRequest,
-          payerWalletId: await this.walletIdForPay(),
-          knownInternal: options?.knownInternal,
+          // knownInternal returns before classification, so the wallet id is unused.
+          // Reading it here would be a GET /api/v1/wallet on every internal payout.
+          payerWalletId: knownInternal ? undefined : await this.walletIdForPay(),
+          knownInternal,
           feeReserveMsat: () => this.feeReserveMsat(paymentRequest),
         })
       : undefined
@@ -162,12 +167,21 @@ class MasterWallet extends LNBitsAPI {
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {
-      if (hold) {
-        if (payLeftBackendUnspent(error)) await this.outgoingLiquidity?.release(hold)
-        else await this.outgoingLiquidity?.abandon(hold)
-      }
+      if (hold) await this.finishHold(hold, error)
       throw error
     }
+  }
+
+  private async finishHold(hold: LiquidityHold, error: unknown): Promise<void> {
+    if (payAlreadyPaid(error)) {
+      await this.outgoingLiquidity?.invalidate(hold)
+      return
+    }
+    if (payLeftBackendUnspent(error)) {
+      await this.outgoingLiquidity?.release(hold)
+      return
+    }
+    await this.outgoingLiquidity?.abandon(hold)
   }
 
   /** Id of the wallet behind `LNBITS_ADMIN_KEY`. Set once at startup, never from a failed read. */

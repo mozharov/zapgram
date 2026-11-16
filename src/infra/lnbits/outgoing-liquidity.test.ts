@@ -12,6 +12,7 @@ import type {BalanceRead, InvoiceOrigin, LiquidityCheckReason} from './outgoing-
 import {
   BACKEND_LIQUIDITY_CHECK_FAILED,
   createOutgoingLiquidityGuard,
+  payAlreadyPaid,
   payLeftBackendUnspent,
   probeFundingSource,
   SEND_PAUSED_NO_BACKEND_LIQUIDITY,
@@ -352,30 +353,101 @@ describe('createOutgoingLiquidityGuard', () => {
     ).rejects.toBeInstanceOf(SendPausedError)
   })
 
-  test('a settled pay does not wait behind a balance check that has not started', async () => {
+  for (const kind of ['settle', 'release', 'abandon'] as const) {
+    test(`${kind} does not wait behind a balance check that has not started`, async () => {
+      let reads = 0
+      let releaseSecond: () => void = () => undefined
+      const secondRead = new Promise<void>(resolve => {
+        releaseSecond = resolve
+      })
+      let markSecondStarted: () => void = () => undefined
+      const secondStarted = new Promise<void>(resolve => {
+        markSecondStarted = resolve
+      })
+      let releaseThird: (origin: InvoiceOrigin) => void = () => undefined
+      const order: string[] = []
+      const third = mintInvoice({sats: 5, description: `third-${kind}`})
+      const liquidity = createOutgoingLiquidityGuard({
+        ttlMs: 0,
+        classifyInvoice: bolt11 => {
+          if (bolt11 !== third.bolt11) return Promise.resolve('external')
+          return new Promise(resolve => {
+            releaseThird = resolve
+          })
+        },
+        readBalance: async () => {
+          reads += 1
+          if (reads === 1) return {ok: true, balanceMsat: 100_000}
+          if (reads === 2) {
+            markSecondStarted()
+            await secondRead
+            return {ok: true, balanceMsat: 100_000}
+          }
+          order.push('read3')
+          return {ok: true, balanceMsat: 100_000}
+        },
+      })
+      const hold = await liquidity.assertCanPay({
+        bolt11: invoice.bolt11,
+        feeReserveMsat: async () => 2_000,
+      })
+      if (!hold) throw new Error('Expected a hold')
+      const pendingSecond = liquidity.assertCanPay({
+        bolt11: second.bolt11,
+        feeReserveMsat: async () => 2_000,
+      })
+      await secondStarted
+      const pendingThird = liquidity.assertCanPay({
+        bolt11: third.bolt11,
+        feeReserveMsat: async () => 2_000,
+      })
+      // Classification of the third check is outside the queue. Wait until that check
+      // is actually queued, or a single FIFO queue would also run settle first.
+      releaseThird('external')
+      await Promise.resolve()
+      const finishing = liquidity[kind](hold).then(() => {
+        order.push(kind)
+      })
+      releaseSecond()
+      await finishing
+      await pendingSecond
+      await pendingThird
+      expect(order[0]).toBe(kind)
+      expect(order).toContain('read3')
+    })
+  }
+
+  test('knownInternal does not classify or read the balance', async () => {
+    let classified = 0
     let reads = 0
-    let releaseSecond: () => void = () => undefined
-    const secondRead = new Promise<void>(resolve => {
-      releaseSecond = resolve
+    const liquidity = createOutgoingLiquidityGuard({
+      classifyInvoice: async () => {
+        classified += 1
+        return 'external'
+      },
+      readBalance: async () => {
+        reads += 1
+        return {ok: true, balanceMsat: 0}
+      },
     })
-    let markSecondStarted: () => void = () => undefined
-    const secondStarted = new Promise<void>(resolve => {
-      markSecondStarted = resolve
-    })
-    const order: string[] = []
-    const third = mintInvoice({sats: 5, description: 'third-queued'})
+    await expect(
+      liquidity.assertCanPay({
+        bolt11: invoice.bolt11,
+        knownInternal: true,
+        feeReserveMsat: async () => 2_000,
+      }),
+    ).resolves.toBeUndefined()
+    expect(classified).toBe(0)
+    expect(reads).toBe(0)
+  })
+
+  test('an already-paid new hold forgets the cached balance instead of restoring it', async () => {
+    let balance = 50_000
+    let reads = 0
     const {liquidity} = guard({
-      ttlMs: 0,
       read: async () => {
         reads += 1
-        if (reads === 1) return {ok: true, balanceMsat: 100_000}
-        if (reads === 2) {
-          markSecondStarted()
-          await secondRead
-          return {ok: true, balanceMsat: 100_000}
-        }
-        order.push('read3')
-        return {ok: true, balanceMsat: 100_000}
+        return {ok: true, balanceMsat: balance}
       },
     })
     const hold = await liquidity.assertCanPay({
@@ -383,24 +455,15 @@ describe('createOutgoingLiquidityGuard', () => {
       feeReserveMsat: async () => 2_000,
     })
     if (!hold) throw new Error('Expected a hold')
-    const pendingSecond = liquidity.assertCanPay({
-      bolt11: second.bolt11,
-      feeReserveMsat: async () => 2_000,
-    })
-    await secondStarted
-    const pendingThird = liquidity.assertCanPay({
-      bolt11: third.bolt11,
-      feeReserveMsat: async () => 2_000,
-    })
-    const settling = liquidity.settle(hold).then(() => {
-      order.push('settle')
-    })
-    releaseSecond()
-    await settling
-    await pendingSecond
-    await pendingThird
-    expect(order[0]).toBe('settle')
-    expect(order).toContain('read3')
+    expect(reads).toBe(1)
+    // The server total already includes the spend. Putting the hold back would show 50_000.
+    balance = 27_000
+    await liquidity.invalidate(hold)
+    const larger = mintInvoice({sats: 30, description: 'after already paid'})
+    await expect(
+      liquidity.assertCanPay({bolt11: larger.bolt11, feeReserveMsat: async () => 2_000}),
+    ).rejects.toBeInstanceOf(SendPausedError)
+    expect(reads).toBe(2)
   })
 
   test('no bearer does not classify or warn', async () => {
@@ -521,6 +584,8 @@ describe('probeFundingSource', () => {
 describe('payLeftBackendUnspent', () => {
   test('a hold comes back only when LNbits refused the payment', async () => {
     expect(payLeftBackendUnspent(new InvoiceAlreadyPaidError())).toBe(true)
+    expect(payAlreadyPaid(new InvoiceAlreadyPaidError())).toBe(true)
+    expect(payAlreadyPaid(new InsufficientFundsError())).toBe(false)
     expect(payLeftBackendUnspent(new InsufficientFundsError())).toBe(true)
     expect(payLeftBackendUnspent(new Error('socket hang up'))).toBe(false)
 

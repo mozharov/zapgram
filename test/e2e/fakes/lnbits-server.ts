@@ -239,6 +239,8 @@ function route({
   const paymentMatch = path.match(/^\/api\/v1\/payments\/([^/]+)$/)
   if (method === 'GET' && paymentMatch) {
     const paymentHash = paymentMatch[1]
+    if (!paymentHash) return json({detail: 'Payment not found.'}, 404)
+    state.notePaymentLookup(paymentHash)
     const wallet = authenticatedWallet(request, state)
     // No wallet key: LNbits 1.7.1 looks the hash up on the whole instance. That is how a
     // payer learns the invoice was issued here (internal) before calling pay.

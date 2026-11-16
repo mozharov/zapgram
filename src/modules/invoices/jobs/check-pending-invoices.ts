@@ -20,8 +20,15 @@ export async function checkPendingInvoices(): Promise<void> {
       count: () => countPendingInvoices(),
       fetch: (limit, offset) => getPendingInvoices(limit, offset),
       process: async invoice => {
+        let wallet: Awaited<ReturnType<typeof getUserWallet>>
         try {
-          const wallet = await getUserWallet(invoice.userId)
+          wallet = await getUserWallet(invoice.userId)
+        } catch (error) {
+          // A missing LNbits user is not a missing invoice. Leave the row for a later tick.
+          getRuntime().log.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
+          return 'keep'
+        }
+        try {
           const payment = await wallet.lookupPayment(invoice.paymentHash)
 
           if (payment.paid) {
@@ -36,6 +43,7 @@ export async function checkPendingInvoices(): Promise<void> {
         } catch (error) {
           getRuntime().log.error({error}, `Error processing invoice ${invoice.paymentHash}.`)
 
+          // Only the payment lookup's 404 means this invoice is gone.
           if (error instanceof HTTPError && error.response.statusCode === 404) {
             getRuntime().log.error(`Invoice ${invoice.paymentHash} not found on LNBits. Deleting.`)
             // Delete first. The returned row is the pointer that still belonged to this
