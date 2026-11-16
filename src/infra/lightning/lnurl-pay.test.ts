@@ -43,6 +43,8 @@ describe('lnurlIpAllowed', () => {
     expect(lnurlIpAllowed('10.1.2.3', 'production')).toBe(false)
     expect(lnurlIpAllowed('192.168.1.1', 'development')).toBe(false)
     expect(lnurlIpAllowed('127.0.0.1', 'test')).toBe(true)
+    expect(lnurlIpAllowed('::1', 'test')).toBe(true)
+    expect(lnurlIpAllowed('::1', 'production')).toBe(false)
     expect(lnurlIpAllowed('10.1.2.3', 'test')).toBe(true)
     expect(lnurlIpAllowed('8.8.8.8', 'production')).toBe(true)
   })

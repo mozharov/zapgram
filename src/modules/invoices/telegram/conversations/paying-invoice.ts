@@ -147,21 +147,25 @@ export async function payingInvoice(
   })
   const {wallet} = selection
   host = host ?? selection.host
-  if (options?.recheckExpiry && invoice.hasExpired()) {
-    const expiredHtml = joinWizardHtml(
-      reviewPrefix,
-      invoiceReviewHtml(ctx, invoice, {
-        usdSuffix: previewUsdSuffix,
-        fee: 'no',
-        feeUsdSuffix: '',
-      }),
-    )
-    // The confirm button was on this message. Take it off so the expired invoice
-    // cannot be clicked again; the conversation is halted either way.
-    const expiredKeyboard = new InlineKeyboard()
-    if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
-    else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
-    return conversation.halt()
+  if (options?.recheckExpiry) {
+    // Frozen like the open-time check. A live call here diverges on replay after pay.
+    const expiredBeforePay = await conversation.external(() => invoice.hasExpired())
+    if (expiredBeforePay) {
+      const expiredHtml = joinWizardHtml(
+        reviewPrefix,
+        invoiceReviewHtml(ctx, invoice, {
+          usdSuffix: previewUsdSuffix,
+          fee: 'no',
+          feeUsdSuffix: '',
+        }),
+      )
+      // The confirm button was on this message. Take it off so the expired invoice
+      // cannot be clicked again; the conversation is halted either way.
+      const expiredKeyboard = new InlineKeyboard()
+      if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
+      else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
+      return conversation.halt()
+    }
   }
   const isInternalWallet = wallet === 'internal'
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
