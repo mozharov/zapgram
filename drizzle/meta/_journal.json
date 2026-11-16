@@ -176,6 +176,13 @@
       "when": 1794681198761,
       "tag": "0024_lnurl_pay_settled_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794682000000,
+      "tag": "0025_dm_transfers_one_open",
+      "breakpoints": true
     }
   ]
 }

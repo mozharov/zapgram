@@ -1,7 +1,9 @@
 import type {AppDatabase} from '@infra/db/client.js'
 import {dmTransfersTable} from '@infra/db/schema.js'
 import type {DmTransfer} from '@infra/db/types.js'
-import {and, asc, eq, isNull, lt, or} from 'drizzle-orm'
+import {and, asc, eq, inArray, isNull, lt, or} from 'drizzle-orm'
+
+const OPEN_PHASES = ['pay_unknown', 'provider_accepted', 'needs_review'] as const
 
 export type DmTransferInvoice = {hash: string; bolt11: string}
 
@@ -107,11 +109,44 @@ export function createDmTransferRepository(database: AppDatabase) {
         .where(eq(dmTransfersTable.id, id))
     },
 
-    async markSettled(id: string) {
-      await database
+    /** True only when this call moved a pending row to settled. */
+    async markSettled(id: string): Promise<boolean> {
+      const [row] = await database
         .update(dmTransfersTable)
         .set({status: 'settled', phase: 'settled'})
         .where(and(eq(dmTransfersTable.id, id), eq(dmTransfersTable.status, 'pending')))
+        .returning()
+      return row !== undefined
+    },
+
+    /** Another unresolved pay from this sender to this recipient, if one exists. */
+    async findOpen(fromUserId: number, toUserId: number) {
+      return database.query.dmTransfersTable.findFirst({
+        where: and(
+          eq(dmTransfersTable.fromUserId, fromUserId),
+          eq(dmTransfersTable.toUserId, toUserId),
+          eq(dmTransfersTable.status, 'pending'),
+          inArray(dmTransfersTable.phase, [...OPEN_PHASES]),
+        ),
+      })
+    },
+
+    async abandonIfPhase(
+      id: string,
+      expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+    ): Promise<boolean> {
+      const [row] = await database
+        .update(dmTransfersTable)
+        .set({phase: 'abandoned', reviewLogged: true})
+        .where(
+          and(
+            eq(dmTransfersTable.id, id),
+            eq(dmTransfersTable.status, 'pending'),
+            eq(dmTransfersTable.phase, expected),
+          ),
+        )
+        .returning()
+      return row !== undefined
     },
 
     /** Only a row that has not been accepted by the wallet can be abandoned. */
@@ -234,6 +269,7 @@ export function createDmTransferRepository(database: AppDatabase) {
             eq(dmTransfersTable.noticeSent, false),
             eq(dmTransfersTable.noticeDropped, false),
           ),
+          and(eq(dmTransfersTable.status, 'settled'), eq(dmTransfersTable.senderNotified, false)),
         ),
       })
     },

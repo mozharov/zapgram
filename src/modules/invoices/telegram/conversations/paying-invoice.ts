@@ -1,9 +1,11 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
-import {SendPausedError} from '@core/errors/send-paused.js'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
+import {isSendPaused, SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {msatsToSats} from '@core/money/sats.js'
+import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
 import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
 import {
   claimPendingInvoiceByPaymentRequest,
@@ -17,6 +19,7 @@ import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoic
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
 import {lnurlRecipientHtml} from '@modules/invoices/telegram/lnurl-payee.js'
+import {waitForTransferConfirm} from '@modules/tipping/telegram/wait-for-transfer-confirm.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
@@ -147,6 +150,24 @@ export async function payingInvoice(
   })
   const {wallet} = selection
   host = host ?? selection.host
+  // Two wallets: the first click only picks a rail. Amount, recipient, and wallet
+  // stay on screen until Confirm. A single funded wallet already was that confirm.
+  if (!selection.confirmed) {
+    const confirmed = await waitForTransferConfirm(conversation, ctx, {
+      host,
+      html: joinWizardHtml(
+        reviewPrefix,
+        invoiceReviewHtml(ctx, invoice, {
+          usdSuffix: previewUsdSuffix,
+          fee: 'no',
+          feeUsdSuffix: '',
+        }),
+        ctx.t(`wait-for-wallet.pay-invoice-${wallet}`),
+      ),
+      onCancel: restoreParent,
+    })
+    host = confirmed.host
+  }
   if (options?.recheckExpiry) {
     // Frozen like the open-time check. A live call here diverges on replay after pay.
     const expiredBeforePay = await conversation.external(() => invoice.hasExpired())
@@ -203,6 +224,11 @@ export async function payingInvoice(
         },
       }),
     )
+    if (outcome.kind === 'paused') throw new SendPausedError()
+    if (outcome.kind === 'declined') {
+      await showLnurlHold(ctx, host, ctx.t('lnurl-pay-failed', {reason: 'declined'}))
+      return conversation.halt()
+    }
     if (outcome.kind === 'hold') {
       await showLnurlHold(
         ctx,
@@ -317,7 +343,21 @@ type LnurlPayOutcome =
   | {kind: 'paid'; feesPaid: number}
   | {kind: 'hold'}
   | {kind: 'rejected'}
+  | {kind: 'declined'}
+  | {kind: 'paused'}
   | {kind: 'absent'}
+
+/** What a thrown wallet error means. A definite refusal did not leave the wallet. */
+export function lnurlPayFailureKind(
+  error: unknown,
+): 'paused' | 'rejected' | 'declined' | 'already_paid' | 'hold' {
+  if (isSendPaused(error)) return 'paused'
+  if (error instanceof InsufficientFundsError) return 'rejected'
+  if (error instanceof InvoiceAlreadyPaidError) return 'already_paid'
+  if (error instanceof NWCPaymentFailedError) return 'declined'
+  if (payLeftBackendUnspent(error)) return 'declined'
+  return 'hold'
+}
 
 /** Gate, debit, and settle mark. Runs once per attempt: the caller caches it. */
 async function payLnurlAttempt(input: {
@@ -360,7 +400,8 @@ async function payLnurlAttempt(input: {
     if (!claimed) return {kind: 'absent'}
     return {kind: 'paid', feesPaid}
   } catch (error) {
-    if (error instanceof InvoiceAlreadyPaidError) {
+    const kind = lnurlPayFailureKind(error)
+    if (kind === 'already_paid') {
       // Only an invoice we just saw unpaid can be this call's debit.
       if (seen !== 'fresh') return {kind: 'hold'}
       const resolved = await pays.resolveAlreadyPaid(input.attemptId)
@@ -368,14 +409,12 @@ async function payLnurlAttempt(input: {
       if (resolved === 'absent') return {kind: 'absent'}
       return {kind: 'hold'}
     }
-    if (error instanceof InsufficientFundsError) {
+    if (kind === 'rejected' || kind === 'declined' || kind === 'paused') {
+      // The guard and a definite provider refusal never left the wallet.
       await pays.noteRejected(input.attemptId)
+      if (kind === 'paused') return {kind: 'paused'}
+      if (kind === 'declined') return {kind: 'declined'}
       return {kind: 'rejected'}
-    }
-    // The guard refused before the wallet was called. Nothing is in flight.
-    if (error instanceof SendPausedError) {
-      await pays.noteRejected(input.attemptId)
-      throw error
     }
     return {kind: 'hold'}
   }

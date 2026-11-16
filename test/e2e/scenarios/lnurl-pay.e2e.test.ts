@@ -211,6 +211,38 @@ test('an LNURL pay confirms, then pays once from the ZapGram wallet', async () =
   expectNoErrors(e2e.logs)
 })
 
+test('two funded wallets do not pay an LNURL until the payment is confirmed', async () => {
+  server = startServer('ok')
+  credit(USER_A, 1_000)
+  await e2e.container.users.update(USER_A, {nwcUrl: NWC_URL})
+  const pasted = privateText(server.lnurl)
+  await e2e.send(pasted)
+  const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+  const offerId = requiredMessageId('sendMessage')
+  await e2e.send(payCallback(payData, offerId, pasted))
+  await e2e.send(privateText(String(AMOUNT)))
+
+  const picker = editedScreen()
+  const pickerKeys = keyboardOf(e2e.tg.last('editMessageText'))
+  expect(pickerKeys.some(item => item.startsWith('internal:'))).toBe(true)
+  expect(pickerKeys.some(item => item.startsWith('nwc:'))).toBe(true)
+  await e2e.send(pressWallet('internal', picker.id))
+
+  expect(outgoing()).toHaveLength(0)
+  const confirm = editedScreen()
+  expect(confirm.text).toMatch(/Confirm the payment/)
+  expect(confirm.text).toMatch(/Pay Alice/)
+  const data = keyboardOf(e2e.tg.last('editMessageText')).find(item =>
+    item.startsWith('confirm-send:'),
+  )
+  if (!data) throw new Error('Expected a confirm button')
+  await e2e.send(privateCallback(data, {messageId: confirm.id}))
+
+  expect(outgoing()).toHaveLength(1)
+  expectReceiptAlive()
+  expectNoErrors(e2e.logs)
+})
+
 test('the same LNURL pays once from NWC after confirmation', async () => {
   server = startServer('ok')
   await e2e.container.users.update(USER_A, {nwcUrl: NWC_URL})

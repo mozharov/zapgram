@@ -1,3 +1,4 @@
+import {lnurlRecipientKey} from '@core/lightning/lnurl-pay.js'
 import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import {
   fetchLnurlPay,
@@ -51,8 +52,16 @@ export async function payingLnurl(
     return conversation.halt()
   }
 
+  let recipient: string
+  try {
+    recipient = lnurlRecipientKey(request)
+  } catch {
+    await refuse(ctx, 'bad-response')
+    if (opts?.invalid === 'return') return 'invalid'
+    return conversation.halt()
+  }
   const unresolved = await conversation.external(() =>
-    getRuntime().lnurlPays.hasUnresolved(ctx.user.id, request.value),
+    getRuntime().lnurlPays.hasUnresolved(ctx.user.id, recipient),
   )
   if (unresolved) {
     await ctx.reply(
@@ -180,7 +189,7 @@ export async function payingLnurl(
     host: screen,
     recheckExpiry: true,
     invalid: opts?.invalid,
-    lnurl: {attemptId, recipient: request.value},
+    lnurl: {attemptId, recipient},
   })
   if (paid === 'invalid') return 'invalid'
   return undefined

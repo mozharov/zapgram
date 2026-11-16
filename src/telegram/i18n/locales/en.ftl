@@ -409,6 +409,8 @@ lnurl-pay-failed = {$reason ->
         Nothing was paid.
     [already-paid] <b>⚠️ This invoice was already paid.</b>
         Nothing was taken from your wallet. Ask for a new one.
+    [declined] <b>⚠️ The wallet refused this payment.</b>
+        Nothing was paid. You can try again.
    *[other] <b>⚠️ The recipient's server sent an unexpected response.</b>
         Nothing was paid.
     }

@@ -36,7 +36,7 @@ export type LnurlPayAttemptDeps = {
     fromUserId: number
     recipient: string
     sats: number
-    outcome: 'settled' | 'abandoned'
+    outcome: 'settled' | 'abandoned' | 'needs_review'
   }) => Promise<boolean>
   collectDonation?: (input: {userId: number; sats: number; rail: Rail}) => Promise<void>
 }
@@ -99,7 +99,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     } catch (error) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
       if (!code.includes('CONSTRAINT')) throw error
-      deps.log.info({recipient: input.recipient}, 'LNURL pay attempt blocked by an open one')
+      deps.log.info({attemptId: input.attemptId}, 'LNURL pay attempt blocked by an open one')
       return 'blocked'
     }
     return 'ready'
@@ -117,11 +117,12 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       await deps.attempts.dropUnclaimed(id)
       return false
     }
+    let won = false
     try {
       await deps.attempts.markProviderAccepted(id, paymentHash)
       // The wizard's receipt claims the sender in this same settle, so recovery
       // cannot send a second message while the screen is still being painted.
-      await deps.attempts.markSettled(id, senderNotified)
+      won = await deps.attempts.markSettled(id, senderNotified)
     } catch (error) {
       if (!isConstraint(error)) throw error
       await deps.attempts.dropUnclaimed(id)
@@ -129,9 +130,8 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     }
     const row = await deps.attempts.get(id)
     if (row.status !== 'settled') return false
-    // The wizard shows the receipt itself. Recovery is what tells the sender
-    // when that screen never landed.
-    if (!deps.collectDonation) return true
+    // Only the worker whose update landed collects. The other also sees settled.
+    if (!won || !deps.collectDonation) return true
     await deps
       .collectDonation({userId: row.fromUserId, sats: row.sats, rail: row.rail})
       .catch(error => {
@@ -141,7 +141,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
   }
 
   async function noteRejected(id: string) {
-    await deps.attempts.markAbandoned(id)
+    await deps.attempts.abandonIfPhase(id, 'pay_unknown')
   }
 
   /**
@@ -192,12 +192,8 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       }
       return finishSender(await deps.attempts.get(id))
     }
-    if (!row.invoiceHash || row.phase === 'reserved' || row.phase === 'invoice_saved') {
-      if (ageMs(row) > graceMs) {
-        await deps.attempts.markAbandoned(row.id)
-        await tellSender(row, 'abandoned')
-        return 'abandoned'
-      }
+    if (row.phase === 'reserved' || row.phase === 'invoice_saved') {
+      if (ageMs(row) > graceMs) return abandonUnpaid(row, row.phase)
       return 'in_flight'
     }
     const looked = await lookupQuiet(row)
@@ -211,13 +207,14 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       ambiguous = true
     }
     if (looked.state === 'retryable' && ageMs(row) > reviewMs) {
-      await deps.attempts.markAbandoned(row.id)
-      await tellSender(row, 'abandoned')
-      deps.log.error(
-        {attemptId: row.id},
-        'LNURL pay abandoned after the provider reported no payment',
-      )
-      return 'abandoned'
+      const left = await abandonUnpaid(row, 'pay_unknown')
+      if (left === 'abandoned') {
+        deps.log.error(
+          {attemptId: row.id},
+          'LNURL pay abandoned after the provider reported no payment',
+        )
+      }
+      return left
     }
     if (row.phase === 'needs_review') return 'in_flight'
     if (
@@ -230,6 +227,7 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
           {attemptId: row.id},
           'LNURL pay needs a person: the outcome is still unknown',
         )
+        await tellSender(row, 'needs_review')
       }
       return 'needs_review'
     }
@@ -243,7 +241,20 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
     return latest.senderNotified ? 'settled' : 'in_flight'
   }
 
-  async function tellSender(row: LnurlPayAttempt, outcome: 'settled' | 'abandoned') {
+  async function abandonUnpaid(
+    row: LnurlPayAttempt,
+    expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+  ): Promise<'abandoned' | 'in_flight'> {
+    const left = await deps.attempts.abandonIfPhase(row.id, expected)
+    if (!left) return 'in_flight'
+    await tellSender(row, 'abandoned')
+    return 'abandoned'
+  }
+
+  async function tellSender(
+    row: LnurlPayAttempt,
+    outcome: 'settled' | 'abandoned' | 'needs_review',
+  ) {
     if (!deps.notifySender || row.senderNotified) return
     const claimed = await deps.attempts.claimSenderNotice(row.id)
     if (!claimed) return

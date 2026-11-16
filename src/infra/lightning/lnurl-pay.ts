@@ -258,7 +258,7 @@ async function resolveTarget(raw: string, signal: AbortSignal): Promise<Resolved
   }
   if (url.username || url.password) throw new LnurlPayError('bad-response')
   const nodeEnv = process.env.NODE_ENV
-  if (!schemeAllowed(url, nodeEnv)) throw new LnurlPayError('bad-response')
+  if (!lnurlSchemeAllowed(url, nodeEnv)) throw new LnurlPayError('bad-response')
   const host = url.hostname.replace(/^\[|\]$/g, '')
   if (!host) throw new LnurlPayError('bad-response')
   const records = await addressesFor(host, signal)
@@ -412,14 +412,18 @@ export async function lnurlPinnedGet(
   })
 }
 
-function schemeAllowed(url: URL, nodeEnv: string | undefined): boolean {
+/** Exported for the port rule. Fetch uses the same check. */
+export function lnurlSchemeAllowed(url: URL, nodeEnv: string | undefined): boolean {
   const host = url.hostname
     .replace(/^\[|\]$/g, '')
     .replace(/\.$/, '')
     .toLowerCase()
   // No Tor transport. Resolving an onion name would leak it onto clearnet DNS.
   if (host === 'onion' || host.endsWith('.onion')) return false
-  if (url.protocol === 'https:') return true
+  // Clearnet https stays on 443. Tests still use a local port.
+  if (url.protocol === 'https:') {
+    return url.port === '' || url.port === '443' || lnurlLocalTargetsAllowed(nodeEnv)
+  }
   if (url.protocol !== 'http:' || !lnurlLocalTargetsAllowed(nodeEnv)) return false
   return host === 'localhost' || isLoopback(host)
 }

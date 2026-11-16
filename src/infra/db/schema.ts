@@ -446,7 +446,14 @@ export const dmTransfersTable = sqliteTable(
     reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
-  table => [check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`)],
+  table => [
+    check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`),
+    uniqueIndex('dm_transfers_one_open')
+      .on(table.fromUserId, table.toUserId)
+      .where(
+        sql`${table.status} = 'pending' AND ${table.phase} in ('pay_unknown', 'provider_accepted', 'needs_review')`,
+      ),
+  ],
 )
 
 /**

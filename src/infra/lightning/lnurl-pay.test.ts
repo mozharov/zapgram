@@ -12,6 +12,7 @@ import {
   fetchLnurlPay,
   lnurlIpAllowed,
   lnurlPinnedGet,
+  lnurlSchemeAllowed,
   requestLnurlInvoice,
   withDeadline,
 } from './lnurl-pay.js'
@@ -68,6 +69,13 @@ describe('lnurlIpAllowed', () => {
 })
 
 describe('fetchLnurlPay', () => {
+  test('refuses clearnet https on a port other than 443 outside tests', () => {
+    expect(lnurlSchemeAllowed(new URL('https://pay.example:8443/lnurlp'), 'production')).toBe(false)
+    expect(lnurlSchemeAllowed(new URL('https://pay.example/lnurlp'), 'production')).toBe(true)
+    expect(lnurlSchemeAllowed(new URL('https://pay.example:443/lnurlp'), 'production')).toBe(true)
+    expect(lnurlSchemeAllowed(new URL('https://127.0.0.1:8443/lnurlp'), 'test')).toBe(true)
+  })
+
   test('does not look up an onion name', async () => {
     await expect(
       fetchLnurlPay({kind: 'lnurl', value: encodeLnurl('https://pay.example.onion/lnurlp')}),

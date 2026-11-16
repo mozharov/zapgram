@@ -28,6 +28,11 @@ export type WalletSelection = {
   wallet: 'internal' | 'nwc'
   nwcBalanceError: boolean
   host?: ConversationHost
+  /**
+   * False when both wallets were offered and the click only chose one.
+   * The debit waits for a later confirm. A sole-wallet screen is already that confirm.
+   */
+  confirmed: boolean
 }
 
 /**
@@ -98,7 +103,7 @@ export async function waitForWallet(
       wallet_type: 'internal',
       required_sats: requiredSats,
     })
-    return {wallet: 'internal', nwcBalanceError: false}
+    return {wallet: 'internal', nwcBalanceError: false, confirmed: true}
   }
 
   if (requiredSats !== undefined) {
@@ -142,7 +147,7 @@ export async function waitForWallet(
         nwc_funded: funded.nwc,
         nwc_balance_error: funded.nwcBalanceError,
       })
-      return {wallet, nwcBalanceError: funded.nwcBalanceError}
+      return {wallet, nwcBalanceError: funded.nwcBalanceError, confirmed: true}
     }
 
     const nonce = await conversation.external(() => crypto.randomUUID())
@@ -172,6 +177,7 @@ export async function waitForWallet(
     nonce,
     html: opts?.html ?? ctx.t('wait-for-wallet'),
     keyboard: walletKeyboard(ctx, {copyText: opts?.copyText, nonce}),
+    confirmed: true,
   })
 }
 
@@ -186,7 +192,7 @@ function walletPrompt(
     sole?: SoleWalletPrompt
     nonce: string
   },
-): {html: string; keyboard: InlineKeyboard; actionLabel?: string} {
+): {html: string; keyboard: InlineKeyboard; actionLabel?: string; confirmed: boolean} {
   const soleWallet = soleFundedWallet(opts.funded)
   if (soleWallet && opts.sole) {
     return {
@@ -198,6 +204,7 @@ function walletPrompt(
         nonce: opts.nonce,
       }),
       actionLabel: opts.sole.actionLabel,
+      confirmed: true,
     }
   }
   return {
@@ -207,6 +214,8 @@ function walletPrompt(
       funded: opts.funded,
       nonce: opts.nonce,
     }),
+    // Two wallet buttons choose a rail. Paying still needs an explicit confirm.
+    confirmed: opts.funded.internal !== opts.funded.nwc,
   }
 }
 
@@ -228,6 +237,7 @@ async function pickWallet(
     keyboard: InlineKeyboard
     nonce: string
     actionLabel?: string
+    confirmed?: boolean
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ): Promise<WalletSelection> {
@@ -283,7 +293,12 @@ async function pickWallet(
     required_sats: opts.requiredSats,
     nwc_balance_error: opts.nwcBalanceError,
   })
-  return {wallet, nwcBalanceError: opts.nwcBalanceError, host: pickedHost}
+  return {
+    wallet,
+    nwcBalanceError: opts.nwcBalanceError,
+    host: pickedHost,
+    confirmed: opts.confirmed !== false,
+  }
 }
 
 /** This attempt only. Replay of the step keeps the nonce; cancel and a new invoice do not. */

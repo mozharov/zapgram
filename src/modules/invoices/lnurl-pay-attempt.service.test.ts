@@ -17,6 +17,65 @@ const attempt = {
   bolt11: 'lnbc1',
 }
 
+test('two settles of one LNURL pay collect the donation once', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  let donations = 0
+  let release = () => {}
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const service = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async () => ({state: 'unknown' as const}),
+    collectDonation: async () => {
+      donations += 1
+      await gate
+    },
+  })
+  expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
+  const first = service.notePaid('one', attempt.paymentHash, true)
+  await Bun.sleep(20)
+  const second = service.notePaid('one', attempt.paymentHash, true)
+  release()
+  expect(await first).toBe(true)
+  expect(await second).toBe(true)
+  expect(donations).toBe(1)
+})
+
+test('recovery does not abandon an invoice after pay has started', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  const started = new Date('2026-01-01T00:00:00Z')
+  let now = started
+  const attempts = createLnurlPayAttemptRepository(db)
+  const notices: string[] = []
+  const realAbandon = attempts.abandonIfPhase.bind(attempts)
+  attempts.abandonIfPhase = async (id, expected) => {
+    await attempts.markPhase(id, 'pay_unknown', 'invoice_saved')
+    return realAbandon(id, expected)
+  }
+  const service = createLnurlPayAttemptService({
+    attempts,
+    log,
+    now: () => now,
+    lookup: async () => ({state: 'unknown' as const}),
+    notifySender: async ({outcome}) => {
+      notices.push(outcome)
+      return true
+    },
+  })
+  expect(await service.beginPay({...attempt, attemptId: 'one'})).toBe('ready')
+  expect(await attempts.markPhase('one', 'invoice_saved', 'pay_unknown')).toBeDefined()
+  now = new Date(started.getTime() + 3 * 60_000)
+  expect(await service.reconcile('one')).toBe('in_flight')
+  expect(notices).toEqual([])
+  expect((await attempts.get('one')).phase).toBe('pay_unknown')
+})
+
 test('an unclear LNURL pay blocks a second debit to the same recipient', async () => {
   const db = createTestDb()
   const users = createUserRepository(db)

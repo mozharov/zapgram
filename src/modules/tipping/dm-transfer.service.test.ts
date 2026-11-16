@@ -29,6 +29,42 @@ const send = {
   rail: 'internal' as const,
 }
 
+test('two workers settling one attempt pay the recipient and the donation once', async () => {
+  const world = await worldFor({donationPercent: 10})
+  await Promise.all([world.service.settle(send), world.service.settle(send)])
+  expect(world.paid('user')).toHaveLength(1)
+  expect(world.paid('fee')).toHaveLength(1)
+  expect(world.donations).toHaveLength(1)
+})
+
+test('a second send waits while the first pay is unresolved', async () => {
+  const world = await worldFor({donationPercent: 0})
+  world.payImpl = async () => {
+    throw new NWCTimeoutError()
+  }
+  expect(await world.service.settle(send)).toEqual({outcome: 'in_flight'})
+  const again = await world.service.settle({...send, attemptId: 'attempt-2'})
+  expect(again).toEqual({outcome: 'in_flight'})
+  expect(world.created('user')).toBe(1)
+  expect(world.payCalls).toBe(0)
+})
+
+test('recovery does not abandon a DM invoice after pay has started', async () => {
+  const world = await worldFor({donationPercent: 0, invoiceGraceMs: 1_000})
+  const created = new Date('2026-01-01T00:00:00Z')
+  world.now = () => created
+  const row = await world.transfers.reserve({...send, id: send.attemptId, createdAt: created})
+  await world.transfers.saveInvoice(row.id, null, {hash: 'saved', bolt11: 'saved'})
+  const real = world.transfers.abandonIfPhase.bind(world.transfers)
+  world.transfers.abandonIfPhase = async (id, expected) => {
+    await world.transfers.markPhase(id, 'pay_unknown', 'invoice_saved')
+    return real(id, expected)
+  }
+  world.now = () => new Date(created.getTime() + 60_000)
+  expect(await world.service.reconcile(send.attemptId)).toBe('in_flight')
+  expect((await world.transfers.get(send.attemptId)).phase).toBe('pay_unknown')
+})
+
 test('two workers settling one attempt pay the recipient once', async () => {
   const world = await worldFor({donationPercent: 0})
   let notices = 0

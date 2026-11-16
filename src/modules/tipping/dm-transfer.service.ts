@@ -69,11 +69,11 @@ export type DmTransferDeps = {
     fromUserId: number
     toUserId: number
     sats: number
-    outcome: 'settled' | 'abandoned'
+    outcome: 'settled' | 'abandoned' | 'needs_review'
   }) => Promise<boolean>
 }
 
-type Primary = 'paid' | 'in_flight' | 'rejected'
+type Primary = {status: 'paid' | 'in_flight' | 'rejected'; settledNow: boolean}
 
 /**
  * One confirmation, one debit.
@@ -99,6 +99,9 @@ export function createDmTransferService(deps: DmTransferDeps) {
     sats: number
     rail: DmTransferRail
   }): Promise<DmTransferSettlement> {
+    const open = await deps.transfers.findOpen(input.fromUserId, input.toUserId)
+    if (open && open.id !== input.attemptId) return {outcome: 'in_flight'}
+
     const row = await deps.transfers.reserve({
       id: input.attemptId,
       fromUserId: input.fromUserId,
@@ -116,24 +119,35 @@ export function createDmTransferService(deps: DmTransferDeps) {
     }
 
     if (row.phase === 'abandoned') return {outcome: 'rejected', reason: 'insufficient_funds'}
-    if (row.status !== 'settled' && row.phase !== 'provider_accepted') {
+    // A replay of a row that is already settled may finish the fee. A worker that
+    // lost `markSettled` must not start a second donation.
+    const alreadySettled = row.status === 'settled'
+    let wonSettle = alreadySettled
+    if (!alreadySettled && row.phase !== 'provider_accepted') {
       const primary = await settlePrimary(row, input)
-      if (primary === 'in_flight') {
+      if (primary.status === 'in_flight') {
         deps.log.info(
           {fromUserId: input.fromUserId, toUserId: input.toUserId, sats: input.sats},
           'DM transfer outcome unknown',
         )
         return {outcome: 'in_flight'}
       }
-      if (primary === 'rejected') return {outcome: 'rejected', reason: 'insufficient_funds'}
+      if (primary.status === 'rejected') return {outcome: 'rejected', reason: 'insufficient_funds'}
+      wonSettle = primary.settledNow
     } else if (row.phase === 'provider_accepted') {
-      await settleMark(row.id)
+      wonSettle = await settleMark(row.id)
+    }
+    if (!wonSettle) {
+      const latest = await deps.transfers.get(input.attemptId)
+      if (latest.status !== 'settled') return {outcome: 'in_flight'}
     }
 
-    const fee = await settleFee(input).catch(error => {
-      deps.log.error({error, fromUserId: input.fromUserId}, 'DM transfer fee failed')
-      return 'failed' as const
-    })
+    const fee = wonSettle
+      ? await settleFee(input).catch(error => {
+          deps.log.error({error, fromUserId: input.fromUserId}, 'DM transfer fee failed')
+          return 'failed' as const
+        })
+      : ('skipped' as const)
     const notice = await settleNotice(input).catch(error => {
       deps.log.error({error, toUserId: input.toUserId}, 'DM transfer notice failed')
       return 'failed' as const
@@ -150,7 +164,9 @@ export function createDmTransferService(deps: DmTransferDeps) {
     input: {toUserId: number; sats: number; fromUserId: number},
   ): Promise<Primary> {
     const current = await ensureInvoice(row, input)
-    if (current === 'in_flight' || current === 'rejected') return current
+    if (current === 'in_flight' || current === 'rejected') {
+      return {status: current, settledNow: false}
+    }
     return payKnownInvoice(current, input.fromUserId)
   }
 
@@ -171,35 +187,37 @@ export function createDmTransferService(deps: DmTransferDeps) {
 
   async function payKnownInvoice(row: DmTransfer, fromUserId: number): Promise<Primary> {
     if (row.phase === 'provider_accepted' || row.providerAccepted) {
-      await settleMark(row.id)
-      return 'paid'
+      return {status: 'paid', settledNow: await settleMark(row.id)}
     }
     if (row.phase === 'pay_unknown' || row.phase === 'needs_review') {
       return observePay(row)
     }
-    if (row.phase !== 'invoice_saved') return 'in_flight'
-    const claimed = await deps.transfers.markPhase(row.id, 'pay_unknown', 'invoice_saved')
-    if (!claimed) return 'in_flight'
-    return submitPay(claimed, fromUserId)
+    if (row.phase !== 'invoice_saved') return {status: 'in_flight', settledNow: false}
+    try {
+      const claimed = await deps.transfers.markPhase(row.id, 'pay_unknown', 'invoice_saved')
+      if (!claimed) return {status: 'in_flight', settledNow: false}
+      return submitPay(claimed, fromUserId)
+    } catch (error) {
+      if (!isConstraint(error)) throw error
+      return {status: 'in_flight', settledNow: false}
+    }
   }
 
   async function submitPay(row: DmTransfer, fromUserId: number): Promise<Primary> {
-    if (!row.bolt11) return 'in_flight'
+    if (!row.bolt11) return {status: 'in_flight', settledNow: false}
     try {
       const paid = await deps.pay(fromUserId, row.bolt11, row.rail, {knownInternal: true})
       await deps.transfers.markProviderAccepted(row.id, paid?.paymentHash)
       if (row.invoiceHash) await lookupQuiet(row.toUserId, row.invoiceHash)
-      await settleMark(row.id)
-      return 'paid'
+      return {status: 'paid', settledNow: await settleMark(row.id)}
     } catch (error) {
       if (error instanceof InvoiceAlreadyPaidError) {
         await deps.transfers.markProviderAccepted(row.id, undefined)
-        await settleMark(row.id)
-        return 'paid'
+        return {status: 'paid', settledNow: await settleMark(row.id)}
       }
       if (error instanceof InsufficientFundsError) {
-        await deps.transfers.markAbandoned(row.id)
-        return 'rejected'
+        await deps.transfers.abandonIfPhase(row.id, 'pay_unknown')
+        return {status: 'rejected', settledNow: false}
       }
       // Timeout, transport, or an unclassified provider error. The debit may
       // have landed. Do not throw and do not mint another invoice.
@@ -207,28 +225,33 @@ export function createDmTransferService(deps: DmTransferDeps) {
         {transferId: row.id, name: error instanceof Error ? error.name : 'unknown'},
         'DM transfer pay outcome unknown',
       )
-      return 'in_flight'
+      return {status: 'in_flight', settledNow: false}
     }
   }
 
   async function observePay(row: DmTransfer): Promise<Primary> {
-    if (!row.invoiceHash) return 'in_flight'
+    if (!row.invoiceHash) return {status: 'in_flight', settledNow: false}
     const state = await lookupQuiet(row.toUserId, row.invoiceHash)
     if (state === 'paid') {
       await deps.transfers.markProviderAccepted(row.id, row.providerPaymentHash ?? undefined)
-      await settleMark(row.id)
-      return 'paid'
+      return {status: 'paid', settledNow: await settleMark(row.id)}
     }
     // `retryable` is also a 404, which is not proof the pay never left.
-    return 'in_flight'
+    return {status: 'in_flight', settledNow: false}
   }
 
-  async function settleMark(id: string) {
+  async function settleMark(id: string): Promise<boolean> {
     try {
-      await deps.transfers.markSettled(id)
+      return await deps.transfers.markSettled(id)
     } catch (error) {
       deps.log.error({error, transferId: id}, 'DM transfer settle mark failed')
+      return false
     }
+  }
+
+  function isConstraint(error: unknown): boolean {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+    return code.includes('CONSTRAINT')
   }
 
   async function lookupQuiet(toUserId: number, hash: string): Promise<PayoutState | 'unknown'> {
@@ -376,14 +399,11 @@ export function createDmTransferService(deps: DmTransferDeps) {
       return finishSettled(latest)
     }
     if (row.status === 'settled') return finishSettled(row)
-    if (!row.invoiceHash) {
-      if (ageMs(row) > graceMs) return abandon(row)
+    if (row.phase === 'reserved' || row.phase === 'invoice_saved') {
+      if (ageMs(row) > graceMs) return abandon(row, row.phase)
       return 'in_flight'
     }
-    if (row.phase === 'invoice_saved' || row.phase === 'reserved') {
-      if (ageMs(row) > graceMs) return abandon(row)
-      return 'in_flight'
-    }
+    if (!row.invoiceHash) return 'in_flight'
     const state = await lookupQuiet(row.toUserId, row.invoiceHash)
     if (state === 'paid') {
       await deps.transfers.markProviderAccepted(row.id, row.providerPaymentHash ?? undefined)
@@ -393,11 +413,14 @@ export function createDmTransferService(deps: DmTransferDeps) {
       return finishSettled(latest)
     }
     if (state === 'retryable' && ageMs(row) > reviewMs) {
-      deps.log.error(
-        {transferId: row.id},
-        'DM transfer abandoned after the provider reported no payment',
-      )
-      return abandon(row)
+      const left = await abandon(row, 'pay_unknown')
+      if (left === 'abandoned') {
+        deps.log.error(
+          {transferId: row.id},
+          'DM transfer abandoned after the provider reported no payment',
+        )
+      }
+      return left
     }
     if (row.phase === 'needs_review') return 'in_flight'
     if ((state === 'pending' || state === 'unknown') && ageMs(row) > reviewMs) {
@@ -407,6 +430,7 @@ export function createDmTransferService(deps: DmTransferDeps) {
           {transferId: row.id},
           'DM transfer needs a person: the pay outcome is still unknown',
         )
+        await tellSender(row, 'needs_review')
       }
       return 'needs_review'
     }
@@ -417,13 +441,17 @@ export function createDmTransferService(deps: DmTransferDeps) {
    * Fee, then the recipient notice. `in_flight` means the notice is still due, so
    * recovery does not treat the row as gone and can read the rows after it.
    */
-  async function abandon(row: DmTransfer): Promise<'abandoned'> {
-    await deps.transfers.markAbandoned(row.id)
+  async function abandon(
+    row: DmTransfer,
+    expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+  ): Promise<'abandoned' | 'in_flight'> {
+    const left = await deps.transfers.abandonIfPhase(row.id, expected)
+    if (!left) return 'in_flight'
     await tellSender({...row, phase: 'abandoned'}, 'abandoned')
     return 'abandoned'
   }
 
-  async function tellSender(row: DmTransfer, outcome: 'settled' | 'abandoned') {
+  async function tellSender(row: DmTransfer, outcome: 'settled' | 'abandoned' | 'needs_review') {
     if (!deps.notifySender || row.senderNotified) return
     const claimed = await deps.transfers.claimSenderNotice(row.id)
     if (!claimed) return

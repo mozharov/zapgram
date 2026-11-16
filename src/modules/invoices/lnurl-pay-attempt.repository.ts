@@ -133,8 +133,9 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
         )
     },
 
-    async markSettled(id: string, senderNotified = false) {
-      await database
+    /** True only when this call moved a pending row to settled. The loser of that race gets false. */
+    async markSettled(id: string, senderNotified = false): Promise<boolean> {
+      const [row] = await database
         .update(lnurlPayAttemptsTable)
         .set({
           status: 'settled',
@@ -142,6 +143,30 @@ export function createLnurlPayAttemptRepository(database: AppDatabase) {
           ...(senderNotified ? {senderNotified: true} : {}),
         })
         .where(and(eq(lnurlPayAttemptsTable.id, id), eq(lnurlPayAttemptsTable.status, 'pending')))
+        .returning()
+      return row !== undefined
+    },
+
+    /**
+     * Leave the row only while it is still in `expected`. A pay that started after
+     * the read must not be marked abandoned, and must not be told it was cancelled.
+     */
+    async abandonIfPhase(
+      id: string,
+      expected: 'reserved' | 'invoice_saved' | 'pay_unknown',
+    ): Promise<boolean> {
+      const [row] = await database
+        .update(lnurlPayAttemptsTable)
+        .set({phase: 'abandoned', reviewLogged: true})
+        .where(
+          and(
+            eq(lnurlPayAttemptsTable.id, id),
+            eq(lnurlPayAttemptsTable.status, 'pending'),
+            eq(lnurlPayAttemptsTable.phase, expected),
+          ),
+        )
+        .returning()
+      return row !== undefined
     },
 
     /**

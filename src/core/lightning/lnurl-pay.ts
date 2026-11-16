@@ -51,6 +51,29 @@ export function payableSatRange(
  * A lightning address is LUD-16 `https://host/.well-known/lnurlp/name` (no port, https).
  * An LNURL is the URL inside the bech32 string. `lnurlp://user@host` is the same well-known path.
  */
+/**
+ * One lock key for a lightning address, an LNURL bech32, and `lnurlp://`.
+ * Host is lowercased and the default port is dropped, so those forms do not
+ * each hold the recipient open on their own.
+ */
+export function lnurlRecipientKey(request: PaymentRequest): string {
+  return canonicalPayUrl(lnurlPayEndpoint(request))
+}
+
+export function canonicalPayUrl(endpoint: string): string {
+  const url = new URL(endpoint)
+  url.hostname = url.hostname.replace(/\.$/, '').toLowerCase()
+  if (
+    (url.protocol === 'https:' && url.port === '443') ||
+    (url.protocol === 'http:' && url.port === '80')
+  ) {
+    url.port = ''
+  }
+  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '')
+  url.hash = ''
+  return url.toString()
+}
+
 export function lnurlPayEndpoint(request: PaymentRequest): string {
   if (request.kind === 'bolt11') throw new LnurlPayError('bad-response')
   if (request.kind === 'lightning-address') return addressEndpoint(request.value)

@@ -354,7 +354,11 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
         users.getOrThrow(toUserId),
       ])
       const key =
-        outcome === 'settled' ? 'sending-to-user.sender-settled' : 'sending-to-user.sender-not-paid'
+        outcome === 'settled'
+          ? 'sending-to-user.sender-settled'
+          : outcome === 'needs_review'
+            ? 'sending-to-user.still-confirming'
+            : 'sending-to-user.sender-not-paid'
       return notifier.send(
         fromUserId,
         translate(key, from.languageCode, {amount: sats, recipient: to.username ?? ''}),
@@ -419,7 +423,12 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     notifySender: async ({fromUserId, recipient, sats, outcome}) => {
       const from = await users.getOrThrow(fromUserId)
-      const key = outcome === 'settled' ? 'lnurl-pay-sender-settled' : 'lnurl-pay-sender-not-paid'
+      const key =
+        outcome === 'settled'
+          ? 'lnurl-pay-sender-settled'
+          : outcome === 'needs_review'
+            ? 'lnurl-pay-still-checking'
+            : 'lnurl-pay-sender-not-paid'
       return notifier.send(
         fromUserId,
         translate(key, from.languageCode, {

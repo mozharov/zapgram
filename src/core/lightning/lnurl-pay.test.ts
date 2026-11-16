@@ -4,7 +4,13 @@ import {decode, encode, fromWords, toWords} from 'bech32'
 import {decode as decodeBolt11} from 'bolt11'
 import {mintInvoice} from '../../../test/e2e/fakes/bolt11.js'
 import {bolt11DescriptionHash, decodeLnurl} from './bech32.js'
-import {LnurlPayError, lnurlInvoiceProblem, lnurlPayEndpoint, payableSatRange} from './lnurl-pay.js'
+import {
+  LnurlPayError,
+  lnurlInvoiceProblem,
+  lnurlPayEndpoint,
+  lnurlRecipientKey,
+  payableSatRange,
+} from './lnurl-pay.js'
 
 const METADATA = JSON.stringify([
   ['text/plain', 'Pay Alice'],
@@ -62,6 +68,15 @@ describe('lnurlPayEndpoint', () => {
     expect(lnurlPayEndpoint({kind: 'lnurl', value: encoded})).toBe(url)
     expect(lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlp://alice@example.com'})).toBe(
       'https://example.com/.well-known/lnurlp/alice',
+    )
+    const address = {kind: 'lightning-address' as const, value: 'alice@example.com'}
+    expect(lnurlRecipientKey(address)).toBe('https://example.com/.well-known/lnurlp/alice')
+    expect(lnurlRecipientKey({kind: 'lnurl', value: 'lnurlp://alice@example.com'})).toBe(
+      lnurlRecipientKey(address),
+    )
+    expect(lnurlRecipientKey({kind: 'lnurl', value: encoded})).toBe(url)
+    expect(lnurlRecipientKey({kind: 'lnurl', value: 'https://Pay.Example:443/lnurlp/alice/'})).toBe(
+      'https://pay.example/lnurlp/alice',
     )
     expect(lnurlPayEndpoint({kind: 'lnurl', value: 'lnurlp://pay.example/path'})).toBe(
       'https://pay.example/path',
