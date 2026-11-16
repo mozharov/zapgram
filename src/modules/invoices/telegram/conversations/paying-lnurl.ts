@@ -1,4 +1,4 @@
-import {lnurlRecipientKey} from '@core/lightning/lnurl-pay.js'
+import {lnurlRecipientKey, lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
 import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import {
   fetchLnurlPay,
@@ -65,7 +65,7 @@ export async function payingLnurl(
   )
   if (unresolved) {
     await ctx.reply(
-      ctx.t('lnurl-pay-still-checking', {recipient: lnurlRecipientHtml(request.value)}),
+      ctx.t('lnurl-pay-blocked', {recipient: lnurlRecipientHtml(lnurlRecipientLabel(recipient))}),
       disabledLinkPreview,
     )
     if (opts?.invalid === 'return') return 'invalid'

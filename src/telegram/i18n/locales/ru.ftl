@@ -400,6 +400,14 @@ lnurl-pay-still-checking = <b>⏳ Платёж на <code>{$recipient}</code> е
 
     По нему больше ничего не спишется. Не плати этому получателю снова, пока он не разрешится.
 
+lnurl-pay-blocked = <b>⏳ Предыдущий платёж на <code>{$recipient}</code> ещё проверяется.</b>
+
+    Новый платёж не начат, по нему ничего не списано. Попробуй снова, когда предыдущий разрешится.
+
+lnurl-pay-not-started = <b>⚠️ Новый платёж на <code>{$recipient}</code> не начат.</b>
+
+    Нового списания нет. Начни оплату заново.
+
 lnurl-pay-sender-settled = <b>✅ Платёж {$amount} сат на <code>{$recipient}</code> прошёл.</b>
 lnurl-pay-sender-not-paid = <b>⚠️ Платёж {$amount} сат на <code>{$recipient}</code> не прошёл.</b>
 

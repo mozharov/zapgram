@@ -4,8 +4,31 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
+import {translate} from '@telegram/i18n/i18n.js'
 import {HTTPError} from 'got'
 import {lnurlPayFailureKind} from './paying-invoice.js'
+
+for (const language of ['en', 'ru']) {
+  test(`LNURL refusal copy in ${language} distinguishes a blocked payment from a hold`, () => {
+    const recipient = 'alice@pay.example'
+    const blocked = translate('lnurl-pay-blocked', language, {recipient})
+    const notStarted = translate('lnurl-pay-not-started', language, {recipient})
+    const hold = translate('lnurl-pay-still-checking', language, {recipient})
+    for (const text of [blocked, notStarted]) {
+      expect(text).toContain(`<code>${recipient}</code>`)
+      expect(text).toContain('\n\n')
+      expect(text).not.toBe(hold)
+    }
+    expect(blocked).toMatch(language === 'ru' ? /Предыдущий платёж/ : /previous payment/)
+    expect(blocked).toMatch(
+      language === 'ru' ? /Новый платёж не начат/ : /new payment was not started/,
+    )
+    expect(notStarted).not.toMatch(/проверяется|being checked/)
+    expect(notStarted).toMatch(
+      language === 'ru' ? /Начни оплату заново/ : /Start the payment again/,
+    )
+  })
+}
 
 test('a cloned pause is recognized and uncertain wallet outcomes stay on hold', () => {
   expect(lnurlPayFailureKind({name: 'Error', message: 'send_paused'})).toBe('paused')

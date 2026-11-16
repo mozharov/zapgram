@@ -105,6 +105,51 @@ test('an unclear LNURL pay blocks a second debit to the same recipient', async (
   expect(pays).toBe(1)
 })
 
+for (const mismatch of [{fromUserId: 2}, {recipient: 'bob@pay.example'}, {sats: 31}]) {
+  test(`mismatched LNURL attempt data ${JSON.stringify(mismatch)} does not mean in flight`, async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    await users.getOrCreate({id: 1, languageCode: 'en'})
+    await users.getOrCreate({id: 2, languageCode: 'en'})
+    const attempts = createLnurlPayAttemptRepository(db)
+    const service = createLnurlPayAttemptService({
+      attempts,
+      log,
+      lookup: async () => {
+        throw new Error('A mismatched attempt must not look up a payment')
+      },
+    })
+    await attempts.reserve({...attempt, id: 'original'})
+    const before = await attempts.get('original')
+    expect(await service.beginPay({...attempt, ...mismatch, attemptId: 'original'})).toBe(
+      'not_started',
+    )
+    expect(await attempts.get('original')).toEqual(before)
+  })
+}
+
+test('an abandoned LNURL attempt is not presented as an unresolved payment', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).getOrCreate({id: 1, languageCode: 'en'})
+  const attempts = createLnurlPayAttemptRepository(db)
+  let notices = 0
+  const service = createLnurlPayAttemptService({
+    attempts,
+    log,
+    lookup: async () => ({state: 'unknown'}),
+    notifySender: async () => {
+      notices += 1
+      return true
+    },
+  })
+  await service.beginPay({...attempt, attemptId: 'abandoned'})
+  await service.noteRejected('abandoned')
+  expect(await service.beginPay({...attempt, attemptId: 'abandoned'})).toBe('not_started')
+  await service.reconcile('abandoned')
+  expect(notices).toBe(0)
+  expect(await service.listActionable(20, 0)).toEqual([])
+})
+
 test('an already-paid invoice is a receipt only when this wallet paid it', async () => {
   const db = createTestDb()
   const users = createUserRepository(db)
@@ -460,6 +505,14 @@ test('an LNURL invoice losing the open-attempt index is closed without a recover
   expect((await attempts.get(blockedId)).senderNotified).toBe(true)
   await service.reconcile(blockedId)
   expect(notices).toBe(0)
+  // Once the competing payment resolves, this abandoned invoice still cannot pay.
+  const readyId = ids[results.indexOf('ready')]
+  if (!readyId) throw new Error('missing ready attempt')
+  await service.noteRejected(readyId)
+  expect(await service.beginPay({...attempt, attemptId: blockedId})).toBe('not_started')
+  await service.reconcile(blockedId)
+  expect(notices).toBe(0)
+  expect(await service.listActionable(20, 0)).toEqual([])
 })
 
 for (const phase of ['pay_unknown', 'provider_accepted'] as const) {

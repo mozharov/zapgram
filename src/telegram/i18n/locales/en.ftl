@@ -400,6 +400,14 @@ lnurl-pay-still-checking = <b>⏳ A payment to <code>{$recipient}</code> is stil
 
     Nothing else will be sent for it. Do not pay this recipient again until it is resolved.
 
+lnurl-pay-blocked = <b>⏳ A previous payment to <code>{$recipient}</code> is still being checked.</b>
+
+    The new payment was not started and nothing was charged for it. Try again once the previous payment is resolved.
+
+lnurl-pay-not-started = <b>⚠️ A new payment to <code>{$recipient}</code> was not started.</b>
+
+    No new charge was made. Start the payment again.
+
 lnurl-pay-sender-settled = <b>✅ The payment of {$amount} sats to <code>{$recipient}</code> went through.</b>
 lnurl-pay-sender-not-paid = <b>⚠️ The payment of {$amount} sats to <code>{$recipient}</code> did not go through.</b>
 

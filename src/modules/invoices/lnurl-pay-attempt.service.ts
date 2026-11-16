@@ -21,7 +21,7 @@ export type LnurlPayLookup = {
   paidAt?: Date
 }
 
-export type LnurlPayGate = 'ready' | 'blocked' | 'in_flight' | 'paid'
+export type LnurlPayGate = 'ready' | 'blocked' | 'not_started' | 'in_flight' | 'paid'
 
 type Rail = 'internal' | 'nwc'
 
@@ -79,14 +79,14 @@ export function createLnurlPayAttemptService(deps: LnurlPayAttemptDeps) {
       createdAt: now(),
     })
     if (row.fromUserId !== input.fromUserId || row.recipient !== input.recipient) {
-      return 'blocked'
+      return 'not_started'
     }
-    if (row.sats !== input.sats) return 'blocked'
+    if (row.sats !== input.sats) return 'not_started'
     if (row.status === 'settled' || row.phase === 'provider_accepted' || row.providerAccepted) {
       return 'paid'
     }
     if (row.phase === 'pay_unknown' || row.phase === 'needs_review') return 'in_flight'
-    if (row.phase === 'abandoned') return 'blocked'
+    if (row.phase === 'abandoned') return 'not_started'
 
     const saved = await deps.attempts.saveInvoice(row.id, row.invoiceHash, {
       hash: input.paymentHash,

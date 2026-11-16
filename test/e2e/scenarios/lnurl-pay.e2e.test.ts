@@ -1,5 +1,7 @@
 import {afterAll, afterEach, beforeEach, expect, mock, test} from 'bun:test'
 import {createHash} from 'node:crypto'
+import {lnurlRecipientKey} from '@core/lightning/lnurl-pay.js'
+import {recognizePaymentRequest} from '@core/lightning/payment-request.js'
 import {conversationsTable, donationsTable, lnurlPayAttemptsTable} from '@infra/db/schema.js'
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {recoverDmTransfers} from '@modules/tipping/jobs/recover-dm-transfers.js'
@@ -704,6 +706,88 @@ for (const response of ['201 pending', '520 pending'] as const) {
     expect(outgoing()).toHaveLength(response === '201 pending' ? 1 : 0)
     await expectNoConversations(e2e.db)
   })
+}
+
+for (const language of ['en', 'ru']) {
+  for (const stage of ['before opening', 'before confirmation'] as const) {
+    test(`LNURL blocked ${stage} in ${language} does not start a payment or notify later`, async () => {
+      server = startServer('ok')
+      credit(USER_A, 1_000)
+      await e2e.container.users.update(USER_A, {donationPercent: 10, donationScope: 'all'})
+      const request = recognizePaymentRequest(server.lnurl)
+      if (!request || request.kind === 'bolt11') throw new Error('Expected an LNURL')
+      const recipient = lnurlRecipientKey(request)
+      const master = e2e.ln.state.walletByApiKey(e2e.container.config.LNBITS_ADMIN_KEY)
+      if (!master) throw new Error('Fake LNbits master wallet not found')
+      const priorInvoice = e2e.ln.state.createInvoice({
+        wallet: master,
+        sats: AMOUNT,
+        memo: '',
+        expirySec: 3600,
+      })
+      const priorId = crypto.randomUUID()
+      const beginPrior = () =>
+        e2e.container.lnurlPays.beginPay({
+          attemptId: priorId,
+          fromUserId: USER_A,
+          recipient,
+          sats: AMOUNT,
+          rail: 'internal',
+          paymentHash: priorInvoice.paymentHash,
+          bolt11: priorInvoice.bolt11,
+        })
+      if (stage === 'before opening') expect(await beginPrior()).toBe('ready')
+
+      const pasted = privateText(server.lnurl, {from: {language_code: language}})
+      await e2e.send(pasted)
+      const payData = keyboardOf(e2e.tg.last('sendMessage'))[0] ?? ''
+      const offerId = requiredMessageId('sendMessage')
+      const open = payCallback(payData, offerId, pasted)
+      if (open.callback_query) open.callback_query.from.language_code = language
+      await e2e.send(open)
+      if (stage === 'before confirmation') {
+        await e2e.send(privateText(String(AMOUNT), {from: {language_code: language}}))
+        expect(await beginPrior()).toBe('ready')
+        const confirm = pressWallet('internal', editedScreen().id)
+        if (confirm.callback_query) confirm.callback_query.from.language_code = language
+        await e2e.send(confirm)
+      }
+
+      const text =
+        stage === 'before opening' ? String(e2e.tg.last('sendMessage')?.text) : editedScreen().text
+      expect(text).toMatch(language === 'ru' ? /Предыдущий платёж/ : /previous payment/)
+      expect(text).toMatch(
+        language === 'ru' ? /Новый платёж не начат/ : /new payment was not started/,
+      )
+      expect(text).toContain(`<code>${recipient}</code>`)
+      expect(text).not.toMatch(/По нему больше ничего не спишется|Nothing else will be sent/)
+      expect(server.hits.callback).toBe(stage === 'before opening' ? 0 : 1)
+      expect(await e2e.db.select().from(lnurlPayAttemptsTable)).toHaveLength(1)
+      const messages = e2e.tg.of('sendMessage').length
+      await recoverDmTransfers()
+      await e2e.container.lnurlPays.noteRejected(priorId)
+      await recoverDmTransfers()
+      expect(e2e.tg.of('sendMessage')).toHaveLength(messages)
+      expect(await e2e.container.lnurlPays.listActionable(20, 0)).toEqual([])
+      expect(
+        e2e.ln.requests.filter(
+          request =>
+            request.method === 'POST' &&
+            request.path === '/api/v1/payments' &&
+            request.body &&
+            typeof request.body === 'object' &&
+            Reflect.get(request.body, 'out') === true,
+        ),
+      ).toHaveLength(0)
+      expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+      expect(outgoing()).toHaveLength(0)
+      expect(await e2e.db.select().from(donationsTable)).toHaveLength(0)
+      expectPayoutsExactly(e2e.ln, {toWallet: 'master', sats: AMOUNT, times: 0})
+      expectPayoutsExactly(e2e.ln, {toWallet: 'fees', sats: 0, times: 0})
+      await expectNoConversations(e2e.db)
+      expectNoErrors(e2e.logs)
+    })
+  }
 }
 
 for (const refusal of ['insufficient', 'declined', 'paused', 'already-paid'] as const) {

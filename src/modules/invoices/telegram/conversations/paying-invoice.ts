@@ -234,6 +234,16 @@ export async function payingInvoice(
       )
       return conversation.halt()
     }
+    if (outcome.kind === 'blocked' || outcome.kind === 'not_started') {
+      await showLnurlHold(
+        ctx,
+        host,
+        ctx.t(outcome.kind === 'blocked' ? 'lnurl-pay-blocked' : 'lnurl-pay-not-started', {
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(lnurl.recipient)),
+        }),
+      )
+      return conversation.halt()
+    }
     if (outcome.kind === 'rejected') throw new InsufficientFundsError()
     if (outcome.kind === 'absent') {
       await showLnurlHold(ctx, host, ctx.t('lnurl-pay-failed', {reason: 'already-paid'}))
@@ -345,6 +355,8 @@ export async function payingInvoice(
 type LnurlPayOutcome =
   | {kind: 'paid'; feesPaid: number}
   | {kind: 'hold'}
+  | {kind: 'blocked'}
+  | {kind: 'not_started'}
   | {kind: 'rejected'}
   | {kind: 'declined'}
   | {kind: 'paused'}
@@ -384,7 +396,8 @@ async function payLnurlAttempt(input: {
     paymentHash: input.paymentHash,
     bolt11: input.bolt11,
   })
-  if (gate === 'blocked' || gate === 'in_flight') return {kind: 'hold'}
+  if (gate === 'blocked' || gate === 'not_started') return {kind: gate}
+  if (gate === 'in_flight') return {kind: 'hold'}
   if (gate === 'paid') return {kind: 'paid', feesPaid: 0}
   // A payment that already exists is not this confirm. Do not pay, and do not
   // let an old preimage become a receipt.
