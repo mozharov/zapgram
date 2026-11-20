@@ -114,7 +114,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.3"
+          cpus: "1.0"
           memory: 1G
 
   landing:
