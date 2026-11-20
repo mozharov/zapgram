@@ -285,6 +285,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
         return {status: 'skipped', reason: 'already_paid'}
     }
     let issuedHash: string | undefined
+    let issuedExpiresAt: Date | undefined
     let periodChanged = false
     const result = await payToFeeCollection({
       userId: input.userId,
@@ -304,6 +305,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
               )
               if (saved) {
                 issuedHash = invoice.paymentHash
+                issuedExpiresAt = invoice.expiresAt
                 deps.log.info(
                   {userId: input.userId, paymentHash: issuedHash},
                   'Monthly donation invoice saved before payment',
@@ -329,6 +331,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
 
     if (result.status === 'paid') {
       let ledgerOk = true
+      let ledgerError: unknown
       try {
         if (issuedHash && input.kind === 'one_shot') await deps.pending.complete(issuedHash)
         else
@@ -340,6 +343,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
           })
       } catch (error) {
         ledgerOk = false
+        ledgerError = error
         deps.log.error({error, userId: input.userId}, 'Failed to insert donation ledger row')
         captureUserException(deps.posthog, error, input.userId, {
           ...baseProps,
@@ -361,6 +365,16 @@ export function createDonationPayService(deps: DonationPayDeps) {
         payment_hash: result.paymentHash ?? null,
         ledger_written: ledgerOk,
       })
+      // Monthly callers may clear the saved hash only after the ledger commit succeeds.
+      // Keep this period recoverable by cron without another debit on a ledger failure.
+      if (input.kind === 'monthly' && !ledgerOk)
+        return {
+          status: 'pending',
+          paymentHash: result.paymentHash,
+          expiresAt: issuedExpiresAt ?? donationInvoiceExpiresAt(null),
+          amountSats: input.amountSats,
+          error: ledgerError,
+        }
     } else if (result.status === 'pending') {
       if (input.kind === 'one_shot' && !issuedHash)
         await deps.pending.save({

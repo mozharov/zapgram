@@ -60,7 +60,8 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     nwcUrl?: string | null
     nwc?: NostrWallet
   }): Promise<SubmitFeatureRequestResult> {
-    const attemptId = crypto.randomUUID()
+    // Re-delivery after a restart must reuse the persisted pending payment or paid ledger row.
+    const attemptId = `feature_request:${input.userId}:${input.source.chatId}:${input.source.messageId}`
     const username = input.username ?? null
     const firstName = input.firstName ?? null
     const text = input.source.text

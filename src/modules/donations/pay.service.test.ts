@@ -842,6 +842,52 @@ test('monthly fee hash is committed in SQLite before payInvoice and survives unt
 })
 
 for (const initial of ['first_enable', 'due'] as const) {
+  test(`Telegram monthly ${initial} cannot finalize before its ledger write succeeds`, async () => {
+    const h = donationPayHarness()
+    if (initial === 'first_enable') {
+      h.user.monthlyDonationSats = 0
+      h.user.monthlyDonationNextAt = null
+    }
+    const dueAt = h.user.monthlyDonationNextAt
+    const error = new Error('ledger unavailable')
+    h.deps.insertDonation = mock(async () => {
+      throw error
+    })
+    const input = {
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly' as const,
+      monthlySource: 'telegram' as const,
+    }
+    // Both Telegram callers finalize only on paid; pending performs no schedule writes.
+    const result = await h.service.payDonation(input)
+    const expiresAt = h.user.monthlyDonationExpiresAt
+    if (!expiresAt) throw new Error('Expected the saved monthly expiry')
+    expect(result).toEqual({
+      status: 'pending',
+      paymentHash: 'new-1',
+      expiresAt,
+      amountSats: 50,
+      error,
+    })
+    expect(h.user.monthlyDonationLastHash).toBe('new-1')
+    expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+    expect(h.user.monthlyDonationSats).toBe(50)
+    if (dueAt) expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    else expect(h.user.monthlyDonationNextAt?.getTime()).toBeLessThanOrEqual(Date.now())
+    expect(await createDonationPayService(h.deps).payDonation(input)).toMatchObject({
+      status: 'pending',
+      paymentHash: 'new-1',
+      existing: true,
+    })
+    expect(h.ledger.size).toBe(0)
+    expect(h.deps.insertDonation).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  })
+}
+
+for (const initial of ['first_enable', 'due'] as const) {
   for (const rail of ['internal', 'nwc', 'auto'] as const) {
     test(`monthly ${initial} paid via ${rail} finalizes its saved slot exactly once`, async () => {
       const db = createTestDb()

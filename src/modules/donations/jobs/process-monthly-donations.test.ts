@@ -594,6 +594,39 @@ test('first enable settings survive an uncertain debit before the handler return
   expect(h.send).not.toHaveBeenCalled()
 })
 
+test('paid debit with a failed ledger write stays due until lookup recovers the ledger', async () => {
+  const h = harness()
+  const dueAt = h.user.monthlyDonationNextAt
+  h.payInvoice.mockResolvedValue({})
+  h.insertDonation.mockRejectedValueOnce(new Error('ledger unavailable'))
+
+  expect(await h.tick()).toBe('keep')
+  const hash = h.user.monthlyDonationLastHash
+  const expiresAt = h.user.monthlyDonationExpiresAt
+  expect(hash).toBeTruthy()
+  expect(expiresAt).toBeInstanceOf(Date)
+  expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+  expect(h.ledger).toHaveLength(0)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
+
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(await h.tick()).toBe('done')
+  expect(await h.tick()).toBe('done')
+  expect(h.lookupFeePayment).toHaveBeenCalledTimes(1)
+  expect(h.lookupFeePayment).toHaveBeenCalledWith(hash)
+  expect(h.ledger).toEqual([
+    expect.objectContaining({paymentHash: hash, amountSats: 50, kind: 'monthly'}),
+  ])
+  expect(h.insertDonation).toHaveBeenCalledTimes(2)
+  expect(h.user.monthlyDonationNextAt?.getTime()).toBe(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS)
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.user.monthlyDonationExpiresAt).toBeNull()
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
+})
+
 test('internal paid due period advances once and clears the saved invoice', async () => {
   const h = harness()
   h.payInvoice.mockResolvedValue({})

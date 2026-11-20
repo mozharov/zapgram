@@ -1,8 +1,109 @@
 import {describe, expect, mock, test} from 'bun:test'
+import {createUserRepository} from '@modules/users/repository.js'
+import {createTestDb} from '@test/helpers/db.js'
+import {createDonationPayService} from '../donations/pay.service.js'
 import {donationPayHarness} from '../donations/pay.test-support.js'
+import {createPendingDonationService} from '../donations/pending.service.js'
+import {createDonationRepository} from '../donations/repository.js'
 import {createFeatureRequestService, formatFeatureRequestAdminMeta} from './submit.service.js'
 
 const source = {chatId: 1, messageId: 99, text: 'Built-in on-chain wallet'}
+
+async function restartHarness() {
+  const db = createTestDb()
+  const h = donationPayHarness()
+  await createUserRepository(db).createOrUpdate({id: 1})
+  const attempts: string[] = []
+  function newService() {
+    // A restart recreates every service/repository; only SQLite and wallet fakes survive.
+    const donations = createDonationRepository(db)
+    const pending = createPendingDonationService({
+      donations,
+      lookupFeePayment: h.lookupFeePayment,
+      log: h.log,
+    })
+    const pay = createDonationPayService({
+      ...h.deps,
+      users: createUserRepository(db),
+      issuance: donations,
+      pending,
+      insertDonation: donations.insertDonation,
+    })
+    return createFeatureRequestService({
+      payDonation: input => {
+        attempts.push(input.attemptId ?? '')
+        return pay.payDonation(input)
+      },
+      notify: async () => true,
+      copyMessage: async () => true,
+      adminTelegramIds: [],
+      formatAdminMeta: formatFeatureRequestAdminMeta,
+      log: h.log,
+    })
+  }
+  return {...h, newService, attempts, donations: createDonationRepository(db)}
+}
+
+for (const firstStatus of ['pending', 'paid'] as const) {
+  test(`restart reuses the same source attempt when its first result was ${firstStatus}`, async () => {
+    const h = await restartHarness()
+    if (firstStatus === 'pending') h.uncertain()
+    const input = {userId: 1, source, amountSats: 50}
+    expect(await h.newService().submit(input)).toMatchObject({fundStatus: firstStatus})
+    const [pending] = await h.donations.listPending(1, 'feature_request')
+    if (firstStatus === 'pending') expect(pending?.attemptId).toBe(h.attempts[0])
+    else expect(pending).toBeUndefined()
+
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    expect(await h.newService().submit(input)).toMatchObject({
+      fundStatus: 'paid',
+      amountPaidSats: 50,
+    })
+    // A further restart recovers the paid ledger even after its pending row was removed.
+    expect(await h.newService().submit(input)).toMatchObject({
+      fundStatus: 'paid',
+      amountPaidSats: 50,
+    })
+    expect(h.attempts[0]).toBeTruthy()
+    expect(new Set(h.attempts).size).toBe(1)
+    expect(await h.donations.findByAttempt(1, h.attempts[0] ?? '')).toMatchObject({
+      paymentHash: 'new-1',
+      amountSats: 50,
+    })
+    expect(await h.donations.listPending()).toHaveLength(0)
+    expect(await h.donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.lookupFeePayment).toHaveBeenCalledTimes(firstStatus === 'pending' ? 1 : 0)
+  })
+}
+
+test('different source messages create distinct paid attempts across restarts', async () => {
+  const h = await restartHarness()
+  expect(await h.newService().submit({userId: 1, source, amountSats: 50})).toMatchObject({
+    fundStatus: 'paid',
+  })
+  expect(
+    await h.newService().submit({
+      userId: 1,
+      source: {...source, messageId: source.messageId + 1},
+      amountSats: 21,
+    }),
+  ).toMatchObject({fundStatus: 'paid', amountPaidSats: 21})
+  expect(h.attempts).toHaveLength(2)
+  expect(new Set(h.attempts).size).toBe(2)
+  expect(await h.donations.findByAttempt(1, h.attempts[0] ?? '')).toMatchObject({
+    amountSats: 50,
+    paymentHash: 'new-1',
+  })
+  expect(await h.donations.findByAttempt(1, h.attempts[1] ?? '')).toMatchObject({
+    amountSats: 21,
+    paymentHash: 'new-2',
+  })
+  expect(await h.donations.getUserStats(1)).toMatchObject({count: 2, totalSats: 71})
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+  expect(h.payInvoice).toHaveBeenCalledTimes(2)
+})
 
 describe('formatFeatureRequestAdminMeta', () => {
   test('shows who and funding without body text', () => {

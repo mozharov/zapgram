@@ -781,6 +781,67 @@ function expectDonationLegs(invoices: number, debits: number): void {
 }
 
 for (const source of ['preset', 'custom'] as const) {
+  for (const committed of [false, true]) {
+    test(`${source} monthly ledger error preserves recovery (already committed: ${committed})`, async () => {
+      await seedUser(e2e, {id: USER_A, donationPercent: 0})
+      credit(USER_A, STARTING)
+      if (source === 'custom') await e2e.send(privateCallback(staticCallback.donateMonthlyCustom))
+      const {donations, users} = e2e.container
+      const insertDonation = donations.insertDonation
+      const before = await snapshot(e2e)
+      const mark = e2e.tg.calls.length
+      const ledger = spyOn(donations, 'insertDonation').mockImplementationOnce(async input => {
+        if (committed) await insertDonation(input)
+        throw new Error('monthly ledger unavailable')
+      })
+      try {
+        await e2e.send(
+          source === 'custom'
+            ? privateText('100')
+            : privateCallback(donateMonthlyAmountRoute.build({amountSats: 100})),
+        )
+      } finally {
+        ledger.mockRestore()
+      }
+      const pending = await users.getOrThrow(USER_A)
+      const hash = pending.monthlyDonationLastHash
+      expect(hash).toBeTruthy()
+      expect(pending.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+      expect(pending.monthlyDonationSats).toBe(100)
+      expect(pending.monthlyDonationNextAt?.getTime()).toBeLessThanOrEqual(Date.now())
+      expect((await donations.getUserStats(USER_A)).count).toBe(committed ? 1 : 0)
+      const texts = e2e.tg.calls.slice(mark).map(call => String(call.payload.text))
+      expect(texts.some(text => /current payment is awaiting confirmation/.test(text))).toBe(true)
+      expect(texts.some(text => /Monthly donation set to/.test(text))).toBe(false)
+      expectDonationLegs(1, 1)
+      await expectNoConversations(e2e.db)
+
+      const lookup = spyOn(e2e.container.masterWallet, 'lookupFeePayment')
+      try {
+        await processMonthlyDonations()
+        await processMonthlyDonations()
+        expect(lookup).toHaveBeenCalledTimes(1)
+        expect(lookup).toHaveBeenCalledWith(hash)
+      } finally {
+        lookup.mockRestore()
+      }
+      const finalized = await users.getOrThrow(USER_A)
+      expect(finalized.monthlyDonationNextAt?.getTime()).toBeGreaterThan(Date.now())
+      expect(finalized.monthlyDonationLastHash).toBeNull()
+      expect(finalized.monthlyDonationExpiresAt).toBeNull()
+      expect(await donations.findByPaymentHash(hash ?? '')).toMatchObject({
+        userId: USER_A,
+        amountSats: 100,
+        kind: 'monthly',
+      })
+      expect(await donations.getUserStats(USER_A)).toMatchObject({count: 1, totalSats: 100})
+      expectDonationLegs(1, 1)
+      expectLedgerBalanced(before, await snapshot(e2e))
+    })
+  }
+}
+
+for (const source of ['preset', 'custom'] as const) {
   test(`Disable after ${source} monthly issuance keeps paid donation but shows no enabled confirmation`, async () => {
     await seedUser(e2e, {id: USER_A, donationPercent: 0})
     credit(USER_A, STARTING)
