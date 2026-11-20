@@ -3,8 +3,11 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
 import type {Donation, User} from '@infra/db/types.js'
+import {createUserRepository} from '@modules/users/repository.js'
+import {createTestDb} from '@test/helpers/db.js'
 import {HTTPError} from 'got'
 import {createDonationPayService, type DonationPayDeps} from '../pay.service.js'
+import {createDonationRepository} from '../repository.js'
 import {type MonthlyDonationDeps, processMonthlyDonation} from './process-monthly-donations.js'
 
 function harness() {
@@ -47,6 +50,10 @@ function harness() {
       if (user.monthlyDonationLastHash !== hash) return undefined
       if (hash === null && user.monthlyDonationNextAt && user.monthlyDonationNextAt > time)
         return undefined
+      if (hash !== null && (user.monthlyDonationSats <= 0 || !user.monthlyDonationNextAt)) {
+        const {monthlyDonationSats: _sats, monthlyDonationNextAt: _nextAt, ...clear} = data
+        return update(id, clear)
+      }
       return update(id, data)
     }
   const users = {
@@ -65,17 +72,25 @@ function harness() {
       slots.delete(slot.key)
     },
     saveIssued: async () => false,
-    saveMonthlyIssued: async (_slot, _id, invoice, now = new Date()) => {
+    saveMonthlyIssued: async (_slot, _id, invoice, now = new Date(), source = 'telegram') => {
       if (
         user.monthlyDonationLastHash ||
-        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > now)
+        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > now) ||
+        (source === 'cron' &&
+          (user.monthlyDonationSats <= 0 ||
+            user.monthlyDonationSats !== invoice.amountSats ||
+            !user.monthlyDonationNextAt))
       )
         return false
       await users.update(user.id, {
         monthlyDonationLastHash: invoice.paymentHash,
         monthlyDonationExpiresAt: invoice.expiresAt,
-        monthlyDonationSats: invoice.amountSats,
-        monthlyDonationNextAt: user.monthlyDonationNextAt ?? now,
+        ...(source === 'telegram'
+          ? {
+              monthlyDonationSats: invoice.amountSats,
+              monthlyDonationNextAt: user.monthlyDonationNextAt ?? now,
+            }
+          : {}),
       })
       return true
     },
@@ -84,7 +99,7 @@ function harness() {
         await users.update(user.id, {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
     },
   }
-  const donationPay = createDonationPayService({
+  const payDeps: DonationPayDeps = {
     users,
     pending: {
       save: async () => {},
@@ -97,7 +112,8 @@ function harness() {
     getUserWallet: async () => ({balance: 100_000, payInvoice}),
     insertDonation,
     log,
-  })
+  }
+  const donationPay = createDonationPayService(payDeps)
   const payDonation = mock(
     (input: Parameters<MonthlyDonationDeps['donationPay']['payDonation']>[0]) =>
       donationPay.payDonation(input),
@@ -131,6 +147,7 @@ function harness() {
   const tick = (time = now) => processMonthlyDonation(deps, {...user}, time)
   return {
     deps,
+    payDeps,
     issuance,
     slots,
     user,
@@ -460,15 +477,13 @@ test('paid recovery preserves a future nextAt and clears hash and TTL without ch
   expect(h.ledger).toHaveLength(1)
 })
 
-test('paid recovery schedules an enabled donor with null nextAt', async () => {
+test('paid recovery with null nextAt clears the hash without scheduling another donation', async () => {
   const h = harness()
   h.user.monthlyDonationLastHash = 'old-success'
   h.user.monthlyDonationNextAt = null
   h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
   expect(await h.tick()).toBe('done')
-  expect((h.user.monthlyDonationNextAt as Date | null)?.getTime()).toBe(
-    h.now.getTime() + MONTHLY_DONATION_PERIOD_MS,
-  )
+  expect(h.user.monthlyDonationNextAt).toBeNull()
   expect(h.user.monthlyDonationLastHash).toBeNull()
   expect(h.ledger).toHaveLength(1)
   expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
@@ -579,23 +594,18 @@ test('first enable settings survive an uncertain debit before the handler return
   expect(h.send).not.toHaveBeenCalled()
 })
 
-for (const initial of ['first_enable', 'due'] as const) {
-  test(`internal paid ${initial} advances the period once and clears the saved invoice`, async () => {
-    const h = harness()
-    if (initial === 'first_enable') h.user.monthlyDonationNextAt = null
-    h.payInvoice.mockResolvedValue({})
-    expect(await h.tick()).toBe('done')
-    expect(h.user.monthlyDonationNextAt?.getTime()).toBe(
-      h.now.getTime() + MONTHLY_DONATION_PERIOD_MS,
-    )
-    expect(h.user.monthlyDonationLastHash).toBeNull()
-    expect(h.user.monthlyDonationExpiresAt).toBeNull()
-    expect(await h.tick()).toBe('done')
-    expect(h.payInvoice).toHaveBeenCalledTimes(1)
-    expect(h.ledger).toHaveLength(1)
-    expect(h.warn).not.toHaveBeenCalled()
-  })
-}
+test('internal paid due period advances once and clears the saved invoice', async () => {
+  const h = harness()
+  h.payInvoice.mockResolvedValue({})
+  expect(await h.tick()).toBe('done')
+  expect(h.user.monthlyDonationNextAt?.getTime()).toBe(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS)
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.user.monthlyDonationExpiresAt).toBeNull()
+  expect(await h.tick()).toBe('done')
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.ledger).toHaveLength(1)
+  expect(h.warn).not.toHaveBeenCalled()
+})
 
 for (const source of ['paid', 'recovered', 'failed_lookup'] as const) {
   test(`late cron ${source} cannot overwrite a finalized period and warns about the lost slot`, async () => {
@@ -631,6 +641,115 @@ for (const source of ['paid', 'recovered', 'failed_lookup'] as const) {
       expect.objectContaining({userId: 1, paymentHash: 'fee-1'}),
       expect.stringContaining('slot changed'),
     )
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.send).not.toHaveBeenCalled()
+  })
+}
+
+/** Exercise async cron races against the real issuance and finalization SQL. */
+async function sqliteHarness() {
+  const h = harness()
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const donations = createDonationRepository(db)
+  await users.createOrUpdate(h.user)
+  const service = createDonationPayService({
+    ...h.payDeps,
+    users,
+    issuance: donations,
+    insertDonation: donations.insertDonation,
+  })
+  const payDonation = mock(
+    (input: Parameters<MonthlyDonationDeps['donationPay']['payDonation']>[0]) =>
+      service.payDonation(input),
+  )
+  h.deps.users = users
+  h.deps.donations = donations
+  h.deps.donationPay = {payDonation}
+  return {...h, users, donations, payDonation}
+}
+
+for (const change of ['disabled', 'amount_changed'] as const) {
+  test(`cron skips debit when settings are ${change} while the invoice is minted`, async () => {
+    const h = await sqliteHarness()
+    const before = await h.users.getOrThrow(1)
+    h.createFeeCollectionInvoice.mockImplementation(async () => {
+      await h.users.update(
+        1,
+        change === 'disabled'
+          ? {monthlyDonationSats: 0, monthlyDonationNextAt: null}
+          : {monthlyDonationSats: 100},
+      )
+      return {payment_hash: 'unused-invoice', bolt11: 'unit-test-invoice'}
+    })
+    expect(await h.tick()).toBe('keep')
+    expect(await h.payDonation.mock.results[0]?.value).toEqual({
+      status: 'skipped',
+      reason: 'period_changed',
+    })
+    expect(h.payDonation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountSats: 50,
+        monthlySource: 'cron',
+      }),
+    )
+    expect(await h.users.getOrThrow(1)).toMatchObject({
+      monthlyDonationSats: change === 'disabled' ? 0 : 100,
+      monthlyDonationNextAt: change === 'disabled' ? null : before.monthlyDonationNextAt,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+      monthlyDonationLastFailNotifyAt: null,
+    })
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).not.toHaveBeenCalled()
+    expect(await h.donations.getUserStats(1)).toMatchObject({count: 0, totalSats: 0})
+    expect(h.send).not.toHaveBeenCalled()
+  })
+}
+
+test('cron paid after Disable clears the hash and leaves the subscription off', async () => {
+  const h = await sqliteHarness()
+  h.payInvoice.mockImplementation(async () => {
+    expect((await h.users.getOrThrow(1)).monthlyDonationLastHash).toBe('fee-1')
+    await h.users.update(1, {monthlyDonationSats: 0, monthlyDonationNextAt: null})
+    return {}
+  })
+  expect(await h.tick()).toBe('done')
+  expect(await h.tick()).toBe('done')
+  expect(await h.users.getOrThrow(1)).toMatchObject({
+    monthlyDonationSats: 0,
+    monthlyDonationNextAt: null,
+    monthlyDonationLastHash: null,
+    monthlyDonationExpiresAt: null,
+  })
+  expect(await h.donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
+})
+
+for (const disableDuringLookup of [false, true]) {
+  test(`paid recovery preserves Disable (during lookup: ${disableDuringLookup})`, async () => {
+    const h = await sqliteHarness()
+    expect(await h.tick()).toBe('keep')
+    const disable = () => h.users.update(1, {monthlyDonationSats: 0, monthlyDonationNextAt: null})
+    if (!disableDuringLookup) await disable()
+    h.lookupFeePayment.mockImplementation(async () => {
+      if (disableDuringLookup) await disable()
+      return {paid: true, details: {amount: 50_000}}
+    })
+    expect(await h.tick()).toBe('done')
+    expect(await h.tick()).toBe('done')
+    expect(await h.users.getOrThrow(1)).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(await h.donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+    expect(h.lookupFeePayment).toHaveBeenCalledTimes(1)
+    expect(h.lookupFeePayment).toHaveBeenCalledWith('fee-1')
     expect(h.payInvoice).toHaveBeenCalledTimes(1)
     expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
     expect(h.send).not.toHaveBeenCalled()

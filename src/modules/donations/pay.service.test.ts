@@ -906,3 +906,68 @@ for (const initial of ['first_enable', 'due'] as const) {
     })
   }
 }
+
+for (const rail of ['internal', 'nwc'] as const) {
+  test(`Telegram monthly payment via ${rail} preserves Disable after issuance`, async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    const donations = createDonationRepository(db)
+    await users.createOrUpdate({id: 1})
+    const h = donationPayHarness()
+    const payInvoice = mock(async () => {
+      expect(await users.getOrThrow(1)).toMatchObject({
+        monthlyDonationSats: 50,
+        monthlyDonationNextAt: expect.any(Date),
+        monthlyDonationLastHash: 'new-1',
+        monthlyDonationExpiresAt: expect.any(Date),
+      })
+      await users.update(1, {monthlyDonationSats: 0, monthlyDonationNextAt: null})
+      return {}
+    })
+    const service = createDonationPayService({
+      ...h.deps,
+      users,
+      issuance: donations,
+      insertDonation: donations.insertDonation,
+      getUserWallet: async () => ({balance: 100_000, payInvoice}),
+    })
+    const now = new Date()
+    const result = await service.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly',
+      monthlySource: 'telegram',
+      rail,
+      nwc: {payInvoice} as never,
+    })
+    expect(result.status).toBe('paid')
+    if (result.status !== 'paid') throw new Error('Expected paid donation')
+    const settings = {
+      monthlyDonationSats: 50,
+      monthlyDonationNextAt: advanceMonthlyNextAt(now, now),
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    }
+    expect(
+      await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+    ).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(
+      await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+    ).toBeUndefined()
+    await donations.insertDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly',
+      paymentHash: result.paymentHash,
+    })
+    expect(await donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+    expect(await donations.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 50})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(payInvoice).toHaveBeenCalledTimes(1)
+  })
+}

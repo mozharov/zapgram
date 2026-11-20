@@ -124,6 +124,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       userId: ctx.user.id,
       amountSats: sats,
       kind: 'monthly',
+      monthlySource: 'telegram',
       rail: 'auto',
       nwc: ctx.user.nwc,
       nwcUrl: ctx.user.nwcUrl,
@@ -141,7 +142,7 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
 
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await conversation.external(async () => {
+    const finalized = await conversation.external(async () => {
       const updated = await getRuntime().users.updateMonthlyDonationIfDue(
         ctx.user.id,
         result.paymentHash,
@@ -158,8 +159,15 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
           {paymentHash: result.paymentHash, rail: result.rail},
           'Paid monthly donation schedule update skipped: slot changed',
         )
-      else ctx.log.info({nextAt}, 'Monthly donation period finalized')
+      else
+        ctx.log.info({nextAt: updated.monthlyDonationNextAt}, 'Monthly donation period finalized')
+      return Boolean(updated && updated.monthlyDonationSats > 0 && updated.monthlyDonationNextAt)
     })
+    if (!finalized) {
+      await replyDonateHub(ctx)
+      if (input?.message) await deleteMessageSafely(input)
+      return
+    }
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
         feature: 'donations',

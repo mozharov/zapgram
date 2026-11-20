@@ -72,7 +72,7 @@ export async function processMonthlyDonation(
 
   // Migration 0027 clears legacy successful hashes: those do not pay the current period.
   // From then on, only an unresolved invoice may own this period via lastHash.
-  const enabled = amount > 0
+  const enabled = amount > 0 && user.monthlyDonationNextAt !== null
   if (user.monthlyDonationLastHash) {
     const expiresAt = user.monthlyDonationExpiresAt ?? donationInvoiceExpiresAt(null, now)
     if (!user.monthlyDonationExpiresAt) {
@@ -170,6 +170,7 @@ export async function processMonthlyDonation(
     userId: user.id,
     amountSats: amount,
     kind: 'monthly',
+    monthlySource: 'cron',
     now,
     rail: 'auto',
     nwcUrl: user.nwcUrl,

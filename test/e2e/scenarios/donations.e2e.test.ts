@@ -1,4 +1,4 @@
-import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
 import {reconcilePendingDonations} from '@modules/donations/jobs/reconcile-pending-donations.js'
 import {
@@ -778,4 +778,59 @@ function expectDonationLegs(invoices: number, debits: number): void {
   expect(incoming.filter(payment => payment.walletId === feeWalletId)).toHaveLength(invoices)
   expect(outgoing.filter(payment => payment.walletId === donorWalletId)).toHaveLength(debits)
   expect(outgoing.filter(payment => payment.walletId !== donorWalletId)).toHaveLength(0)
+}
+
+for (const source of ['preset', 'custom'] as const) {
+  test(`Disable after ${source} monthly issuance keeps paid donation but shows no enabled confirmation`, async () => {
+    await seedUser(e2e, {id: USER_A, donationPercent: 0})
+    credit(USER_A, STARTING)
+    if (source === 'custom') await e2e.send(privateCallback(staticCallback.donateMonthlyCustom))
+    const {donations, users} = e2e.container
+    const saveMonthlyIssued = donations.saveMonthlyIssued
+    let hash: string | undefined
+    // Keep real SQL and both HTTP transports; inject Disable's write at the issuance boundary.
+    const issuance = spyOn(donations, 'saveMonthlyIssued').mockImplementationOnce(
+      async (...args) => {
+        const saved = await saveMonthlyIssued(...args)
+        expect(saved).toBe(true)
+        hash = args[2].paymentHash
+        expect((await users.getOrThrow(USER_A)).monthlyDonationLastHash).toBe(hash)
+        await users.update(USER_A, {monthlyDonationSats: 0, monthlyDonationNextAt: null})
+        return saved
+      },
+    )
+    const mark = e2e.tg.calls.length
+    try {
+      await e2e.send(
+        source === 'custom'
+          ? privateText('100')
+          : privateCallback(donateMonthlyAmountRoute.build({amountSats: 100})),
+      )
+    } finally {
+      issuance.mockRestore()
+    }
+    expect(hash).toBeTruthy()
+    expect(await users.getOrThrow(USER_A)).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(await donations.findByPaymentHash(hash ?? '')).toMatchObject({
+      userId: USER_A,
+      amountSats: 100,
+      kind: 'monthly',
+    })
+    expect(await donations.getUserStats(USER_A)).toMatchObject({count: 1, totalSats: 100})
+    const calls = e2e.tg.calls.slice(mark)
+    expect(calls.some(call => /Monthly donation set to/.test(String(call.payload.text)))).toBe(
+      false,
+    )
+    expect(calls.some(call => call.method === 'sendRichMessage')).toBe(true)
+    await processMonthlyDonations()
+    expect((await donations.getUserStats(USER_A)).count).toBe(1)
+    expectDonationLegs(1, 1)
+    await expectNoConversations(e2e.db)
+    expectNoErrors(e2e.logs)
+  })
 }

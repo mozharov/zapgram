@@ -182,7 +182,12 @@ for (const status of ['paid', 'pending', 'failed'] as const) {
 test('monthly settings update only the due period with the expected hash', async () => {
   const users = repo()
   const now = new Date()
-  await users.createOrUpdate({id: 1, monthlyDonationLastHash: 'in-flight'})
+  await users.createOrUpdate({
+    id: 1,
+    monthlyDonationSats: 50,
+    monthlyDonationNextAt: now,
+    monthlyDonationLastHash: 'in-flight',
+  })
   const settings = {monthlyDonationSats: 50, monthlyDonationNextAt: now}
   expect(await users.updateMonthlyDonationIfDue(1, null, settings, now)).toBeUndefined()
   expect(await users.updateMonthlyDonationIfDue(1, 'other', settings, now)).toBeUndefined()
@@ -204,3 +209,32 @@ test('monthly settings update only the due period with the expected hash', async
     ),
   ).toMatchObject({monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
 })
+
+for (const disabled of ['zero_sats', 'null_next_at', 'both'] as const) {
+  test(`paid monthly finalization preserves disabled settings (${disabled}) and clears only its hash`, async () => {
+    const users = repo()
+    const now = new Date()
+    await users.createOrUpdate({
+      id: 1,
+      monthlyDonationSats: disabled === 'null_next_at' ? 50 : 0,
+      monthlyDonationNextAt: disabled === 'zero_sats' ? now : null,
+      monthlyDonationLastHash: 'paid-invoice',
+      monthlyDonationExpiresAt: new Date(now.getTime() + 60_000),
+    })
+    const before = await users.getOrThrow(1)
+    const settings = {
+      monthlyDonationSats: 100,
+      monthlyDonationNextAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    }
+    expect(await users.updateMonthlyDonationIfDue(1, 'other', settings, now)).toBeUndefined()
+    expect(await users.getOrThrow(1)).toEqual(before)
+    expect(await users.updateMonthlyDonationIfDue(1, 'paid-invoice', settings, now)).toEqual({
+      ...before,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(await users.updateMonthlyDonationIfDue(1, 'paid-invoice', settings, now)).toBeUndefined()
+  })
+}

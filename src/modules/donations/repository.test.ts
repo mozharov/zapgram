@@ -303,3 +303,79 @@ test('monthly payer and paid recovery insert one ledger row and increment totals
   expect(await repo.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
   expect(await repo.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 50})
 })
+
+for (const change of ['disabled', 'amount_changed', 'no_next_at', 'not_due'] as const) {
+  test(`cron issuance rejects ${change} settings without claiming or rewriting the period`, async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    const repo = createDonationRepository(db)
+    const now = new Date()
+    await users.createOrUpdate({
+      id: 1,
+      monthlyDonationSats: 50,
+      monthlyDonationNextAt: new Date(now.getTime() - 1000),
+    })
+    const slot = await repo.reserveIssuance(1, 'monthly')
+    if (!slot) throw new Error('Expected monthly owner')
+    await users.update(
+      1,
+      change === 'disabled'
+        ? {monthlyDonationSats: 0, monthlyDonationNextAt: null}
+        : change === 'amount_changed'
+          ? {monthlyDonationSats: 100}
+          : {
+              monthlyDonationNextAt:
+                change === 'no_next_at' ? null : new Date(now.getTime() + 60_000),
+            },
+    )
+    const before = await users.getOrThrow(1)
+    expect(
+      await repo.saveMonthlyIssued(
+        slot,
+        1,
+        {
+          amountSats: 50,
+          paymentHash: 'unused',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+        'cron',
+      ),
+    ).toBe(false)
+    expect(await users.getOrThrow(1)).toEqual(before)
+  })
+}
+
+test('cron issuance persists hash and expiry without changing the configured amount or due date', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const now = new Date()
+  await users.createOrUpdate({
+    id: 1,
+    monthlyDonationSats: 50,
+    monthlyDonationNextAt: new Date(now.getTime() - 60_000),
+  })
+  const before = await users.getOrThrow(1)
+  const slot = await repo.reserveIssuance(1, 'monthly')
+  if (!slot) throw new Error('Expected monthly owner')
+  expect(
+    await repo.saveMonthlyIssued(
+      slot,
+      1,
+      {
+        amountSats: 50,
+        paymentHash: 'cron-invoice',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+      'cron',
+    ),
+  ).toBe(true)
+  expect(await users.getOrThrow(1)).toMatchObject({
+    monthlyDonationSats: before.monthlyDonationSats,
+    monthlyDonationNextAt: before.monthlyDonationNextAt,
+    monthlyDonationLastHash: 'cron-invoice',
+    monthlyDonationExpiresAt: expect.any(Date),
+  })
+})

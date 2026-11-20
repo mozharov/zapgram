@@ -123,9 +123,24 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
       >,
       now = new Date(),
     ) {
+      // Disable may race both payment and recovery. Test current settings in the same write
+      // that clears the owning hash, so a paid donation cannot re-enable the subscription.
+      const enabled = sql`${usersTable.monthlyDonationSats} > 0 AND ${usersTable.monthlyDonationNextAt} IS NOT NULL`
       const [row] = await database
         .update(usersTable)
-        .set(data)
+        .set({
+          ...data,
+          ...(paymentHash !== null && data.monthlyDonationSats !== undefined
+            ? {
+                monthlyDonationSats: sql`CASE WHEN ${enabled} THEN ${data.monthlyDonationSats} ELSE ${usersTable.monthlyDonationSats} END`,
+              }
+            : {}),
+          ...(paymentHash !== null && data.monthlyDonationNextAt !== undefined
+            ? {
+                monthlyDonationNextAt: sql`CASE WHEN ${enabled} THEN ${data.monthlyDonationNextAt === null ? null : Math.floor(data.monthlyDonationNextAt.getTime() / 1000)} ELSE ${usersTable.monthlyDonationNextAt} END`,
+              }
+            : {}),
+        })
         .where(
           and(
             eq(usersTable.id, id),

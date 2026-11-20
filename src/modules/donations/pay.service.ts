@@ -211,6 +211,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       userId: number
       amountSats: number
       kind: 'one_shot' | 'monthly'
+      monthlySource?: 'cron' | 'telegram'
       pendingKind?: 'one_shot' | 'feature_request'
       attemptId?: string
       now?: Date
@@ -299,6 +300,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
                 input.userId,
                 {...invoice, amountSats: input.amountSats},
                 input.now,
+                input.monthlySource ?? 'telegram',
               )
               if (saved) {
                 issuedHash = invoice.paymentHash

@@ -72,15 +72,21 @@ export function donationPayHarness() {
     bolt11: 'invoice',
   }))
   const issuance: DonationPayDeps['issuance'] = {
-    saveMonthlyIssued: async (slot, _userId, invoice) => {
+    saveMonthlyIssued: async (slot, _userId, invoice, now = new Date(), source = 'telegram') => {
       if (
         slots.get(slot.key) !== slot.token ||
         user.monthlyDonationLastHash ||
-        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > new Date())
+        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > now) ||
+        (source === 'cron' &&
+          (user.monthlyDonationSats <= 0 ||
+            user.monthlyDonationSats !== invoice.amountSats ||
+            !user.monthlyDonationNextAt))
       )
         return false
-      user.monthlyDonationSats = invoice.amountSats
-      user.monthlyDonationNextAt ??= new Date()
+      if (source === 'telegram') {
+        user.monthlyDonationSats = invoice.amountSats
+        user.monthlyDonationNextAt ??= now
+      }
       user.monthlyDonationLastHash = invoice.paymentHash
       user.monthlyDonationExpiresAt = invoice.expiresAt
       return true

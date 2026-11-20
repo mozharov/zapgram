@@ -14,7 +14,7 @@ import type {
   PendingDonationPayment,
 } from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {and, asc, desc, eq, exists, gt, gte, isNull, lte, or, sql} from 'drizzle-orm'
+import {and, asc, desc, eq, exists, gt, gte, isNotNull, isNull, lte, or, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserDonationStats = {
@@ -187,6 +187,7 @@ export function createDonationRepository(database: AppDatabase) {
     userId: number,
     invoice: {paymentHash: string; expiresAt: Date; amountSats: number},
     now = new Date(),
+    source: 'cron' | 'telegram' = 'telegram',
   ) {
     // The conditional write both fences expired lease owners and claims the due period before debit.
     const rows = await database
@@ -195,14 +196,28 @@ export function createDonationRepository(database: AppDatabase) {
         monthlyDonationLastHash: invoice.paymentHash,
         monthlyDonationExpiresAt: invoice.expiresAt,
         // Persist first-enable settings too: recovery can run before the Telegram caller returns.
-        monthlyDonationSats: invoice.amountSats,
-        monthlyDonationNextAt: sql`coalesce(${usersTable.monthlyDonationNextAt}, ${Math.floor(now.getTime() / 1000)})`,
+        ...(source === 'telegram'
+          ? {
+              monthlyDonationSats: invoice.amountSats,
+              monthlyDonationNextAt: sql`coalesce(${usersTable.monthlyDonationNextAt}, ${Math.floor(now.getTime() / 1000)})`,
+            }
+          : {}),
       })
       .where(
         and(
           eq(usersTable.id, userId),
           isNull(usersTable.monthlyDonationLastHash),
-          or(isNull(usersTable.monthlyDonationNextAt), lte(usersTable.monthlyDonationNextAt, now)),
+          source === 'cron'
+            ? and(
+                gt(usersTable.monthlyDonationSats, 0),
+                eq(usersTable.monthlyDonationSats, invoice.amountSats),
+                isNotNull(usersTable.monthlyDonationNextAt),
+                lte(usersTable.monthlyDonationNextAt, now),
+              )
+            : or(
+                isNull(usersTable.monthlyDonationNextAt),
+                lte(usersTable.monthlyDonationNextAt, now),
+              ),
           exists(
             database
               .select()

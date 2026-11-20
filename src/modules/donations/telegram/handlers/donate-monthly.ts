@@ -119,6 +119,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     userId: ctx.user.id,
     amountSats,
     kind: 'monthly',
+    monthlySource: 'telegram',
     rail: 'auto',
     nwc: ctx.user.nwc,
     nwcUrl: ctx.user.nwcUrl,
@@ -148,7 +149,11 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
         {paymentHash: result.paymentHash, rail: result.rail},
         'Paid monthly donation schedule update skipped: slot changed',
       )
-    else ctx.log.info({nextAt}, 'Monthly donation period finalized')
+    else ctx.log.info({nextAt: updated.monthlyDonationNextAt}, 'Monthly donation period finalized')
+    if (!updated || updated.monthlyDonationSats <= 0 || !updated.monthlyDonationNextAt) {
+      await replyDonateHub(ctx)
+      return
+    }
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',
