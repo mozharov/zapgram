@@ -66,7 +66,7 @@ export class NostrWallet {
   }
 }
 
-function validPreimage(preimage: string | null | undefined, paymentHash: string): boolean {
+export function validPreimage(preimage: string | null | undefined, paymentHash: string): boolean {
   if (typeof preimage !== 'string' || !/^[0-9a-f]{64}$/i.test(preimage)) return false
   return createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex') === paymentHash
 }

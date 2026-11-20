@@ -1,4 +1,20 @@
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {Nip47Error} from '@getalby/sdk'
+import {validPreimage} from './wallet.js'
+
+export function classifyNwcInvoiceLookup(
+  found: {preimage?: string | null; settled_at?: number},
+  bolt11: string,
+  hash: string,
+): {state: 'paid' | 'pending' | 'unknown'; paidAt?: Date} {
+  if (!found.preimage) return {state: 'pending'}
+  const {paymentHash} = decodeInvoice(bolt11)
+  if (paymentHash !== hash || !validPreimage(found.preimage, paymentHash)) {
+    // An invalid receipt cannot release the hold: the original debit may still land.
+    return {state: 'unknown'}
+  }
+  return {state: 'paid', paidAt: unixDate(found.settled_at)}
+}
 
 /**
  * NIP-47 has no HTTP status. A wallet that does not have this invoice answers

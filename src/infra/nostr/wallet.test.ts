@@ -4,7 +4,7 @@ import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
 import {Nip47Error, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
 import {encode, sign} from 'bolt11'
-import {NostrWallet} from './wallet.js'
+import {NostrWallet, validPreimage} from './wallet.js'
 
 const PREIMAGE = '12'.repeat(32)
 const PAYMENT_HASH = createHash('sha256').update(Buffer.from(PREIMAGE, 'hex')).digest('hex')
@@ -20,6 +20,20 @@ const INVOICE = sign(
 ).paymentRequest
 
 if (!INVOICE) throw new Error('missing test invoice')
+
+test('validPreimage verifies the SHA-256 of the decoded hex bytes', () => {
+  const preimage = 'ab'.repeat(32)
+  const hash = createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex')
+  expect(validPreimage(preimage, hash)).toBe(true)
+  expect(validPreimage(preimage.toUpperCase(), hash)).toBe(true)
+  expect(validPreimage(preimage, PAYMENT_HASH)).toBe(false)
+})
+
+for (const preimage of [undefined, null, '', '12'.repeat(31), `${PREIMAGE}gg`, 'gg'.repeat(32)]) {
+  test(`validPreimage rejects malformed input ${String(preimage)}`, () => {
+    expect(validPreimage(preimage, PAYMENT_HASH)).toBe(false)
+  })
+}
 
 // Stub both SDK operations before constructing the wallet; no relay is contacted.
 const pay = spyOn(NWCClient.prototype, 'payInvoice')
