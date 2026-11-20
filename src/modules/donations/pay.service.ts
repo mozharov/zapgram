@@ -11,6 +11,7 @@ import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
+import type {UserRepository} from '../users/repository.js'
 import type {PendingDonationService} from './pending.service.js'
 import type {DonationRepository} from './repository.js'
 
@@ -18,8 +19,19 @@ export type DonationPayRail = 'internal' | 'nwc'
 
 export type PayDonationResult =
   | {status: 'paid'; paymentHash?: string; rail: DonationPayRail | 'recovered'; amountSats?: number}
-  | {status: 'pending'; paymentHash: string; expiresAt: Date; amountSats?: number; error: unknown}
+  | {
+      status: 'pending'
+      paymentHash: string
+      expiresAt: Date
+      amountSats?: number
+      existing?: boolean
+      error: unknown
+    }
   | {status: 'failed'; error: unknown; reason: 'invalid_amount' | 'no_funds' | 'pay_failed'}
+
+export type MonthlyDonationResult =
+  | PayDonationResult
+  | {status: 'skipped'; reason: 'issuance_busy' | 'already_paid' | 'period_changed'}
 
 type PayInvoiceResult = {payment_hash?: string | null}
 
@@ -28,7 +40,15 @@ export type DonationPayDeps = {
     sats: number,
   ) => Promise<{payment_hash: string; bolt11: string; expiry?: Date | null}>
   pending: Pick<PendingDonationService, 'save' | 'reconcileUser' | 'complete' | 'remove'>
-  issuance: Pick<DonationRepository, 'reserveIssuance' | 'releaseIssuance' | 'saveIssued'>
+  issuance: Pick<
+    DonationRepository,
+    | 'reserveIssuance'
+    | 'releaseIssuance'
+    | 'saveIssued'
+    | 'saveMonthlyIssued'
+    | 'clearMonthlyIssued'
+  >
+  users: Pick<UserRepository, 'getOrThrow'>
   getUserWallet: (userId: User['id']) => Promise<{
     balance: number
     payInvoice: (bolt11: string) => Promise<PayInvoiceResult>
@@ -193,6 +213,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       kind: 'one_shot' | 'monthly'
       pendingKind?: 'one_shot' | 'feature_request'
       attemptId?: string
+      now?: Date
       rail?: DonationPayRail | 'auto'
       nwcUrl?: string | null
       nwc?: NostrWallet
@@ -200,7 +221,7 @@ export function createDonationPayService(deps: DonationPayDeps) {
       analytics?: Record<string, unknown>
     },
     slot?: NonNullable<Awaited<ReturnType<DonationRepository['reserveIssuance']>>>,
-  ): Promise<PayDonationResult> {
+  ): Promise<MonthlyDonationResult> {
     const pendingKind = input.pendingKind ?? 'one_shot'
     const reconcile = async (observed = slot?.rows) => {
       const previous = await deps.pending.reconcileUser(
@@ -248,7 +269,22 @@ export function createDonationPayService(deps: DonationPayDeps) {
       const previous = await reconcile([])
       if (previous) return previous
     }
+    if (input.kind === 'monthly') {
+      const user = await deps.users.getOrThrow(input.userId)
+      if (user.monthlyDonationLastHash)
+        return {
+          status: 'pending',
+          paymentHash: user.monthlyDonationLastHash,
+          expiresAt: user.monthlyDonationExpiresAt ?? donationInvoiceExpiresAt(null),
+          amountSats: user.monthlyDonationSats,
+          existing: true,
+          error: new Error('Awaiting monthly donation confirmation'),
+        }
+      if (user.monthlyDonationNextAt && user.monthlyDonationNextAt > (input.now ?? new Date()))
+        return {status: 'skipped', reason: 'already_paid'}
+    }
     let issuedHash: string | undefined
+    let periodChanged = false
     const result = await payToFeeCollection({
       userId: input.userId,
       amountSats: input.amountSats,
@@ -257,6 +293,22 @@ export function createDonationPayService(deps: DonationPayDeps) {
       nwc: input.nwc,
       beforePay: slot
         ? async invoice => {
+            if (input.kind === 'monthly') {
+              const saved = await deps.issuance.saveMonthlyIssued(
+                slot,
+                input.userId,
+                {...invoice, amountSats: input.amountSats},
+                input.now,
+              )
+              if (saved) {
+                issuedHash = invoice.paymentHash
+                deps.log.info(
+                  {userId: input.userId, paymentHash: issuedHash},
+                  'Monthly donation invoice saved before payment',
+                )
+              } else periodChanged = true
+              return saved
+            }
             const saved = await deps.issuance.saveIssued(slot, {
               userId: input.userId,
               kind: pendingKind,
@@ -271,10 +323,12 @@ export function createDonationPayService(deps: DonationPayDeps) {
         : undefined,
     })
 
+    if (periodChanged) return {status: 'skipped', reason: 'period_changed'}
+
     if (result.status === 'paid') {
       let ledgerOk = true
       try {
-        if (issuedHash) await deps.pending.complete(issuedHash)
+        if (issuedHash && input.kind === 'one_shot') await deps.pending.complete(issuedHash)
         else
           await deps.insertDonation({
             userId: input.userId,
@@ -325,7 +379,15 @@ export function createDonationPayService(deps: DonationPayDeps) {
         payment_hash: result.paymentHash,
       })
     } else {
-      if (issuedHash) await deps.pending.remove(issuedHash)
+      if (issuedHash) {
+        if (input.kind === 'monthly') {
+          await deps.issuance.clearMonthlyIssued(input.userId, issuedHash)
+          deps.log.info(
+            {userId: input.userId, paymentHash: issuedHash},
+            'Unspent monthly donation invoice cleared',
+          )
+        } else await deps.pending.remove(issuedHash)
+      }
       captureUserEvent(deps.posthog, 'donation_failed', input.userId, {
         ...baseProps,
         status: 'failed',
@@ -350,18 +412,20 @@ export function createDonationPayService(deps: DonationPayDeps) {
   }
 
   async function withIssuanceSlot(input: Parameters<typeof doPayDonation>[0]) {
-    if (input.kind !== 'one_shot') return doPayDonation(input)
     const slot = await deps.issuance.reserveIssuance(
       input.userId,
-      input.pendingKind ?? 'one_shot',
+      input.kind === 'monthly' ? 'monthly' : (input.pendingKind ?? 'one_shot'),
       input.attemptId,
     )
-    if (!slot)
+    if (!slot) {
+      if (input.kind === 'monthly')
+        return {status: 'skipped' as const, reason: 'issuance_busy' as const}
       return {
         status: 'failed' as const,
         reason: 'pay_failed' as const,
         error: new Error('Donation issuance in progress'),
       }
+    }
     try {
       return await doPayDonation(input, slot)
     } finally {
@@ -369,8 +433,13 @@ export function createDonationPayService(deps: DonationPayDeps) {
     }
   }
 
-  const inFlight = new Map<string, Promise<PayDonationResult>>()
-  function payDonation(input: Parameters<typeof doPayDonation>[0]): Promise<PayDonationResult> {
+  const inFlight = new Map<string, Promise<MonthlyDonationResult>>()
+  type DonationInput = Parameters<typeof doPayDonation>[0]
+  function payDonation(input: DonationInput & {kind: 'monthly'}): Promise<MonthlyDonationResult>
+  function payDonation(input: DonationInput & {kind: 'one_shot'}): Promise<PayDonationResult>
+  function payDonation(input: DonationInput): Promise<MonthlyDonationResult> {
+    // Monthly callers finalize schedules independently. Only the lease owner may receive `paid`.
+    if (input.kind === 'monthly') return withIssuanceSlot(input)
     const key = `${input.userId}:${input.kind}:${input.pendingKind ?? 'one_shot'}${input.pendingKind === 'feature_request' ? `:${input.attemptId ?? ''}` : ''}`
     const previous = inFlight.get(key)
     if (previous) return previous

@@ -6,7 +6,7 @@ import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import type {AppLogger} from '@infra/logger.js'
-import {and, eq, isNotNull, lte, ne, or, sql} from 'drizzle-orm'
+import {and, eq, isNotNull, isNull, lte, ne, or, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserRepositoryOptions = {
@@ -106,6 +106,33 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         .where(eq(usersTable.id, id))
         .returning()
         .then(rows => firstOrThrow(rows, `User ${id}`))
+    },
+
+    /** A delayed payment result must not overwrite a period already finalized by cron. */
+    async updateMonthlyDonationIfDue(
+      id: User['id'],
+      paymentHash: string | null,
+      data: Pick<User, 'monthlyDonationSats' | 'monthlyDonationNextAt'> &
+        Partial<Pick<User, 'monthlyDonationLastHash' | 'monthlyDonationExpiresAt'>>,
+      now = new Date(),
+    ) {
+      const [row] = await database
+        .update(usersTable)
+        .set(data)
+        .where(
+          and(
+            eq(usersTable.id, id),
+            paymentHash === null
+              ? isNull(usersTable.monthlyDonationLastHash)
+              : eq(usersTable.monthlyDonationLastHash, paymentHash),
+            or(
+              isNull(usersTable.monthlyDonationNextAt),
+              lte(usersTable.monthlyDonationNextAt, now),
+            ),
+          ),
+        )
+        .returning()
+      return row
     },
 
     async countDueMonthlyDonations(now: Date = new Date()) {

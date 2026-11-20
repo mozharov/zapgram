@@ -40,24 +40,58 @@ function harness() {
       bolt11: 'unit-test-invoice',
     }),
   )
+  const users = {
+    getOrThrow: async () => ({...user}),
+    update: mock(async (_id: number, data: Partial<User>) => Object.assign(user, data)),
+  }
+  const slots = new Set<string>()
+  const issuance: DonationPayDeps['issuance'] = {
+    reserveIssuance: async (_userId, kind) => {
+      if (slots.has(kind)) return null
+      slots.add(kind)
+      return {key: kind, token: 'owner', rows: []}
+    },
+    releaseIssuance: async slot => {
+      slots.delete(slot.key)
+    },
+    saveIssued: async () => false,
+    saveMonthlyIssued: async (_slot, _id, invoice, now = new Date()) => {
+      if (
+        user.monthlyDonationLastHash ||
+        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > now)
+      )
+        return false
+      await users.update(user.id, {
+        monthlyDonationLastHash: invoice.paymentHash,
+        monthlyDonationExpiresAt: invoice.expiresAt,
+        monthlyDonationSats: invoice.amountSats,
+        monthlyDonationNextAt: user.monthlyDonationNextAt ?? now,
+      })
+      return true
+    },
+    clearMonthlyIssued: async (_id, hash) => {
+      if (user.monthlyDonationLastHash === hash)
+        await users.update(user.id, {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
+    },
+  }
   const donationPay = createDonationPayService({
+    users,
     pending: {
       save: async () => {},
       reconcileUser: async () => [],
       complete: async () => {},
       remove: async () => {},
     },
-    issuance: {
-      reserveIssuance: async () => null,
-      releaseIssuance: async () => {},
-      saveIssued: async () => false,
-    },
+    issuance,
     createFeeCollectionInvoice,
     getUserWallet: async () => ({balance: 100_000, payInvoice}),
     insertDonation,
     log,
   })
-  const payDonation = mock(donationPay.payDonation)
+  const payDonation = mock(
+    (input: Parameters<MonthlyDonationDeps['donationPay']['payDonation']>[0]) =>
+      donationPay.payDonation(input),
+  )
   const lookupFeePayment = mock(
     async (): Promise<{
       paid: boolean
@@ -70,11 +104,11 @@ function harness() {
     }),
   )
   const send = mock(async () => true)
-  const update = mock(async (_id: number, data: Partial<User>) => Object.assign(user, data))
+  const update = users.update
   const deps: MonthlyDonationDeps = {
     log,
     posthog: undefined,
-    users: {update},
+    users,
     donations: {
       insertDonation,
       findByPaymentHash: async hash => ledger.find(row => row.paymentHash === hash),
@@ -88,6 +122,8 @@ function harness() {
   const tick = (time = now) => processMonthlyDonation(deps, {...user}, time)
   return {
     deps,
+    issuance,
+    slots,
     user,
     now,
     tick,
@@ -363,17 +399,14 @@ for (const future of [false, true]) {
     })
     h.user.nwcUrl = 'unit-test-nwc'
     h.deps.donationPay = createDonationPayService({
+      users: h.deps.users,
       pending: {
         save: async () => {},
         reconcileUser: async () => [],
         complete: async () => {},
         remove: async () => {},
       },
-      issuance: {
-        reserveIssuance: async () => null,
-        releaseIssuance: async () => {},
-        saveIssued: async () => false,
-      },
+      issuance: h.issuance,
       createFeeCollectionInvoice: h.createFeeCollectionInvoice,
       getUserWallet: async () => ({balance: 0, payInvoice}),
       createNwc: () => ({payInvoice}) as never,
@@ -444,4 +477,94 @@ test('legacy pending without lookup expiry gets a stored TTL once and eventually
   expect(await h.tick(new Date(expiresAt.getTime() + 1000))).toBe('done')
   expect(h.user.monthlyDonationLastHash).toBeNull()
   expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+})
+
+test('another process owns monthly issuance: cron keeps the due row without a failure notification', async () => {
+  const h = harness()
+  const dueAt = h.user.monthlyDonationNextAt
+  h.slots.add('monthly')
+  expect(await h.tick()).toBe('keep')
+  expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
+  expect(h.payInvoice).not.toHaveBeenCalled()
+  expect(h.send).not.toHaveBeenCalled()
+  expect(h.user.monthlyDonationLastHash).toBeNull()
+  expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+  expect(h.user.monthlyDonationLastFailNotifyAt).toBeNull()
+})
+
+for (const ledgerWritten of [false, true]) {
+  test(`crash after monthly debit recovers using fee lookup (ledger written: ${ledgerWritten})`, async () => {
+    const h = harness()
+    h.payInvoice.mockImplementation(async () => {
+      // The persisted claim must be visible before the wallet can debit.
+      expect(h.user.monthlyDonationLastHash).toBe('fee-1')
+      expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+      return {}
+    })
+    const dueAt = h.user.monthlyDonationNextAt
+    expect(
+      await h.deps.donationPay.payDonation({userId: 1, amountSats: 50, kind: 'monthly'}),
+    ).toMatchObject({status: 'paid'})
+    // Process dies before its caller's schedule update, optionally before the ledger commit.
+    if (!ledgerWritten) h.ledger.length = 0
+    expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    expect(h.user.monthlyDonationLastHash).toBe('fee-1')
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    expect(await h.tick()).toBe('done')
+    expect(await h.tick()).toBe('done')
+    expect(h.lookupFeePayment).toHaveBeenCalledTimes(1)
+    expect(h.lookupFeePayment).toHaveBeenCalledWith('fee-1')
+    expect(h.ledger).toEqual([expect.objectContaining({paymentHash: 'fee-1', kind: 'monthly'})])
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.user.monthlyDonationNextAt?.getTime()).toBe(
+      h.now.getTime() + MONTHLY_DONATION_PERIOD_MS,
+    )
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.send).not.toHaveBeenCalled()
+  })
+}
+
+test('cron rereads a stale due row after the handler paid and scheduled the period', async () => {
+  const h = harness()
+  const stale = {...h.user}
+  h.payInvoice.mockResolvedValue({})
+  expect(
+    await h.deps.donationPay.payDonation({userId: 1, amountSats: 50, kind: 'monthly'}),
+  ).toMatchObject({status: 'paid'})
+  const nextAt = new Date(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS)
+  await h.deps.users.update(h.user.id, {
+    monthlyDonationNextAt: nextAt,
+    monthlyDonationLastHash: null,
+    monthlyDonationExpiresAt: null,
+  })
+  expect(await processMonthlyDonation(h.deps, stale, h.now)).toBe('done')
+  expect(h.user.monthlyDonationNextAt).toEqual(nextAt)
+  expect(h.ledger).toHaveLength(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
+})
+
+test('first enable settings survive an uncertain debit before the handler returns', async () => {
+  const h = harness()
+  h.user.monthlyDonationSats = 0
+  h.user.monthlyDonationNextAt = null
+  expect(
+    await h.deps.donationPay.payDonation({userId: 1, amountSats: 50, kind: 'monthly'}),
+  ).toMatchObject({status: 'pending'})
+  expect(h.user.monthlyDonationSats).toBe(50)
+  expect(h.user.monthlyDonationNextAt).toBeInstanceOf(Date)
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(await h.tick()).toBe('done')
+  const nextAt = (await h.deps.users.getOrThrow(h.user.id)).monthlyDonationNextAt
+  expect(nextAt?.getTime()).toBeGreaterThan(h.now.getTime())
+  // A late pending response performs no writes; a stale cron input cannot charge again.
+  expect(await h.tick()).toBe('done')
+  expect((await h.deps.users.getOrThrow(h.user.id)).monthlyDonationNextAt).toEqual(nextAt)
+  expect(h.ledger).toHaveLength(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.send).not.toHaveBeenCalled()
 })

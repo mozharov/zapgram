@@ -125,14 +125,24 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     analytics: {source: wasOff ? 'monthly_enable' : 'monthly_due_enable', was_off: wasOff},
   })
 
+  if (result.status === 'skipped') {
+    await replyDonateHub(ctx)
+    return
+  }
+
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await users.update(ctx.user.id, {
-      monthlyDonationSats: amountSats,
-      monthlyDonationNextAt: nextAt,
-      monthlyDonationLastHash: null,
-      monthlyDonationExpiresAt: null,
-    })
+    await users.updateMonthlyDonationIfDue(
+      ctx.user.id,
+      result.paymentHash ?? null,
+      {
+        monthlyDonationSats: amountSats,
+        monthlyDonationNextAt: nextAt,
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      },
+      now,
+    )
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',
@@ -149,18 +159,23 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     })
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
   } else if (result.status === 'pending') {
-    await users.update(ctx.user.id, {
-      monthlyDonationSats: amountSats,
-      monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
-      monthlyDonationLastHash: result.paymentHash,
-      monthlyDonationExpiresAt: result.expiresAt,
-    })
-    await ctx.reply(ctx.t('donate.monthly-pending', {sats: amountSats, usdSuffix}))
+    const pendingSats = result.existing ? (result.amountSats ?? 0) : amountSats
+    await ctx.reply(
+      ctx.t(pendingSats > 0 ? 'donate.monthly-pending' : 'donate.previous-payment-pending', {
+        sats: pendingSats,
+        usdSuffix: await usdSuffixForSats(pendingSats),
+      }),
+    )
   } else {
-    await users.update(ctx.user.id, {
-      monthlyDonationSats: amountSats,
-      monthlyDonationNextAt: now,
-    })
+    await users.updateMonthlyDonationIfDue(
+      ctx.user.id,
+      null,
+      {
+        monthlyDonationSats: amountSats,
+        monthlyDonationNextAt: now,
+      },
+      now,
+    )
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',

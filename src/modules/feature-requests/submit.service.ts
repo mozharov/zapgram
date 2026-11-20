@@ -3,7 +3,7 @@ import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
-import type {DonationPayService} from '@modules/donations/pay.service.js'
+import type {DonationPayService, PayDonationResult} from '@modules/donations/pay.service.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 
 export type FeatureFundStatus = 'skipped' | 'paid' | 'pending' | 'pay_failed'
@@ -24,7 +24,9 @@ export type SubmitFeatureRequestResult = {
 }
 
 export type FeatureRequestSubmitDeps = {
-  payDonation: DonationPayService['payDonation']
+  payDonation: (
+    input: Parameters<DonationPayService['payDonation']>[0],
+  ) => Promise<PayDonationResult>
   notify: Notifier['send']
   copyMessage: Notifier['copyMessage']
   adminTelegramIds: readonly number[]

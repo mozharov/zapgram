@@ -225,3 +225,81 @@ test('transactional issuance snapshot retains the hash even if cron completes it
   expect(await repo.findByAttempt(2, 'a')).toBeUndefined()
   expect(await repo.getUserStats(1)).toMatchObject({count: 1, totalSats: 21})
 })
+
+test('monthly issuance uses its own slot and atomically persists only one due invoice', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const other = createDonationRepository(db)
+  const now = new Date()
+  await users.createOrUpdate({id: 1, monthlyDonationNextAt: new Date(now.getTime() - 1000)})
+  const slot = await repo.reserveIssuance(1, 'monthly')
+  if (!slot) throw new Error('Expected monthly owner')
+  expect(await other.reserveIssuance(1, 'monthly')).toBeNull()
+  expect(await other.reserveIssuance(1, 'one_shot')).not.toBeNull()
+  const invoice = {
+    amountSats: 50,
+    paymentHash: 'monthly',
+    expiresAt: new Date(now.getTime() + 60_000),
+  }
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(true)
+  const claimed = await users.getOrThrow(1)
+  expect(claimed.monthlyDonationLastHash).toBe(invoice.paymentHash)
+  expect(claimed.monthlyDonationExpiresAt?.getTime()).toBe(
+    Math.floor(invoice.expiresAt.getTime() / 1000) * 1000,
+  )
+  expect(await repo.saveMonthlyIssued(slot, 1, {...invoice, paymentHash: 'duplicate'})).toBe(false)
+  // A stale cleanup must never release a different payment's claim.
+  await repo.clearMonthlyIssued(1, 'other-hash')
+  expect((await users.getOrThrow(1)).monthlyDonationLastHash).toBe('monthly')
+  await repo.clearMonthlyIssued(1, 'monthly')
+  expect(await users.getOrThrow(1)).toMatchObject({
+    monthlyDonationLastHash: null,
+    monthlyDonationExpiresAt: null,
+  })
+  await users.update(1, {monthlyDonationNextAt: new Date(now.getTime() + 60_000)})
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(false)
+  expect((await users.getOrThrow(1)).monthlyDonationLastHash).toBeNull()
+  // First enable has no nextAt yet, and is also a due period.
+  await users.update(1, {monthlyDonationNextAt: null})
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(true)
+})
+
+test('expired monthly lease owners cannot save after another process claims the slot', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const now = new Date()
+  const expired = await repo.reserveIssuance(
+    1,
+    'monthly',
+    undefined,
+    new Date(now.getTime() - 25 * 60 * 60 * 1000),
+  )
+  if (!expired) throw new Error('Expected expired owner')
+  const invoice = {amountSats: 50, paymentHash: 'old', expiresAt: new Date(now.getTime() + 60_000)}
+  expect(await repo.saveMonthlyIssued(expired, 1, invoice, now)).toBe(false)
+  const current = await repo.reserveIssuance(1, 'monthly', undefined, now)
+  if (!current) throw new Error('Expected current owner')
+  expect(await repo.saveMonthlyIssued(expired, 1, invoice, now)).toBe(false)
+  await repo.releaseIssuance(expired)
+  expect(await repo.reserveIssuance(1, 'monthly', undefined, now)).toBeNull()
+  expect(await repo.saveMonthlyIssued(current, 1, {...invoice, paymentHash: 'current'}, now)).toBe(
+    true,
+  )
+})
+
+test('monthly payer and paid recovery insert one ledger row and increment totals once per hash', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const recovery = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const input = {userId: 1, amountSats: 50, kind: 'monthly' as const, paymentHash: 'same-period'}
+  const rows = await Promise.all([repo.insertDonation(input), recovery.insertDonation(input)])
+  expect(rows[0]?.id).toBe(rows[1]?.id)
+  expect(await db.select().from(donationsTable)).toHaveLength(1)
+  expect(await repo.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+  expect(await repo.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 50})
+})

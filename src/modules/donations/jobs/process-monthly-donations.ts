@@ -12,6 +12,7 @@ import {captureUserEvent, captureUserException, errorProperties} from '@infra/po
 import {runBatch} from '@jobs/run-batch.js'
 import {HTTPError} from 'got'
 import {getRuntime} from '../../../runtime.js'
+import type {DonationPayService, MonthlyDonationResult} from '../pay.service.js'
 
 const FAIL_NOTIFY_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
@@ -36,9 +37,13 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
 
 type Runtime = ReturnType<typeof getRuntime>
 export type MonthlyDonationDeps = Pick<Runtime, 'log' | 'posthog' | 'translate'> & {
-  users: Pick<Runtime['users'], 'update'>
+  users: Pick<Runtime['users'], 'update' | 'getOrThrow'>
   donations: Pick<Runtime['donations'], 'findByPaymentHash' | 'insertDonation'>
-  donationPay: Pick<Runtime['donationPay'], 'payDonation'>
+  donationPay: {
+    payDonation: (
+      input: Omit<Parameters<DonationPayService['payDonation']>[0], 'kind'> & {kind: 'monthly'},
+    ) => Promise<MonthlyDonationResult>
+  }
   masterWallet: {
     lookupFeePayment: (hash: string) => Promise<DonationPaymentLookup>
   }
@@ -54,6 +59,7 @@ export async function processMonthlyDonation(
 ): Promise<'done' | 'keep'> {
   const {log, users, donations, donationPay, posthog, notifier, masterWallet, translate, rates} =
     deps
+  user = await users.getOrThrow(user.id)
   const amount = user.monthlyDonationSats
   const baseProps = {
     feature: 'donations',
@@ -140,6 +146,7 @@ export async function processMonthlyDonation(
     userId: user.id,
     amountSats: amount,
     kind: 'monthly',
+    now,
     rail: 'auto',
     nwcUrl: user.nwcUrl,
     analytics: {source: 'monthly_cron'},
@@ -164,13 +171,7 @@ export async function processMonthlyDonation(
     return 'done'
   }
 
-  if (result.status === 'pending') {
-    await users.update(user.id, {
-      monthlyDonationLastHash: result.paymentHash,
-      monthlyDonationExpiresAt: result.expiresAt,
-    })
-    return 'keep'
-  }
+  if (result.status === 'pending' || result.status === 'skipped') return 'keep'
 
   const lastFail = user.monthlyDonationLastFailNotifyAt
   const shouldNotify = !lastFail || now.getTime() - lastFail.getTime() >= FAIL_NOTIFY_COOLDOWN_MS

@@ -154,3 +154,53 @@ test('monthly work includes unresolved hashes even when disabled or not yet due'
     1, 3,
   ])
 })
+
+for (const status of ['paid', 'pending', 'failed'] as const) {
+  test(`late monthly ${status} settings cannot overwrite cron's completed schedule`, async () => {
+    const users = repo()
+    const now = new Date()
+    const nextAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    await users.createOrUpdate({id: 1, monthlyDonationSats: 50, monthlyDonationNextAt: nextAt})
+    const before = await users.getOrThrow(1)
+    const updated = await users.updateMonthlyDonationIfDue(
+      1,
+      status === 'failed' ? null : 'paid-hash',
+      {
+        monthlyDonationSats: 100,
+        monthlyDonationNextAt: status === 'paid' ? nextAt : now,
+        ...(status === 'paid'
+          ? {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null}
+          : {}),
+      },
+      now,
+    )
+    expect(updated).toBeUndefined()
+    expect(await users.getOrThrow(1)).toEqual(before)
+  })
+}
+
+test('monthly settings update only the due period with the expected hash', async () => {
+  const users = repo()
+  const now = new Date()
+  await users.createOrUpdate({id: 1, monthlyDonationLastHash: 'in-flight'})
+  const settings = {monthlyDonationSats: 50, monthlyDonationNextAt: now}
+  expect(await users.updateMonthlyDonationIfDue(1, null, settings, now)).toBeUndefined()
+  expect(await users.updateMonthlyDonationIfDue(1, 'other', settings, now)).toBeUndefined()
+  expect(await users.updateMonthlyDonationIfDue(1, 'in-flight', settings, now)).toMatchObject({
+    monthlyDonationSats: 50,
+    monthlyDonationLastHash: 'in-flight',
+  })
+  expect(
+    await users.updateMonthlyDonationIfDue(
+      1,
+      'in-flight',
+      {
+        ...settings,
+        monthlyDonationNextAt: new Date(now.getTime() + 60_000),
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      },
+      now,
+    ),
+  ).toMatchObject({monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
+})

@@ -5,6 +5,7 @@ import {
   donationPlatformStatsTable,
   donationsTable,
   pendingDonationPaymentsTable,
+  usersTable,
 } from '@infra/db/schema.js'
 import type {
   Donation,
@@ -13,7 +14,7 @@ import type {
   PendingDonationPayment,
 } from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {and, asc, desc, eq, gt, gte, lte, sql} from 'drizzle-orm'
+import {and, asc, desc, eq, exists, gt, gte, isNull, lte, or, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserDonationStats = {
@@ -96,7 +97,7 @@ export function createDonationRepository(database: AppDatabase) {
   /** Claim and read in one write transaction, before any asynchronous invoice lookup or mint. */
   async function reserveIssuance(
     userId: number,
-    kind: 'one_shot' | 'feature_request',
+    kind: 'one_shot' | 'feature_request' | 'monthly',
     attemptId?: string,
     now = new Date(),
   ) {
@@ -120,11 +121,14 @@ export function createDonationRepository(database: AppDatabase) {
           .returning()
           .get()
         if (!claimed) return null
-        const rows = tx
-          .select()
-          .from(pendingDonationPaymentsTable)
-          .where(pendingScope(userId, kind, attemptId))
-          .all()
+        const rows =
+          kind === 'monthly'
+            ? []
+            : tx
+                .select()
+                .from(pendingDonationPaymentsTable)
+                .where(pendingScope(userId, kind, attemptId))
+                .all()
         return {key, token, rows}
       },
       {behavior: 'immediate'},
@@ -176,6 +180,52 @@ export function createDonationRepository(database: AppDatabase) {
       },
       {behavior: 'immediate'},
     )
+  }
+
+  async function saveMonthlyIssued(
+    slot: {key: string; token: string},
+    userId: number,
+    invoice: {paymentHash: string; expiresAt: Date; amountSats: number},
+    now = new Date(),
+  ) {
+    // The conditional write both fences expired lease owners and claims the due period before debit.
+    const rows = await database
+      .update(usersTable)
+      .set({
+        monthlyDonationLastHash: invoice.paymentHash,
+        monthlyDonationExpiresAt: invoice.expiresAt,
+        // Persist first-enable settings too: recovery can run before the Telegram caller returns.
+        monthlyDonationSats: invoice.amountSats,
+        monthlyDonationNextAt: sql`coalesce(${usersTable.monthlyDonationNextAt}, ${Math.floor(now.getTime() / 1000)})`,
+      })
+      .where(
+        and(
+          eq(usersTable.id, userId),
+          isNull(usersTable.monthlyDonationLastHash),
+          or(isNull(usersTable.monthlyDonationNextAt), lte(usersTable.monthlyDonationNextAt, now)),
+          exists(
+            database
+              .select()
+              .from(donationPaymentSlotsTable)
+              .where(
+                and(
+                  eq(donationPaymentSlotsTable.key, slot.key),
+                  eq(donationPaymentSlotsTable.token, slot.token),
+                  gt(donationPaymentSlotsTable.expiresAt, now),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({id: usersTable.id})
+    return rows.length > 0
+  }
+
+  async function clearMonthlyIssued(userId: number, paymentHash: string) {
+    await database
+      .update(usersTable)
+      .set({monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
+      .where(and(eq(usersTable.id, userId), eq(usersTable.monthlyDonationLastHash, paymentHash)))
   }
 
   async function listPending(userId?: number, kind?: PendingDonationPayment['kind']) {
@@ -295,6 +345,8 @@ export function createDonationRepository(database: AppDatabase) {
     reserveIssuance,
     releaseIssuance,
     saveIssued,
+    saveMonthlyIssued,
+    clearMonthlyIssued,
     listPending,
     removePending,
     completePending,
@@ -308,6 +360,21 @@ export function createDonationRepository(database: AppDatabase) {
       kind: DonationLedgerKind
       paymentHash?: string | null
     }) {
+      // Recovery and the original payer may reach the ledger concurrently for the same period.
+      const paymentHash = input.paymentHash
+      if (input.kind === 'monthly' && paymentHash) {
+        return database.transaction(
+          tx => {
+            const existing = tx
+              .select()
+              .from(donationsTable)
+              .where(eq(donationsTable.paymentHash, paymentHash))
+              .get()
+            return existing ?? insertRow(tx, {...input, paymentHash})
+          },
+          {behavior: 'immediate'},
+        )
+      }
       return insert({
         userId: input.userId,
         amountSats: input.amountSats,

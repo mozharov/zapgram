@@ -2,12 +2,19 @@ import {mock} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import type {DonationPaymentLookup} from '@core/money/donation-payment.js'
-import type {NewPendingDonationPayment, PendingDonationPayment} from '@infra/db/types.js'
+import type {NewPendingDonationPayment, PendingDonationPayment, User} from '@infra/db/types.js'
 import {createDonationPayService, type DonationPayDeps} from './pay.service.js'
 import {createPendingDonationService} from './pending.service.js'
 
 /** Unit boundary: both wallet transports and persistence are supplied through deps. */
 export function donationPayHarness() {
+  const user = {
+    id: 1,
+    monthlyDonationSats: 50,
+    monthlyDonationLastHash: null,
+    monthlyDonationExpiresAt: null,
+    monthlyDonationNextAt: new Date(Date.now() - 1000),
+  } as User
   const rows = new Map<string, PendingDonationPayment>()
   const ledger = new Map<string, {userId: number; amountSats: number; attemptId: string | null}>()
   const slots = new Map<string, string>()
@@ -65,6 +72,25 @@ export function donationPayHarness() {
     bolt11: 'invoice',
   }))
   const issuance: DonationPayDeps['issuance'] = {
+    saveMonthlyIssued: async (slot, _userId, invoice) => {
+      if (
+        slots.get(slot.key) !== slot.token ||
+        user.monthlyDonationLastHash ||
+        (user.monthlyDonationNextAt && user.monthlyDonationNextAt > new Date())
+      )
+        return false
+      user.monthlyDonationSats = invoice.amountSats
+      user.monthlyDonationNextAt ??= new Date()
+      user.monthlyDonationLastHash = invoice.paymentHash
+      user.monthlyDonationExpiresAt = invoice.expiresAt
+      return true
+    },
+    clearMonthlyIssued: async (_userId, hash) => {
+      if (user.monthlyDonationLastHash === hash) {
+        user.monthlyDonationLastHash = null
+        user.monthlyDonationExpiresAt = null
+      }
+    },
     reserveIssuance: async (userId, kind, attemptId) => {
       const key = JSON.stringify([userId, kind, attemptId])
       if (slots.has(key)) return null
@@ -91,12 +117,14 @@ export function donationPayHarness() {
     },
   }
   const deps: DonationPayDeps = {
+    users: {getOrThrow: async () => ({...user})},
     pending,
     issuance,
     createFeeCollectionInvoice,
     getUserWallet: async () => ({balance: 100_000, payInvoice}),
-    insertDonation: async () => {
-      throw new Error('Explicit payments must complete pending atomically')
+    insertDonation: async row => {
+      if (row.kind !== 'monthly' || !row.paymentHash) throw new Error('Expected monthly hash')
+      if (!ledger.has(row.paymentHash)) ledger.set(row.paymentHash, {...row, attemptId: null})
     },
     log,
   }
@@ -118,6 +146,7 @@ export function donationPayHarness() {
   const insufficient = () => payInvoice.mockRejectedValue(new InsufficientFundsError())
   return {
     service,
+    user,
     deps,
     pending,
     issuance,

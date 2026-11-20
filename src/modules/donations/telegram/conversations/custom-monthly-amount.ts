@@ -133,15 +133,26 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       },
     }),
   )
+  if (result.status === 'skipped') {
+    await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
+    return
+  }
+
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
     await conversation.external(() =>
-      getRuntime().users.update(ctx.user.id, {
-        monthlyDonationSats: sats,
-        monthlyDonationNextAt: nextAt,
-        monthlyDonationLastHash: null,
-        monthlyDonationExpiresAt: null,
-      }),
+      getRuntime().users.updateMonthlyDonationIfDue(
+        ctx.user.id,
+        result.paymentHash ?? null,
+        {
+          monthlyDonationSats: sats,
+          monthlyDonationNextAt: nextAt,
+          monthlyDonationLastHash: null,
+          monthlyDonationExpiresAt: null,
+        },
+        now,
+      ),
     )
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
@@ -161,21 +172,25 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     )
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
   } else if (result.status === 'pending') {
-    await conversation.external(() =>
-      getRuntime().users.update(ctx.user.id, {
-        monthlyDonationSats: sats,
-        monthlyDonationNextAt: current.monthlyDonationNextAt ?? now,
-        monthlyDonationLastHash: result.paymentHash,
-        monthlyDonationExpiresAt: result.expiresAt,
+    const pendingSats = result.existing ? (result.amountSats ?? 0) : sats
+    const pendingUsdSuffix = await conversation.external(() => usdSuffixForSats(pendingSats))
+    await ctx.reply(
+      ctx.t(pendingSats > 0 ? 'donate.monthly-pending' : 'donate.previous-payment-pending', {
+        sats: pendingSats,
+        usdSuffix: pendingUsdSuffix,
       }),
     )
-    await ctx.reply(ctx.t('donate.monthly-pending', {sats, usdSuffix}))
   } else {
     await conversation.external(() =>
-      getRuntime().users.update(ctx.user.id, {
-        monthlyDonationSats: sats,
-        monthlyDonationNextAt: now,
-      }),
+      getRuntime().users.updateMonthlyDonationIfDue(
+        ctx.user.id,
+        null,
+        {
+          monthlyDonationSats: sats,
+          monthlyDonationNextAt: now,
+        },
+        now,
+      ),
     )
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
