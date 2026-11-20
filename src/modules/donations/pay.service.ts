@@ -18,7 +18,7 @@ import type {DonationRepository} from './repository.js'
 export type DonationPayRail = 'internal' | 'nwc'
 
 export type PayDonationResult =
-  | {status: 'paid'; paymentHash?: string; rail: DonationPayRail | 'recovered'; amountSats?: number}
+  | {status: 'paid'; paymentHash: string; rail: DonationPayRail | 'recovered'; amountSats?: number}
   | {
       status: 'pending'
       paymentHash: string

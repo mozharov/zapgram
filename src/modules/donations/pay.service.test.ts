@@ -6,6 +6,7 @@ import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
 import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {SendPausedError} from '@core/errors/send-paused.js'
+import {advanceMonthlyNextAt, MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
 import type {PendingDonationPayment, User} from '@infra/db/types.js'
 import {createDonationRepository} from '@modules/donations/repository.js'
 import {createUserRepository} from '@modules/users/repository.js'
@@ -839,3 +840,69 @@ test('monthly fee hash is committed in SQLite before payInvoice and survives unt
   expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
   expect(payInvoice).toHaveBeenCalledTimes(1)
 })
+
+for (const initial of ['first_enable', 'due'] as const) {
+  for (const rail of ['internal', 'nwc', 'auto'] as const) {
+    test(`monthly ${initial} paid via ${rail} finalizes its saved slot exactly once`, async () => {
+      const db = createTestDb()
+      const users = createUserRepository(db)
+      const donations = createDonationRepository(db)
+      // Simulate an invoice issued after the caller's clock crossed a SQLite timestamp second.
+      const now = new Date(Date.now() - 2000)
+      await users.createOrUpdate({
+        id: 1,
+        monthlyDonationSats: initial === 'due' ? 100 : 0,
+        monthlyDonationNextAt: initial === 'due' ? new Date(now.getTime() - 1000) : null,
+      })
+      const h = donationPayHarness()
+      const service = createDonationPayService({
+        ...h.deps,
+        users,
+        issuance: donations,
+        insertDonation: donations.insertDonation,
+      })
+      const result = await service.payDonation({
+        userId: 1,
+        amountSats: 100,
+        kind: 'monthly',
+        rail,
+        nwc: {payInvoice: h.payInvoice} as never,
+      })
+      expect(result).toMatchObject({status: 'paid', paymentHash: 'new-1'})
+      if (result.status !== 'paid') throw new Error('Expected a paid monthly donation')
+      const saved = await users.getOrThrow(1)
+      expect(saved.monthlyDonationLastHash).toBe(result.paymentHash)
+      if (initial === 'first_enable')
+        expect(saved.monthlyDonationNextAt?.getTime()).toBeGreaterThan(now.getTime())
+
+      const settings = {
+        monthlyDonationSats: 100,
+        monthlyDonationNextAt: advanceMonthlyNextAt(now, now),
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      }
+      expect(
+        await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+      ).toBeDefined()
+      const finalized = await users.getOrThrow(1)
+      expect(finalized.monthlyDonationNextAt?.getTime()).toBe(
+        Math.floor((now.getTime() + MONTHLY_DONATION_PERIOD_MS) / 1000) * 1000,
+      )
+      expect(finalized.monthlyDonationLastHash).toBeNull()
+      expect(finalized.monthlyDonationExpiresAt).toBeNull()
+      expect(
+        await users.updateMonthlyDonationIfDue(1, result.paymentHash, {
+          ...settings,
+          monthlyDonationNextAt: advanceMonthlyNextAt(settings.monthlyDonationNextAt),
+        }),
+      ).toBeUndefined()
+      expect(await users.getOrThrow(1)).toEqual(finalized)
+      expect(await service.payDonation({userId: 1, amountSats: 100, kind: 'monthly'})).toEqual({
+        status: 'skipped',
+        reason: 'already_paid',
+      })
+      expect(h.payInvoice).toHaveBeenCalledTimes(1)
+      expect((await donations.getUserStats(1)).count).toBe(1)
+    })
+  }
+}

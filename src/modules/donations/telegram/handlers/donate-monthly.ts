@@ -132,9 +132,9 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
 
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await users.updateMonthlyDonationIfDue(
+    const updated = await users.updateMonthlyDonationIfDue(
       ctx.user.id,
-      result.paymentHash ?? null,
+      result.paymentHash,
       {
         monthlyDonationSats: amountSats,
         monthlyDonationNextAt: nextAt,
@@ -143,6 +143,12 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       },
       now,
     )
+    if (!updated)
+      ctx.log.warn(
+        {paymentHash: result.paymentHash, rail: result.rail},
+        'Paid monthly donation schedule update skipped: slot changed',
+      )
+    else ctx.log.info({nextAt}, 'Monthly donation period finalized')
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',
@@ -167,7 +173,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       }),
     )
   } else {
-    await users.updateMonthlyDonationIfDue(
+    const updated = await users.updateMonthlyDonationIfDue(
       ctx.user.id,
       null,
       {
@@ -176,6 +182,7 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       },
       now,
     )
+    if (!updated) ctx.log.warn('Failed monthly donation settings update skipped: period changed')
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',

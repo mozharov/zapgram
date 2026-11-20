@@ -30,7 +30,8 @@ function harness() {
     ledger.push(row)
     return row
   })
-  const log = {error: mock(() => {}), info: mock(() => {}), debug: mock(() => {})} as never
+  const warn = mock(() => {})
+  const log = {error: mock(() => {}), info: mock(() => {}), debug: mock(() => {}), warn} as never
   const payInvoice = mock(async (): Promise<{payment_hash?: string}> => {
     throw new PaymentPendingError()
   })
@@ -40,9 +41,18 @@ function harness() {
       bolt11: 'unit-test-invoice',
     }),
   )
+  const update = mock(async (_id: number, data: Partial<User>) => Object.assign(user, data))
+  const updateMonthlyDonationIfDue: MonthlyDonationDeps['users']['updateMonthlyDonationIfDue'] =
+    async (id, hash, data, time = new Date()) => {
+      if (user.monthlyDonationLastHash !== hash) return undefined
+      if (hash === null && user.monthlyDonationNextAt && user.monthlyDonationNextAt > time)
+        return undefined
+      return update(id, data)
+    }
   const users = {
     getOrThrow: async () => ({...user}),
-    update: mock(async (_id: number, data: Partial<User>) => Object.assign(user, data)),
+    update,
+    updateMonthlyDonationIfDue,
   }
   const slots = new Set<string>()
   const issuance: DonationPayDeps['issuance'] = {
@@ -104,7 +114,6 @@ function harness() {
     }),
   )
   const send = mock(async () => true)
-  const update = users.update
   const deps: MonthlyDonationDeps = {
     log,
     posthog: undefined,
@@ -135,6 +144,7 @@ function harness() {
     payDonation,
     lookupFeePayment,
     send,
+    warn,
   }
 }
 
@@ -568,3 +578,61 @@ test('first enable settings survive an uncertain debit before the handler return
   expect(h.payInvoice).toHaveBeenCalledTimes(1)
   expect(h.send).not.toHaveBeenCalled()
 })
+
+for (const initial of ['first_enable', 'due'] as const) {
+  test(`internal paid ${initial} advances the period once and clears the saved invoice`, async () => {
+    const h = harness()
+    if (initial === 'first_enable') h.user.monthlyDonationNextAt = null
+    h.payInvoice.mockResolvedValue({})
+    expect(await h.tick()).toBe('done')
+    expect(h.user.monthlyDonationNextAt?.getTime()).toBe(
+      h.now.getTime() + MONTHLY_DONATION_PERIOD_MS,
+    )
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(await h.tick()).toBe('done')
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.ledger).toHaveLength(1)
+    expect(h.warn).not.toHaveBeenCalled()
+  })
+}
+
+for (const source of ['paid', 'recovered', 'failed_lookup'] as const) {
+  test(`late cron ${source} cannot overwrite a finalized period and warns about the lost slot`, async () => {
+    const h = harness()
+    const nextAt = new Date(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS + 60_000)
+    const finalizeElsewhere = () => {
+      h.user.monthlyDonationNextAt = nextAt
+      h.user.monthlyDonationLastHash = null
+      h.user.monthlyDonationExpiresAt = null
+    }
+    if (source === 'paid') {
+      h.payInvoice.mockImplementation(async () => {
+        finalizeElsewhere()
+        return {}
+      })
+    } else {
+      await h.tick()
+      h.lookupFeePayment.mockImplementation(async () => {
+        finalizeElsewhere()
+        return {
+          paid: source === 'recovered',
+          status: source === 'recovered' ? 'success' : 'failed',
+          details: {amount: 50_000},
+        }
+      })
+    }
+    expect(await h.tick()).toBe('keep')
+    expect(h.user.monthlyDonationNextAt).toEqual(nextAt)
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.warn).toHaveBeenCalledTimes(1)
+    expect(h.warn).toHaveBeenCalledWith(
+      expect.objectContaining({userId: 1, paymentHash: 'fee-1'}),
+      expect.stringContaining('slot changed'),
+    )
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.send).not.toHaveBeenCalled()
+  })
+}

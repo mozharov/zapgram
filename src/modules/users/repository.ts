@@ -112,8 +112,15 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
     async updateMonthlyDonationIfDue(
       id: User['id'],
       paymentHash: string | null,
-      data: Pick<User, 'monthlyDonationSats' | 'monthlyDonationNextAt'> &
-        Partial<Pick<User, 'monthlyDonationLastHash' | 'monthlyDonationExpiresAt'>>,
+      data: Partial<
+        Pick<
+          User,
+          | 'monthlyDonationSats'
+          | 'monthlyDonationNextAt'
+          | 'monthlyDonationLastHash'
+          | 'monthlyDonationExpiresAt'
+        >
+      >,
       now = new Date(),
     ) {
       const [row] = await database
@@ -122,13 +129,17 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         .where(
           and(
             eq(usersTable.id, id),
+            // The saved hash owns this period even if issuance happened after the caller's now.
+            // Finalization clears it, so a late result cannot overwrite the completed schedule.
             paymentHash === null
-              ? isNull(usersTable.monthlyDonationLastHash)
+              ? and(
+                  isNull(usersTable.monthlyDonationLastHash),
+                  or(
+                    isNull(usersTable.monthlyDonationNextAt),
+                    lte(usersTable.monthlyDonationNextAt, now),
+                  ),
+                )
               : eq(usersTable.monthlyDonationLastHash, paymentHash),
-            or(
-              isNull(usersTable.monthlyDonationNextAt),
-              lte(usersTable.monthlyDonationNextAt, now),
-            ),
           ),
         )
         .returning()

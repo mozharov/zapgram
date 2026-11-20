@@ -141,10 +141,10 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
 
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await conversation.external(() =>
-      getRuntime().users.updateMonthlyDonationIfDue(
+    await conversation.external(async () => {
+      const updated = await getRuntime().users.updateMonthlyDonationIfDue(
         ctx.user.id,
-        result.paymentHash ?? null,
+        result.paymentHash,
         {
           monthlyDonationSats: sats,
           monthlyDonationNextAt: nextAt,
@@ -152,8 +152,14 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
           monthlyDonationExpiresAt: null,
         },
         now,
-      ),
-    )
+      )
+      if (!updated)
+        ctx.log.warn(
+          {paymentHash: result.paymentHash, rail: result.rail},
+          'Paid monthly donation schedule update skipped: slot changed',
+        )
+      else ctx.log.info({nextAt}, 'Monthly donation period finalized')
+    })
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
         feature: 'donations',
@@ -181,8 +187,8 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       }),
     )
   } else {
-    await conversation.external(() =>
-      getRuntime().users.updateMonthlyDonationIfDue(
+    await conversation.external(async () => {
+      const updated = await getRuntime().users.updateMonthlyDonationIfDue(
         ctx.user.id,
         null,
         {
@@ -190,8 +196,9 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
           monthlyDonationNextAt: now,
         },
         now,
-      ),
-    )
+      )
+      if (!updated) ctx.log.warn('Failed monthly donation settings update skipped: period changed')
+    })
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
         feature: 'donations',

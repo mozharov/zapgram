@@ -25,7 +25,11 @@ describe('createFeatureRequestService', () => {
     const notify = mock(async () => true)
     const copyMessage = mock(async () => true)
     const capture = mock(() => {})
-    const payDonation = mock(async () => ({status: 'paid' as const, rail: 'internal' as const}))
+    const payDonation = mock(async () => ({
+      status: 'paid' as const,
+      rail: 'internal' as const,
+      paymentHash: 'fee-hash',
+    }))
 
     const service = createFeatureRequestService({
       payDonation,

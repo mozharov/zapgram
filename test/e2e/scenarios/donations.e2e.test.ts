@@ -221,6 +221,14 @@ test('monthly enable charges immediately and advances nextAt', async () => {
   const next = user?.monthlyDonationNextAt?.getTime() ?? 0
   const approx30d = 30 * 24 * 60 * 60 * 1000
   expect(Math.abs(next - (Date.now() + approx30d))).toBeLessThan(60_000)
+  expect(user?.monthlyDonationLastHash).toBeNull()
+  expect(user?.monthlyDonationExpiresAt).toBeNull()
+  await processMonthlyDonations(new Date())
+  expect((await e2e.container.donations.getUserStats(USER_A)).count).toBe(1)
+  expect((await e2e.container.users.getOrThrow(USER_A)).monthlyDonationNextAt).toEqual(
+    user?.monthlyDonationNextAt ?? null,
+  )
+  expectDonationLegs(1, 1)
   expectNoErrors(e2e.logs)
 })
 
@@ -283,9 +291,21 @@ test('custom monthly amount charges and deletes the entered amount after success
   const input = privateText('100')
   await e2e.send(input)
 
-  expect((await e2e.container.users.findById(USER_A))?.monthlyDonationSats).toBe(100)
+  const user = await e2e.container.users.getOrThrow(USER_A)
+  expect(user.monthlyDonationSats).toBe(100)
+  expect(
+    Math.abs((user.monthlyDonationNextAt?.getTime() ?? 0) - Date.now() - 30 * 24 * 60 * 60 * 1000),
+  ).toBeLessThan(60_000)
+  expect(user.monthlyDonationLastHash).toBeNull()
+  expect(user.monthlyDonationExpiresAt).toBeNull()
   expectDeletedMessage(input.message?.message_id)
   await expectNoConversations(e2e.db)
+  await processMonthlyDonations(new Date())
+  expect((await e2e.container.donations.getUserStats(USER_A)).count).toBe(1)
+  expect((await e2e.container.users.getOrThrow(USER_A)).monthlyDonationNextAt).toEqual(
+    user.monthlyDonationNextAt,
+  )
+  expectDonationLegs(1, 1)
   expectNoErrors(e2e.logs)
 })
 
@@ -356,6 +376,11 @@ test('monthly job charges when nextAt is due', async () => {
 
   const user = await e2e.container.users.findById(USER_A)
   expect(user?.monthlyDonationNextAt && user.monthlyDonationNextAt > new Date()).toBe(true)
+  expect(user?.monthlyDonationLastHash).toBeNull()
+  expect(user?.monthlyDonationExpiresAt).toBeNull()
+  await processMonthlyDonations(new Date())
+  expect((await e2e.container.donations.getUserStats(USER_A)).count).toBe(1)
+  expectDonationLegs(1, 1)
   expectLedgerBalanced(before, after)
   expectNoErrors(e2e.logs)
 })

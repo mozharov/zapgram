@@ -37,7 +37,7 @@ export async function processMonthlyDonations(now: Date = new Date()): Promise<v
 
 type Runtime = ReturnType<typeof getRuntime>
 export type MonthlyDonationDeps = Pick<Runtime, 'log' | 'posthog' | 'translate'> & {
-  users: Pick<Runtime['users'], 'update' | 'getOrThrow'>
+  users: Pick<Runtime['users'], 'update' | 'getOrThrow' | 'updateMonthlyDonationIfDue'>
   donations: Pick<Runtime['donations'], 'findByPaymentHash' | 'insertDonation'>
   donationPay: {
     payDonation: (
@@ -118,11 +118,23 @@ export async function processMonthlyDonation(
           ? user.monthlyDonationNextAt
           : advanceMonthlyNextAt(user.monthlyDonationNextAt ?? now, now)
         : null
-      await users.update(user.id, {
-        ...(enabled ? {monthlyDonationNextAt: nextAt} : {}),
-        monthlyDonationLastHash: null,
-        monthlyDonationExpiresAt: null,
-      })
+      const updated = await users.updateMonthlyDonationIfDue(
+        user.id,
+        user.monthlyDonationLastHash,
+        {
+          ...(enabled ? {monthlyDonationNextAt: nextAt} : {}),
+          monthlyDonationLastHash: null,
+          monthlyDonationExpiresAt: null,
+        },
+        now,
+      )
+      if (!updated) {
+        log.warn(
+          {userId: user.id, paymentHash: user.monthlyDonationLastHash},
+          'Recovered monthly donation schedule update skipped: slot changed',
+        )
+        return 'keep'
+      }
       log.info(
         {userId: user.id, paymentHash: user.monthlyDonationLastHash},
         'Monthly donation recovered',
@@ -136,7 +148,19 @@ export async function processMonthlyDonation(
       return 'done'
     }
     // Release a definitively failed hash before attempting another payment.
-    await users.update(user.id, {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null})
+    const updated = await users.updateMonthlyDonationIfDue(
+      user.id,
+      user.monthlyDonationLastHash,
+      {monthlyDonationLastHash: null, monthlyDonationExpiresAt: null},
+      now,
+    )
+    if (!updated) {
+      log.warn(
+        {userId: user.id, paymentHash: user.monthlyDonationLastHash},
+        'Failed monthly donation hash clear skipped: slot changed',
+      )
+      return 'keep'
+    }
     log.info({userId: user.id}, 'Failed monthly donation hash cleared')
   }
 
@@ -155,11 +179,23 @@ export async function processMonthlyDonation(
   if (result.status === 'paid') {
     const from = user.monthlyDonationNextAt ?? now
     const nextAt = advanceMonthlyNextAt(from, now)
-    await users.update(user.id, {
-      monthlyDonationNextAt: nextAt,
-      monthlyDonationLastHash: null,
-      monthlyDonationExpiresAt: null,
-    })
+    const updated = await users.updateMonthlyDonationIfDue(
+      user.id,
+      result.paymentHash,
+      {
+        monthlyDonationNextAt: nextAt,
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      },
+      now,
+    )
+    if (!updated) {
+      log.warn(
+        {userId: user.id, paymentHash: result.paymentHash, rail: result.rail},
+        'Paid monthly donation schedule update skipped: slot changed',
+      )
+      return 'keep'
+    }
     log.info({userId: user.id, paymentHash: result.paymentHash}, 'Monthly donation paid')
     captureUserEvent(posthog, 'monthly_donate_charged', user.id, {
       ...baseProps,
