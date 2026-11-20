@@ -1,9 +1,28 @@
 import {describe, expect, mock, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
-import {createDonationPayService} from './pay.service.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
+import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
+import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
+import {advanceMonthlyNextAt, MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
+import type {PendingDonationPayment, User} from '@infra/db/types.js'
+import {createDonationRepository} from '@modules/donations/repository.js'
+import {createUserRepository} from '@modules/users/repository.js'
+import {createTestDb} from '@test/helpers/db.js'
+import {HTTPError} from 'got'
+import {createDonationPayService, type DonationPayDeps} from './pay.service.js'
+import {donationPayHarness} from './pay.test-support.js'
 
-function makeDeps(overrides: Partial<Parameters<typeof createDonationPayService>[0]> = {}) {
-  const insertDonation = mock(async () => ({}))
+function makeDeps(
+  overrides: Omit<Partial<DonationPayDeps>, 'pending'> & {
+    pending?: Partial<DonationPayDeps['pending']>
+  } = {},
+) {
+  const insertDonation = mock(
+    async (_input: Parameters<DonationPayDeps['insertDonation']>[0]) => ({}),
+  )
   const payInvoice = mock(async () => ({payment_hash: 'hash-paid'}))
   const getUserWallet = mock(async () => ({
     balance: 100_000, // msats = 100 sats
@@ -14,13 +33,46 @@ function makeDeps(overrides: Partial<Parameters<typeof createDonationPayService>
     bolt11: `lnbc${sats}`,
   }))
 
+  let issued: Parameters<DonationPayDeps['issuance']['saveIssued']>[1] | undefined
+  const pending = {
+    save: async () => {},
+    reconcileUser: async () => [],
+    complete: async () => {
+      if (issued) await insertDonation({...issued, kind: 'one_shot'})
+    },
+    remove: async () => {},
+    ...overrides.pending,
+  }
+  const issuance = {
+    saveMonthlyIssued: async () => true,
+    clearMonthlyIssued: async () => {},
+    reserveIssuance: async () => ({key: 'slot', token: 'owner', rows: []}),
+    releaseIssuance: async () => {},
+    saveIssued: mock(
+      async (
+        _slot: {key: string; token: string},
+        row: Parameters<DonationPayDeps['issuance']['saveIssued']>[1],
+      ) => {
+        issued = row
+        await pending.save(row)
+        return true
+      },
+    ),
+    ...overrides.issuance,
+  }
   return {
     deps: createDonationPayService({
+      users: {
+        getOrThrow: async () =>
+          ({monthlyDonationLastHash: null, monthlyDonationNextAt: null}) as User,
+      },
       createFeeCollectionInvoice,
       getUserWallet,
       insertDonation,
       log: {error: mock(() => {}), info: mock(() => {}), debug: mock(() => {})} as never,
       ...overrides,
+      pending,
+      issuance,
     }),
     insertDonation,
     payInvoice,
@@ -162,7 +214,7 @@ describe('payDonation', () => {
       amountSats: 50,
       rail: 'internal',
     })
-    expect(result).toMatchObject({status: 'failed', reason: 'pay_failed', error: boom})
+    expect(result).toMatchObject({status: 'pending', paymentHash: 'fee-50', error: boom})
     expect(captureException).toHaveBeenCalledTimes(1)
     expect(captureException).toHaveBeenCalledWith(
       boom,
@@ -171,3 +223,797 @@ describe('payDonation', () => {
     )
   })
 })
+
+for (const error of [
+  new PaymentPendingError(),
+  new Error('transport timeout'),
+  new InvoiceAlreadyPaidError(),
+]) {
+  test(`an uncertain donation (${error.message}) is not recorded or retried through NWC`, async () => {
+    const nwcPay = mock(async () => undefined)
+    const {deps, insertDonation} = makeDeps({
+      getUserWallet: async () => ({
+        balance: 100_000,
+        payInvoice: async () => {
+          throw error
+        },
+      }),
+    })
+    const result = await deps.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot',
+      nwc: {payInvoice: nwcPay} as never,
+    })
+    expect(result).toMatchObject({status: 'pending', paymentHash: 'fee-50', error})
+    expect(insertDonation).not.toHaveBeenCalled()
+    expect(nwcPay).not.toHaveBeenCalled()
+  })
+}
+
+for (const rail of ['internal', 'nwc'] as const) {
+  for (const error of [
+    new PaymentPendingError(),
+    new Error('timeout'),
+    new InvoiceAlreadyPaidError(),
+  ]) {
+    test(`${rail} returns the fee invoice hash on unknown pay: ${error.message}`, async () => {
+      const payInvoice = mock(async () => {
+        throw error
+      })
+      const {deps, insertDonation} = makeDeps({
+        getUserWallet: async () => ({balance: 100_000, payInvoice}),
+      })
+      expect(
+        await deps.payToFeeCollection({
+          userId: 1,
+          amountSats: 50,
+          rail,
+          nwc: {payInvoice} as never,
+        }),
+      ).toMatchObject({
+        status: 'pending',
+        paymentHash: 'fee-50',
+        expiresAt: expect.any(Date),
+        error,
+      })
+      expect(payInvoice).toHaveBeenCalledTimes(1)
+      expect(insertDonation).not.toHaveBeenCalled()
+    })
+  }
+}
+
+test('a wallet read failure before pay is a definitive failure without a hash', async () => {
+  const {deps} = makeDeps({
+    getUserWallet: async () => {
+      throw new Error('wallet unavailable')
+    },
+  })
+  expect(await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toMatchObject({
+    status: 'failed',
+    reason: 'pay_failed',
+  })
+})
+
+test('SendPaused is a definitive failure without a hash', async () => {
+  const error = new SendPausedError()
+  const {deps, insertDonation} = makeDeps({
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw error
+      },
+    }),
+  })
+  expect(await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toEqual({
+    status: 'failed',
+    reason: 'pay_failed',
+    error,
+  })
+  expect(insertDonation).not.toHaveBeenCalled()
+})
+
+test('pending donations emit no failed or successful event', async () => {
+  const capture = mock(() => undefined)
+  const {deps, insertDonation} = makeDeps({
+    posthog: {capture, captureException: mock(() => undefined)} as never,
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw new PaymentPendingError()
+      },
+    }),
+  })
+  await deps.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})
+  expect(capture).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'donation_pending',
+      properties: expect.objectContaining({status: 'pending', payment_hash: 'fee-50'}),
+    }),
+  )
+  for (const event of ['donation_failed', 'donate_sent']) {
+    expect(capture).not.toHaveBeenCalledWith(expect.objectContaining({event}))
+  }
+  expect(insertDonation).not.toHaveBeenCalled()
+})
+
+for (const rail of ['nwc', 'auto'] as const) {
+  for (const error of [new InsufficientFundsError()]) {
+    test(`${rail} definite NWC refusal leaves no pending hash: ${error.name}`, async () => {
+      const save = mock(async () => {})
+      const payInvoice = mock(async () => {
+        throw error
+      })
+      const {deps, createFeeCollectionInvoice, insertDonation} = makeDeps({
+        pending: {save, reconcileUser: async () => []},
+        getUserWallet: async () => ({balance: 0, payInvoice}),
+      })
+      const input = {
+        userId: 1,
+        amountSats: 50,
+        kind: 'one_shot' as const,
+        rail,
+        nwc: {payInvoice} as never,
+      }
+      for (let i = 0; i < 2; i++) {
+        const result = await deps.payDonation(input)
+        expect(result).toEqual({status: 'failed', reason: 'pay_failed', error})
+        expect(result).not.toHaveProperty('paymentHash')
+      }
+      expect(insertDonation).not.toHaveBeenCalled()
+      expect(payInvoice).toHaveBeenCalledTimes(2)
+      expect(createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+    })
+  }
+}
+
+for (const error of [
+  new NWCPaymentFailedError(),
+  new NWCTimeoutError(),
+  new NoNWCAnswerError(),
+  new InvoiceAlreadyPaidError(),
+]) {
+  test(`uncertain NWC saves the hash and explicit invoice expiry: ${error.name}`, async () => {
+    const save = mock(async () => {})
+    const expiry = new Date(Date.now() + 60_000)
+    const {deps, insertDonation} = makeDeps({
+      pending: {save, reconcileUser: async () => []},
+      createFeeCollectionInvoice: async () => ({
+        payment_hash: 'nwc-pending',
+        bolt11: 'invoice',
+        expiry,
+      }),
+    })
+    const result = await deps.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot',
+      rail: 'nwc',
+      nwc: {
+        payInvoice: async () => {
+          throw error
+        },
+      } as never,
+    })
+    expect(result).toMatchObject({status: 'pending', paymentHash: 'nwc-pending', expiresAt: expiry})
+    expect(save).toHaveBeenCalledWith({
+      userId: 1,
+      kind: 'one_shot',
+      attemptId: null,
+      amountSats: 50,
+      paymentHash: 'nwc-pending',
+      expiresAt: expiry,
+    })
+    expect(insertDonation).not.toHaveBeenCalled()
+  })
+}
+
+for (const state of ['pending', 'paid'] as const) {
+  test(`explicit retry uses previous ${state} amount and hash without minting another invoice`, async () => {
+    const row = {
+      userId: 1,
+      paymentHash: 'previous',
+      kind: 'one_shot' as const,
+      attemptId: null,
+      amountSats: 21,
+      expiresAt: new Date(Date.now() + 60_000),
+      createdAt: new Date(),
+    }
+    const reconcileUser = mock(async () => [{row, state}])
+    const save = mock(async () => {})
+    const {deps, createFeeCollectionInvoice, payInvoice, insertDonation} = makeDeps({
+      pending: {save, reconcileUser},
+    })
+    const result = await deps.payDonation({userId: 1, amountSats: 100, kind: 'one_shot'})
+    expect(result).toMatchObject({status: state, amountSats: 21, paymentHash: 'previous'})
+    expect(reconcileUser).toHaveBeenCalledWith(1, 'one_shot', undefined, [])
+    expect(createFeeCollectionInvoice).not.toHaveBeenCalled()
+    expect(payInvoice).not.toHaveBeenCalled()
+    expect(insertDonation).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+}
+
+test('two concurrent explicit retries serialize around pending persistence', async () => {
+  const pendingRows: PendingDonationPayment[] = []
+  const {deps, createFeeCollectionInvoice} = makeDeps({
+    pending: {
+      save: async row => {
+        pendingRows.push({...row, attemptId: row.attemptId ?? null, createdAt: new Date()})
+      },
+      reconcileUser: async () => pendingRows.map(row => ({row, state: 'pending' as const})),
+    },
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw new PaymentPendingError()
+      },
+    }),
+  })
+  const input = {userId: 1, amountSats: 50, kind: 'one_shot' as const}
+  const results = await Promise.all([deps.payDonation(input), deps.payDonation(input)])
+  expect(results.map(result => result.status)).toEqual(['pending', 'pending'])
+  expect(createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(pendingRows).toHaveLength(1)
+})
+
+test('feature funding checks and stores its own pending kind', async () => {
+  const save = mock(async () => {})
+  const reconcileUser = mock(async () => [])
+  const {deps} = makeDeps({
+    pending: {save, reconcileUser},
+    getUserWallet: async () => ({
+      balance: 100_000,
+      payInvoice: async () => {
+        throw new PaymentPendingError()
+      },
+    }),
+  })
+  await deps.payDonation({
+    userId: 1,
+    amountSats: 21,
+    kind: 'one_shot',
+    pendingKind: 'feature_request',
+  })
+  expect(reconcileUser).toHaveBeenCalledWith(1, 'feature_request', undefined, [])
+  expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      kind: 'feature_request',
+      amountSats: 21,
+      paymentHash: 'fee-21',
+      expiresAt: expect.any(Date),
+    }),
+  )
+})
+
+for (const pendingKind of ['one_shot', 'feature_request'] as const) {
+  test(`parallel paid recovery shares one promise and ledger row: ${pendingKind}`, async () => {
+    const h = donationPayHarness()
+    const attemptId = pendingKind === 'feature_request' ? 'attempt-a' : undefined
+    await h.save('previous', attemptId)
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    const input = {userId: 1, amountSats: 50, kind: 'one_shot' as const, pendingKind, attemptId}
+    const first = h.service.payDonation(input)
+    const second = h.service.payDonation(input)
+    expect(first).toBe(second)
+    const results = await Promise.all([first, second])
+    expect(results[0]).toBe(results[1])
+    expect(results[0]).toMatchObject({status: 'paid', rail: 'recovered', paymentHash: 'previous'})
+    expect(h.ledger.size).toBe(1)
+    expect(h.completePending).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
+    expect(h.payInvoice).not.toHaveBeenCalled()
+  })
+}
+
+for (const initial of ['empty', 'expired'] as const) {
+  test(`parallel ${initial} retries mint and debit once; a later new donation still works`, async () => {
+    const h = donationPayHarness()
+    if (initial === 'expired') await h.save('old', null, new Date(Date.now() - 1000))
+    const input = {userId: 1, amountSats: 50, kind: 'one_shot' as const}
+    const results = await Promise.all([h.service.payDonation(input), h.service.payDonation(input)])
+    expect(results[0]).toBe(results[1])
+    expect(results[0]).toMatchObject({status: 'paid', paymentHash: 'new-1'})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.ledger.size).toBe(1)
+    expect(h.rows.size).toBe(0)
+    expect(await h.service.payDonation(input)).toMatchObject({status: 'paid', paymentHash: 'new-2'})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+    expect(h.ledger.size).toBe(2)
+  })
+}
+
+for (const paid of [false, true]) {
+  test(`the re-read immediately before mint detects a newly installed ${paid ? 'paid' : 'pending'} invoice`, async () => {
+    const h = donationPayHarness()
+    const reconcileUser = h.pending.reconcileUser
+    let calls = 0
+    h.deps.pending = {
+      ...h.pending,
+      reconcileUser: async (...args) => {
+        if (++calls === 2) await h.save('raced')
+        return reconcileUser(...args)
+      },
+    }
+    h.lookupFeePayment.mockResolvedValue({paid, details: {amount: 50_000}})
+    const service = createDonationPayService(h.deps)
+    expect(await service.payDonation({userId: 1, amountSats: 50, kind: 'one_shot'})).toMatchObject({
+      status: paid ? 'paid' : 'pending',
+      paymentHash: 'raced',
+    })
+    expect(calls).toBe(2)
+    expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
+    expect(h.payInvoice).not.toHaveBeenCalled()
+    expect(h.ledger.size).toBe(paid ? 1 : 0)
+  })
+}
+
+for (const outcome of ['paid', 'live', 'ttl', 'invoice_expired', 'failed', '404'] as const) {
+  test(`NWC Could not pay preserves fee hash, then reconciles ${outcome} before any new debit`, async () => {
+    const h = donationPayHarness()
+    h.uncertain()
+    const input = {
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot' as const,
+      rail: 'nwc' as const,
+      nwc: {payInvoice: h.payInvoice} as never,
+    }
+    const before = Date.now()
+    expect(await h.service.payDonation(input)).toMatchObject({
+      status: 'pending',
+      paymentHash: 'new-1',
+    })
+    const row = h.rows.get('new-1')
+    if (!row) throw new Error('Missing pending invoice')
+    expect(row.expiresAt.getTime() - before).toBeGreaterThanOrEqual(86_400_000)
+    expect(row.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(86_400_000)
+    if (outcome === 'paid') {
+      row.expiresAt = new Date(Date.now() - 1000)
+      h.lookupFeePayment.mockResolvedValue({
+        paid: true,
+        details: {amount: 50_000, expiry: row.expiresAt},
+      })
+    }
+    if (outcome === 'ttl') row.expiresAt = new Date(Date.now() - 1000)
+    if (outcome === 'invoice_expired')
+      h.lookupFeePayment.mockResolvedValue({
+        paid: false,
+        details: {amount: 50_000, expiry: new Date(Date.now() - 1000)},
+      })
+    if (outcome === 'failed')
+      h.lookupFeePayment.mockResolvedValue({
+        paid: false,
+        status: 'failed',
+        details: {amount: 50_000},
+      })
+    if (outcome === '404')
+      h.lookupFeePayment.mockRejectedValue(
+        Object.assign(Object.create(HTTPError.prototype), {response: {statusCode: 404}}),
+      )
+    const result = await h.service.payDonation(input)
+    const retryable = !['paid', 'live'].includes(outcome)
+    expect(result).toMatchObject({
+      status: outcome === 'paid' ? 'paid' : 'pending',
+      paymentHash: retryable ? 'new-2' : 'new-1',
+    })
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(retryable ? 2 : 1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(retryable ? 2 : 1)
+    expect(h.lookupFeePayment).toHaveBeenCalledWith('new-1')
+    expect(h.ledger.size).toBe(outcome === 'paid' ? 1 : 0)
+    await h.pending.reconcileAll()
+    expect(h.ledger.size).toBe(outcome === 'paid' ? 1 : 0)
+  })
+}
+
+test('insufficient NWC funds release pending and the issuance slot without retaining a hash', async () => {
+  const h = donationPayHarness()
+  h.insufficient()
+  const result = await h.service.payDonation({
+    userId: 1,
+    amountSats: 50,
+    kind: 'one_shot',
+    rail: 'nwc',
+    nwc: {payInvoice: h.payInvoice} as never,
+  })
+  expect(result).toMatchObject({status: 'failed', reason: 'pay_failed'})
+  expect(result).not.toHaveProperty('paymentHash')
+  expect(h.rows.size).toBe(0)
+  expect(h.slots.size).toBe(0)
+  expect(h.ledger.size).toBe(0)
+})
+
+test('a second service cannot mint while another process owns the issuance slot', async () => {
+  const h = donationPayHarness()
+  const other = createDonationPayService(h.deps)
+  let release!: () => void
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let started!: () => void
+  const entered = new Promise<void>(resolve => {
+    started = resolve
+  })
+  h.createFeeCollectionInvoice.mockImplementation(async () => {
+    started()
+    await gate
+    return {payment_hash: 'shared', bolt11: 'invoice'}
+  })
+  const input = {userId: 1, amountSats: 50, kind: 'one_shot' as const}
+  const first = h.service.payDonation(input)
+  await entered
+  const second = await other.payDonation(input)
+  expect(second.status).toBe('failed')
+  release()
+  expect(await first).toMatchObject({status: 'paid', paymentHash: 'shared'})
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.ledger.size).toBe(1)
+})
+
+for (const separateService of [false, true]) {
+  test(`monthly concurrent cron/confirm has one payer (separate service: ${separateService})`, async () => {
+    const h = donationPayHarness()
+    const other = separateService ? createDonationPayService(h.deps) : h.service
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>(resolve => {
+      entered = resolve
+    })
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    h.payInvoice.mockImplementation(async () => {
+      expect(h.user.monthlyDonationLastHash).toBe('new-1')
+      expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+      entered()
+      await gate
+      return {}
+    })
+    const input = {userId: 1, kind: 'monthly' as const, amountSats: 50}
+    const first = h.service.payDonation(input)
+    await started
+    expect(await other.payDonation(input)).toEqual({status: 'skipped', reason: 'issuance_busy'})
+    release()
+    expect(await first).toMatchObject({status: 'paid', paymentHash: 'new-1'})
+    // The winning handler commits its schedule, while cron still holds the original input.
+    h.user.monthlyDonationNextAt = new Date(Date.now() + 60_000)
+    h.user.monthlyDonationLastHash = null
+    h.user.monthlyDonationExpiresAt = null
+    expect(await other.payDonation(input)).toEqual({status: 'skipped', reason: 'already_paid'})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.ledger.size).toBe(1)
+    expect(h.slots.size).toBe(0)
+  })
+}
+
+test('monthly reread returns the existing hash without minting or adopting a different amount', async () => {
+  const h = donationPayHarness()
+  h.user.monthlyDonationLastHash = 'existing'
+  h.user.monthlyDonationSats = 0
+  const expiresAt = new Date(Date.now() + 60_000)
+  h.user.monthlyDonationExpiresAt = expiresAt
+  expect(await h.service.payDonation({userId: 1, kind: 'monthly', amountSats: 100})).toMatchObject({
+    status: 'pending',
+    paymentHash: 'existing',
+    expiresAt,
+    existing: true,
+    amountSats: 0,
+  })
+  expect(h.createFeeCollectionInvoice).not.toHaveBeenCalled()
+  expect(h.payInvoice).not.toHaveBeenCalled()
+  expect(h.ledger.size).toBe(0)
+})
+
+for (const change of ['hash', 'nextAt', 'lease'] as const) {
+  test(`monthly conditional save refuses a ${change} change during mint without paying`, async () => {
+    const h = donationPayHarness()
+    h.createFeeCollectionInvoice.mockImplementation(async () => {
+      if (change === 'hash') h.user.monthlyDonationLastHash = 'other-invoice'
+      if (change === 'nextAt') h.user.monthlyDonationNextAt = new Date(Date.now() + 60_000)
+      if (change === 'lease') h.slots.clear()
+      return {payment_hash: 'unclaimed', bolt11: 'invoice'}
+    })
+    expect(await h.service.payDonation({userId: 1, kind: 'monthly', amountSats: 50})).toEqual({
+      status: 'skipped',
+      reason: 'period_changed',
+    })
+    expect(h.payInvoice).not.toHaveBeenCalled()
+    expect(h.ledger.size).toBe(0)
+    expect(h.user.monthlyDonationLastHash).toBe(change === 'hash' ? 'other-invoice' : null)
+  })
+}
+
+for (const error of [new InsufficientFundsError(), new SendPausedError()]) {
+  test(`monthly definitive ${error.name} clears its saved hash and stays due`, async () => {
+    const h = donationPayHarness()
+    const dueAt = h.user.monthlyDonationNextAt
+    h.payInvoice.mockRejectedValue(error)
+    expect(await h.service.payDonation({userId: 1, kind: 'monthly', amountSats: 50})).toMatchObject(
+      {
+        status: 'failed',
+      },
+    )
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    expect(h.ledger.size).toBe(0)
+    h.payInvoice.mockResolvedValue({})
+    expect(await h.service.payDonation({userId: 1, kind: 'monthly', amountSats: 50})).toMatchObject(
+      {
+        status: 'paid',
+        paymentHash: 'new-2',
+      },
+    )
+  })
+}
+
+for (const outcome of ['wallet_read', 'no_funds'] as const) {
+  test(`monthly ${outcome} before payment releases the invoice claim`, async () => {
+    const h = donationPayHarness()
+    h.deps.getUserWallet = async () => {
+      if (outcome === 'wallet_read') throw new Error('wallet read failed')
+      return {balance: 0, payInvoice: h.payInvoice}
+    }
+    const dueAt = h.user.monthlyDonationNextAt
+    expect(await h.service.payDonation({userId: 1, kind: 'monthly', amountSats: 50})).toMatchObject(
+      {status: 'failed'},
+    )
+    expect(h.user.monthlyDonationLastHash).toBeNull()
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    expect(h.payInvoice).not.toHaveBeenCalled()
+    expect(h.ledger.size).toBe(0)
+  })
+}
+
+for (const error of [
+  new NWCPaymentFailedError(),
+  new NWCTimeoutError(),
+  new NoNWCAnswerError(),
+  new InvoiceAlreadyPaidError(),
+  new Error('transport timeout'),
+]) {
+  test(`monthly uncertain ${error.name} retains the hash for lookup, with no second invoice`, async () => {
+    const h = donationPayHarness()
+    h.payInvoice.mockRejectedValue(error)
+    const dueAt = h.user.monthlyDonationNextAt
+    const input = {
+      userId: 1,
+      kind: 'monthly' as const,
+      amountSats: 50,
+      rail: 'nwc' as const,
+      nwc: {payInvoice: h.payInvoice} as never,
+    }
+    expect(await h.service.payDonation(input)).toMatchObject({
+      status: 'pending',
+      paymentHash: 'new-1',
+    })
+    expect(h.user.monthlyDonationLastHash).toBe('new-1')
+    expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+    expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    expect(await h.service.payDonation(input)).toMatchObject({
+      status: 'pending',
+      paymentHash: 'new-1',
+      existing: true,
+    })
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.ledger.size).toBe(0)
+  })
+}
+
+test('monthly fee hash is committed in SQLite before payInvoice and survives until scheduling', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const donations = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const h = donationPayHarness()
+  const payInvoice = mock(async () => {
+    const stored = await users.getOrThrow(1)
+    expect(stored.monthlyDonationLastHash).toBe('new-1')
+    expect(stored.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+    expect(stored.monthlyDonationSats).toBe(50)
+    expect(stored.monthlyDonationNextAt?.getTime()).toBeLessThanOrEqual(Date.now())
+    return {}
+  })
+  const service = createDonationPayService({
+    ...h.deps,
+    users,
+    issuance: donations,
+    insertDonation: donations.insertDonation,
+    getUserWallet: async () => ({balance: 100_000, payInvoice}),
+  })
+  expect(await service.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toMatchObject({
+    status: 'paid',
+  })
+  expect((await users.getOrThrow(1)).monthlyDonationLastHash).toBe('new-1')
+  expect(await service.payDonation({userId: 1, amountSats: 50, kind: 'monthly'})).toMatchObject({
+    status: 'pending',
+    paymentHash: 'new-1',
+    existing: true,
+  })
+  await donations.insertDonation({userId: 1, amountSats: 50, kind: 'monthly', paymentHash: 'new-1'})
+  expect(await donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(payInvoice).toHaveBeenCalledTimes(1)
+})
+
+for (const initial of ['first_enable', 'due'] as const) {
+  test(`Telegram monthly ${initial} cannot finalize before its ledger write succeeds`, async () => {
+    const h = donationPayHarness()
+    if (initial === 'first_enable') {
+      h.user.monthlyDonationSats = 0
+      h.user.monthlyDonationNextAt = null
+    }
+    const dueAt = h.user.monthlyDonationNextAt
+    const error = new Error('ledger unavailable')
+    h.deps.insertDonation = mock(async () => {
+      throw error
+    })
+    const input = {
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly' as const,
+      monthlySource: 'telegram' as const,
+    }
+    // Both Telegram callers finalize only on paid; pending performs no schedule writes.
+    const result = await h.service.payDonation(input)
+    const expiresAt = h.user.monthlyDonationExpiresAt
+    if (!expiresAt) throw new Error('Expected the saved monthly expiry')
+    expect(result).toEqual({
+      status: 'pending',
+      paymentHash: 'new-1',
+      expiresAt,
+      amountSats: 50,
+      error,
+    })
+    expect(h.user.monthlyDonationLastHash).toBe('new-1')
+    expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+    expect(h.user.monthlyDonationSats).toBe(50)
+    if (dueAt) expect(h.user.monthlyDonationNextAt).toEqual(dueAt)
+    else expect(h.user.monthlyDonationNextAt?.getTime()).toBeLessThanOrEqual(Date.now())
+    expect(await createDonationPayService(h.deps).payDonation(input)).toMatchObject({
+      status: 'pending',
+      paymentHash: 'new-1',
+      existing: true,
+    })
+    expect(h.ledger.size).toBe(0)
+    expect(h.deps.insertDonation).toHaveBeenCalledTimes(1)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  })
+}
+
+for (const initial of ['first_enable', 'due'] as const) {
+  for (const rail of ['internal', 'nwc', 'auto'] as const) {
+    test(`monthly ${initial} paid via ${rail} finalizes its saved slot exactly once`, async () => {
+      const db = createTestDb()
+      const users = createUserRepository(db)
+      const donations = createDonationRepository(db)
+      // Simulate an invoice issued after the caller's clock crossed a SQLite timestamp second.
+      const now = new Date(Date.now() - 2000)
+      await users.createOrUpdate({
+        id: 1,
+        monthlyDonationSats: initial === 'due' ? 100 : 0,
+        monthlyDonationNextAt: initial === 'due' ? new Date(now.getTime() - 1000) : null,
+      })
+      const h = donationPayHarness()
+      const service = createDonationPayService({
+        ...h.deps,
+        users,
+        issuance: donations,
+        insertDonation: donations.insertDonation,
+      })
+      const result = await service.payDonation({
+        userId: 1,
+        amountSats: 100,
+        kind: 'monthly',
+        rail,
+        nwc: {payInvoice: h.payInvoice} as never,
+      })
+      expect(result).toMatchObject({status: 'paid', paymentHash: 'new-1'})
+      if (result.status !== 'paid') throw new Error('Expected a paid monthly donation')
+      const saved = await users.getOrThrow(1)
+      expect(saved.monthlyDonationLastHash).toBe(result.paymentHash)
+      if (initial === 'first_enable')
+        expect(saved.monthlyDonationNextAt?.getTime()).toBeGreaterThan(now.getTime())
+
+      const settings = {
+        monthlyDonationSats: 100,
+        monthlyDonationNextAt: advanceMonthlyNextAt(now, now),
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      }
+      expect(
+        await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+      ).toBeDefined()
+      const finalized = await users.getOrThrow(1)
+      expect(finalized.monthlyDonationNextAt?.getTime()).toBe(
+        Math.floor((now.getTime() + MONTHLY_DONATION_PERIOD_MS) / 1000) * 1000,
+      )
+      expect(finalized.monthlyDonationLastHash).toBeNull()
+      expect(finalized.monthlyDonationExpiresAt).toBeNull()
+      expect(
+        await users.updateMonthlyDonationIfDue(1, result.paymentHash, {
+          ...settings,
+          monthlyDonationNextAt: advanceMonthlyNextAt(settings.monthlyDonationNextAt),
+        }),
+      ).toBeUndefined()
+      expect(await users.getOrThrow(1)).toEqual(finalized)
+      expect(await service.payDonation({userId: 1, amountSats: 100, kind: 'monthly'})).toEqual({
+        status: 'skipped',
+        reason: 'already_paid',
+      })
+      expect(h.payInvoice).toHaveBeenCalledTimes(1)
+      expect((await donations.getUserStats(1)).count).toBe(1)
+    })
+  }
+}
+
+for (const rail of ['internal', 'nwc'] as const) {
+  test(`Telegram monthly payment via ${rail} preserves Disable after issuance`, async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    const donations = createDonationRepository(db)
+    await users.createOrUpdate({id: 1})
+    const h = donationPayHarness()
+    const payInvoice = mock(async () => {
+      expect(await users.getOrThrow(1)).toMatchObject({
+        monthlyDonationSats: 50,
+        monthlyDonationNextAt: expect.any(Date),
+        monthlyDonationLastHash: 'new-1',
+        monthlyDonationExpiresAt: expect.any(Date),
+      })
+      await users.update(1, {monthlyDonationSats: 0, monthlyDonationNextAt: null})
+      return {}
+    })
+    const service = createDonationPayService({
+      ...h.deps,
+      users,
+      issuance: donations,
+      insertDonation: donations.insertDonation,
+      getUserWallet: async () => ({balance: 100_000, payInvoice}),
+    })
+    const now = new Date()
+    const result = await service.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly',
+      monthlySource: 'telegram',
+      rail,
+      nwc: {payInvoice} as never,
+    })
+    expect(result.status).toBe('paid')
+    if (result.status !== 'paid') throw new Error('Expected paid donation')
+    const settings = {
+      monthlyDonationSats: 50,
+      monthlyDonationNextAt: advanceMonthlyNextAt(now, now),
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    }
+    expect(
+      await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+    ).toMatchObject({
+      monthlyDonationSats: 0,
+      monthlyDonationNextAt: null,
+      monthlyDonationLastHash: null,
+      monthlyDonationExpiresAt: null,
+    })
+    expect(
+      await users.updateMonthlyDonationIfDue(1, result.paymentHash, settings, now),
+    ).toBeUndefined()
+    await donations.insertDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'monthly',
+      paymentHash: result.paymentHash,
+    })
+    expect(await donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+    expect(await donations.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 50})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(payInvoice).toHaveBeenCalledTimes(1)
+  })
+}

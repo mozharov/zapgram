@@ -3,9 +3,13 @@ import type {
   broadcastsTable,
   chatsTable,
   conversationsTable,
+  dmTransfersTable,
+  donationPaymentSlotsTable,
   donationPlatformStatsTable,
   donationsTable,
+  lnurlPayAttemptsTable,
   onchainChatPaymentsTable,
+  pendingDonationPaymentsTable,
   pendingInvoicesTable,
   subscriptionIntentsTable,
   subscriptionPaymentsTable,
@@ -46,6 +50,9 @@ export type OnchainChatPayment = typeof onchainChatPaymentsTable.$inferSelect
 export type OnchainChatPaymentInsert = typeof onchainChatPaymentsTable.$inferInsert
 export type NewOnchainChatPayment = Omit<OnchainChatPaymentInsert, 'id'>
 
+export type DmTransfer = typeof dmTransfersTable.$inferSelect
+export type LnurlPayAttempt = typeof lnurlPayAttemptsTable.$inferSelect
+
 export type Donation = typeof donationsTable.$inferSelect
 export type DonationInsert = typeof donationsTable.$inferInsert
 export type NewDonation = Omit<DonationInsert, 'id'>
@@ -58,3 +65,8 @@ export type NewBroadcast = Omit<BroadcastInsert, 'id'> & {id?: string}
 
 export type BroadcastRecipient = typeof broadcastRecipientsTable.$inferSelect
 export type BroadcastRecipientInsert = typeof broadcastRecipientsTable.$inferInsert
+
+export type PendingDonationPayment = typeof pendingDonationPaymentsTable.$inferSelect
+
+export type DonationPaymentSlot = typeof donationPaymentSlotsTable.$inferSelect
+export type NewPendingDonationPayment = typeof pendingDonationPaymentsTable.$inferInsert

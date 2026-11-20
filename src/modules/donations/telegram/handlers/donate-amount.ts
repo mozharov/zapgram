@@ -47,8 +47,14 @@ export async function donateAmountCallback(ctx: BotContext) {
     analytics: {source: 'donate_preset'},
   })
 
-  const usdSuffix = await usdSuffixForSats(amountSats)
-  if (result.status !== 'paid') {
+  const displayedSats = result.status === 'failed' ? amountSats : (result.amountSats ?? amountSats)
+  const usdSuffix = await usdSuffixForSats(displayedSats)
+  if (result.status === 'pending') {
+    await ctx.reply(ctx.t('donate.pending', {sats: displayedSats, usdSuffix}))
+    await replyDonateHub(ctx)
+    return
+  }
+  if (result.status === 'failed') {
     captureBotEvent(posthog, 'donate_one_shot_ui_failed', {
       feature: 'donations',
       flow: 'one_shot',
@@ -66,6 +72,6 @@ export async function donateAmountCallback(ctx: BotContext) {
     return
   }
 
-  await ctx.reply(ctx.t('donate.success', {sats: amountSats, usdSuffix}))
+  await ctx.reply(ctx.t('donate.success', {sats: displayedSats, usdSuffix}))
   await replyDonateHub(ctx)
 }

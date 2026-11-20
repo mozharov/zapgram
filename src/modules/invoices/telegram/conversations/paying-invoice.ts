@@ -1,6 +1,12 @@
+import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {isSendPaused, SendPausedError} from '@core/errors/send-paused.js'
 import {decodeInvoice} from '@core/lightning/decode-invoice.js'
+import {lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
 import {msatsToSats} from '@core/money/sats.js'
+import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
 import {claimAndNotifyPaidInvoice} from '@modules/invoices/claim-and-notify-paid.js'
 import {
   claimPendingInvoiceByPaymentRequest,
@@ -13,13 +19,15 @@ import {
 import {waitForInvoice} from '@modules/invoices/telegram/helpers/wait-for-invoice.js'
 import {waitForInvoiceReview} from '@modules/invoices/telegram/helpers/wait-for-invoice-review.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
-import {editHostWithSendMenu} from '@modules/wallet/telegram/messages/send-menu.js'
+import {lnurlRecipientHtml} from '@modules/invoices/telegram/lnurl-payee.js'
+import {waitForTransferConfirm} from '@modules/tipping/telegram/wait-for-transfer-confirm.js'
 import {editHostWithWallet} from '@modules/wallet/telegram/messages/wallet.js'
 import {payPastedRoute} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {
   type ConversationHost,
   disabledLinkPreview,
+  editHost,
   ensureHost,
   hostFromCallback,
   joinWizardHtml,
@@ -36,19 +44,37 @@ export async function payingInvoice(
   conversation: BotConversation,
   ctx: ConversationContext,
   lnInvoice?: string,
+  options?: {
+    /** Shown above the invoice review. BOLT11 leaves this unset. */
+    reviewPrefix?: string
+    /**
+     * Edit this message for the review and the receipt. A second living menu would
+     * be adopted again on replay and delete the receipt the payment just wrote.
+     */
+    host?: ConversationHost
+    /** The send wizard stays open so the user can correct the paste or cancel. */
+    invalid?: 'return'
+    /**
+     * LNURL and Lightning addresses mint a fresh invoice on every attempt.
+     * The hash is stored and the phase flips to `pay_unknown` before pay.
+     * A pasted BOLT11 leaves this unset: paying that same invoice again is safe.
+     */
+    lnurl?: {attemptId: string; recipient: string}
+  },
 ) {
+  const reviewPrefix = options?.reviewPrefix
   const title = ctx.t('paying-invoice')
   // Pay on a pasted bolt11 arrives as a callback on that offer. The offer is not the
   // wizard host: the invoice skips straight to review, the offer is removed, and the
   // screen is a new message. The step the user left must not keep a live Cancel button.
+  // An explicit host (the LNURL amount screen) is that one message instead.
   const fromPastedPay = payPastedRoute.pattern.test(ctx.callbackQuery?.data ?? '')
-  let host: ConversationHost | undefined = hostFromCallback(ctx)
-  if (lnInvoice || fromPastedPay) host = undefined
+  let host: ConversationHost | undefined = options?.host ?? hostFromCallback(ctx)
+  if (!options?.host && (lnInvoice || fromPastedPay)) host = undefined
   const restoreParent = async (target?: ConversationHost) => {
     const dest = target ?? host
     if (!dest) return
-    if (lnInvoice) await editHostWithWallet(ctx, dest)
-    else await editHostWithSendMenu(ctx, dest)
+    await editHostWithWallet(ctx, dest)
   }
 
   if (!lnInvoice && !fromPastedPay) {
@@ -67,9 +93,13 @@ export async function payingInvoice(
   } catch {
     if (!lnInvoice) throw new Error('Validated invoice could not be decoded')
     await replyWithConversationTempMessage(conversation, ctx, ctx.t('wait-for-invoice.invalid'))
+    if (options?.invalid === 'return') return 'invalid'
     return conversation.halt()
   }
-  if (lnInvoice && !fromPastedPay) await deleteMessageSafely(ctx)
+  // A pasted bolt11 is the message under the cursor. LNURL already deleted the amount
+  // text and passes the amount screen as `host`; deleting `ctx` would target that
+  // screen once the update is the confirm click.
+  if (lnInvoice && !fromPastedPay && !options?.host) await deleteMessageSafely(ctx)
   if (fromPastedPay) await deleteRepliedInvoice(ctx)
   ctx.log.debug(
     {paymentHash: invoice.paymentHash, sats: invoice.satoshi, expiryDate: invoice.expiryDate},
@@ -79,16 +109,24 @@ export async function payingInvoice(
   const [previewUsdSuffix = ''] = await conversation.external(() =>
     usdSuffixesForSats([invoice.satoshi]),
   )
-  const details = invoiceReviewHtml(ctx, invoice, {
-    usdSuffix: previewUsdSuffix,
-    fee: 'no',
-    feeUsdSuffix: '',
-  })
+  const details = joinWizardHtml(
+    reviewPrefix,
+    invoiceReviewHtml(ctx, invoice, {
+      usdSuffix: previewUsdSuffix,
+      fee: 'no',
+      feeUsdSuffix: '',
+    }),
+  )
 
-  if (invoice.hasExpired()) {
+  // Freeze the open-time answer for every invoice. A live check here would take a
+  // different branch when the confirm click replays the conversation after expiry,
+  // and grammY would throw instead of reaching the click. The pay itself is refused
+  // after that click, below.
+  const expiredAtOpen = await conversation.external(() => invoice.hasExpired())
+  if (expiredAtOpen) {
     await waitForInvoiceReview(conversation, ctx, invoice, true, {
       host,
-      prefixHtml: host ? title : undefined,
+      prefixHtml: joinWizardHtml(reviewPrefix, host ? title : undefined) || undefined,
       onCancel: restoreParent,
     })
     return
@@ -109,19 +147,118 @@ export async function payingInvoice(
   })
   const {wallet} = selection
   host = host ?? selection.host
+  // Two wallets: the first click only picks a rail. Amount, recipient, and wallet
+  // stay on screen until Confirm. A single funded wallet already was that confirm.
+  if (!selection.confirmed) {
+    const confirmed = await waitForTransferConfirm(conversation, ctx, {
+      host,
+      html: joinWizardHtml(
+        reviewPrefix,
+        invoiceReviewHtml(ctx, invoice, {
+          usdSuffix: previewUsdSuffix,
+          fee: 'no',
+          feeUsdSuffix: '',
+        }),
+        ctx.t(`wait-for-wallet.pay-invoice-${wallet}`),
+      ),
+      onCancel: restoreParent,
+    })
+    host = confirmed.host
+  }
+  // Frozen like the open-time check. A live call here diverges on replay after pay.
+  const expiredBeforePay = await conversation.external(() => invoice.hasExpired())
+  if (expiredBeforePay) {
+    const expiredHtml = joinWizardHtml(
+      reviewPrefix,
+      invoiceReviewHtml(ctx, invoice, {
+        usdSuffix: previewUsdSuffix,
+        fee: 'no',
+        feeUsdSuffix: '',
+      }),
+    )
+    // The confirm button was on this message. Take it off so the expired invoice
+    // cannot be clicked again; the conversation is halted either way.
+    const expiredKeyboard = new InlineKeyboard()
+    if (host) await editHost(ctx, host, expiredHtml, expiredKeyboard)
+    else await ctx.reply(expiredHtml, {reply_markup: expiredKeyboard, ...disabledLinkPreview})
+    return conversation.halt()
+  }
   const isInternalWallet = wallet === 'internal'
   if (wallet === 'nwc' && !ctx.user.nwc) throw new NWCConnectionError()
   await ctx.replyWithChatAction('typing')
 
   // Snapshot before pay: a concurrent LNbits webhook may claim the row the instant pay settles.
-  const isInternalRecipient = Boolean(
-    await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest}),
+  const isInternalRecipient = await conversation.external(async () =>
+    Boolean(await getPendingInvoiceBy({paymentRequest: invoice.paymentRequest})),
   )
 
+  const lnurl = options?.lnurl
   let feesPaid = 0
-  if (isInternalWallet) {
-    const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
-    feesPaid = payment.fee < 0 ? -payment.fee : 0
+  if (lnurl) {
+    // One external for the gate and the debit. A replay returns this result
+    // instead of calling payInvoice again. beginPay has already marked the row
+    // pay_unknown, so a crash inside the call comes back as a hold, not a second pay.
+    const outcome = await conversation.external(() =>
+      payLnurlAttempt({
+        attemptId: lnurl.attemptId,
+        fromUserId: ctx.user.id,
+        recipient: lnurl.recipient,
+        sats: invoice.satoshi ?? 0,
+        rail: isInternalWallet ? 'internal' : 'nwc',
+        paymentHash: invoice.paymentHash,
+        bolt11: invoice.paymentRequest,
+        pay: async claimExisting => {
+          if (isInternalWallet) {
+            const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+            return payment.fee < 0 ? -payment.fee : 0
+          }
+          if (!ctx.user.nwc) throw new NWCConnectionError()
+          await ctx.user.nwc.payInvoice(invoice.paymentRequest, true, {claimExisting})
+          const lookupResponse = await ctx.user.nwc.lookupInvoice(invoice.paymentRequest)
+          return lookupResponse.fees_paid
+        },
+      }),
+    )
+    if (outcome.kind === 'paused') throw new SendPausedError()
+    if (outcome.kind === 'declined') {
+      await showLnurlHold(ctx, host, ctx.t('lnurl-pay-failed', {reason: 'declined'}))
+      return conversation.halt()
+    }
+    if (outcome.kind === 'hold') {
+      await showLnurlHold(
+        ctx,
+        host,
+        ctx.t('lnurl-pay-still-checking', {
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(lnurl.recipient)),
+        }),
+      )
+      return conversation.halt()
+    }
+    if (outcome.kind === 'blocked' || outcome.kind === 'not_started') {
+      await showLnurlHold(
+        ctx,
+        host,
+        ctx.t(outcome.kind === 'blocked' ? 'lnurl-pay-blocked' : 'lnurl-pay-not-started', {
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(lnurl.recipient)),
+        }),
+      )
+      return conversation.halt()
+    }
+    if (outcome.kind === 'rejected') throw new InsufficientFundsError()
+    if (outcome.kind === 'absent') {
+      await showLnurlHold(ctx, host, ctx.t('lnurl-pay-failed', {reason: 'already-paid'}))
+      return conversation.halt()
+    }
+    feesPaid = outcome.feesPaid
+  } else if (isInternalWallet) {
+    try {
+      const payment = await ctx.user.wallet.payInvoice(invoice.paymentRequest)
+      feesPaid = payment.fee < 0 ? -payment.fee : 0
+    } catch (error) {
+      if (!(error instanceof PaymentPendingError)) throw error
+      await showLnurlHold(ctx, host, ctx.t('error.payment-pending'))
+      return conversation.halt()
+    }
   } else {
     if (!ctx.user.nwc) throw new NWCConnectionError()
     await ctx.user.nwc.payInvoice(invoice.paymentRequest)
@@ -157,16 +294,19 @@ export async function payingInvoice(
     },
   })
 
-  // Best-effort voluntary platform donation — never blocks the invoice pay.
-  await getRuntime().donationCollect.tryCollect({
-    userId: ctx.user.id,
-    baseAmountSats: invoice.satoshi,
-    kind: 'invoice',
-    preferredRail: isInternalWallet ? 'internal' : 'nwc',
-    nwc: isInternalWallet ? undefined : ctx.user.nwc,
-    nwcUrl: ctx.user.nwcUrl,
-    user: ctx.user,
-  })
+  // LNURL records the donation when the attempt first settles, including a later
+  // reconcile. Calling it here as well would collect twice.
+  if (!lnurl) {
+    await getRuntime().donationCollect.tryCollect({
+      userId: ctx.user.id,
+      baseAmountSats: invoice.satoshi,
+      kind: 'invoice',
+      preferredRail: isInternalWallet ? 'internal' : 'nwc',
+      nwc: isInternalWallet ? undefined : ctx.user.nwc,
+      nwcUrl: ctx.user.nwcUrl,
+      user: ctx.user,
+    })
+  }
 
   if (!host) throw new Error('Paying invoice finished without a host message')
 
@@ -190,15 +330,127 @@ export async function payingInvoice(
   })
   // The wizard's own screen becomes the receipt, so no extra message is sent, and it keeps the
   // open-menu row instead of vanishing under the wallet screen the next `showLivingMenu` would send.
-  await closeLivingMenu(
-    ctx,
-    host.messageId,
-    markup =>
-      ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
-        reply_markup: markup,
-        ...disabledLinkPreview,
-      }),
-    paidKeyboard(ctx, invoice.paymentRequest),
+  try {
+    await closeLivingMenu(
+      ctx,
+      host.messageId,
+      markup =>
+        ctx.api.editMessageText(host.chatId, host.messageId, paidHtml, {
+          reply_markup: markup,
+          ...disabledLinkPreview,
+        }),
+      paidKeyboard(ctx, invoice.paymentRequest),
+    )
+  } catch (error) {
+    // The receipt did not land. Let recovery send the outcome instead of
+    // keeping a flag that says the sender already saw it.
+    if (lnurl) {
+      await conversation.external(() => getRuntime().lnurlPays.releaseSenderNotice(lnurl.attemptId))
+    }
+    throw error
+  }
+  return undefined
+}
+
+type LnurlPayOutcome =
+  | {kind: 'paid'; feesPaid: number}
+  | {kind: 'hold'}
+  | {kind: 'blocked'}
+  | {kind: 'not_started'}
+  | {kind: 'rejected'}
+  | {kind: 'declined'}
+  | {kind: 'paused'}
+  | {kind: 'absent'}
+
+/** What a thrown wallet error means. A definite refusal did not leave the wallet. */
+export function lnurlPayFailureKind(
+  error: unknown,
+): 'paused' | 'rejected' | 'declined' | 'already_paid' | 'hold' {
+  if (isSendPaused(error)) return 'paused'
+  if (error instanceof InsufficientFundsError) return 'rejected'
+  if (error instanceof InvoiceAlreadyPaidError) return 'already_paid'
+  // "Could not pay" from NWC is not proof the debit never left. Only a finished
+  // LNbits refusal (4xx, or 520 with status failed) abandons the attempt.
+  if (payLeftBackendUnspent(error) && !(error instanceof InsufficientFundsError)) return 'declined'
+  return 'hold'
+}
+
+/** Gate, debit, and settle mark. Runs once per attempt: the caller caches it. */
+async function payLnurlAttempt(input: {
+  attemptId: string
+  fromUserId: number
+  recipient: string
+  sats: number
+  rail: 'internal' | 'nwc'
+  paymentHash: string
+  bolt11: string
+  pay: (claimExisting: boolean) => Promise<number>
+}): Promise<LnurlPayOutcome> {
+  const pays = getRuntime().lnurlPays
+  const gate = await pays.beginPay({
+    attemptId: input.attemptId,
+    fromUserId: input.fromUserId,
+    recipient: input.recipient,
+    sats: input.sats,
+    rail: input.rail,
+    paymentHash: input.paymentHash,
+    bolt11: input.bolt11,
+  })
+  if (gate === 'blocked' || gate === 'not_started') return {kind: gate}
+  if (gate === 'in_flight') return {kind: 'hold'}
+  if (gate === 'paid') return {kind: 'paid', feesPaid: 0}
+  // A payment that already exists is not this confirm. Do not pay, and do not
+  // let an old preimage become a receipt.
+  const seen = await pays.readPay(input.attemptId)
+  if (seen === 'prior') {
+    await pays.noteRejected(input.attemptId)
+    return {kind: 'absent'}
+  }
+  if (seen === 'ours') {
+    const claimed = await pays.notePaid(input.attemptId, input.paymentHash, true)
+    return claimed ? {kind: 'paid', feesPaid: 0} : {kind: 'absent'}
+  }
+  if (seen === 'ambiguous') return {kind: 'hold'}
+  try {
+    const feesPaid = await input.pay(seen === 'fresh')
+    const claimed = await pays.notePaid(input.attemptId, input.paymentHash, true)
+    if (!claimed) return {kind: 'absent'}
+    return {kind: 'paid', feesPaid}
+  } catch (error) {
+    const kind = lnurlPayFailureKind(error)
+    if (kind === 'already_paid') {
+      // Only an invoice we just saw unpaid can be this call's debit.
+      if (seen !== 'fresh') return {kind: 'hold'}
+      const resolved = await pays.resolveAlreadyPaid(input.attemptId)
+      if (resolved === 'paid') return {kind: 'paid', feesPaid: 0}
+      if (resolved === 'absent') return {kind: 'absent'}
+      return {kind: 'hold'}
+    }
+    if (kind === 'rejected' || kind === 'declined' || kind === 'paused') {
+      // The guard and a definite provider refusal never left the wallet.
+      await pays.noteRejected(input.attemptId)
+      if (kind === 'paused') return {kind: 'paused'}
+      if (kind === 'declined') return {kind: 'declined'}
+      return {kind: 'rejected'}
+    }
+    return {kind: 'hold'}
+  }
+}
+
+async function showLnurlHold(
+  ctx: ConversationContext,
+  host: ConversationHost | undefined,
+  html: string,
+): Promise<void> {
+  if (!host) {
+    await ctx.reply(html, disabledLinkPreview)
+    return
+  }
+  await closeLivingMenu(ctx, host.messageId, markup =>
+    ctx.api.editMessageText(host.chatId, host.messageId, html, {
+      reply_markup: markup,
+      ...disabledLinkPreview,
+    }),
   )
 }
 

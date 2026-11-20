@@ -20,8 +20,9 @@ export const usersTable = sqliteTable(
     monthlyDonationSats: integer('monthly_donation_sats', {mode: 'number'}).notNull().default(0),
     /** Next due time for monthly donation; null when off. */
     monthlyDonationNextAt: integer('monthly_donation_next_at', {mode: 'timestamp'}),
-    /** Last successful monthly donation payment hash (idempotency for cron). */
+    /** In-flight monthly donation hash; reconcile before retrying and clear after settlement. */
     monthlyDonationLastHash: text('monthly_donation_last_hash'),
+    monthlyDonationExpiresAt: integer('monthly_donation_expires_at', {mode: 'timestamp'}),
     /** Last time we sent a monthly-fail PM (throttle). */
     monthlyDonationLastFailNotifyAt: integer('monthly_donation_last_fail_notify_at', {
       mode: 'timestamp',
@@ -62,6 +63,8 @@ export const donationsTable = sqliteTable(
     amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
     kind: text('kind', {enum: ['percent', 'one_shot', 'monthly']}).notNull(),
     paymentHash: text('payment_hash'),
+    /** Retain feature funding ownership after pending reconciliation removes its row. */
+    attemptId: text('attempt_id'),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [
@@ -70,6 +73,36 @@ export const donationsTable = sqliteTable(
     index('donations_created_at_idx').on(table.createdAt),
   ],
 )
+
+/** Unresolved fee invoices, kept separately for every independent collection. */
+export const pendingDonationPaymentsTable = sqliteTable(
+  'pending_donation_payments',
+  {
+    paymentHash: text('payment_hash').primaryKey(),
+    userId: integer('user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    kind: text('kind', {enum: ['one_shot', 'percent', 'feature_request']}).notNull(),
+    attemptId: text('attempt_id'),
+    amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
+    expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    index('pending_donation_payments_user_kind_idx').on(table.userId, table.kind),
+    check(
+      'pending_donation_payments_kind_check',
+      sql`${table.kind} in ('one_shot', 'percent', 'feature_request')`,
+    ),
+  ],
+)
+
+/** Cross-process issuance lease; percent collections never acquire this slot. */
+export const donationPaymentSlotsTable = sqliteTable('donation_payment_slots', {
+  key: text('key').primaryKey(),
+  token: text('token').notNull(),
+  expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
+})
 
 /**
  * Singleton running total of successful platform donations (all-time).
@@ -382,5 +415,134 @@ export const broadcastRecipientsTable = sqliteTable(
     index('broadcast_recipients_pending_idx')
       .on(table.broadcastId, table.status)
       .where(sql`${table.status} = 'pending'`),
+  ],
+)
+
+/**
+ * One private-send confirmation. The id is the attempt nonce, not sender/recipient/amount,
+ * so a later genuine send of the same amount is a new row.
+ * `invoice_hash` is written before that invoice is paid. Status is only pending or settled.
+ */
+export const dmTransfersTable = sqliteTable(
+  'dm_transfers',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: integer('from_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    toUserId: integer('to_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    sats: integer('sats', {mode: 'number'}).notNull(),
+    status: text('status', {enum: ['pending', 'settled']}).notNull(),
+    /**
+     * Where this attempt is. `invoice_saved` has not called pay. `pay_unknown` has.
+     * `provider_accepted` means the wallet accepted the debit even if a later lookup failed.
+     * `needs_review` is ambiguous and is not paid again. `abandoned` never left.
+     */
+    phase: text('phase', {
+      enum: [
+        'reserved',
+        'invoice_saved',
+        'pay_unknown',
+        'provider_accepted',
+        'needs_review',
+        'settled',
+        'abandoned',
+      ],
+    })
+      .notNull()
+      .default('reserved'),
+    rail: text('rail', {enum: ['internal', 'nwc']})
+      .notNull()
+      .default('internal'),
+    /** Recipient invoice, persisted before pay. */
+    invoiceHash: text('invoice_hash'),
+    bolt11: text('bolt11'),
+    providerAccepted: integer('provider_accepted', {mode: 'boolean'}).notNull().default(false),
+    providerPaymentHash: text('provider_payment_hash'),
+    /** Fee-collection invoice, persisted before that pay. Null until a fee is attempted. */
+    feeHash: text('fee_hash'),
+    feeBolt11: text('fee_bolt11'),
+    /** Insufficient balance for the optional fee. Not a failure of the send. */
+    feeSkipped: integer('fee_skipped', {mode: 'boolean'}).notNull().default(false),
+    /** True while one worker is sending the recipient notice. Not the same as delivered. */
+    noticeClaimed: integer('notice_claimed', {mode: 'boolean'}).notNull().default(false),
+    /** Lease end. A crash mid-send can be retried after this time. */
+    noticeClaimExpiresAt: integer('notice_claim_expires_at', {mode: 'timestamp'}),
+    noticeSent: integer('notice_sent', {mode: 'boolean'}).notNull().default(false),
+    /** Telegram 403 or the attempt cap. Recovery must not retry this notice. */
+    noticeDropped: integer('notice_dropped', {mode: 'boolean'}).notNull().default(false),
+    noticeAttempts: integer('notice_attempts', {mode: 'number'}).notNull().default(0),
+    /** The sender already saw the outcome, in the wizard or in a later message. */
+    senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
+    reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    reviewNotified: integer('review_notified', {mode: 'boolean'}).notNull().default(false),
+    reviewAfter: integer('review_after', {mode: 'timestamp'}),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    check('dm_transfers_status_check', sql`${table.status} in ('pending', 'settled')`),
+    uniqueIndex('dm_transfers_one_open')
+      .on(table.fromUserId, table.toUserId)
+      .where(
+        sql`${table.status} = 'pending' AND ${table.phase} in ('pay_unknown', 'provider_accepted', 'needs_review')`,
+      ),
+  ],
+)
+
+/**
+ * One LNURL or Lightning-address pay. The id is this attempt, not the recipient,
+ * so a later send is a new row. `invoice_hash` is written before that bolt11 is paid.
+ * A new attempt cannot enter `pay_unknown` while another for the same recipient is unresolved.
+ */
+export const lnurlPayAttemptsTable = sqliteTable(
+  'lnurl_pay_attempts',
+  {
+    id: text('id').primaryKey(),
+    fromUserId: integer('from_user_id', {mode: 'number'})
+      .notNull()
+      .references(() => usersTable.id, {onDelete: 'cascade'}),
+    /** Normalized lightning address or LNURL. Not a ZapGram user id. */
+    recipient: text('recipient').notNull(),
+    sats: integer('sats', {mode: 'number'}).notNull(),
+    status: text('status', {enum: ['pending', 'settled']}).notNull(),
+    phase: text('phase', {
+      enum: [
+        'reserved',
+        'invoice_saved',
+        'pay_unknown',
+        'provider_accepted',
+        'needs_review',
+        'settled',
+        'abandoned',
+      ],
+    })
+      .notNull()
+      .default('reserved'),
+    rail: text('rail', {enum: ['internal', 'nwc']})
+      .notNull()
+      .default('internal'),
+    invoiceHash: text('invoice_hash'),
+    bolt11: text('bolt11'),
+    providerAccepted: integer('provider_accepted', {mode: 'boolean'}).notNull().default(false),
+    providerPaymentHash: text('provider_payment_hash'),
+    reviewLogged: integer('review_logged', {mode: 'boolean'}).notNull().default(false),
+    reviewNotified: integer('review_notified', {mode: 'boolean'}).notNull().default(false),
+    reviewAfter: integer('review_after', {mode: 'timestamp'}),
+    senderNotified: integer('sender_notified', {mode: 'boolean'}).notNull().default(false),
+    createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
+  },
+  table => [
+    check('lnurl_pay_attempts_status_check', sql`${table.status} in ('pending', 'settled')`),
+    uniqueIndex('lnurl_pay_attempts_one_open')
+      .on(table.fromUserId, table.recipient)
+      .where(
+        sql`${table.status} = 'pending' AND ${table.phase} in ('pay_unknown', 'provider_accepted', 'needs_review')`,
+      ),
+    // One settled debit per invoice. A second attempt cannot collect another donation for it.
+    uniqueIndex('lnurl_pay_attempts_one_settled_hash')
+      .on(table.invoiceHash)
+      .where(sql`${table.invoiceHash} is not null AND ${table.status} = 'settled'`),
   ],
 )

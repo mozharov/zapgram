@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `dm_transfers_one_open` ON `dm_transfers` (`from_user_id`, `to_user_id`) WHERE "dm_transfers"."status" = 'pending' AND "dm_transfers"."phase" in ('pay_unknown', 'provider_accepted', 'needs_review');

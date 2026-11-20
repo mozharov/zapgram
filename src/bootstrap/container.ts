@@ -1,6 +1,9 @@
 import {type AppConfig, createConfig} from '@config'
+import {NWCConnectionError} from '@core/errors/nwc-connection.js'
+import {lnurlRecipientLabel} from '@core/lightning/lnurl-pay.js'
 import {buildLnbitsPaymentWebhookUrl} from '@core/lnbits/payment-webhook-url.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
+import {classifyPayoutLookup} from '@core/payments/payout-state.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {createDb, migrateDb} from '@infra/db/client.js'
 import {createInvoiceOriginLookup, probeAdminPaymentList} from '@infra/lnbits/invoice-origin.js'
@@ -20,6 +23,7 @@ import {
 import {createSatsPayClient, type SatsPayClient} from '@infra/lnbits/satspay.js'
 import {createWatchOnlyClient, type WatchOnlyClient} from '@infra/lnbits/watchonly.js'
 import {type AppLogger, createLogger} from '@infra/logger.js'
+import {classifyNwcInvoiceLookup, nwcInvoiceMissing} from '@infra/nostr/nwc-lookup.js'
 import {NostrWallet} from '@infra/nostr/wallet.js'
 import {createPostHog} from '@infra/posthog.js'
 import {createBot} from '@infra/telegram/bot.js'
@@ -40,13 +44,23 @@ import {
   type DonationCollectService,
 } from '@modules/donations/collect.service.js'
 import {createDonationPayService, type DonationPayService} from '@modules/donations/pay.service.js'
+import {
+  createPendingDonationService,
+  type PendingDonationService,
+} from '@modules/donations/pending.service.js'
 import {createDonationRepository, type DonationRepository} from '@modules/donations/repository.js'
 import {
   createFeatureRequestService,
   type FeatureRequestService,
   formatFeatureRequestAdminMeta,
 } from '@modules/feature-requests/submit.service.js'
+import {createLnurlPayAttemptRepository} from '@modules/invoices/lnurl-pay-attempt.repository.js'
+import {
+  createLnurlPayAttemptService,
+  type LnurlPayAttemptService,
+} from '@modules/invoices/lnurl-pay-attempt.service.js'
 import {createInvoiceRepository, type InvoiceRepository} from '@modules/invoices/repository.js'
+import {lnurlRecipientHtml} from '@modules/invoices/telegram/lnurl-payee.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import {
   type CompleteOnchainJoinService,
@@ -84,6 +98,12 @@ import {
   type SubscriptionRepository,
 } from '@modules/subscriptions/repository.js'
 import {createSettleService, type SettleService} from '@modules/subscriptions/settle.service.js'
+import {createDmTransferRepository} from '@modules/tipping/dm-transfer.repository.js'
+import {
+  createDmTransferService,
+  type DmTransferService,
+} from '@modules/tipping/dm-transfer.service.js'
+import {notifySatsReceivedOutcome} from '@modules/tipping/notify-sats-received.js'
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
@@ -94,6 +114,7 @@ import {
   parseBaseMarkup,
 } from '@telegram/helpers/notification-chrome.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {HTTPError} from 'got'
 import type {Bot} from 'grammy'
 import type pino from 'pino'
 import {setRuntime} from '../runtime.js'
@@ -130,8 +151,11 @@ export type AppContainer = {
   onchainJoinPaymentService: OnchainJoinPaymentService
   completeOnchainJoin: CompleteOnchainJoinService
   donations: DonationRepository
+  pendingDonations: PendingDonationService
   donationPay: DonationPayService
   donationCollect: DonationCollectService
+  dmTransfers: DmTransferService
+  lnurlPays: LnurlPayAttemptService
   featureRequests: FeatureRequestService
   broadcasts: BroadcastRepository
   broadcastService: BroadcastService
@@ -277,7 +301,15 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     outgoingLiquidity,
   })
 
+  const pendingDonations = createPendingDonationService({
+    donations,
+    lookupFeePayment: hash => masterWallet.lookupFeePayment(hash),
+    log,
+  })
   const donationPay = createDonationPayService({
+    users,
+    issuance: donations,
+    pending: pendingDonations,
     createFeeCollectionInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
     getUserWallet,
     insertDonation: input => donations.insertDonation(input),
@@ -286,7 +318,78 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     createNwc: nwcUrl => new NostrWallet(nwcUrl, config.memoFooter, log),
   })
 
+  const dmTransfers = createDmTransferService({
+    transfers: createDmTransferRepository(db),
+    log,
+    createRecipientInvoice: async (toUserId, sats) => {
+      const wallet = await getUserWallet(toUserId)
+      return wallet.createInvoice({sats})
+    },
+    lookupRecipient: async (toUserId, hash) => {
+      try {
+        const wallet = await getUserWallet(toUserId)
+        return classifyPayoutLookup(await wallet.lookupPayment(hash))
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+        throw error
+      }
+    },
+    createFeeInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
+    lookupFee: async hash => {
+      try {
+        return classifyPayoutLookup(await masterWallet.lookupFeePayment(hash))
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404) return 'retryable'
+        throw error
+      }
+    },
+    pay: async (userId, bolt11, rail, options) => {
+      if (rail === 'nwc') {
+        const payer = await users.getOrThrow(userId)
+        if (!payer.nwcUrl) throw new NWCConnectionError()
+        await new NostrWallet(payer.nwcUrl, config.memoFooter, log).payInvoice(bolt11)
+        return
+      }
+      const wallet = await getUserWallet(userId)
+      const payment = await wallet.payInvoice(bolt11, {
+        knownInternal: options?.knownInternal,
+      })
+      return {paymentHash: payment.payment_hash}
+    },
+    posthog,
+    getUser: id => users.getOrThrow(id),
+    notify: async ({toUserId, fromUserId, sats}) => {
+      const from = await users.getOrThrow(fromUserId)
+      return notifySatsReceivedOutcome(toUserId, sats, from.username)
+    },
+    notifySender: async ({fromUserId, toUserId, sats, outcome}) => {
+      const [from, to] = await Promise.all([
+        users.getOrThrow(fromUserId),
+        users.getOrThrow(toUserId),
+      ])
+      const key =
+        outcome === 'settled'
+          ? 'sending-to-user.sender-settled'
+          : outcome === 'needs_review'
+            ? 'sending-to-user.still-confirming'
+            : 'sending-to-user.sender-not-paid'
+      return notifier.send(
+        fromUserId,
+        translate(key, from.languageCode, {amount: sats, recipient: to.username ?? ''}),
+      )
+    },
+    findDonation: hash => donations.findByPaymentHash(hash),
+    insertDonation: input =>
+      donations.insertDonation({
+        userId: input.userId,
+        amountSats: input.amountSats,
+        kind: 'percent',
+        paymentHash: input.paymentHash,
+      }),
+  })
+
   const donationCollect = createDonationCollectService({
+    pending: pendingDonations,
     payService: donationPay,
     insertDonation: input => donations.insertDonation(input),
     getUser: id => users.getOrThrow(id),
@@ -301,6 +404,64 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     },
     log,
     posthog,
+  })
+
+  const lnurlPays = createLnurlPayAttemptService({
+    attempts: createLnurlPayAttemptRepository(db),
+    log,
+    lookup: async (userId, hash, bolt11, rail) => {
+      if (rail === 'nwc') {
+        const payer = await users.getOrThrow(userId)
+        if (!payer.nwcUrl || !bolt11) return {state: 'unknown'}
+        try {
+          const wallet = new NostrWallet(payer.nwcUrl, config.memoFooter, log)
+          const found = await wallet.lookupInvoice(bolt11)
+          return classifyNwcInvoiceLookup(found, bolt11, hash)
+        } catch (error) {
+          if (nwcInvoiceMissing(error)) return {state: 'retryable'}
+          return {state: 'unknown'}
+        }
+      }
+      try {
+        const wallet = await getUserWallet(userId)
+        // A 404 is the expected "this wallet has not paid" answer, not a failure.
+        const found = await wallet.lookupPayment(hash, {quietStatuses: [404]})
+        const state = classifyPayoutLookup(found)
+        if (state !== 'paid') return {state}
+        return {state, paidAt: found.details?.time}
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.statusCode === 404)
+          return {state: 'retryable'}
+        return {state: 'unknown'}
+      }
+    },
+    notifySender: async ({fromUserId, recipient, sats, outcome}) => {
+      const from = await users.getOrThrow(fromUserId)
+      const key =
+        outcome === 'settled'
+          ? 'lnurl-pay-sender-settled'
+          : outcome === 'needs_review'
+            ? 'lnurl-pay-still-checking'
+            : 'lnurl-pay-sender-not-paid'
+      return notifier.send(
+        fromUserId,
+        translate(key, from.languageCode, {
+          recipient: lnurlRecipientHtml(lnurlRecipientLabel(recipient)),
+          amount: sats,
+        }),
+      )
+    },
+    collectDonation: async ({userId, sats, rail}) => {
+      const payer = await users.getOrThrow(userId)
+      await donationCollect.tryCollect({
+        userId,
+        baseAmountSats: sats,
+        kind: 'invoice',
+        preferredRail: rail,
+        nwcUrl: payer.nwcUrl,
+        user: payer,
+      })
+    },
   })
 
   const featureRequests = createFeatureRequestService({
@@ -473,7 +634,10 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     completeOnchainJoin,
     donations,
     donationPay,
+    pendingDonations,
     donationCollect,
+    dmTransfers,
+    lnurlPays,
     featureRequests,
     broadcasts,
     broadcastService,

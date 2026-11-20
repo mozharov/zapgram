@@ -2,6 +2,7 @@ import {describe, expect, test} from 'bun:test'
 import {
   bolt11MatchingToken,
   pastedPaymentToken,
+  paymentMatchingToken,
   releasePastedPay,
   reservePastedPay,
 } from './pasted-payment.js'
@@ -36,6 +37,16 @@ describe('bolt11MatchingToken', () => {
     expect(bolt11MatchingToken(USER, token, undefined)).toBeUndefined()
     expect(bolt11MatchingToken(undefined, token, INVOICE)).toBeUndefined()
     expect(bolt11MatchingToken(USER, token, 'alice@localhost')).toBeUndefined()
+    expect(
+      paymentMatchingToken(
+        USER,
+        pastedPaymentToken(USER, 'alice@localhost'),
+        '  Lightning:Alice@LocalHost ',
+      ),
+    ).toEqual({
+      kind: 'lightning-address',
+      value: 'alice@localhost',
+    })
     expect(bolt11MatchingToken(USER, 'not-the-token', INVOICE)).toBeUndefined()
   })
 })

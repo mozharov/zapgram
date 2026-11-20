@@ -1,8 +1,10 @@
+import {createHash} from 'node:crypto'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {NoNWCAnswerError} from '@core/errors/no-nwc-answer.js'
 import {NWCPaymentFailedError} from '@core/errors/nwc-payment-failed.js'
 import {NWCTimeoutError} from '@core/errors/nwc-timeout.js'
+import {decodeInvoice} from '@core/lightning/decode-invoice.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {Nip47Error, Nip47ResponseValidationError, Nip47TimeoutError, NWCClient} from '@getalby/sdk'
 import type {AppLogger} from '../logger.js'
@@ -39,19 +41,34 @@ export class NostrWallet {
     return withTimeout(this.client.lookupInvoice({invoice}))
   }
 
-  public async payInvoice(invoice: string, timeout = true) {
+  public async payInvoice(invoice: string, timeout = true, options?: {claimExisting?: boolean}) {
+    // A preimage that already existed is an earlier debit. Callers that have
+    // just seen this invoice unpaid may still treat it as this call's receipt.
+    const claimExisting = options?.claimExisting !== false
+    const {paymentHash} = decodeInvoice(invoice)
     try {
-      if (timeout) await withTimeout(this.client.payInvoice({invoice}))
-      else await this.client.payInvoice({invoice})
+      const payment = this.client.payInvoice({invoice})
+      const result = timeout ? await withTimeout(payment) : await payment
+      if (!validPreimage(result.preimage, paymentHash)) {
+        throw new Nip47ResponseValidationError('Invalid payment preimage', 'OTHER')
+      }
     } catch (error) {
       // some wallet don't return success response after payment, but invoice is paid
-      if (!(error instanceof Nip47Error) || !error.message.includes('already been paid')) {
+      if (
+        claimExisting &&
+        (!(error instanceof Nip47Error) || !error.message.includes('already been paid'))
+      ) {
         const lookup = await this.lookupInvoice(invoice).catch(() => ({preimage: null}))
-        if (lookup.preimage) return
+        if (validPreimage(lookup.preimage, paymentHash)) return
       }
       handlePayInvoiceError(error, this.log)
     }
   }
+}
+
+export function validPreimage(preimage: string | null | undefined, paymentHash: string): boolean {
+  if (typeof preimage !== 'string' || !/^[0-9a-f]{64}$/i.test(preimage)) return false
+  return createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex') === paymentHash
 }
 
 function handlePayInvoiceError(error: unknown, log?: AppLogger) {

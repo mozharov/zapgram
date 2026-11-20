@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
+import {createHash} from 'node:crypto'
 import {SendPausedError} from '@core/errors/send-paused.js'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
 import {
@@ -8,6 +9,7 @@ import {
   staticCallback,
 } from '@telegram/callback-data.js'
 import {translate} from '@telegram/i18n/i18n.js'
+import {encode, toWords} from 'bech32'
 import {expectPayoutsExactly} from '../asserts.js'
 import {mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
@@ -44,7 +46,7 @@ test('zero backend balance pauses a wallet payment without calling pay', async (
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
 
   expect(messageTexts()).toContain(translate('error.send-paused', 'en'))
   expect(outgoingPaysSince(mark)).toEqual([])
@@ -63,7 +65,7 @@ test('enough backend balance pays the invoice', async () => {
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
 
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
@@ -80,7 +82,7 @@ test('a failed balance check does not pause an external payment', async () => {
     {method: 'GET', path: '/api/v1/status'},
     {status: 500, body: {detail: 'status down'}},
   )
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
 
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
@@ -110,9 +112,11 @@ test('the pause copy is Russian when the sender is Russian', async () => {
     }),
   )
   await e2e.send(
-    privateCallback('internal', {
-      messageId: requiredPromptMessageId(),
-      from: {id: USER_A, username: 'user_a', first_name: 'User A', language_code: 'ru'},
+    pressWallet('internal', requiredPromptMessageId(), {
+      id: USER_A,
+      username: 'user_a',
+      first_name: 'User A',
+      language_code: 'ru',
     }),
   )
 
@@ -246,7 +250,7 @@ test('a funding-source error does not pause an external payment', async () => {
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
 
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
@@ -261,7 +265,7 @@ test('a non-admin status body does not pause payments even when the stored balan
   const mark = e2e.ln.requests.length
 
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
 
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
@@ -437,7 +441,7 @@ test('startup names a zero balance with an empty error and still pauses external
   const invoice = mintInvoice({sats: 10, description: 'still paused'})
   const mark = e2e.ln.requests.length
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
   expect(messageTexts()).toContain(translate('error.send-paused', 'en'))
   expect(outgoingPaysSince(mark)).toEqual([])
 })
@@ -499,7 +503,7 @@ test('BACKEND_LIQUIDITY_GUARD=off disables the check and lets an external send t
   const invoice = mintInvoice({sats: 10, description: 'guard off'})
   const mark = e2e.ln.requests.length
   await e2e.send(privateText(invoice.bolt11))
-  await e2e.send(privateCallback('internal', {messageId: requiredPromptMessageId()}))
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
   expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Invoice paid/)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
   expect(messageTexts().some(text => text.includes('temporarily paused'))).toBe(false)
@@ -518,6 +522,132 @@ test('the master wallet pays when the backend covers the invoice and the reserve
   expect(payment.amount).toBe(-10_000)
   expect(outgoingPaysSince(mark)).toHaveLength(1)
 })
+
+test('Send pauses an external BOLT11 and an LNURL pay, and still pays an internal username', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 0,
+  })
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  e2e.tg.reply('getChat', {
+    id: USER_B,
+    type: 'private',
+    username: 'user_b',
+    first_name: 'User B',
+  })
+  credit(USER_A, 1000)
+  e2e.ln.state.fundingSourceBalanceMsat = 0
+  e2e.ln.state.adminPaymentListEmpty = true
+
+  const bolt11 = mintInvoice({sats: 40, description: 'send button'})
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText(bolt11.bolt11))
+  const bolt11Mark = e2e.ln.requests.length
+  await e2e.send(pressWallet('internal', requiredPromptMessageId()))
+
+  expect(screenText()).toContain(translate('error.send-paused', 'en'))
+  expect(outgoingPaysSince(bolt11Mark)).toEqual([])
+
+  const server = startLnurlServer()
+  try {
+    await e2e.send(privateCallback(staticCallback.sendMenu))
+    await e2e.send(privateText(server.lnurl))
+    await e2e.send(privateText('30'))
+    const lnurlMark = e2e.ln.requests.length
+    await e2e.send(pressWallet('internal', requiredPromptMessageId()))
+
+    expect(screenText()).toContain(translate('error.send-paused', 'en'))
+    expect(outgoingPaysSince(lnurlMark)).toEqual([])
+  } finally {
+    server.stop()
+  }
+
+  e2e.ln.state.hangFundingSourceStatus = true
+  const usernameMark = e2e.ln.requests.length
+  const shownBefore = screenText().length
+  const started = Date.now()
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText('21'))
+  await e2e.send(confirmSend(requiredPromptMessageId()))
+
+  expect(Date.now() - started).toBeLessThan(4_000)
+  expect(pathsSince(usernameMark)).not.toContain('GET /api/v1/status')
+  expect(outgoingPaysSince(usernameMark)).toHaveLength(1)
+  const fresh = screenText().slice(shownBefore)
+  expect(fresh.some(text => /@user_b/.test(text) && /21/.test(text))).toBe(true)
+  expect(fresh.some(text => text.includes('temporarily paused'))).toBe(false)
+})
+
+function startLnurlServer(): {lnurl: string; stop: () => void} {
+  const metadata = JSON.stringify([
+    ['text/plain', 'Pay Alice'],
+    ['text/identifier', 'alice@example.com'],
+  ])
+  let port = 0
+  const http = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(request) {
+      const url = new URL(request.url)
+      if (url.pathname !== '/callback') {
+        return Response.json({
+          tag: 'payRequest',
+          callback: `http://127.0.0.1:${port}/callback`,
+          minSendable: 10_000,
+          maxSendable: 100_000,
+          metadata,
+        })
+      }
+      const hash = createHash('sha256').update(metadata).digest('hex')
+      const invoice = mintInvoice({sats: 30, descriptionHash: hash})
+      return Response.json({pr: invoice.bolt11})
+    },
+  })
+  if (http.port === undefined) throw new Error('LNURL test server has no port')
+  port = http.port
+  return {
+    lnurl: encode('lnurl', toWords(Buffer.from(`http://127.0.0.1:${port}/pay`)), 5000),
+    stop() {
+      http.stop(true)
+    },
+  }
+}
+
+function callbackData(prefix: string): string {
+  const payloads = [...e2e.tg.of('editMessageText'), ...e2e.tg.of('sendMessage')].reverse()
+  for (const payload of payloads) {
+    const markup = payload.reply_markup as
+      | {inline_keyboard?: {callback_data?: string}[][]}
+      | undefined
+    const data = (markup?.inline_keyboard ?? [])
+      .flat()
+      .map(button => button.callback_data)
+      .find(value => value?.startsWith(prefix))
+    if (data) return data
+  }
+  throw new Error(`Expected a ${prefix} button`)
+}
+
+function pressWallet(
+  which: 'internal' | 'nwc',
+  messageId: number,
+  from?: {id: number; username?: string; first_name?: string; language_code?: string},
+) {
+  return privateCallback(callbackData(`${which}:`), {messageId, ...(from ? {from} : {})})
+}
+
+function confirmSend(messageId: number) {
+  return privateCallback(callbackData('confirm-send:'), {messageId})
+}
+
+function screenText(): string[] {
+  return [...e2e.tg.of('sendMessage'), ...e2e.tg.of('editMessageText')].map(call =>
+    String(call.text),
+  )
+}
 
 function credit(userId: number, sats: number): void {
   const lnUser = e2e.ln.state.ensureUser(String(userId))

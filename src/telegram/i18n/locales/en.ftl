@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = entering an amount
+    .enter-lnurl-amount = entering an amount for a Lightning address
     .enter-invoice = entering a Lightning invoice
     .connect-nwc = connecting an NWC wallet
     .select-recipient = selecting a recipient
@@ -18,6 +19,8 @@ conversation-action =
     .edit-message-en = editing the English join message
     .select-wallet = selecting a wallet
     .confirm-invoice-payment = confirming an invoice payment
+    .enter-send-target = entering where to send
+    .confirm-send = confirming a send
     .invoice-memo-options = adding an invoice description
     .enter-invoice-memo = entering an invoice description
     .enable-onchain = enabling on-chain payments
@@ -59,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Pay Invoice
+    .confirm-send = ✅ Send
     .skip = ➡️ Skip
     .chat-settings = ⚙️ Chat settings
     .prev = ⬅️
@@ -105,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Back to this step
     .pasted-payment-missing = The invoice message is gone. Send it again.
     .pasted-payment-stale = This offer is no longer active.
+    .confirm-stale = This confirmation is no longer active.
     .pasted-payment-retry = Telegram did not answer. Try again.
     .pasted-payment-closed = Closed.
 
@@ -131,6 +136,9 @@ error =
     .to-bot = <b>⚠️ You can't send sats to bots.</b>
     .from-bot = <b>⚠️ You can't send from a bot, channel, group, or anonymous profile.</b>
         Use your personal account.
+    .payment-pending = <b>⏳ The payment is still being checked.</b>
+
+        Its result will appear in your wallet history. Do not pay again.
     .send-paused = <b>⏸ Sending is temporarily paused.</b>
         Your funds are safe. Try again later.
 
@@ -159,6 +167,7 @@ feature =
     .submitted = ✅ Thanks! Your feature request was sent.
     .submitted-funded = ✅ Thanks! Your request was sent with <b>{$sats}</b> sats{$usdSuffix} attached.
     .fund-failed-submitted = ⚠️ Could not charge sats, but your feature request was still sent without funding.
+    .fund-pending-submitted = ⏳ Your feature request was sent. Funding is awaiting payment confirmation; we will check it automatically.
 
 broadcast =
     .pick-locale = 📣 <b>Broadcast</b>
@@ -203,6 +212,7 @@ donate =
     .auto-on = {$percent}%
     .auto-scope-tips = tips only
     .auto-scope-all = tips + invoices
+    .pending = ⏳ Your donation of {$sats} sats{$usdSuffix} is awaiting confirmation. Check its status before trying again.
     .success = ✅ Thanks! You sent {$sats} sats{$usdSuffix} to support {bot-name}.
     .failed = ⚠️ Could not send {$sats} sats{$usdSuffix}. Check your balance or NWC connection.
     .paused = ⏸ Could not send {$sats} sats{$usdSuffix} right now. Sending is paused, and your funds are safe. Try again later.
@@ -216,6 +226,8 @@ donate =
 
         Choose an amount. Enabling charges once now, then every 30 days.
     .monthly-enabled = ✅ Monthly donation set to {$sats} sats{$usdSuffix}. First payment received; next charge in 30 days.
+    .monthly-pending = ⏳ Monthly donation of {$sats} sats{$usdSuffix} is on. The current payment is awaiting confirmation; we will check it automatically.
+    .previous-payment-pending = ⏳ Your previous payment is awaiting confirmation. We will check it automatically.
     .monthly-enable-failed = ⚠️ Monthly donation set to {$sats} sats{$usdSuffix}, but the first charge failed. We will retry automatically. Check balance / NWC.
     .monthly-paused = ✅ Monthly donation of {$sats} sats{$usdSuffix} is on. The first charge is paused and will be collected later. Your funds are safe.
     .monthly-charge-paused = ⏸ This month's {$sats} sat{$usdSuffix} donation was not charged. Monthly support stays on, and your funds are safe. We will try again later.
@@ -331,16 +343,98 @@ settings-donation = ⚡️ <b>Auto % on payments</b>
 
 send-menu = <b>✉️ Send payment</b>
 
-        Pay a Lightning invoice or send payment to a Telegram user.
+    Send a Lightning invoice, a Lightning address, an LNURL, or the <code>@username</code> of someone who already uses {bot-name}.
+    .invalid = <b>⚠️ Send a Lightning invoice, a Lightning address, an LNURL, or @username.</b>
 
 sending-to-user = <b>✉️ Sending sats to a Telegram user...</b>
+    .confirm = <b>✅ Confirm this send</b>
+
+        Recipient: <b>@{$username}</b>
+        Amount: <b>{$amount} sats{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Wallet: <b>NWC</b>
+           *[other] Wallet: <b>{bot-name}</b>
+        }
+
+        Nothing is sent until you confirm.
+    .use-button = <b>⚠️ Use the buttons on the message above.</b>
     .completed = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+    .completed-warning = <b>✅ You sent {$amount} sats{$usdSuffix} to @{$recipient}.</b>
+
+        The send succeeded. A follow-up step did not finish. Do not send this amount again.
+    .blocked = {$hasRecipient ->
+        [true] <b>⏳ Your previous transfer to @{$recipient} is still being checked.</b>
+        *[false] <b>⏳ Your previous transfer to this recipient is still being checked.</b>
+        }
+
+        The new transfer was not started and nothing was debited.
+    .still-confirming = <b>⏳ This confirmation is still being checked.</b>
+
+        Nothing else will be sent for it. Do not start another send until this one is resolved.
+    .sender-settled = <b>✅ You sent {$amount} sats to @{$recipient}.</b>
+    .sender-not-paid = <b>⚠️ The send of {$amount} sats to @{$recipient} did not go through.</b>
+
+        You can send it again.
 
 pasted-payment = <b>⚡️ This is a Lightning invoice.</b>
 
     Pay it, or go back to this step.
 
-pasted-payment-unsupported = <b>⚠️ Paying a Lightning address or LNURL isn't supported yet — ask the recipient for an invoice and send it.</b>
+pasted-payment-lnurl = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+    Pay it, or go back to this step.
+
+pasted-payment-lnurl-outside = <b>⚡️ This is a Lightning address or LNURL.</b>
+
+lnurl-pay-address = Paying <code>{$address}</code>
+lnurl-pay-host = Paying host <code>{$host}</code>
+lnurl-pay-route = Reached via {$route}
+lnurl-pay-invoice-from = Invoice from <code>{$host}</code>
+lnurl-pay-service-note = Their note: {$note}
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 The recipient asks for {$min} sats.</b>
+        Enter that amount to continue.
+   *[other] <b>🔢 Enter the amount in sats.</b>
+        The recipient accepts from <b>{$min}</b> to <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Enter a whole number of sats from {$min} to {$max}.</b>
+
+lnurl-pay-still-checking = <b>⏳ A payment to <code>{$recipient}</code> is still being checked.</b>
+
+    Nothing else will be sent for it. Do not pay this recipient again until it is resolved.
+
+lnurl-pay-blocked = <b>⏳ A previous payment to <code>{$recipient}</code> is still being checked.</b>
+
+    The new payment was not started and nothing was charged for it. Try again once the previous payment is resolved.
+
+lnurl-pay-not-started = <b>⚠️ A new payment to <code>{$recipient}</code> was not started.</b>
+
+    No new charge was made. Start the payment again.
+
+lnurl-pay-sender-settled = <b>✅ The payment of {$amount} sats to <code>{$recipient}</code> went through.</b>
+lnurl-pay-sender-not-paid = <b>⚠️ The payment of {$amount} sats to <code>{$recipient}</code> did not go through.</b>
+
+    You can pay them again.
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ The recipient's server did not answer in time.</b>
+        Nothing was paid.
+    [server] <b>⚠️ The recipient's server could not complete the payment.</b>
+        Nothing was paid.
+    [amount] <b>⚠️ The invoice amount does not match the amount you entered.</b>
+        Nothing was paid.
+    [description-hash] <b>⚠️ The invoice does not match the recipient.</b>
+        Nothing was paid.
+    [no-whole-sat] <b>⚠️ This recipient does not accept a whole number of sats.</b>
+        Nothing was paid.
+    [already-paid] <b>⚠️ This invoice was already paid.</b>
+        Nothing was taken from your wallet. Ask for a new one.
+    [declined] <b>⚠️ The wallet refused this payment.</b>
+        Nothing was paid. You can try again.
+   *[other] <b>⚠️ The recipient's server sent an unexpected response.</b>
+        Nothing was paid.
+    }
 
 wait-for-user = <b>👤 Enter the username of the user in this format:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Invalid username. Expected username in this format:</b> <code>@username</code><b>.</b>

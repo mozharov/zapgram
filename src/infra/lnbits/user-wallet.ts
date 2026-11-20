@@ -1,6 +1,8 @@
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
 import {InvoiceGenerationError} from '@core/errors/invoice-generation.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
+import {DEFAULT_INVOICE_EXPIRY_SECONDS} from '@core/lightning/invoice-expiry.js'
 import {buildInvoiceMemo} from '@core/lightning/memo.js'
 import {HTTPError} from 'got'
 import type {AppLogger} from '../logger.js'
@@ -17,8 +19,6 @@ import {
   lookupPaymentResponseSchema,
   paymentResponseSchema,
 } from './schemas.js'
-
-const DEFAULT_EXPIRY = 60 * 60 * 24 * 1 // 1 day
 
 export class UserWallet extends LNBitsAPI {
   /** Balance in millisatoshis */
@@ -50,7 +50,11 @@ export class UserWallet extends LNBitsAPI {
   /**
    * @param expiry - number of seconds until the invoice expires
    */
-  async createInvoice({sats, memo = '', expiry = DEFAULT_EXPIRY}: CreateInvoiceParams) {
+  async createInvoice({
+    sats,
+    memo = '',
+    expiry = DEFAULT_INVOICE_EXPIRY_SECONDS,
+  }: CreateInvoiceParams) {
     return this.fetchWithSchema('/api/v1/payments', paymentResponseSchema, {
       method: 'POST',
       body: JSON.stringify({
@@ -84,6 +88,7 @@ export class UserWallet extends LNBitsAPI {
           bolt11: paymentRequest,
         }),
       }).catch(error => handlePayInvoiceError(error, this.log))
+      if (payment.status !== 'success') throw new PaymentPendingError()
       if (hold) await this.outgoingLiquidity?.settle(hold)
       return payment
     } catch (error) {
@@ -137,8 +142,13 @@ export class UserWallet extends LNBitsAPI {
     return response.fee_reserve
   }
 
-  async lookupPayment(paymentHash: string) {
-    return this.fetchWithSchema(`/api/v1/payments/${paymentHash}`, lookupPaymentResponseSchema)
+  async lookupPayment(paymentHash: string, options?: {quietStatuses?: number[]}) {
+    return this.fetchWithSchema(
+      `/api/v1/payments/${paymentHash}`,
+      lookupPaymentResponseSchema,
+      undefined,
+      options,
+    )
   }
 
   /**
@@ -160,6 +170,7 @@ function handlePayInvoiceError(error: unknown, log?: AppLogger): never {
   if (error instanceof HTTPError) {
     if (error.response.statusCode === 520) {
       const {detail, status} = error.response.body as {detail: string; status: string}
+      if (status === 'pending') throw new PaymentPendingError()
       if (status !== 'failed') throw error
       const message = detail.toLowerCase()
       if (message.includes('already paid')) throw new InvoiceAlreadyPaidError()

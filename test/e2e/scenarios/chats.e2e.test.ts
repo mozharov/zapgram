@@ -576,7 +576,9 @@ for (const editCase of [
     )
     e2e.tg.reset()
 
-    const input = privateText(editCase.input)
+    // User updates and bot messages share one id space in this fake. A low id
+    // would make the disposable confirmation look like the pasted message.
+    const input = privateText(editCase.input, {messageId: 50_000})
     const inputMessageId = input.message?.message_id
     const telegramMark = e2e.tg.calls.length
     await expectDelta(e2e, () => e2e.send(input), {
@@ -587,6 +589,9 @@ for (const editCase of [
         },
         conversations: {removed: 1},
       },
+      // The confirmation deletes itself after 5ms, so this call can land inside
+      // the delta. The wait below is what actually checks that delete.
+      ignoreTelegramMethods: ['deleteMessages'],
       telegram: [
         {method: 'editMessageReplyMarkup', to: USER_A},
         {

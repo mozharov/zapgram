@@ -47,41 +47,59 @@ export function pastedPaymentToken(userId: number, value: string): string {
 }
 
 /**
- * The bolt11 the Pay button was built for, or undefined when the replied message
- * is missing, is not that invoice, or belongs to another user.
+ * The payment request the Pay button was built for, or undefined when the replied
+ * message is missing, is not that request, or belongs to another user.
  */
+export function paymentMatchingToken(
+  userId: number | undefined,
+  token: string,
+  text: string | undefined,
+): PaymentRequest | undefined {
+  if (userId === undefined || text === undefined) return undefined
+  const request = recognizePaymentRequest(text)
+  if (!request) return undefined
+  if (pastedPaymentToken(userId, request.value) !== token) return undefined
+  return request
+}
+
+/** The bolt11 the Pay button was built for. An address or LNURL is not an invoice. */
 export function bolt11MatchingToken(
   userId: number | undefined,
   token: string,
   text: string | undefined,
 ): string | undefined {
-  if (userId === undefined || text === undefined) return undefined
-  const request = recognizePaymentRequest(text)
+  const request = paymentMatchingToken(userId, token, text)
   if (request?.kind !== 'bolt11') return undefined
-  if (pastedPaymentToken(userId, request.value) !== token) return undefined
   return request.value
 }
 
-function bolt11Keyboard(ctx: ConversationContext, token: string): InlineKeyboard {
+function payOfferKeyboard(ctx: ConversationContext, token: string): InlineKeyboard {
   return new InlineKeyboard()
     .text(ctx.t('button.pay-pasted'), payPastedRoute.build({token}))
     .row()
     .text(ctx.t('button.pasted-payment-back'), payPastedBackRoute.build({token}))
 }
 
-function backKeyboard(ctx: ConversationContext, token: string): InlineKeyboard {
-  return new InlineKeyboard().text(
-    ctx.t('button.pasted-payment-back'),
-    payPastedBackRoute.build({token}),
-  )
-}
-
 /**
- * Outside a wizard there is no step to return to. Address and LNURL have no pay
- * button: paying them is a later task.
+ * Outside a wizard there is no step to return to, so the offer is Pay only.
+ * The address or LNURL stays in the message this replies to. The button reads it
+ * back from there after a restart; nothing is kept in process memory.
  */
-export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void> {
-  await ctx.reply(ctx.t('pasted-payment-unsupported'), {...disabledLinkPreview})
+export async function replyWithLnurlOffer(ctx: BotContext, request: PaymentRequest): Promise<void> {
+  const userId = ctx.from?.id
+  if (userId === undefined) return
+  const token = pastedPaymentToken(userId, request.value)
+  const sourceId = ctx.message?.message_id
+  await ctx.reply(ctx.t('pasted-payment-lnurl-outside'), {
+    ...(sourceId === undefined
+      ? {}
+      : {reply_parameters: {message_id: sourceId, allow_sending_without_reply: true}}),
+    reply_markup: new InlineKeyboard().text(
+      ctx.t('button.pay-pasted'),
+      payPastedRoute.build({token}),
+    ),
+    ...disabledLinkPreview,
+  })
 }
 
 /**
@@ -92,15 +110,15 @@ export async function replyWithUnsupportedPayment(ctx: BotContext): Promise<void
  * email, an address, an LNURL, or a bolt11 as ordinary input and replays like before.
  * `all` notices every recognized request. `bolt11` notices only an invoice.
  *
- * A bolt11 gets Pay and Back, sent as a reply to the paste so the invoice can be read
- * back from that reply after a restart. Pay deletes that offer first. Only a
+ * A recognized request gets Pay and Back, sent as a reply to the paste so it can be
+ * read back from that reply after a restart. Pay deletes that offer first. Only a
  * successful delete leaves the step: the prompt is marked cancelled and the
- * button falls through to the existing pay-invoice flow. A delete Telegram did
- * not confirm (rate limit, 5xx, network, "can't be deleted", a lost response)
- * answers "try again" and keeps the step. "message to delete not found" means
- * another click already took the offer: no second payment. An address or LNURL
- * gets the unsupported note and Back only. Back returns undefined so the caller
- * waits again on the same step.
+ * button falls through to pay. A bolt11 opens the invoice screen. An address or
+ * LNURL opens the amount screen, which pays only after the existing confirmation.
+ * A delete Telegram did not confirm (rate limit, 5xx, network, "can't be deleted",
+ * a lost response) answers "try again" and keeps the step. "message to delete not
+ * found" means another click already took the offer: no second payment. Back
+ * returns undefined so the caller waits again on the same step.
  *
  * A Pay or Back click on an offer this step is not showing gets a toast and is
  * ignored, so it cannot fall through and start a second payment.
@@ -134,8 +152,7 @@ export async function waitForStepInput(
         : {
             reply_parameters: {message_id: sourceId, allow_sending_without_reply: true},
           }),
-      reply_markup:
-        request.kind === 'bolt11' ? bolt11Keyboard(current, token) : backKeyboard(current, token),
+      reply_markup: payOfferKeyboard(current, token),
       ...disabledLinkPreview,
     })
     let choice = await conversation.wait()
@@ -144,9 +161,8 @@ export async function waitForStepInput(
       const fromOffer = callbackFromMessage(choice, offer.chat.id, offer.message_id)
       const payingThisOffer =
         fromOffer &&
-        request.kind === 'bolt11' &&
         data === payPastedRoute.build({token}) &&
-        bolt11MatchingToken(userId, token, repliedText(choice)) === request.value
+        paymentMatchingToken(userId, token, repliedText(choice))?.value === request.value
 
       if (payingThisOffer) {
         const claim = await claimPastedOffer(choice)
@@ -194,7 +210,7 @@ function intercepts(mode: PaymentIntercept, request: PaymentRequest): boolean {
 
 function noticeHtml(ctx: Pick<ConversationContext, 't'>, request: PaymentRequest): string {
   if (request.kind === 'bolt11') return ctx.t('pasted-payment')
-  return ctx.t('pasted-payment-unsupported')
+  return ctx.t('pasted-payment-lnurl')
 }
 
 function isOfferButton(ctx: ConversationContext): boolean {

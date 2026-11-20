@@ -1,6 +1,7 @@
 import type {User} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
-import type {Notifier} from '@modules/notifications/notifier.js'
+import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
+import type {Notifier, SendOutcome} from '@modules/notifications/notifier.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import type {Api} from 'grammy'
@@ -273,29 +274,43 @@ export function createChromeNotifier(
   log: AppLogger,
   chrome: NotificationChrome,
 ): Notifier {
-  return {
-    async send(userId, text, opts, flags) {
-      try {
-        // `withoutMenu` skips the chrome on purpose: an "Open wallet" button *sends* a new private
-        // message when pressed, and a join-request applicant who never pressed /start can only be
-        // written to inside the join-request contact window. Once that window closes the button is
-        // a guaranteed 403, so receipts aimed at those users carry no button and stay untracked.
-        if (flags?.withoutMenu) {
-          await api.sendMessage(userId, text, opts)
-          return true
-        }
-        await chrome.deliver(
-          userId,
-          markupFromReplyMarkup(opts?.reply_markup),
-          markup => api.sendMessage(userId, text, {...opts, reply_markup: markup}),
-          {transient: flags?.transient},
-        )
-        return true
-      } catch (error) {
-        log.error({error}, 'Failed to send Telegram message')
-        return false
+  async function sendOutcome(
+    userId: number,
+    text: string,
+    opts?: Parameters<Api['sendMessage']>[2],
+    flags?: {transient?: boolean; withoutMenu?: boolean},
+  ): Promise<SendOutcome> {
+    try {
+      // `withoutMenu` skips the chrome on purpose: an "Open wallet" button *sends* a new private
+      // message when pressed, and a join-request applicant who never pressed /start can only be
+      // written to inside the join-request contact window. Once that window closes the button is
+      // a guaranteed 403, so receipts aimed at those users carry no button and stay untracked.
+      if (flags?.withoutMenu) {
+        await api.sendMessage(userId, text, opts)
+        return 'sent'
       }
+      await chrome.deliver(
+        userId,
+        markupFromReplyMarkup(opts?.reply_markup),
+        markup => api.sendMessage(userId, text, {...opts, reply_markup: markup}),
+        {transient: flags?.transient},
+      )
+      return 'sent'
+    } catch (error) {
+      if (isTelegramUserUnreachableError(error)) {
+        log.warn({userId}, 'Telegram recipient is unreachable')
+        return 'unreachable'
+      }
+      log.error({error}, 'Failed to send Telegram message')
+      return 'failed'
+    }
+  }
+
+  return {
+    send(userId, text, opts, flags) {
+      return sendOutcome(userId, text, opts, flags).then(outcome => outcome === 'sent')
     },
+    sendOutcome,
     async sendPhoto(userId, file, opts) {
       try {
         await chrome.deliver(userId, markupFromReplyMarkup(opts?.reply_markup), markup =>

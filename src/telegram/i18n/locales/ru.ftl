@@ -11,6 +11,7 @@ conversation-state =
 
 conversation-action =
     .enter-sats = ввод суммы
+    .enter-lnurl-amount = ввод суммы для Lightning-адреса
     .enter-invoice = ввод Lightning-счёта
     .connect-nwc = подключение NWC-кошелька
     .select-recipient = выбор получателя
@@ -18,6 +19,8 @@ conversation-action =
     .edit-message-en = редактирование сообщения на английском
     .select-wallet = выбор кошелька
     .confirm-invoice-payment = подтверждение оплаты счёта
+    .enter-send-target = ввод получателя
+    .confirm-send = подтверждение отправки
     .invoice-memo-options = добавление описания счёта
     .enter-invoice-memo = ввод описания счёта
     .enable-onchain = включение on-chain оплаты
@@ -59,6 +62,7 @@ button =
     .nwc-wallet = ⚡️ NWC
     .internal-wallet = 🤖 {bot-name}
     .confirm-pay-invoice = 📤 Оплатить счёт
+    .confirm-send = ✅ Отправить
     .skip = ➡️ Пропустить
     .chat-settings = ⚙️ Настройки чата
     .prev = ⬅️
@@ -105,6 +109,7 @@ callback-answer =
     .pasted-payment-back = Вернуться к шагу
     .pasted-payment-missing = Сообщение со счётом недоступно. Пришлите его ещё раз.
     .pasted-payment-stale = Это предложение больше не действует.
+    .confirm-stale = Это подтверждение уже не действует.
     .pasted-payment-retry = Telegram не ответил. Попробуйте ещё раз.
     .pasted-payment-closed = Закрыто.
 
@@ -131,6 +136,9 @@ error =
     .to-bot = <b>⚠️ Ты не можешь отправлять саты ботам.</b>
     .from-bot = <b>⚠️ Нельзя отправлять от лица бота, канала, группы или анонимного профиля.</b>
         Пиши со своего личного аккаунта.
+    .payment-pending = <b>⏳ Платёж ещё проверяется.</b>
+
+        Результат появится в истории кошелька. Не плати этот счёт повторно.
     .send-paused = <b>⏸ Отправка временно на паузе.</b>
         Средства в безопасности. Попробуй позже.
 
@@ -159,6 +167,7 @@ feature =
     .submitted = ✅ Спасибо! Запрос фичи отправлен.
     .submitted-funded = ✅ Спасибо! Запрос отправлен с <b>{$sats}</b> сат{$usdSuffix}.
     .fund-failed-submitted = ⚠️ Не удалось списать саты, но запрос всё равно отправлен без финансирования.
+    .fund-pending-submitted = ⏳ Запрос отправлен. Финансирование ещё ожидает подтверждения платежа; проверим его автоматически.
 
 broadcast =
     .pick-locale = 📣 <b>Рассылка</b>
@@ -203,6 +212,7 @@ donate =
     .auto-on = {$percent}%
     .auto-scope-tips = только tips
     .auto-scope-all = tips + счета
+    .pending = ⏳ Донат {$sats} сат{$usdSuffix} ожидает подтверждения. Проверь статус перед повторной попыткой.
     .success = ✅ Спасибо! Ты отправил {$sats} сат{$usdSuffix} в поддержку {bot-name}.
     .failed = ⚠️ Не удалось отправить {$sats} сат{$usdSuffix}. Проверь баланс или NWC.
     .paused = ⏸ Не удалось отправить {$sats} сат{$usdSuffix} сейчас. Отправка на паузе, средства в безопасности. Попробуй позже.
@@ -216,6 +226,8 @@ donate =
 
         Выбери сумму. При включении спишем сразу, затем каждые 30 дней.
     .monthly-enabled = ✅ Ежемесячный донат: {$sats} сат{$usdSuffix}. Первый платёж получен; следующий через 30 дней.
+    .monthly-pending = ⏳ Ежемесячный донат {$sats} сат{$usdSuffix} включён. Текущий платёж ожидает подтверждения; проверим его автоматически.
+    .previous-payment-pending = ⏳ Предыдущий платёж ещё ожидает подтверждения. Проверим его автоматически.
     .monthly-enable-failed = ⚠️ Ежемесячный донат: {$sats} сат{$usdSuffix}, но первый платёж не прошёл. Повторим автоматически. Проверь баланс / NWC.
     .monthly-paused = ✅ Ежемесячный донат {$sats} сат{$usdSuffix} включён. Первое списание на паузе и пройдёт позже. Средства в безопасности.
     .monthly-charge-paused = ⏸ Ежемесячные {$sats} сат{$usdSuffix} сейчас не списались. Подписка включена, средства в безопасности. Попробуем позже.
@@ -331,16 +343,98 @@ settings-donation = ⚡️ <b>Авто % с платежей</b>
 
 send-menu = <b>✉️ Отправить платёж</b>
 
-    Оплати Lightning счёт или отправь сатоши другому пользователю Telegram.
+    Пришли Lightning-счёт, Lightning-адрес, LNURL или <code>@username</code> того, кто уже пользуется {bot-name}.
+    .invalid = <b>⚠️ Нужен Lightning-счёт, Lightning-адрес, LNURL или @username.</b>
 
 sending-to-user = <b>✉️ Отправка сат пользователю Telegram...</b>
+    .confirm = <b>✅ Подтверди отправку</b>
+
+        Получатель: <b>@{$username}</b>
+        Сумма: <b>{$amount} сат{$usdSuffix}</b>
+        {$wallet ->
+            [nwc] Кошелёк: <b>NWC</b>
+           *[other] Кошелёк: <b>{bot-name}</b>
+        }
+
+        Ничего не спишется, пока не подтвердишь.
+    .use-button = <b>⚠️ Нажми кнопку на сообщении выше.</b>
     .completed = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+    .completed-warning = <b>✅ Отправлено {$amount} сат{$usdSuffix} пользователю @{$recipient}.</b>
+
+        Отправка прошла. Следующий шаг не завершился. Не отправляй эту сумму ещё раз.
+    .blocked = {$hasRecipient ->
+        [true] <b>⏳ Предыдущий перевод @{$recipient} ещё проверяется.</b>
+        *[false] <b>⏳ Предыдущий перевод этому получателю ещё проверяется.</b>
+        }
+
+        Новый перевод не начат, ничего не списано.
+    .still-confirming = <b>⏳ Это подтверждение ещё проверяется.</b>
+
+        По нему больше ничего не спишется. Не начинай новую отправку, пока эта не разрешится.
+    .sender-settled = <b>✅ Отправлено {$amount} сат пользователю @{$recipient}.</b>
+    .sender-not-paid = <b>⚠️ Отправка {$amount} сат пользователю @{$recipient} не прошла.</b>
+
+        Можно отправить ещё раз.
 
 pasted-payment = <b>⚡️ Это Lightning-счёт.</b>
 
     Оплатить его или вернуться к шагу.
 
-pasted-payment-unsupported = <b>⚠️ Оплата на Lightning-адрес и LNURL пока не поддерживается — попросите у получателя инвойс и пришлите его.</b>
+pasted-payment-lnurl = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+    Оплатить или вернуться к шагу.
+
+pasted-payment-lnurl-outside = <b>⚡️ Это Lightning-адрес или LNURL.</b>
+
+lnurl-pay-address = Платим на <code>{$address}</code>
+lnurl-pay-host = Платим хосту <code>{$host}</code>
+lnurl-pay-route = Через {$route}
+lnurl-pay-invoice-from = Счёт с <code>{$host}</code>
+lnurl-pay-service-note = Их текст: {$note}
+
+lnurl-pay-amount = {$exact ->
+    [yes] <b>🔢 Получатель просит {$min} сат.</b>
+        Введи эту сумму, чтобы продолжить.
+   *[other] <b>🔢 Введи сумму в сатах.</b>
+        Получатель принимает от <b>{$min}</b> до <b>{$max}</b>.
+    }
+    .invalid = <b>⚠️ Введи целое число сат от {$min} до {$max}.</b>
+
+lnurl-pay-still-checking = <b>⏳ Платёж на <code>{$recipient}</code> ещё проверяется.</b>
+
+    По нему больше ничего не спишется. Не плати этому получателю снова, пока он не разрешится.
+
+lnurl-pay-blocked = <b>⏳ Предыдущий платёж на <code>{$recipient}</code> ещё проверяется.</b>
+
+    Новый платёж не начат, по нему ничего не списано. Попробуй снова, когда предыдущий разрешится.
+
+lnurl-pay-not-started = <b>⚠️ Новый платёж на <code>{$recipient}</code> не начат.</b>
+
+    Нового списания нет. Начни оплату заново.
+
+lnurl-pay-sender-settled = <b>✅ Платёж {$amount} сат на <code>{$recipient}</code> прошёл.</b>
+lnurl-pay-sender-not-paid = <b>⚠️ Платёж {$amount} сат на <code>{$recipient}</code> не прошёл.</b>
+
+    Можно заплатить ещё раз.
+
+lnurl-pay-failed = {$reason ->
+    [timeout] <b>⚠️ Сервер получателя не ответил вовремя.</b>
+        Ничего не оплачено.
+    [server] <b>⚠️ Сервер получателя не смог провести оплату.</b>
+        Ничего не оплачено.
+    [amount] <b>⚠️ Сумма в счёте не совпадает с той, что ты ввёл.</b>
+        Ничего не оплачено.
+    [description-hash] <b>⚠️ Счёт не совпадает с данными получателя.</b>
+        Ничего не оплачено.
+    [no-whole-sat] <b>⚠️ Этот получатель не принимает целые саты.</b>
+        Ничего не оплачено.
+    [declined] <b>⚠️ Кошелёк отказал в платеже.</b>
+        Ничего не оплачено. Можно попробовать ещё раз.
+    [already-paid] <b>⚠️ Этот счёт уже оплачен.</b>
+        С твоего кошелька ничего не списано. Попроси новый.
+   *[other] <b>⚠️ Сервер получателя прислал неожиданный ответ.</b>
+        Ничего не оплачено.
+    }
 
 wait-for-user = <b>👤 Введи username пользователя в формате:</b> <code>@username</code><b>.</b>
     .invalid = <b>⚠️ Невалидный username. Ожидаемый формат:</b> <code>@username</code><b>.</b>

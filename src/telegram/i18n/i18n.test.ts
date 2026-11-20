@@ -47,6 +47,18 @@ describe('settlement messages', () => {
     expect(translate('donate.monthly-paused', 'ru', {sats: 21, usdSuffix: ''})).toMatch(/включ/)
   })
 
+  for (const language of ['en', 'ru']) {
+    test(`pending donation messages resolve without claiming failure in ${language}`, () => {
+      for (const key of ['donate.pending', 'donate.monthly-pending']) {
+        const message = translate(key, language, {sats: 21, usdSuffix: ''})
+        expect(message).not.toContain(key)
+        expect(message).toContain('21')
+        expect(message).toMatch(/confirmation|подтверждения/)
+        expect(message).not.toMatch(/failed|не прошёл|не удалось/i)
+      }
+    })
+  }
+
   test('the renewal message does not claim the renewal was automatic', () => {
     // Also sent when a subscriber pays a renewal invoice by hand.
     expect(translate('subscription-renewal.renewed', 'en', context)).not.toContain('automatic')
@@ -171,3 +183,49 @@ describe('stored Telegram language tags', () => {
     ).toMatch(/A repeated subscription payment/)
   })
 })
+
+describe('lnurl pay copy', () => {
+  const reasons = [
+    'timeout',
+    'server',
+    'amount',
+    'description-hash',
+    'no-whole-sat',
+    'bad-response',
+  ]
+
+  for (const language of ['en', 'ru']) {
+    test(`failure reasons resolve in ${language} and say nothing was paid`, () => {
+      for (const reason of reasons) {
+        const message = translate('lnurl-pay-failed', language, {reason})
+        expect(message).not.toContain('lnurl-pay-failed')
+        expect(message.toLowerCase()).toMatch(/nothing was paid|ничего не оплачено/)
+      }
+    })
+
+    test(`amount prompt resolves in ${language}`, () => {
+      const ranged = translate('lnurl-pay-amount', language, {min: 10, max: 80, exact: 'no'})
+      const exact = translate('lnurl-pay-amount', language, {min: 10, max: 10, exact: 'yes'})
+      const invalid = translate('lnurl-pay-amount.invalid', language, {min: 10, max: 80})
+      expect(ranged).not.toContain('lnurl-pay-amount')
+      expect(exact).not.toContain('lnurl-pay-amount')
+      expect(invalid).not.toContain('lnurl-pay-amount')
+      expect(ranged).toMatch(/10/)
+      expect(ranged).toMatch(/80/)
+      expect(exact).toMatch(/10/)
+    })
+  }
+})
+
+for (const language of ['en', 'ru']) {
+  test(`disabled monthly and feature pending copy in ${language} promises confirmation without failure or zero sats`, () => {
+    for (const key of ['donate.previous-payment-pending', 'feature.fund-pending-submitted']) {
+      const message = translate(key, language)
+      expect(message).not.toContain(key)
+      expect(message).toMatch(/confirmation|подтверждения/)
+      expect(message).not.toMatch(
+        /failed|without funding|не удалось|без финансирования|0\s*(sats|сат)/i,
+      )
+    }
+  })
+}

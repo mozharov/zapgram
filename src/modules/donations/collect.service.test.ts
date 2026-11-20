@@ -1,5 +1,6 @@
 import {describe, expect, mock, test} from 'bun:test'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
+import {PaymentPendingError} from '@core/errors/payment-pending.js'
 import {createDonationCollectService} from './collect.service.js'
 
 function makeCollect(
@@ -33,7 +34,10 @@ function makeCollect(
   const notifyDonationFailed = mock(async () => undefined)
   const capture = mock(() => undefined)
   const captureException = mock(() => undefined)
+  const savePending = mock(async () => {})
+  const reconcileUser = mock(async () => [])
   const service = createDonationCollectService({
+    pending: {save: savePending, reconcileUser},
     payService: {payToFeeCollection},
     insertDonation,
     getUser: mock(async () => user as never),
@@ -43,6 +47,8 @@ function makeCollect(
   })
   return {
     service,
+    savePending,
+    reconcileUser,
     payToFeeCollection,
     insertDonation,
     notifyDonationFailed,
@@ -177,4 +183,37 @@ describe('tryCollect', () => {
       expect.objectContaining({stage: 'try_collect_pay', expected: false}),
     )
   })
+})
+
+test('a pending collection does not write the successful donation ledger', async () => {
+  const {service, insertDonation, capture, notifyDonationFailed, savePending, reconcileUser} =
+    makeCollect({
+      payToFeeCollection: mock(async () => ({
+        status: 'pending',
+        paymentHash: 'fee-pending',
+        expiresAt: new Date(Date.now() + 60_000),
+        error: new PaymentPendingError(),
+      })),
+    })
+  expect(
+    await service.tryCollect({
+      userId: 1,
+      baseAmountSats: 100,
+      kind: 'invoice',
+      preferredRail: 'internal',
+    }),
+  ).toMatchObject({status: 'pending', paymentHash: 'fee-pending'})
+  expect(savePending).toHaveBeenCalledWith(
+    expect.objectContaining({
+      userId: 1,
+      kind: 'percent',
+      amountSats: 5,
+      paymentHash: 'fee-pending',
+      expiresAt: expect.any(Date),
+    }),
+  )
+  expect(reconcileUser).toHaveBeenCalledWith(1, 'percent')
+  expect(notifyDonationFailed).not.toHaveBeenCalled()
+  expect(insertDonation).not.toHaveBeenCalled()
+  expect(capture).not.toHaveBeenCalledWith(expect.objectContaining({event: 'donation_collected'}))
 })

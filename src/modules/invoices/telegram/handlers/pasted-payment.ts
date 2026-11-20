@@ -4,21 +4,23 @@ import type {BotContext} from '@telegram/context.js'
 import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {
   answerOfferClick,
-  bolt11MatchingToken,
   claimPastedOffer,
+  paymentMatchingToken,
   releasePastedPay,
   repliedText,
-  replyWithUnsupportedPayment,
+  replyWithLnurlOffer,
   reservePastedPay,
   takePastedPayHandoff,
 } from '@telegram/helpers/pasted-payment.js'
 import type {NextFunction} from 'grammy'
 import {payingInvoice} from '../conversations/paying-invoice.js'
+import {payingLnurl} from '../conversations/paying-lnurl.js'
 
 /**
  * Private text no wizard claimed. A whole-message bolt11 starts the existing pay-invoice
  * flow (same as the lnbc hears handler, plus case and a `lightning:` prefix). A Lightning
- * address or LNURL is named and left unpaid — there is no button, and no invoice dialog.
+ * address or LNURL gets a Pay button. Paying it still waits for an amount and for the
+ * same confirmation as an invoice.
  */
 export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Promise<void> {
   const text = ctx.message?.text
@@ -29,7 +31,7 @@ export async function pastedPaymentText(ctx: BotContext, next: NextFunction): Pr
     await ctx.conversation.enter(payingInvoice.name, request.value)
     return
   }
-  await replyWithUnsupportedPayment(ctx)
+  await replyWithLnurlOffer(ctx, request)
 }
 
 export async function payPastedCallback(ctx: BotContext): Promise<void> {
@@ -58,19 +60,26 @@ export async function payPastedCallback(ctx: BotContext): Promise<void> {
   }
   try {
     // Still open from an earlier click. Do not start a second one.
-    if ((await ctx.conversation.active(payingInvoice.name)) > 0) {
+    if (
+      (await ctx.conversation.active(payingInvoice.name)) > 0 ||
+      (await ctx.conversation.active(payingLnurl.name)) > 0
+    ) {
       await answerOfferClick(ctx)
       return
     }
-    const bolt11 = bolt11MatchingToken(userId, token, repliedText(ctx))
-    if (!bolt11) {
+    const request = paymentMatchingToken(userId, token, repliedText(ctx))
+    if (!request) {
       await answerOfferClick(ctx, ctx.t('callback-answer.pasted-payment-missing'))
       return
     }
     // The delete already claimed the offer. A failed answer must not skip payment
     // and must not be reported as "this offer is no longer active".
     await answerOfferClick(ctx)
-    await ctx.conversation.enter(payingInvoice.name, bolt11)
+    if (request.kind === 'bolt11') {
+      await ctx.conversation.enter(payingInvoice.name, request.value)
+      return
+    }
+    await ctx.conversation.enter(payingLnurl.name, request.value)
   } finally {
     releasePastedPay(userId, token)
   }

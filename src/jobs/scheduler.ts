@@ -2,6 +2,7 @@ import {sleep} from '@core/utils/sleep.js'
 import type {AppLogger} from '@infra/logger.js'
 import {processBroadcasts} from '@modules/broadcast/jobs/process-broadcasts.js'
 import {processMonthlyDonations} from '@modules/donations/jobs/process-monthly-donations.js'
+import {reconcilePendingDonations} from '@modules/donations/jobs/reconcile-pending-donations.js'
 import {checkPendingInvoices} from '@modules/invoices/jobs/check-pending-invoices.js'
 import {deleteExpiredInvoices} from '@modules/invoices/jobs/delete-expired-invoices.js'
 import {checkOnchainCharges} from '@modules/onchain/jobs/check-onchain-charges.js'
@@ -9,6 +10,7 @@ import {probeSatspay} from '@modules/onchain/jobs/probe-satspay.js'
 import {checkExpiredSubscriptions} from '@modules/subscriptions/jobs/check-expired-subscriptions.js'
 import {checkSubscriptionPayments} from '@modules/subscriptions/jobs/check-subscription-payments.js'
 import {processExpiringSubscriptions} from '@modules/subscriptions/jobs/process-expiring-subscriptions.js'
+import {recoverDmTransfers} from '@modules/tipping/jobs/recover-dm-transfers.js'
 import {CronJob} from 'cron'
 import type {PostHog} from 'posthog-node'
 
@@ -79,10 +81,22 @@ export function defaultJobDefinitions(): JobDefinition[] {
       tick: processExpiringSubscriptions,
     },
     {
+      name: 'reconcile-pending-donations',
+      cronTime: '0 */3 * * * *',
+      runOnInit: false,
+      tick: () => reconcilePendingDonations(),
+    },
+    {
       name: 'process-monthly-donations',
       cronTime: '0 15 * * * *',
       runOnInit: false,
       tick: () => processMonthlyDonations(),
+    },
+    {
+      name: 'recover-dm-transfers',
+      cronTime: '30 * * * * *',
+      runOnInit: false,
+      tick: () => recoverDmTransfers(),
     },
     {
       name: 'process-broadcasts',

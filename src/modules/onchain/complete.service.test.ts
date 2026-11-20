@@ -63,6 +63,10 @@ function buildService(
         notifies.push({userId, text})
         return true
       },
+      sendOutcome: async (userId, text) => {
+        notifies.push({userId, text})
+        return 'sent' as const
+      },
       sendPhoto: async () => true,
       copyMessage: async () => true,
     },

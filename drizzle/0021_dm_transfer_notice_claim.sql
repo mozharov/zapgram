@@ -1,0 +1,1 @@
+ALTER TABLE `dm_transfers` ADD `notice_claimed` integer DEFAULT false NOT NULL;

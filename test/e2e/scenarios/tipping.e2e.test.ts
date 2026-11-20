@@ -80,11 +80,16 @@ test('the private send conversation transfers sats and closes after the amount',
     .map(call => Number(call.payload.message_id))
   expect(deletedSingle).toContain(usernameMessageId)
 
+  await e2e.send(privateText(String(TIP_SATS)))
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Nothing is sent until you confirm/)
+  expect(walletBalanceMsat(USER_B)).toBe(0)
+
   await expectInternalTransfer(
-    () => e2e.send(privateText(String(TIP_SATS))),
+    () => e2e.send(confirmSendUpdate()),
     USER_B,
     '100002 wallet',
     [
+      {method: 'answerCallbackQuery'},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
@@ -124,12 +129,15 @@ test('an invalid private-send amount can be corrected without restarting the flo
 
   const correctedInput = privateText(String(TIP_SATS))
   const telegramMark = e2e.tg.calls.length
+  await e2e.send(correctedInput)
+  expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
+  expect(walletBalanceMsat(USER_B)).toBe(0)
   await expectInternalTransfer(
-    () => e2e.send(correctedInput),
+    () => e2e.send(confirmSendUpdate()),
     USER_B,
     '100002 wallet',
     [
-      {method: 'deleteMessages', to: USER_A},
+      {method: 'answerCallbackQuery'},
       {method: 'editMessageReplyMarkup', to: USER_A},
       {method: 'sendChatAction', to: USER_A},
       {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
@@ -137,7 +145,6 @@ test('an invalid private-send amount can be corrected without restarting the flo
     ],
     {conversationRemoved: true},
   )
-  expect(deletedMessageIdsSince(telegramMark)).toContain(invalidMessageId)
   expectNoErrors(e2e.logs)
 })
 
@@ -149,6 +156,8 @@ test('a successful internal DM transfer emits one dm_transfer_sent', async () =>
   await e2e.send(privateCallback(staticCallback.sendToUser))
   await e2e.send(privateText('@user_b'))
   await e2e.send(privateText(String(TIP_SATS)))
+  expect(capturesOf(events, 'dm_transfer_sent')).toEqual([])
+  await e2e.send(confirmSendUpdate())
 
   expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
     {
@@ -169,7 +178,11 @@ test('replaying a finished internal DM transfer does not emit dm_transfer_sent a
   await replayWizard(
     e2e,
     sendingToUser,
-    [privateText('@user_b'), privateText(String(TIP_SATS))],
+    [
+      privateText('@user_b'),
+      privateText(String(TIP_SATS)),
+      () => privateCallback(confirmSendData(), {messageId: 7}),
+    ],
     () => {
       expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
         {
@@ -178,8 +191,95 @@ test('replaying a finished internal DM transfer does not emit dm_transfer_sent a
           properties: {amount_sats: TIP_SATS, payment_method: 'internal'},
         },
       ])
+      expect(walletBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
     },
+    privateCallback(staticCallback.sendToUser, {messageId: 7}),
   )
+})
+
+test('replaying a tipped send collects the donation and notifies once', async () => {
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 10,
+  })
+  credit(USER_A, STARTING_BALANCE_SATS)
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  replyWithRecipient()
+  const fee = 3
+
+  await replayWizard(
+    e2e,
+    sendingToUser,
+    [
+      privateText('@user_b'),
+      privateText(String(TIP_SATS)),
+      () => privateCallback(confirmSendData(), {messageId: 7}),
+    ],
+    () => {
+      expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+      expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: fee, times: 1})
+      expect(receivedNotices(USER_B)).toHaveLength(1)
+    },
+    privateCallback(staticCallback.sendToUser, {messageId: 7}),
+  )
+  expectNoErrors(e2e.logs)
+})
+
+test('a donation after restart is still one fee and one notice', async () => {
+  await e2e.dispose()
+  e2e = await createE2E({mode: 'file'})
+  await seedUser(e2e, {
+    id: USER_A,
+    username: 'user_a',
+    firstName: 'User A',
+    donationPercent: 10,
+  })
+  credit(USER_A, STARTING_BALANCE_SATS)
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  replyWithRecipient()
+
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  await e2e.restart()
+  const data = confirmSendData()
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: 3, times: 1})
+  expect(receivedNotices(USER_B)).toHaveLength(1)
+
+  await e2e.restart()
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: 3, times: 1})
+  expect(receivedNotices(USER_B)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('a failed recipient notice still shows the send and does not pay again', async () => {
+  await seedSenderAndRecipient()
+  replyWithRecipient()
+  await e2e.send(privateCallback(staticCallback.sendToUser))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  const data = confirmSendData()
+  e2e.tg.fail('sendMessage', {error_code: 400, description: 'Bad Request: user not found'})
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+
+  const receipt = String(e2e.tg.last('editMessageText')?.text)
+  expect(receipt).toMatch(/You sent 21 sats/)
+  expect(receipt).toMatch(/The send succeeded/)
+  expect(receipt).toMatch(/Do not send this amount again/)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+
+  await e2e.send(privateCallback(data, {messageId: confirmId}))
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
 })
 
 test('a failed internal DM transfer does not emit dm_transfer_sent', async () => {
@@ -198,6 +298,8 @@ test('a failed internal DM transfer does not emit dm_transfer_sent', async () =>
   )
 
   await e2e.send(privateText(String(TIP_SATS)))
+  expect(walletBalanceMsat(USER_B)).toBe(0)
+  await e2e.send(confirmSendUpdate())
 
   expect(errorMessages()).toContain('Error paying invoice')
   expect(capturesOf(events, 'dm_transfer_sent')).toEqual([])
@@ -220,6 +322,7 @@ test('a PostHog failure does not undo a completed internal DM transfer', async (
   await e2e.send(privateCallback(staticCallback.sendToUser))
   await e2e.send(privateText('@user_b'))
   await e2e.send(privateText(String(TIP_SATS)))
+  await e2e.send(confirmSendUpdate())
 
   expect(e2e.tg.of('editMessageText').some(call => sentConfirmation.test(String(call.text)))).toBe(
     true,
@@ -682,6 +785,7 @@ async function expectInternalTransfer(
     db: {
       ...(opts.recipientAdded ? {users: {added: 1}} : {}),
       ...(opts.conversationRemoved ? {conversations: {removed: 1}} : {}),
+      dmTransfers: {added: opts.conversationRemoved ? 1 : 0},
     },
     lnbits: {
       balances: {'100001 wallet': -TIP_SATS, [recipientWallet]: TIP_SATS},
@@ -722,6 +826,14 @@ async function sendAndWaitForTempMessage(update: TestUpdate): Promise<void> {
   throw new Error('The temporary error message was never deleted')
 }
 
+function receivedNotices(userId: number): Record<string, unknown>[] {
+  return e2e.tg
+    .of('sendMessage')
+    .filter(
+      payload => Number(payload.chat_id) === userId && String(payload.text).includes('received'),
+    )
+}
+
 function notificationTo(userId: number): string {
   const call = e2e.tg
     .of('sendMessage')
@@ -741,6 +853,24 @@ function groupConfirmation(): Record<string, unknown> | undefined {
 }
 
 const sentConfirmation = /You sent 21 sats(?: \(\$[^)]+\))? to @user_b/
+
+function confirmSendData(payload = e2e.tg.last('editMessageText')): string {
+  const markup = payload?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith('confirm-send:'))
+  if (!data) throw new Error('Expected a confirm-send nonce on the screen')
+  return data
+}
+
+function confirmSendUpdate(): TestUpdate {
+  const messageId = e2e.tg.lastMessageId('editMessageText')
+  if (messageId === undefined) throw new Error('Expected the send confirmation')
+  return privateCallback(confirmSendData(), {messageId})
+}
 
 function replyWithRecipient(): void {
   e2e.tg.reply('getChat', {

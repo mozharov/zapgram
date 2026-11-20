@@ -37,8 +37,8 @@ export async function donateMonthlyDisableCallback(ctx: BotContext) {
   await getRuntime().users.update(ctx.user.id, {
     monthlyDonationSats: 0,
     monthlyDonationNextAt: null,
-    monthlyDonationLastHash: null,
   })
+  ctx.log.info('Monthly donation disabled')
   captureBotEvent(getRuntime().posthog, 'monthly_donate_disabled', {
     feature: 'donations',
     flow: 'monthly',
@@ -97,24 +97,63 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
     return
   }
 
+  // A due payment may already be in flight. Let cron reconcile it before changing the amount.
+  if (current.monthlyDonationLastHash) {
+    await ctx.reply(
+      ctx.t(
+        current.monthlyDonationSats > 0
+          ? 'donate.monthly-pending'
+          : 'donate.previous-payment-pending',
+        {
+          sats: current.monthlyDonationSats,
+          usdSuffix: await usdSuffixForSats(current.monthlyDonationSats),
+        },
+      ),
+    )
+    await replyDonateHub(ctx)
+    return
+  }
+
   await ctx.replyWithChatAction('typing').catch(() => null)
   const result = await donationPay.payDonation({
     userId: ctx.user.id,
     amountSats,
     kind: 'monthly',
+    monthlySource: 'telegram',
     rail: 'auto',
     nwc: ctx.user.nwc,
     nwcUrl: ctx.user.nwcUrl,
     analytics: {source: wasOff ? 'monthly_enable' : 'monthly_due_enable', was_off: wasOff},
   })
 
+  if (result.status === 'skipped') {
+    await replyDonateHub(ctx)
+    return
+  }
+
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await users.update(ctx.user.id, {
-      monthlyDonationSats: amountSats,
-      monthlyDonationNextAt: nextAt,
-      monthlyDonationLastHash: result.paymentHash ?? null,
-    })
+    const updated = await users.updateMonthlyDonationIfDue(
+      ctx.user.id,
+      result.paymentHash,
+      {
+        monthlyDonationSats: amountSats,
+        monthlyDonationNextAt: nextAt,
+        monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
+      },
+      now,
+    )
+    if (!updated)
+      ctx.log.warn(
+        {paymentHash: result.paymentHash, rail: result.rail},
+        'Paid monthly donation schedule update skipped: slot changed',
+      )
+    else ctx.log.info({nextAt: updated.monthlyDonationNextAt}, 'Monthly donation period finalized')
+    if (!updated || updated.monthlyDonationSats <= 0 || !updated.monthlyDonationNextAt) {
+      await replyDonateHub(ctx)
+      return
+    }
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',
@@ -130,11 +169,25 @@ export async function donateMonthlyAmountCallback(ctx: BotContext) {
       $set: {monthly_donation_sats: amountSats},
     })
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats: amountSats, usdSuffix}))
+  } else if (result.status === 'pending') {
+    const pendingSats = result.existing ? (result.amountSats ?? 0) : amountSats
+    await ctx.reply(
+      ctx.t(pendingSats > 0 ? 'donate.monthly-pending' : 'donate.previous-payment-pending', {
+        sats: pendingSats,
+        usdSuffix: await usdSuffixForSats(pendingSats),
+      }),
+    )
   } else {
-    await users.update(ctx.user.id, {
-      monthlyDonationSats: amountSats,
-      monthlyDonationNextAt: now,
-    })
+    const updated = await users.updateMonthlyDonationIfDue(
+      ctx.user.id,
+      null,
+      {
+        monthlyDonationSats: amountSats,
+        monthlyDonationNextAt: now,
+      },
+      now,
+    )
+    if (!updated) ctx.log.warn('Failed monthly donation settings update skipped: period changed')
     captureBotEvent(posthog, 'monthly_donate_enabled', {
       feature: 'donations',
       flow: 'monthly',

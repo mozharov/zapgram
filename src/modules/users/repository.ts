@@ -6,7 +6,7 @@ import {usersTable} from '@infra/db/schema.js'
 import type {NewUser, User} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
 import type {AppLogger} from '@infra/logger.js'
-import {and, eq, isNotNull, lte, ne, sql} from 'drizzle-orm'
+import {and, eq, isNotNull, isNull, lte, ne, or, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserRepositoryOptions = {
@@ -108,15 +108,71 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
         .then(rows => firstOrThrow(rows, `User ${id}`))
     },
 
+    /** A delayed payment result must not overwrite a period already finalized by cron. */
+    async updateMonthlyDonationIfDue(
+      id: User['id'],
+      paymentHash: string | null,
+      data: Partial<
+        Pick<
+          User,
+          | 'monthlyDonationSats'
+          | 'monthlyDonationNextAt'
+          | 'monthlyDonationLastHash'
+          | 'monthlyDonationExpiresAt'
+        >
+      >,
+      now = new Date(),
+    ) {
+      // Disable may race both payment and recovery. Test current settings in the same write
+      // that clears the owning hash, so a paid donation cannot re-enable the subscription.
+      const enabled = sql`${usersTable.monthlyDonationSats} > 0 AND ${usersTable.monthlyDonationNextAt} IS NOT NULL`
+      const [row] = await database
+        .update(usersTable)
+        .set({
+          ...data,
+          ...(paymentHash !== null && data.monthlyDonationSats !== undefined
+            ? {
+                monthlyDonationSats: sql`CASE WHEN ${enabled} THEN ${data.monthlyDonationSats} ELSE ${usersTable.monthlyDonationSats} END`,
+              }
+            : {}),
+          ...(paymentHash !== null && data.monthlyDonationNextAt !== undefined
+            ? {
+                monthlyDonationNextAt: sql`CASE WHEN ${enabled} THEN ${data.monthlyDonationNextAt === null ? null : Math.floor(data.monthlyDonationNextAt.getTime() / 1000)} ELSE ${usersTable.monthlyDonationNextAt} END`,
+              }
+            : {}),
+        })
+        .where(
+          and(
+            eq(usersTable.id, id),
+            // The saved hash owns this period even if issuance happened after the caller's now.
+            // Finalization clears it, so a late result cannot overwrite the completed schedule.
+            paymentHash === null
+              ? and(
+                  isNull(usersTable.monthlyDonationLastHash),
+                  or(
+                    isNull(usersTable.monthlyDonationNextAt),
+                    lte(usersTable.monthlyDonationNextAt, now),
+                  ),
+                )
+              : eq(usersTable.monthlyDonationLastHash, paymentHash),
+          ),
+        )
+        .returning()
+      return row
+    },
+
     async countDueMonthlyDonations(now: Date = new Date()) {
       const [row] = await database
         .select({count: sql<number>`count(*)`})
         .from(usersTable)
         .where(
-          and(
-            sql`${usersTable.monthlyDonationSats} > 0`,
-            isNotNull(usersTable.monthlyDonationNextAt),
-            lte(usersTable.monthlyDonationNextAt, now),
+          or(
+            isNotNull(usersTable.monthlyDonationLastHash),
+            and(
+              sql`${usersTable.monthlyDonationSats} > 0`,
+              isNotNull(usersTable.monthlyDonationNextAt),
+              lte(usersTable.monthlyDonationNextAt, now),
+            ),
           ),
         )
       return Number(row?.count ?? 0)
@@ -124,10 +180,13 @@ export function createUserRepository(database: AppDatabase, options: UserReposit
 
     async findDueMonthlyDonations(limit: number, offset: number, now: Date = new Date()) {
       return database.query.usersTable.findMany({
-        where: and(
-          sql`${usersTable.monthlyDonationSats} > 0`,
-          isNotNull(usersTable.monthlyDonationNextAt),
-          lte(usersTable.monthlyDonationNextAt, now),
+        where: or(
+          isNotNull(usersTable.monthlyDonationLastHash),
+          and(
+            sql`${usersTable.monthlyDonationSats} > 0`,
+            isNotNull(usersTable.monthlyDonationNextAt),
+            lte(usersTable.monthlyDonationNextAt, now),
+          ),
         ),
         limit,
         offset,

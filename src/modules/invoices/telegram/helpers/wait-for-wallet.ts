@@ -28,6 +28,11 @@ export type WalletSelection = {
   wallet: 'internal' | 'nwc'
   nwcBalanceError: boolean
   host?: ConversationHost
+  /**
+   * False when both wallets were offered and the click only chose one.
+   * The debit waits for a later confirm. A sole-wallet screen is already that confirm.
+   */
+  confirmed: boolean
 }
 
 /**
@@ -76,16 +81,19 @@ export async function waitForWallet(
       }
     }
     if (flow === 'pay_invoice') {
+      const nonce = await conversation.external(() => crypto.randomUUID())
       return pickWallet(conversation, ctx, {
         ...opts,
         flow,
         requiredSats,
         nwcBalanceError: false,
+        nonce,
         ...walletPrompt(ctx, {
           funded: {internal: true, nwc: false, nwcBalanceError: false},
           html: opts?.html ?? ctx.t('wait-for-wallet.pay-invoice'),
           copyText: opts?.copyText,
           sole: opts?.soleWallet,
+          nonce,
         }),
       })
     }
@@ -95,7 +103,7 @@ export async function waitForWallet(
       wallet_type: 'internal',
       required_sats: requiredSats,
     })
-    return {wallet: 'internal', nwcBalanceError: false}
+    return {wallet: 'internal', nwcBalanceError: false, confirmed: true}
   }
 
   if (requiredSats !== undefined) {
@@ -139,31 +147,37 @@ export async function waitForWallet(
         nwc_funded: funded.nwc,
         nwc_balance_error: funded.nwcBalanceError,
       })
-      return {wallet, nwcBalanceError: funded.nwcBalanceError}
+      return {wallet, nwcBalanceError: funded.nwcBalanceError, confirmed: true}
     }
 
+    const nonce = await conversation.external(() => crypto.randomUUID())
     return pickWallet(conversation, ctx, {
       ...opts,
       flow,
       requiredSats,
       nwcBalanceError: funded.nwcBalanceError,
+      nonce,
       ...walletPrompt(ctx, {
         funded,
         html: opts?.html ?? ctx.t('wait-for-wallet'),
         note: funded.nwcBalanceError ? ctx.t('wait-for-wallet.nwc-unreachable') : undefined,
         copyText: opts?.copyText,
         sole: opts?.soleWallet,
+        nonce,
       }),
     })
   }
 
+  const nonce = await conversation.external(() => crypto.randomUUID())
   return pickWallet(conversation, ctx, {
     ...opts,
     flow,
     requiredSats,
     nwcBalanceError: false,
+    nonce,
     html: opts?.html ?? ctx.t('wait-for-wallet'),
-    keyboard: walletKeyboard(ctx, {copyText: opts?.copyText}),
+    keyboard: walletKeyboard(ctx, {copyText: opts?.copyText, nonce}),
+    confirmed: true,
   })
 }
 
@@ -176,8 +190,9 @@ function walletPrompt(
     note?: string
     copyText?: string
     sole?: SoleWalletPrompt
+    nonce: string
   },
-): {html: string; keyboard: InlineKeyboard; actionLabel?: string} {
+): {html: string; keyboard: InlineKeyboard; actionLabel?: string; confirmed: boolean} {
   const soleWallet = soleFundedWallet(opts.funded)
   if (soleWallet && opts.sole) {
     return {
@@ -186,13 +201,21 @@ function walletPrompt(
         wallet: soleWallet,
         text: opts.sole.buttonText,
         copyText: opts.copyText,
+        nonce: opts.nonce,
       }),
       actionLabel: opts.sole.actionLabel,
+      confirmed: true,
     }
   }
   return {
     html: joinWizardHtml(opts.html, opts.note),
-    keyboard: walletKeyboard(ctx, {copyText: opts.copyText, funded: opts.funded}),
+    keyboard: walletKeyboard(ctx, {
+      copyText: opts.copyText,
+      funded: opts.funded,
+      nonce: opts.nonce,
+    }),
+    // Two wallet buttons choose a rail. Paying still needs an explicit confirm.
+    confirmed: opts.funded.internal !== opts.funded.nwc,
   }
 }
 
@@ -212,7 +235,9 @@ async function pickWallet(
     host?: ConversationHost
     html: string
     keyboard: InlineKeyboard
+    nonce: string
     actionLabel?: string
+    confirmed?: boolean
     onCancel?: (host: ConversationHost) => Promise<unknown>
   },
 ): Promise<WalletSelection> {
@@ -230,11 +255,18 @@ async function pickWallet(
     const next = await waitForStepInput(conversation, prompt, {intercept: 'all'})
     if (!next) continue
     const data = next.callbackQuery?.data
-    if ((data === 'internal' || data === 'nwc') && isCallbackFromPrompt(next, prompt)) {
-      await next.answerCallbackQuery()
-      await clearPromptControls(conversation, prompt)
-      wallet = data
-      break
+    // Same message as this attempt. A bare `internal`/`nwc`, or another attempt's
+    // nonce, is the button from the invoice that used to be on this host.
+    if (isWalletChoice(data) && isCallbackFromPrompt(next, prompt)) {
+      const picked = walletFromChoice(data, opts.nonce)
+      if (picked) {
+        await next.answerCallbackQuery()
+        await clearPromptControls(conversation, prompt)
+        wallet = picked
+        break
+      }
+      await next.answerCallbackQuery({text: next.t('callback-answer.confirm-stale')})
+      continue
     }
 
     const kind = classifyPromptUpdate(next, prompt, staticCallback.cancel)
@@ -261,33 +293,58 @@ async function pickWallet(
     required_sats: opts.requiredSats,
     nwc_balance_error: opts.nwcBalanceError,
   })
-  return {wallet, nwcBalanceError: opts.nwcBalanceError, host: pickedHost}
+  return {
+    wallet,
+    nwcBalanceError: opts.nwcBalanceError,
+    host: pickedHost,
+    confirmed: opts.confirmed !== false,
+  }
+}
+
+/** This attempt only. Replay of the step keeps the nonce; cancel and a new invoice do not. */
+function walletChoiceData(wallet: 'internal' | 'nwc', nonce: string): string {
+  return `${wallet}:${nonce}`
+}
+
+function isWalletChoice(data: string | undefined): data is string {
+  return (
+    data === 'internal' ||
+    data === 'nwc' ||
+    Boolean(data && (/^internal:[0-9a-f-]{36}$/i.test(data) || /^nwc:[0-9a-f-]{36}$/i.test(data)))
+  )
+}
+
+function walletFromChoice(data: string, nonce: string): 'internal' | 'nwc' | undefined {
+  if (data === walletChoiceData('internal', nonce)) return 'internal'
+  if (data === walletChoiceData('nwc', nonce)) return 'nwc'
+  return undefined
 }
 
 function walletKeyboard(
   ctx: ConversationContext,
-  opts?: {
+  opts: {
+    nonce: string
     copyText?: string
     funded?: FundedWallets
   },
 ) {
   const keyboard = new InlineKeyboard()
-  if (opts?.copyText) keyboard.copyText(ctx.t('button.copy-invoice'), opts.copyText)
+  if (opts.copyText) keyboard.copyText(ctx.t('button.copy-invoice'), opts.copyText)
 
-  const offerInternal = opts?.funded?.internal ?? true
-  const offerNwc = opts?.funded?.nwc ?? true
+  const offerInternal = opts.funded?.internal ?? true
+  const offerNwc = opts.funded?.nwc ?? true
   const internalText = ctx.t('button.internal-wallet')
   const nwcText = ctx.t('button.nwc-wallet')
 
   if (offerInternal && offerNwc) {
     keyboard.row(
-      {callback_data: 'internal', text: internalText},
-      {callback_data: 'nwc', text: nwcText},
+      {callback_data: walletChoiceData('internal', opts.nonce), text: internalText},
+      {callback_data: walletChoiceData('nwc', opts.nonce), text: nwcText},
     )
   } else if (offerInternal) {
-    keyboard.row({callback_data: 'internal', text: internalText})
+    keyboard.row({callback_data: walletChoiceData('internal', opts.nonce), text: internalText})
   } else if (offerNwc) {
-    keyboard.row({callback_data: 'nwc', text: nwcText})
+    keyboard.row({callback_data: walletChoiceData('nwc', opts.nonce), text: nwcText})
   }
 
   keyboard.row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
@@ -296,12 +353,12 @@ function walletKeyboard(
 
 function confirmWalletKeyboard(
   ctx: ConversationContext,
-  opts: {wallet: 'internal' | 'nwc'; text: string; copyText?: string},
+  opts: {wallet: 'internal' | 'nwc'; text: string; nonce: string; copyText?: string},
 ) {
   const keyboard = new InlineKeyboard()
   if (opts.copyText) keyboard.copyText(ctx.t('button.copy-invoice'), opts.copyText)
-  // Same callback data as the picker: the confirmation still resolves to a wallet.
-  keyboard.row({callback_data: opts.wallet, text: opts.text})
+  // Same shape as the picker, plus this attempt's nonce. The button still resolves to a wallet.
+  keyboard.row({callback_data: walletChoiceData(opts.wallet, opts.nonce), text: opts.text})
   keyboard.row({callback_data: staticCallback.cancel, text: ctx.t('button.cancel')})
   return keyboard
 }

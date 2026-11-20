@@ -3,6 +3,7 @@ import {Writable} from 'node:stream'
 import {createConfig} from '@config'
 import {InsufficientFundsError} from '@core/errors/insufficient-funds.js'
 import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {DEFAULT_INVOICE_EXPIRY_SECONDS} from '@core/lightning/invoice-expiry.js'
 import {createInvoiceOriginLookup} from '@infra/lnbits/invoice-origin.js'
 import {limiter} from '@infra/lnbits/lnbits-api.js'
 import {createMasterWallet} from '@infra/lnbits/master-wallet.js'
@@ -125,11 +126,22 @@ describe('fake LNbits HTTP server', () => {
       expect((await master.lookupPayment(masterInvoice.payment_hash)).paid).toBe(false)
 
       const feeInvoice = await master.createFeeCollectionInvoice(5)
+      const feeCreation = fake.requests.find(
+        request => request.method === 'POST' && asRecord(request.body)?.amount === 5,
+      )
+      expect(asRecord(feeCreation?.body)?.expiry).toBe(DEFAULT_INVOICE_EXPIRY_SECONDS)
+      expect(feeInvoice.expiry).toBeInstanceOf(Date)
+      expect(
+        Math.abs(
+          (feeInvoice.expiry?.getTime() ?? 0) - Date.now() - DEFAULT_INVOICE_EXPIRY_SECONDS * 1000,
+        ),
+      ).toBeLessThan(5000)
+      expect((await master.lookupFeePayment(feeInvoice.payment_hash)).paid).toBe(false)
       const masterWallet = fake.state.walletByApiKey(keys.adminKey)
       if (!masterWallet) throw new Error('Fake master wallet not found')
       fake.state.credit(masterWallet.id, 5_000)
       expect((await master.payInvoice(feeInvoice.bolt11)).amount).toBe(-5_000)
-      expect((await master.lookupPayment(feeInvoice.payment_hash)).paid).toBe(true)
+      expect((await master.lookupFeePayment(feeInvoice.payment_hash)).paid).toBe(true)
 
       const createRequest = fake.requests.find(request => {
         const body = asRecord(request.body)

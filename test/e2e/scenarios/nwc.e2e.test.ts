@@ -275,7 +275,7 @@ test('the NWC menu with a connected wallet offers disconnect and tips toggle', a
 test('text during wallet selection cancels the action and returns to Wallet', async () => {
   await connectNwc()
   await e2e.send(privateCallback(staticCallback.createInvoice))
-  expect(callbackDataOf(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
+  expect(plainCallbacks(e2e.tg.last('editMessageText'))).toEqual(['internal', 'nwc', 'cancel'])
   const cancellation = privateText('internal')
 
   await expectDelta(e2e, () => e2e.send(cancellation), {
@@ -305,7 +305,7 @@ test('paying an invoice shows decoded details before the wallet picker', async (
   expect(String(prompt?.text)).not.toMatch(/Powered by t\.me\/zap_gram_bot/)
   expect(String(prompt?.text)).not.toMatch(/Description:/)
   expect(prompt?.link_preview_options).toEqual({is_disabled: true})
-  expect(callbackDataOf(prompt)).toEqual(['internal', 'nwc', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['internal', 'nwc', 'cancel'])
   expect(buttonTextsOf(prompt)).toEqual(expect.arrayContaining(['🤖 ZapGram', '⚡️ NWC']))
   expectNoErrors(e2e.logs)
 })
@@ -319,7 +319,7 @@ test('paying an invoice confirms the only wallet that can cover it', async () =>
 
   // The internal balance is empty, so NWC is the only rail: nothing left to choose between.
   const prompt = e2e.tg.last('editMessageText')
-  expect(callbackDataOf(prompt)).toEqual(['nwc', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['nwc', 'cancel'])
   expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
   expect(String(prompt?.text)).toMatch(/Paying from your NWC wallet\. Confirm the payment/)
   expect(String(prompt?.text)).not.toMatch(/Select a wallet/)
@@ -337,7 +337,7 @@ test('paying an invoice hides NWC and notes it when the balance cannot be read',
 
   const prompt = e2e.tg.last('editMessageText')
   expect(String(prompt?.text)).toMatch(/Couldn't reach the connected NWC wallet/)
-  expect(callbackDataOf(prompt)).toEqual(['internal', 'cancel'])
+  expect(plainCallbacks(prompt)).toEqual(['internal', 'cancel'])
   expect(buttonTextsOf(prompt)).toContain('📤 Pay Invoice')
   // An unreachable NWC leaves one payable wallet, and the screen has to say which one it is.
   expect(String(prompt?.text)).toMatch(/Paying from your ZapGram wallet\. Confirm the payment/)
@@ -411,6 +411,10 @@ test('a private send through NWC emits one dm_transfer_sent', async () => {
   await e2e.send(privateCallback(staticCallback.sendToUser))
   await e2e.send(privateText('@user_b'))
   await e2e.send(privateText(String(TIP_SATS)))
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+  await e2e.send(nwcConfirm(confirmId))
 
   expect(capturesOf(events, 'dm_transfer_sent')).toEqual([
     {
@@ -420,6 +424,39 @@ test('a private send through NWC emits one dm_transfer_sent', async () => {
     },
   ])
   expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
+  expect(internalBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
+  expectNoErrors(e2e.logs)
+})
+
+test('choosing a wallet does not pay until the send is confirmed', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  await connectNwc()
+  creditInternal(USER_A, 1_000)
+  e2e.tg.reply('getChat', {id: USER_B, type: 'private', username: 'user_b', first_name: 'User B'})
+
+  await e2e.send(privateCallback(staticCallback.sendMenu))
+  await e2e.send(privateText('@user_b'))
+  await e2e.send(privateText(String(TIP_SATS)))
+
+  const pickerId = e2e.tg.lastMessageId('editMessageText')
+  if (pickerId === undefined) throw new Error('Expected the wallet picker')
+  expect(plainCallbacks(e2e.tg.last('editMessageText'))).toEqual(
+    expect.arrayContaining(['internal', 'nwc', 'cancel']),
+  )
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
+
+  await e2e.send(pressWallet('nwc', pickerId))
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(0)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/Nothing is sent until you confirm/)
+  expect(String(e2e.tg.last('editMessageText')?.text)).toMatch(/NWC/)
+  const confirmId = e2e.tg.lastMessageId('editMessageText')
+  if (confirmId === undefined) throw new Error('Expected the send confirmation')
+
+  await e2e.send(nwcConfirm(confirmId))
+
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(1)
+  expect(internalBalanceMsat(USER_A)).toBe(1_000 * 1000)
   expect(internalBalanceMsat(USER_B)).toBe(TIP_SATS * 1000)
   expectNoErrors(e2e.logs)
 })
@@ -653,6 +690,18 @@ async function connectNwc(opts: {nwcTips?: boolean} = {}): Promise<void> {
   })
 }
 
+function nwcConfirm(messageId: number) {
+  const markup = e2e.tg.last('editMessageText')?.reply_markup as
+    | {inline_keyboard?: {callback_data?: string}[][]}
+    | undefined
+  const data = (markup?.inline_keyboard ?? [])
+    .flat()
+    .map(button => button.callback_data)
+    .find(value => value?.startsWith('confirm-send:'))
+  if (!data) throw new Error('Expected a confirm-send nonce on the screen')
+  return privateCallback(data, {messageId})
+}
+
 function creditInternal(userId: number, sats: number): void {
   const lnUser = e2e.ln.state.ensureUser(String(userId))
   const wallet = e2e.ln.state.walletsOfUser(lnUser.id)[0]
@@ -695,6 +744,18 @@ function foreignInvoice(sats: number) {
     memo: e2e.container.config.memoFooter,
     expirySec: 3600,
   })
+}
+
+function plainCallbacks(payload: Record<string, unknown> | undefined): string[] {
+  return callbackDataOf(payload).map(data => data.replace(/^(internal|nwc):.+$/, '$1'))
+}
+
+function pressWallet(which: 'internal' | 'nwc', messageId: number) {
+  const data = callbackDataOf(e2e.tg.last('editMessageText')).find(item =>
+    item.startsWith(`${which}:`),
+  )
+  if (!data) throw new Error(`Expected a ${which} nonce on the screen`)
+  return privateCallback(data, {messageId})
 }
 
 function callbackDataOf(payload: Record<string, unknown> | undefined): string[] {

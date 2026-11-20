@@ -97,12 +97,34 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
     return
   }
 
+  // Keep the in-flight period's amount until cron resolves its saved hash.
+  if (current.monthlyDonationLastHash) {
+    const pendingUsdSuffix = await conversation.external(() =>
+      usdSuffixForSats(current.monthlyDonationSats),
+    )
+    await ctx.reply(
+      ctx.t(
+        current.monthlyDonationSats > 0
+          ? 'donate.monthly-pending'
+          : 'donate.previous-payment-pending',
+        {
+          sats: current.monthlyDonationSats,
+          usdSuffix: pendingUsdSuffix,
+        },
+      ),
+    )
+    await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
+    return
+  }
+
   await ctx.replyWithChatAction('typing')
   const result = await conversation.external(() =>
     getRuntime().donationPay.payDonation({
       userId: ctx.user.id,
       amountSats: sats,
       kind: 'monthly',
+      monthlySource: 'telegram',
       rail: 'auto',
       nwc: ctx.user.nwc,
       nwcUrl: ctx.user.nwcUrl,
@@ -112,15 +134,40 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       },
     }),
   )
+  if (result.status === 'skipped') {
+    await replyDonateHub(ctx)
+    if (input?.message) await deleteMessageSafely(input)
+    return
+  }
+
   if (result.status === 'paid') {
     const nextAt = advanceMonthlyNextAt(now, now)
-    await conversation.external(() =>
-      getRuntime().users.update(ctx.user.id, {
-        monthlyDonationSats: sats,
-        monthlyDonationNextAt: nextAt,
-        monthlyDonationLastHash: result.paymentHash ?? null,
-      }),
-    )
+    const finalized = await conversation.external(async () => {
+      const updated = await getRuntime().users.updateMonthlyDonationIfDue(
+        ctx.user.id,
+        result.paymentHash,
+        {
+          monthlyDonationSats: sats,
+          monthlyDonationNextAt: nextAt,
+          monthlyDonationLastHash: null,
+          monthlyDonationExpiresAt: null,
+        },
+        now,
+      )
+      if (!updated)
+        ctx.log.warn(
+          {paymentHash: result.paymentHash, rail: result.rail},
+          'Paid monthly donation schedule update skipped: slot changed',
+        )
+      else
+        ctx.log.info({nextAt: updated.monthlyDonationNextAt}, 'Monthly donation period finalized')
+      return Boolean(updated && updated.monthlyDonationSats > 0 && updated.monthlyDonationNextAt)
+    })
+    if (!finalized) {
+      await replyDonateHub(ctx)
+      if (input?.message) await deleteMessageSafely(input)
+      return
+    }
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
         feature: 'donations',
@@ -138,13 +185,28 @@ export async function customMonthlyAmount(conversation: BotConversation, ctx: Co
       }),
     )
     await ctx.reply(ctx.t('donate.monthly-enabled', {sats, usdSuffix}))
-  } else {
-    await conversation.external(() =>
-      getRuntime().users.update(ctx.user.id, {
-        monthlyDonationSats: sats,
-        monthlyDonationNextAt: now,
+  } else if (result.status === 'pending') {
+    const pendingSats = result.existing ? (result.amountSats ?? 0) : sats
+    const pendingUsdSuffix = await conversation.external(() => usdSuffixForSats(pendingSats))
+    await ctx.reply(
+      ctx.t(pendingSats > 0 ? 'donate.monthly-pending' : 'donate.previous-payment-pending', {
+        sats: pendingSats,
+        usdSuffix: pendingUsdSuffix,
       }),
     )
+  } else {
+    await conversation.external(async () => {
+      const updated = await getRuntime().users.updateMonthlyDonationIfDue(
+        ctx.user.id,
+        null,
+        {
+          monthlyDonationSats: sats,
+          monthlyDonationNextAt: now,
+        },
+        now,
+      )
+      if (!updated) ctx.log.warn('Failed monthly donation settings update skipped: period changed')
+    })
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'monthly_donate_enabled', {
         feature: 'donations',

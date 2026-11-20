@@ -21,6 +21,8 @@ export type FakeTelegram = {
   last(method: string): Record<string, unknown> | undefined
   lastResult(method: string): unknown | undefined
   lastMessageId(method: string): number | undefined
+  succeeded(method: string): unknown[]
+  isDeleted(chatId: number, messageId: number): boolean
   reply(method: string, result: unknown): void
   fail(method: string, err: BotApiError): void
   /** Next call gets this body as-is. The message is not recorded as deleted. */
@@ -66,15 +68,30 @@ export async function startFakeTelegram(opts?: {
 
       // A message can be deleted once. The second delete is the same 400 Telegram
       // returns, so two Pay clicks cannot both claim the offer.
+      const messageKey = `${String(payload.chat_id)}:${String(payload.message_id)}`
       if (method === 'deleteMessage') {
-        const id = `${String(payload.chat_id)}:${String(payload.message_id)}`
-        if (deletedIds.has(id)) {
+        if (deletedIds.has(messageKey)) {
           return failure({
             error_code: 400,
             description: 'Bad Request: message to delete not found',
           })
         }
-        deletedIds.add(id)
+        deletedIds.add(messageKey)
+      }
+      // Editing a message that was actually deleted fails. A replay that deletes
+      // the receipt and then edits the saved id must not look like success.
+      if (
+        (method === 'editMessageText' ||
+          method === 'editMessageCaption' ||
+          method === 'editMessageMedia' ||
+          method === 'editMessageReplyMarkup') &&
+        payload.message_id !== undefined &&
+        deletedIds.has(messageKey)
+      ) {
+        return failure({
+          error_code: 400,
+          description: 'Bad Request: message to edit not found',
+        })
       }
 
       const result =
@@ -104,6 +121,13 @@ export async function startFakeTelegram(opts?: {
     },
     lastMessageId(method) {
       return resultMessageId(findLastResult(results, method))
+    },
+    /** Successful results only. A rejected edit is not in this list. */
+    succeeded(method: string): unknown[] {
+      return results.filter(entry => entry.method === method).map(entry => entry.result)
+    },
+    isDeleted(chatId: number, messageId: number): boolean {
+      return deletedIds.has(`${chatId}:${messageId}`)
     },
     reply(method, result) {
       enqueue(responses, method, {type: 'success', result})

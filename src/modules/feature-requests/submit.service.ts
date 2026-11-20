@@ -3,10 +3,10 @@ import type {AppLogger} from '@infra/logger.js'
 import type {NostrWallet} from '@infra/nostr/wallet.js'
 import type {CaptureClient} from '@infra/posthog.js'
 import {captureUserEvent, captureUserException, errorProperties} from '@infra/posthog.js'
-import type {DonationPayService} from '@modules/donations/pay.service.js'
+import type {DonationPayService, PayDonationResult} from '@modules/donations/pay.service.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 
-export type FeatureFundStatus = 'skipped' | 'paid' | 'pay_failed'
+export type FeatureFundStatus = 'skipped' | 'paid' | 'pending' | 'pay_failed'
 
 export type FeatureRequestSourceMessage = {
   chatId: number
@@ -24,7 +24,9 @@ export type SubmitFeatureRequestResult = {
 }
 
 export type FeatureRequestSubmitDeps = {
-  payDonation: DonationPayService['payDonation']
+  payDonation: (
+    input: Parameters<DonationPayService['payDonation']>[0],
+  ) => Promise<PayDonationResult>
   notify: Notifier['send']
   copyMessage: Notifier['copyMessage']
   adminTelegramIds: readonly number[]
@@ -49,7 +51,7 @@ function escapeHtml(value: string): string {
  * Sats are an optional signal tip — not escrow and not a promise to ship.
  */
 export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
-  async function submit(input: {
+  async function doSubmit(input: {
     userId: number
     username?: string | null
     firstName?: string | null
@@ -58,6 +60,8 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     nwcUrl?: string | null
     nwc?: NostrWallet
   }): Promise<SubmitFeatureRequestResult> {
+    // Re-delivery after a restart must reuse the persisted pending payment or paid ledger row.
+    const attemptId = `feature_request:${input.userId}:${input.source.chatId}:${input.source.messageId}`
     const username = input.username ?? null
     const firstName = input.firstName ?? null
     const text = input.source.text
@@ -72,6 +76,8 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
           userId: input.userId,
           amountSats: input.amountSats,
           kind: 'one_shot',
+          pendingKind: 'feature_request',
+          attemptId,
           rail: 'auto',
           nwc: input.nwc,
           nwcUrl: input.nwcUrl,
@@ -79,13 +85,19 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
         })
         if (result.status === 'paid') {
           fundStatus = 'paid'
-          amountPaidSats = input.amountSats
+          amountPaidSats = result.amountSats ?? input.amountSats
           rail = result.rail
+        } else if (result.status === 'pending') {
+          fundStatus = 'pending'
         } else {
           fundStatus = 'pay_failed'
           sendPaused = result.error instanceof SendPausedError
           deps.log.warn(
-            {userId: input.userId, reason: result.reason, amountSats: input.amountSats},
+            {
+              userId: input.userId,
+              reason: result.reason,
+              amountSats: input.amountSats,
+            },
             'Feature request fund payment failed; submitting without sats',
           )
         }
@@ -151,6 +163,18 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     return {fundStatus, amountPaidSats, adminNotified, sendPaused}
   }
 
+  const inFlight = new Map<string, Promise<SubmitFeatureRequestResult>>()
+  function submit(input: Parameters<typeof doSubmit>[0]) {
+    const key = `${input.userId}:${input.source.chatId}:${input.source.messageId}`
+    const previous = inFlight.get(key)
+    if (previous) return previous
+    const current = doSubmit(input).finally(() => {
+      if (inFlight.get(key) === current) inFlight.delete(key)
+    })
+    inFlight.set(key, current)
+    return current
+  }
+
   return {submit}
 }
 
@@ -171,9 +195,11 @@ export function formatFeatureRequestAdminMeta(input: {
   const fundLine =
     input.fundStatus === 'paid'
       ? `💰 Funded: <b>${input.amountPaidSats}</b> sats`
-      : input.fundStatus === 'pay_failed'
-        ? '💰 Fund: attempted, payment failed (request still free)'
-        : '💰 Fund: none'
+      : input.fundStatus === 'pending'
+        ? '💰 Fund: awaiting payment confirmation'
+        : input.fundStatus === 'pay_failed'
+          ? '💰 Fund: attempted, payment failed (request still free)'
+          : '💰 Fund: none'
 
   return [
     '💡 <b>New feature request</b>',

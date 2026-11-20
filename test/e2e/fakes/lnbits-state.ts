@@ -136,6 +136,9 @@ export class LnbitsState {
   /** When set, GET /api/v1/payments/fee-reserve never answers. */
   hangFeeReserve = false
 
+  /** Reserve the next outgoing payment and return LNbits' uncertain outcome. */
+  pendingNextPay = false
+
   /** When set, the admin payment list returns an empty page, so pays look external. */
   adminPaymentListEmpty = false
 
@@ -210,14 +213,16 @@ export class LnbitsState {
     memo,
     expirySec,
     webhook,
+    descriptionHash,
   }: {
     wallet: FakeWallet
     sats: number
     memo: string
     expirySec: number
     webhook?: string
+    descriptionHash?: string
   }): FakePayment {
-    const minted = mintInvoice({sats, description: memo, expirySec})
+    const minted = mintInvoice({sats, description: memo, expirySec, descriptionHash})
     const payment: FakePayment = {
       paymentHash: minted.paymentHash,
       bolt11: minted.bolt11,
@@ -248,6 +253,16 @@ export class LnbitsState {
   }
 
   payInvoice({payerWallet, bolt11}: {payerWallet: FakeWallet; bolt11: string}): FakePayment {
+    const existing = this.payments.find(
+      candidate =>
+        candidate.walletId === payerWallet.id &&
+        candidate.bolt11 === bolt11 &&
+        candidate.out &&
+        !candidate.paid &&
+        !candidate.failed,
+    )
+    if (existing)
+      throw new FakeLnbitsError(520, {status: 'pending', detail: 'Payment is still pending.'})
     const payment = this.payments.find(candidate => candidate.bolt11 === bolt11 && !candidate.out)
     if (!payment) return this.payExternalInvoice({payerWallet, bolt11})
     if (payment.paid) {
@@ -263,8 +278,9 @@ export class LnbitsState {
     if (!receiverWallet) throw new Error(`Fake LNbits wallet ${payment.walletId} not found`)
 
     payerWallet.balanceMsat -= totalMsat
-    receiverWallet.balanceMsat += payment.amountMsat
-    payment.paid = true
+    if (!this.pendingNextPay) receiverWallet.balanceMsat += payment.amountMsat
+    payment.paid = !this.pendingNextPay
+    this.pendingNextPay = false
     const outgoing: FakePayment = {
       ...payment,
       walletId: payerWallet.id,
@@ -304,11 +320,12 @@ export class LnbitsState {
       walletId: payerWallet.id,
       amountMsat: decoded.amountMsat,
       out: true,
-      paid: true,
+      paid: !this.pendingNextPay,
       feeMsat,
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       memo: decoded.description,
     }
+    this.pendingNextPay = false
     this.payments.push(payment)
     return payment
   }

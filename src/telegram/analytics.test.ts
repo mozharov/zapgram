@@ -417,6 +417,7 @@ describe('mergePersonProperties', () => {
         monthlyDonationSats: 0,
         monthlyDonationNextAt: null,
         monthlyDonationLastHash: null,
+        monthlyDonationExpiresAt: null,
         monthlyDonationLastFailNotifyAt: null,
         botBlocked: false,
         lastMenuMessageId: null,

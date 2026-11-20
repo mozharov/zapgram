@@ -1,6 +1,8 @@
 import type {Api, InputFile} from 'grammy'
 import {getRuntime} from '../../runtime.js'
 
+export type SendOutcome = 'sent' | 'unreachable' | 'failed'
+
 export type Notifier = {
   /**
    * `true` when Telegram accepted the message; `false` after a logged failure. Never throws.
@@ -15,6 +17,16 @@ export type Notifier = {
     opts?: Parameters<Api['sendMessage']>[2],
     flags?: {transient?: boolean; withoutMenu?: boolean},
   ): Promise<boolean>
+  /**
+   * Same send as `send`, with a 403 (blocked, deactivated, no chat) distinguished from
+   * a retryable failure. Never throws.
+   */
+  sendOutcome(
+    userId: number,
+    text: string,
+    opts?: Parameters<Api['sendMessage']>[2],
+    flags?: {transient?: boolean; withoutMenu?: boolean},
+  ): Promise<SendOutcome>
   /** `true` when Telegram accepted the photo; `false` after a logged failure. Never throws. */
   sendPhoto(
     userId: number,
@@ -37,6 +49,7 @@ export type Notifier = {
  */
 export const notifier: Notifier = {
   send: (...args) => getRuntime().notifier.send(...args),
+  sendOutcome: (...args) => getRuntime().notifier.sendOutcome(...args),
   sendPhoto: (...args) => getRuntime().notifier.sendPhoto(...args),
   copyMessage: (...args) => getRuntime().notifier.copyMessage(...args),
 }

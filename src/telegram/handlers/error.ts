@@ -1,4 +1,5 @@
 import {AppError} from '@core/errors/app-error.js'
+import {isSendPaused} from '@core/errors/send-paused.js'
 import type {BotContext} from '@telegram/context.js'
 import {errorTranslationKey} from '@telegram/errors/error-copy.js'
 import {isVanishedTelegramMessageError} from '@telegram/errors/vanished-message.js'
@@ -16,8 +17,9 @@ export const errorHandler: ErrorHandler = async err => {
   }
   ctx.log.error({error}, 'Bot error')
 
-  const errorResponse =
-    error instanceof AppError
+  const errorResponse = isSendPaused(error)
+    ? ctx.t(errorTranslationKey.send_paused)
+    : error instanceof AppError
       ? ctx.t(errorTranslationKey[error.code], error.params)
       : ctx.t('error.unknown')
 

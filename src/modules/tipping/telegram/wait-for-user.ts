@@ -1,4 +1,4 @@
-import {getUserByUsername} from '@modules/users/repository.js'
+import {snapshotSendTarget} from '@modules/tipping/telegram/snapshot-send-target.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import type {BotConversation, ConversationContext} from '@telegram/context.js'
 import {type ConversationHost, showHostOrReply} from '@telegram/helpers/conversation-host.js'
@@ -14,8 +14,6 @@ import {deleteMessageSafely} from '@telegram/helpers/delete-message.js'
 import {waitForStepInput} from '@telegram/helpers/pasted-payment.js'
 import {replyWithConversationTempMessage} from '@telegram/helpers/temp-message.js'
 import {InlineKeyboard} from 'grammy'
-
-const USERNAME_REGEX = /^@([a-zA-Z0-9_]+)$/
 
 export async function waitForUser(
   conversation: BotConversation,
@@ -59,33 +57,21 @@ export async function waitForUser(
       return interruptConversation(conversation, prompt, cancelled)
     }
 
-    const matched = USERNAME_REGEX.exec(next.message?.text?.trim() ?? '')?.[1]
-    if (!matched) {
-      await replyWithConversationTempMessage(conversation, next, next.t('wait-for-user.invalid'))
-      continue
-    }
-
-    const result = await validateUsername(next, matched.toLowerCase())
-    if (result.status === 'invalid') {
-      await replyWithConversationTempMessage(conversation, next, next.t(result.translationKey))
+    const result = await snapshotSendTarget(conversation, next, next.message?.text ?? '')
+    if (result.kind !== 'user') {
+      const key =
+        result.kind === 'self'
+          ? 'error.to-yourself'
+          : result.kind === 'unknown'
+            ? 'error.user-does-not-have-wallet'
+            : 'wait-for-user.invalid'
+      await replyWithConversationTempMessage(conversation, next, next.t(key))
       continue
     }
 
     await clearPromptControls(conversation, prompt)
     // The report echoes the selected username, so the typed @handle itself is noise.
     if (opts?.deleteInput) await deleteMessageSafely(next)
-    return result.user
+    return {id: result.userId, username: result.username}
   }
-}
-
-async function validateUsername(ctx: ConversationContext, username: string) {
-  if (username === ctx.user.username)
-    return {status: 'invalid' as const, translationKey: 'error.to-yourself'}
-  const user = await getUserByUsername(username)
-  if (!user) return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
-  const tgUser = await ctx.api.getChat(user.id)
-  if (tgUser.username?.toLowerCase() !== username) {
-    return {status: 'invalid' as const, translationKey: 'error.user-does-not-have-wallet'}
-  }
-  return {status: 'ok' as const, user}
 }

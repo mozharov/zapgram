@@ -1,7 +1,109 @@
 import {describe, expect, mock, test} from 'bun:test'
+import {createUserRepository} from '@modules/users/repository.js'
+import {createTestDb} from '@test/helpers/db.js'
+import {createDonationPayService} from '../donations/pay.service.js'
+import {donationPayHarness} from '../donations/pay.test-support.js'
+import {createPendingDonationService} from '../donations/pending.service.js'
+import {createDonationRepository} from '../donations/repository.js'
 import {createFeatureRequestService, formatFeatureRequestAdminMeta} from './submit.service.js'
 
 const source = {chatId: 1, messageId: 99, text: 'Built-in on-chain wallet'}
+
+async function restartHarness() {
+  const db = createTestDb()
+  const h = donationPayHarness()
+  await createUserRepository(db).createOrUpdate({id: 1})
+  const attempts: string[] = []
+  function newService() {
+    // A restart recreates every service/repository; only SQLite and wallet fakes survive.
+    const donations = createDonationRepository(db)
+    const pending = createPendingDonationService({
+      donations,
+      lookupFeePayment: h.lookupFeePayment,
+      log: h.log,
+    })
+    const pay = createDonationPayService({
+      ...h.deps,
+      users: createUserRepository(db),
+      issuance: donations,
+      pending,
+      insertDonation: donations.insertDonation,
+    })
+    return createFeatureRequestService({
+      payDonation: input => {
+        attempts.push(input.attemptId ?? '')
+        return pay.payDonation(input)
+      },
+      notify: async () => true,
+      copyMessage: async () => true,
+      adminTelegramIds: [],
+      formatAdminMeta: formatFeatureRequestAdminMeta,
+      log: h.log,
+    })
+  }
+  return {...h, newService, attempts, donations: createDonationRepository(db)}
+}
+
+for (const firstStatus of ['pending', 'paid'] as const) {
+  test(`restart reuses the same source attempt when its first result was ${firstStatus}`, async () => {
+    const h = await restartHarness()
+    if (firstStatus === 'pending') h.uncertain()
+    const input = {userId: 1, source, amountSats: 50}
+    expect(await h.newService().submit(input)).toMatchObject({fundStatus: firstStatus})
+    const [pending] = await h.donations.listPending(1, 'feature_request')
+    if (firstStatus === 'pending') expect(pending?.attemptId).toBe(h.attempts[0])
+    else expect(pending).toBeUndefined()
+
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    expect(await h.newService().submit(input)).toMatchObject({
+      fundStatus: 'paid',
+      amountPaidSats: 50,
+    })
+    // A further restart recovers the paid ledger even after its pending row was removed.
+    expect(await h.newService().submit(input)).toMatchObject({
+      fundStatus: 'paid',
+      amountPaidSats: 50,
+    })
+    expect(h.attempts[0]).toBeTruthy()
+    expect(new Set(h.attempts).size).toBe(1)
+    expect(await h.donations.findByAttempt(1, h.attempts[0] ?? '')).toMatchObject({
+      paymentHash: 'new-1',
+      amountSats: 50,
+    })
+    expect(await h.donations.listPending()).toHaveLength(0)
+    expect(await h.donations.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(h.payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.lookupFeePayment).toHaveBeenCalledTimes(firstStatus === 'pending' ? 1 : 0)
+  })
+}
+
+test('different source messages create distinct paid attempts across restarts', async () => {
+  const h = await restartHarness()
+  expect(await h.newService().submit({userId: 1, source, amountSats: 50})).toMatchObject({
+    fundStatus: 'paid',
+  })
+  expect(
+    await h.newService().submit({
+      userId: 1,
+      source: {...source, messageId: source.messageId + 1},
+      amountSats: 21,
+    }),
+  ).toMatchObject({fundStatus: 'paid', amountPaidSats: 21})
+  expect(h.attempts).toHaveLength(2)
+  expect(new Set(h.attempts).size).toBe(2)
+  expect(await h.donations.findByAttempt(1, h.attempts[0] ?? '')).toMatchObject({
+    amountSats: 50,
+    paymentHash: 'new-1',
+  })
+  expect(await h.donations.findByAttempt(1, h.attempts[1] ?? '')).toMatchObject({
+    amountSats: 21,
+    paymentHash: 'new-2',
+  })
+  expect(await h.donations.getUserStats(1)).toMatchObject({count: 2, totalSats: 71})
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+  expect(h.payInvoice).toHaveBeenCalledTimes(2)
+})
 
 describe('formatFeatureRequestAdminMeta', () => {
   test('shows who and funding without body text', () => {
@@ -24,7 +126,11 @@ describe('createFeatureRequestService', () => {
     const notify = mock(async () => true)
     const copyMessage = mock(async () => true)
     const capture = mock(() => {})
-    const payDonation = mock(async () => ({status: 'paid' as const, rail: 'internal' as const}))
+    const payDonation = mock(async () => ({
+      status: 'paid' as const,
+      rail: 'internal' as const,
+      paymentHash: 'fee-hash',
+    }))
 
     const service = createFeatureRequestService({
       payDonation,
@@ -128,4 +234,178 @@ describe('createFeatureRequestService', () => {
     expect(notify).toHaveBeenCalled()
     expect(copyMessage).toHaveBeenCalled()
   })
+})
+
+test('pending funding submits with explicit waiting status and no failed/free claim', async () => {
+  const notify = mock(async () => true)
+  const warn = mock(() => {})
+  const payDonation = mock(async () => ({
+    status: 'pending' as const,
+    paymentHash: 'pending-feature',
+    expiresAt: new Date(),
+    error: new Error('timeout'),
+  }))
+  const capture = mock(() => {})
+  const service = createFeatureRequestService({
+    payDonation,
+    notify,
+    copyMessage: async () => true,
+    adminTelegramIds: [7],
+    formatAdminMeta: formatFeatureRequestAdminMeta,
+    log: {info: () => {}, warn, error: () => {}, debug: () => {}} as never,
+    posthog: {capture, captureException: () => {}} as never,
+  })
+  const result = await service.submit({userId: 1, source, amountSats: 21})
+  expect(result).toMatchObject({fundStatus: 'pending', amountPaidSats: 0, sendPaused: false})
+  expect(payDonation).toHaveBeenCalledWith(
+    expect.objectContaining({kind: 'one_shot', pendingKind: 'feature_request'}),
+  )
+  expect(notify).toHaveBeenCalledWith(7, expect.stringContaining('awaiting payment confirmation'))
+  expect(notify).not.toHaveBeenCalledWith(7, expect.stringMatching(/failed|still free|Fund: none/))
+  expect(warn).not.toHaveBeenCalled()
+  expect(capture).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'feature_requested',
+      properties: expect.objectContaining({fund_status: 'pending'}),
+    }),
+  )
+})
+
+for (const cronFirst of [false, true]) {
+  test(`request B cannot consume paid funding of A (cron already closed A: ${cronFirst})`, async () => {
+    const h = donationPayHarness()
+    h.uncertain()
+    const payDonation = mock(h.service.payDonation)
+    const submit = createFeatureRequestService({
+      payDonation,
+      notify: async () => true,
+      copyMessage: async () => true,
+      adminTelegramIds: [],
+      formatAdminMeta: formatFeatureRequestAdminMeta,
+      log: h.log,
+    }).submit
+    const input = {userId: 1, source, amountSats: 50, nwc: {payInvoice: h.payInvoice} as never}
+    expect(await submit(input)).toMatchObject({fundStatus: 'pending', amountPaidSats: 0})
+    const paymentA = payDonation.mock.calls[0]?.[0]
+    if (!paymentA) throw new Error('Missing payment attempt A')
+    const attemptA = paymentA.attemptId
+    expect(attemptA).toEqual(expect.any(String))
+    expect(h.rows.get('new-1')?.attemptId).toBe(attemptA)
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    if (cronFirst) await h.pending.reconcileAll()
+    // B has no spendable funds. A's paid hash must never turn B into a funded request.
+    h.insufficient()
+    h.deps.getUserWallet = async () => ({balance: 0, payInvoice: h.payInvoice})
+    expect(
+      await submit({...input, source: {...source, messageId: source.messageId + 1}}),
+    ).toMatchObject({fundStatus: 'pay_failed', amountPaidSats: 0})
+    const attemptB = payDonation.mock.calls[1]?.[0].attemptId
+    expect(attemptB).toEqual(expect.any(String))
+    expect(attemptB).not.toBe(attemptA)
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+    expect(h.payInvoice).toHaveBeenCalledTimes(2)
+    await h.pending.reconcileAll()
+    await h.pending.reconcileAll()
+    expect([...h.ledger.keys()]).toEqual(['new-1'])
+    // The original attempt remains recoverable after cron removed its pending row.
+    expect(await h.service.payDonation(paymentA)).toMatchObject({
+      status: 'paid',
+      rail: 'recovered',
+      paymentHash: 'new-1',
+    })
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+    expect(h.ledger.size).toBe(1)
+  })
+}
+
+test('the same feature attempt reuses its pending hash while a different attempt can pay independently', async () => {
+  const h = donationPayHarness()
+  h.uncertain()
+  const input = {
+    userId: 1,
+    amountSats: 50,
+    kind: 'one_shot' as const,
+    pendingKind: 'feature_request' as const,
+    attemptId: 'a',
+    rail: 'nwc' as const,
+    nwc: {payInvoice: h.payInvoice} as never,
+  }
+  const first = await h.service.payDonation(input)
+  expect(first).toMatchObject({status: 'pending', paymentHash: 'new-1'})
+  expect(await h.service.payDonation(input)).toMatchObject({
+    status: 'pending',
+    paymentHash: 'new-1',
+  })
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  h.payInvoice.mockResolvedValue({})
+  expect(await h.service.payDonation({...input, attemptId: 'b'})).toMatchObject({
+    status: 'paid',
+    paymentHash: 'new-2',
+  })
+  expect(h.rows.get('new-1')?.attemptId).toBe('a')
+  expect(h.ledger.get('new-2')?.attemptId).toBe('b')
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+})
+
+test('double submit of the same source shares funding, admin delivery and result', async () => {
+  const h = donationPayHarness()
+  const payDonation = mock(h.service.payDonation)
+  const notify = mock(async () => true)
+  const copyMessage = mock(async () => true)
+  const service = createFeatureRequestService({
+    payDonation,
+    notify,
+    copyMessage,
+    adminTelegramIds: [7],
+    formatAdminMeta: formatFeatureRequestAdminMeta,
+    log: h.log,
+  })
+  const input = {userId: 1, source, amountSats: 50}
+  const first = service.submit(input)
+  const second = service.submit(input)
+  expect(first).toBe(second)
+  expect(await first).toBe(await second)
+  expect(payDonation).toHaveBeenCalledTimes(1)
+  expect(h.payInvoice).toHaveBeenCalledTimes(1)
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+  expect(notify).toHaveBeenCalledTimes(1)
+  expect(copyMessage).toHaveBeenCalledTimes(1)
+})
+
+test('a later feature request does not inherit recovered funding from a previous attempt', async () => {
+  const h = donationPayHarness()
+  h.uncertain()
+  const sourceA = {chatId: 1, messageId: 10, text: 'Idea A'}
+  const sourceB = {chatId: 1, messageId: 11, text: 'Idea B'}
+  const service = createFeatureRequestService({
+    payDonation: h.service.payDonation,
+    notify: async () => true,
+    copyMessage: async () => true,
+    adminTelegramIds: [7],
+    formatAdminMeta: formatFeatureRequestAdminMeta,
+    log: h.log,
+  })
+  expect(await service.submit({userId: 1, source: sourceA, amountSats: 50})).toMatchObject({
+    fundStatus: 'pending',
+    amountPaidSats: 0,
+  })
+  const [row] = [...h.rows.values()]
+  if (!row) throw new Error('Missing pending funding for A')
+  h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+  expect(
+    await h.service.payDonation({
+      userId: 1,
+      amountSats: 50,
+      kind: 'one_shot',
+      pendingKind: 'feature_request',
+      attemptId: row.attemptId ?? undefined,
+    }),
+  ).toMatchObject({status: 'paid', rail: 'recovered', paymentHash: row.paymentHash})
+  h.payInvoice.mockResolvedValue({})
+  const second = await service.submit({userId: 1, source: sourceB, amountSats: 21})
+  expect(second).toMatchObject({fundStatus: 'paid', amountPaidSats: 21})
+  expect(second).not.toMatchObject({amountPaidSats: 50})
+  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
+  expect([...h.ledger.values()].map(row => row.amountSats).sort((a, b) => a - b)).toEqual([21, 50])
+  expect(h.ledger.get(row.paymentHash)?.attemptId).toBe(row.attemptId)
 })

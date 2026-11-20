@@ -29,7 +29,11 @@ export type PaymentRequestKind = 'bolt11' | 'lightning-address' | 'lnurl'
 
 export type PaymentRequest = {
   kind: PaymentRequestKind
-  /** Lowercased form. Bolt11 and LNURL decoders expect a single case. */
+  /**
+   * Bolt11, bech32 LNURL, and a Lightning address are lowercased.
+   * An `lnurlp://` or `lnurlw://` URL lowercases only the scheme and host.
+   * The path and query are the recipient's and stay as pasted.
+   */
   value: string
 }
 
@@ -42,11 +46,11 @@ export function recognizePaymentRequest(text: string): PaymentRequest | null {
   const trimmed = text.trim()
   const fromBip21 = bip21Lightning(trimmed)
   const raw = (fromBip21 ?? trimmed).trim()
-  if (LNURL_HTTP_SCHEME.test(raw)) return {kind: 'lnurl', value: raw.toLowerCase()}
+  if (LNURL_HTTP_SCHEME.test(raw)) return {kind: 'lnurl', value: normalizeLnurlHttp(raw)}
 
   const stripped = raw.replace(LIGHTNING_SCHEME, '').trim()
   if (!stripped || /\s/.test(stripped)) return null
-  if (LNURL_HTTP_SCHEME.test(stripped)) return {kind: 'lnurl', value: stripped.toLowerCase()}
+  if (LNURL_HTTP_SCHEME.test(stripped)) return {kind: 'lnurl', value: normalizeLnurlHttp(stripped)}
 
   if (BOLT11.test(stripped)) return {kind: 'bolt11', value: stripped.toLowerCase()}
   if (LNURL.test(stripped)) return {kind: 'lnurl', value: stripped.toLowerCase()}
@@ -54,6 +58,15 @@ export function recognizePaymentRequest(text: string): PaymentRequest | null {
     return {kind: 'lightning-address', value: stripped.toLowerCase()}
   }
   return null
+}
+
+/** Scheme and host only. Path and query are case-sensitive on the recipient. */
+function normalizeLnurlHttp(raw: string): string {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(.*)$/i.exec(raw)
+  const scheme = match?.[1]?.toLowerCase()
+  const host = match?.[2]?.toLowerCase()
+  if (!scheme || host === undefined) return raw.toLowerCase()
+  return `${scheme}://${host}${match?.[3] ?? ''}${match?.[4] ?? ''}`
 }
 
 /** `bitcoin:...?lightning=<invoice>`. The parameter is the payment request. */

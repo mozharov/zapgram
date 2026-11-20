@@ -108,3 +108,27 @@ function totalBalance(state: ReturnType<typeof createLnbitsState>) {
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
+
+test('a pending pay reserves balance and a repeated POST leaves it unchanged', () => {
+  const state = createLnbitsState(keys)
+  const payer = walletFor(state, '100001')
+  const receiver = walletFor(state, '100002')
+  state.credit(payer.id, 42_000)
+  const invoice = state.createInvoice({wallet: receiver, sats: 21, memo: '', expirySec: 60})
+  state.pendingNextPay = true
+  const payment = state.payInvoice({payerWallet: payer, bolt11: invoice.bolt11})
+  expect(payment.paid).toBe(false)
+  expect(payer.balanceMsat).toBe(21_000)
+  expect(receiver.balanceMsat).toBe(0)
+  expect(state.payments.filter(row => row.out)).toHaveLength(1)
+  const reserved = state.snapshot()
+  let refused: unknown
+  try {
+    state.payInvoice({payerWallet: payer, bolt11: invoice.bolt11})
+  } catch (error) {
+    refused = error
+  }
+  expect(refused).toBeInstanceOf(FakeLnbitsError)
+  expect(refused).toMatchObject({status: 520, body: {status: 'pending'}})
+  expect(state.snapshot()).toEqual(reserved)
+})

@@ -3,6 +3,7 @@ import {donationPlatformStatsTable, donationsTable} from '@infra/db/schema.js'
 import {createDonationRepository} from '@modules/donations/repository.js'
 import {createUserRepository} from '@modules/users/repository.js'
 import {createTestDb} from '@test/helpers/db.js'
+import {sql} from 'drizzle-orm'
 
 test('insert donation and getUserStats aggregate successful rows', async () => {
   const db = createTestDb()
@@ -75,4 +76,306 @@ test('insert donation rolls the ledger back when the platform total cannot be up
   expect(await db.select().from(donationPlatformStatsTable)).toEqual([
     expect.objectContaining({id: 1, totalSats: 0, totalCount: 0}),
   ])
+})
+
+test('pending payments preserve independent hashes and settle atomically only once', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const expiresAt = new Date(Date.now() + 60_000)
+  for (const [paymentHash, kind, amountSats] of [
+    ['tip-1', 'percent', 5],
+    ['tip-2', 'percent', 10],
+    ['feature', 'feature_request', 21],
+    ['explicit', 'one_shot', 50],
+  ] as const)
+    await repo.savePending({userId: 1, paymentHash, kind, amountSats, expiresAt})
+  expect(await repo.listPending(1, 'percent')).toHaveLength(2)
+  await repo.insertDonation({userId: 1, paymentHash: 'tip-1', kind: 'percent', amountSats: 5})
+  await Promise.all([repo.completePending('tip-1'), repo.completePending('tip-1')])
+  expect(await repo.listPending()).toHaveLength(3)
+  expect((await repo.getUserStats(1)).count).toBe(1)
+  await repo.completePending('feature')
+  expect(await repo.findByPaymentHash('feature')).toMatchObject({amountSats: 21, kind: 'one_shot'})
+  await repo.completePending('tip-2')
+  await repo.completePending('explicit')
+  expect(await repo.listPending()).toEqual([])
+  expect(await repo.getUserStats(1)).toMatchObject({count: 4, totalSats: 86})
+  expect(await repo.getPlatformStats()).toMatchObject({totalCount: 4, totalSats: 86})
+  await expect(
+    repo.savePending({
+      userId: 999,
+      paymentHash: 'bad-user',
+      kind: 'percent',
+      amountSats: 1,
+      expiresAt,
+    }),
+  ).rejects.toThrow()
+})
+
+test('failed ledger totals write rolls back pending completion for a later retry', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  await repo.savePending({
+    userId: 1,
+    paymentHash: 'retry-ledger',
+    kind: 'one_shot',
+    amountSats: 21,
+    expiresAt: new Date(),
+  })
+  db.run(sql`CREATE TRIGGER reject_donation_totals BEFORE INSERT ON donation_platform_stats
+    BEGIN SELECT RAISE(ABORT, 'totals unavailable'); END`)
+  await expect(repo.completePending('retry-ledger')).rejects.toThrow('totals unavailable')
+  expect(await repo.listPending()).toHaveLength(1)
+  expect(await repo.findByPaymentHash('retry-ledger')).toBeUndefined()
+  db.run(sql`DROP TRIGGER reject_donation_totals`)
+  await repo.completePending('retry-ledger')
+  expect(await repo.listPending()).toHaveLength(0)
+  expect(await repo.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 21})
+})
+
+test('issuance CAS excludes other repositories, scopes feature attempts and preserves percent hashes', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).createOrUpdate({id: 1})
+  const first = createDonationRepository(db)
+  const other = createDonationRepository(db)
+  const [owner, loser] = await Promise.all([
+    first.reserveIssuance(1, 'one_shot'),
+    other.reserveIssuance(1, 'one_shot'),
+  ])
+  if (!owner) throw new Error('Expected issuance owner')
+  expect(loser).toBeNull()
+  expect(await other.reserveIssuance(1, 'feature_request', 'a')).not.toBeNull()
+  expect(await other.reserveIssuance(1, 'feature_request', 'b')).not.toBeNull()
+  expect(await other.reserveIssuance(1, 'feature_request', 'a')).toBeNull()
+  const row = {
+    userId: 1,
+    kind: 'one_shot' as const,
+    paymentHash: 'issued',
+    amountSats: 50,
+    expiresAt: new Date(Date.now() + 60_000),
+  }
+  expect(await first.saveIssued(owner, row)).toBe(true)
+  expect(await other.saveIssued(owner, {...row, paymentHash: 'duplicate'})).toBe(false)
+  for (const paymentHash of ['tip-a', 'tip-b'])
+    await other.savePending({...row, kind: 'percent', paymentHash})
+  expect(await first.listPending(1, 'percent')).toHaveLength(2)
+  await first.releaseIssuance(owner)
+  const next = await other.reserveIssuance(1, 'one_shot')
+  expect(next?.rows.map(row => row.paymentHash)).toEqual(['issued'])
+  if (!next) throw new Error('Expected next owner')
+  await first.releaseIssuance(owner)
+  expect(await first.reserveIssuance(1, 'one_shot')).toBeNull()
+  await other.releaseIssuance(next)
+})
+
+test('an expired issuance owner cannot persist or delete the next owner slot', async () => {
+  const db = createTestDb()
+  await createUserRepository(db).createOrUpdate({id: 1})
+  const repo = createDonationRepository(db)
+  const now = new Date()
+  const before = new Date(now.getTime() - 86_401_000)
+  const expired = await repo.reserveIssuance(1, 'one_shot', undefined, before)
+  if (!expired) throw new Error('Expected old lease')
+  const row = {
+    userId: 1,
+    kind: 'one_shot' as const,
+    paymentHash: 'stale',
+    amountSats: 50,
+    expiresAt: new Date(now.getTime() + 60_000),
+  }
+  expect(await repo.saveIssued(expired, row, now)).toBe(false)
+  const current = await repo.reserveIssuance(1, 'one_shot', undefined, now)
+  if (!current) throw new Error('Expected renewed lease')
+  expect(current.token).not.toBe(expired.token)
+  expect(await repo.saveIssued(expired, row, now)).toBe(false)
+  await repo.releaseIssuance(expired)
+  expect(await repo.reserveIssuance(1, 'one_shot', undefined, now)).toBeNull()
+  expect(await repo.saveIssued(current, {...row, paymentHash: 'current'}, now)).toBe(true)
+})
+
+test('transactional issuance snapshot retains the hash even if cron completes it before lookup', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  await users.createOrUpdate({id: 1})
+  await users.createOrUpdate({id: 2})
+  const repo = createDonationRepository(db)
+  await repo.savePending({
+    userId: 1,
+    kind: 'feature_request',
+    attemptId: 'a',
+    paymentHash: 'fund-a',
+    amountSats: 21,
+    expiresAt: new Date(),
+  })
+  const slot = await repo.reserveIssuance(1, 'feature_request', 'a')
+  if (!slot) throw new Error('Expected lease')
+  await Promise.all([repo.completePending('fund-a'), repo.completePending('fund-a')])
+  expect(slot.rows.map(row => row.paymentHash)).toEqual(['fund-a'])
+  expect(await repo.listPending()).toEqual([])
+  expect(await repo.findByAttempt(1, 'a')).toMatchObject({
+    paymentHash: 'fund-a',
+    amountSats: 21,
+    kind: 'one_shot',
+  })
+  expect(await repo.findByAttempt(1, 'b')).toBeUndefined()
+  expect(await repo.findByAttempt(2, 'a')).toBeUndefined()
+  expect(await repo.getUserStats(1)).toMatchObject({count: 1, totalSats: 21})
+})
+
+test('monthly issuance uses its own slot and atomically persists only one due invoice', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const other = createDonationRepository(db)
+  const now = new Date()
+  await users.createOrUpdate({id: 1, monthlyDonationNextAt: new Date(now.getTime() - 1000)})
+  const slot = await repo.reserveIssuance(1, 'monthly')
+  if (!slot) throw new Error('Expected monthly owner')
+  expect(await other.reserveIssuance(1, 'monthly')).toBeNull()
+  expect(await other.reserveIssuance(1, 'one_shot')).not.toBeNull()
+  const invoice = {
+    amountSats: 50,
+    paymentHash: 'monthly',
+    expiresAt: new Date(now.getTime() + 60_000),
+  }
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(true)
+  const claimed = await users.getOrThrow(1)
+  expect(claimed.monthlyDonationLastHash).toBe(invoice.paymentHash)
+  expect(claimed.monthlyDonationExpiresAt?.getTime()).toBe(
+    Math.floor(invoice.expiresAt.getTime() / 1000) * 1000,
+  )
+  expect(await repo.saveMonthlyIssued(slot, 1, {...invoice, paymentHash: 'duplicate'})).toBe(false)
+  // A stale cleanup must never release a different payment's claim.
+  await repo.clearMonthlyIssued(1, 'other-hash')
+  expect((await users.getOrThrow(1)).monthlyDonationLastHash).toBe('monthly')
+  await repo.clearMonthlyIssued(1, 'monthly')
+  expect(await users.getOrThrow(1)).toMatchObject({
+    monthlyDonationLastHash: null,
+    monthlyDonationExpiresAt: null,
+  })
+  await users.update(1, {monthlyDonationNextAt: new Date(now.getTime() + 60_000)})
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(false)
+  expect((await users.getOrThrow(1)).monthlyDonationLastHash).toBeNull()
+  // First enable has no nextAt yet, and is also a due period.
+  await users.update(1, {monthlyDonationNextAt: null})
+  expect(await repo.saveMonthlyIssued(slot, 1, invoice)).toBe(true)
+})
+
+test('expired monthly lease owners cannot save after another process claims the slot', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const now = new Date()
+  const expired = await repo.reserveIssuance(
+    1,
+    'monthly',
+    undefined,
+    new Date(now.getTime() - 25 * 60 * 60 * 1000),
+  )
+  if (!expired) throw new Error('Expected expired owner')
+  const invoice = {amountSats: 50, paymentHash: 'old', expiresAt: new Date(now.getTime() + 60_000)}
+  expect(await repo.saveMonthlyIssued(expired, 1, invoice, now)).toBe(false)
+  const current = await repo.reserveIssuance(1, 'monthly', undefined, now)
+  if (!current) throw new Error('Expected current owner')
+  expect(await repo.saveMonthlyIssued(expired, 1, invoice, now)).toBe(false)
+  await repo.releaseIssuance(expired)
+  expect(await repo.reserveIssuance(1, 'monthly', undefined, now)).toBeNull()
+  expect(await repo.saveMonthlyIssued(current, 1, {...invoice, paymentHash: 'current'}, now)).toBe(
+    true,
+  )
+})
+
+test('monthly payer and paid recovery insert one ledger row and increment totals once per hash', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const recovery = createDonationRepository(db)
+  await users.createOrUpdate({id: 1})
+  const input = {userId: 1, amountSats: 50, kind: 'monthly' as const, paymentHash: 'same-period'}
+  const rows = await Promise.all([repo.insertDonation(input), recovery.insertDonation(input)])
+  expect(rows[0]?.id).toBe(rows[1]?.id)
+  expect(await db.select().from(donationsTable)).toHaveLength(1)
+  expect(await repo.getUserStats(1)).toMatchObject({count: 1, totalSats: 50})
+  expect(await repo.getPlatformStats()).toMatchObject({totalCount: 1, totalSats: 50})
+})
+
+for (const change of ['disabled', 'amount_changed', 'no_next_at', 'not_due'] as const) {
+  test(`cron issuance rejects ${change} settings without claiming or rewriting the period`, async () => {
+    const db = createTestDb()
+    const users = createUserRepository(db)
+    const repo = createDonationRepository(db)
+    const now = new Date()
+    await users.createOrUpdate({
+      id: 1,
+      monthlyDonationSats: 50,
+      monthlyDonationNextAt: new Date(now.getTime() - 1000),
+    })
+    const slot = await repo.reserveIssuance(1, 'monthly')
+    if (!slot) throw new Error('Expected monthly owner')
+    await users.update(
+      1,
+      change === 'disabled'
+        ? {monthlyDonationSats: 0, monthlyDonationNextAt: null}
+        : change === 'amount_changed'
+          ? {monthlyDonationSats: 100}
+          : {
+              monthlyDonationNextAt:
+                change === 'no_next_at' ? null : new Date(now.getTime() + 60_000),
+            },
+    )
+    const before = await users.getOrThrow(1)
+    expect(
+      await repo.saveMonthlyIssued(
+        slot,
+        1,
+        {
+          amountSats: 50,
+          paymentHash: 'unused',
+          expiresAt: new Date(now.getTime() + 60_000),
+        },
+        now,
+        'cron',
+      ),
+    ).toBe(false)
+    expect(await users.getOrThrow(1)).toEqual(before)
+  })
+}
+
+test('cron issuance persists hash and expiry without changing the configured amount or due date', async () => {
+  const db = createTestDb()
+  const users = createUserRepository(db)
+  const repo = createDonationRepository(db)
+  const now = new Date()
+  await users.createOrUpdate({
+    id: 1,
+    monthlyDonationSats: 50,
+    monthlyDonationNextAt: new Date(now.getTime() - 60_000),
+  })
+  const before = await users.getOrThrow(1)
+  const slot = await repo.reserveIssuance(1, 'monthly')
+  if (!slot) throw new Error('Expected monthly owner')
+  expect(
+    await repo.saveMonthlyIssued(
+      slot,
+      1,
+      {
+        amountSats: 50,
+        paymentHash: 'cron-invoice',
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      now,
+      'cron',
+    ),
+  ).toBe(true)
+  expect(await users.getOrThrow(1)).toMatchObject({
+    monthlyDonationSats: before.monthlyDonationSats,
+    monthlyDonationNextAt: before.monthlyDonationNextAt,
+    monthlyDonationLastHash: 'cron-invoice',
+    monthlyDonationExpiresAt: expect.any(Date),
+  })
 })

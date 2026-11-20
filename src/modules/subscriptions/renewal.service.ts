@@ -1,6 +1,9 @@
+import {InvoiceAlreadyPaidError} from '@core/errors/invoice-already-paid.js'
+import {SendPausedError} from '@core/errors/send-paused.js'
 import {formatUsdSuffix, satsToUsd} from '@core/money/usd.js'
 import type {TranslationVariables} from '@grammyjs/i18n'
 import type {Chat, Subscription, SubscriptionPayment, User} from '@infra/db/types.js'
+import {payLeftBackendUnspent} from '@infra/lnbits/outgoing-liquidity.js'
 import type {AppLogger} from '@infra/logger.js'
 import type {Notifier} from '@modules/notifications/notifier.js'
 import {InputFile} from 'grammy'
@@ -112,6 +115,7 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       // Internal balance first, then NWC. After any failed rail, re-check the master invoice so
       // LNbits lag (or NWC "already paid") cannot double-charge and still can settle a paid row.
       const charged = await chargeSubscriber(subscription, invoice.bolt11, payment.paymentHash)
+      if (charged === 'pending') return {status: 'handed_off'}
       if (!charged) return {status: 'failed'}
     } catch (error) {
       deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptAutoRenewal')
@@ -148,8 +152,9 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     subscription: Subscription,
     bolt11: string,
     paymentHash: string,
-  ): Promise<boolean> {
-    if ((await attemptPaymentFromBalance(subscription, bolt11)).success) return true
+  ): Promise<boolean | 'pending'> {
+    const balance = await attemptPaymentFromBalance(subscription, bolt11)
+    if (balance.success) return true
 
     if (await isMasterInvoicePaid(paymentHash)) {
       deps.log.info(
@@ -159,6 +164,8 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
       return true
     }
 
+    // A reserved debit must resolve before another rail can charge the subscriber.
+    if (balance.pending) return 'pending'
     if ((await attemptPaymentFromNwc(subscription, bolt11)).success) return true
 
     if (await isMasterInvoicePaid(paymentHash)) {
@@ -172,20 +179,29 @@ export function createRenewalService(deps: RenewalServiceDeps): RenewalService {
     return false
   }
 
-  async function attemptPaymentFromBalance(subscription: Subscription, invoice: string) {
+  async function attemptPaymentFromBalance(
+    subscription: Subscription,
+    invoice: string,
+  ): Promise<{success: boolean; pending?: boolean}> {
+    let payStarted = false
     try {
       deps.log.info(`Attempting payment from balance for subscription ${subscription.id}`)
       const wallet = await deps.getUserWallet(subscription.userId)
-      const result = await wallet
-        .payInvoice(invoice, {knownInternal: true})
-        .catch((error: unknown) => {
-          deps.log.error({error}, 'Error paying invoice from balance')
-          return null
-        })
+      payStarted = true
+      const result = await wallet.payInvoice(invoice, {knownInternal: true})
       return {success: !!result}
     } catch (error) {
-      deps.log.error({error, subscriptionId: subscription.id}, 'Error in attemptPaymentFromBalance')
-      return {success: false}
+      deps.log.error(
+        {error, subscriptionId: subscription.id},
+        payStarted ? 'Error paying invoice from balance' : 'Error in attemptPaymentFromBalance',
+      )
+      return {
+        success: false,
+        pending:
+          payStarted &&
+          !(error instanceof SendPausedError) &&
+          (error instanceof InvoiceAlreadyPaidError || !payLeftBackendUnspent(error)),
+      }
     }
   }
 

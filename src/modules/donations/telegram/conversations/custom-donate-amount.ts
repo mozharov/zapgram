@@ -93,8 +93,14 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
     }),
   )
 
-  const usdSuffix = await conversation.external(() => usdSuffixForSats(sats))
-  if (result.status !== 'paid') {
+  const displayedSats = result.status === 'failed' ? sats : (result.amountSats ?? sats)
+  const usdSuffix = await conversation.external(() => usdSuffixForSats(displayedSats))
+  if (result.status === 'pending') {
+    await ctx.reply(ctx.t('donate.pending', {sats: displayedSats, usdSuffix}))
+    await replyDonateHub(ctx)
+    return
+  }
+  if (result.status === 'failed') {
     await conversation.external(() =>
       captureBotEvent(getRuntime().posthog, 'donate_one_shot_ui_failed', {
         feature: 'donations',
@@ -114,7 +120,7 @@ export async function customDonateAmount(conversation: BotConversation, ctx: Con
     return
   }
 
-  await ctx.reply(ctx.t('donate.success', {sats, usdSuffix}))
+  await ctx.reply(ctx.t('donate.success', {sats: displayedSats, usdSuffix}))
   await replyDonateHub(ctx)
   if (input?.message) await deleteMessageSafely(input)
 }
