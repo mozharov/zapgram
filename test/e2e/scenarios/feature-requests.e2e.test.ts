@@ -455,15 +455,41 @@ test('pending feature funding waits in UI and admin meta, retries by lookup, the
 
   // A separate ordinary donation must not consume or overwrite the feature funding hash.
   await e2e.container.donationPay.payDonation({userId: USER_A, amountSats: 50, kind: 'one_shot'})
+  expect(await e2e.container.donations.findByPaymentHash(pending.paymentHash)).toBeUndefined()
+  expect(
+    (await e2e.container.donations.listPending(USER_A, 'feature_request')).map(
+      row => row.paymentHash,
+    ),
+  ).toEqual([pending.paymentHash])
+
+  // Retry of the same attempt looks the invoice up and does not mint another one.
+  expect(pending.attemptId).toBeTruthy()
+  const retried = await e2e.container.donationPay.payDonation({
+    userId: USER_A,
+    amountSats: 100,
+    kind: 'one_shot',
+    pendingKind: 'feature_request',
+    attemptId: pending.attemptId ?? undefined,
+  })
+  expect(retried).toMatchObject({
+    status: 'pending',
+    paymentHash: pending.paymentHash,
+    amountSats: 21,
+  })
+  expect(await e2e.container.donations.listPending(USER_A, 'feature_request')).toHaveLength(1)
+  expect(e2e.ln.state.payments.filter(payment => !payment.out)).toHaveLength(2)
+
+  // A later feature request is a new attempt: it may pay on its own hash and must not take A's.
   await openFeatureRequest()
-  await e2e.send(privateText('Retry funding while the first invoice is live'))
+  await e2e.send(privateText('A second request must not inherit the first invoice'))
   await e2e.send(
     privateCallback(featureFundAmountRoute.build({amountSats: 100}), {
       messageId: requiredPromptMessageId(),
     }),
   )
   expect(await e2e.container.donations.listPending(USER_A, 'feature_request')).toHaveLength(1)
-  expect(e2e.ln.state.payments.filter(payment => !payment.out)).toHaveLength(2)
+  expect(e2e.ln.state.payments.filter(payment => !payment.out)).toHaveLength(3)
+  expect((await e2e.container.donations.getUserStats(USER_A)).totalSats).toBe(150)
   await reconcilePendingDonations()
   expect(await e2e.container.donations.listPending()).toHaveLength(1)
   for (const payment of e2e.ln.state.payments.filter(
@@ -479,18 +505,19 @@ test('pending feature funding waits in UI and admin meta, retries by lookup, the
     amountSats: 21,
     kind: 'one_shot',
     userId: USER_A,
+    attemptId: pending.attemptId,
   })
   expect(await e2e.container.donations.getUserStats(USER_A)).toMatchObject({
-    count: 2,
-    totalSats: 71,
+    count: 3,
+    totalSats: 171,
   })
   const fees = e2e.ln.state.wallets.find(wallet => wallet.name === FEES)?.id
   const donor = e2e.ln.state.wallets.find(wallet => wallet.name === `${USER_A} wallet`)?.id
   const incoming = e2e.ln.state.payments.filter(payment => !payment.out)
   const outgoing = e2e.ln.state.payments.filter(payment => payment.out)
-  expect(incoming).toHaveLength(2)
-  expect(incoming.filter(payment => payment.walletId === fees)).toHaveLength(2)
-  expect(outgoing).toHaveLength(2)
-  expect(outgoing.filter(payment => payment.walletId === donor)).toHaveLength(2)
+  expect(incoming).toHaveLength(3)
+  expect(incoming.filter(payment => payment.walletId === fees)).toHaveLength(3)
+  expect(outgoing).toHaveLength(3)
+  expect(outgoing.filter(payment => payment.walletId === donor)).toHaveLength(3)
   expect(outgoing.filter(payment => payment.walletId !== donor)).toHaveLength(0)
 })

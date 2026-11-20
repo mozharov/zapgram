@@ -6,6 +6,7 @@ import type {
   Conversation,
   DmTransfer,
   Donation,
+  DonationPaymentSlot,
   DonationPlatformStats,
   LnurlPayAttempt,
   OnchainChatPayment,
@@ -38,6 +39,7 @@ export type WorldState = {
     donations: Donation[]
     donationPlatformStats: DonationPlatformStats[]
     pendingDonationPayments: PendingDonationPayment[]
+    donationPaymentSlots: DonationPaymentSlot[]
     broadcasts: Broadcast[]
     broadcastRecipients: BroadcastRecipient[]
   }
@@ -359,7 +361,7 @@ function rowIdentity(key: DbKey, value: unknown): string | number {
   const field =
     key === 'pendingInvoices'
       ? 'paymentRequest'
-      : key === 'conversations'
+      : key === 'conversations' || key === 'donationPaymentSlots'
         ? 'key'
         : key === 'pendingDonationPayments'
           ? 'paymentHash'
@@ -414,6 +416,7 @@ function emptyDbState(): WorldState['db'] {
     donations: [],
     donationPlatformStats: [],
     pendingDonationPayments: [],
+    donationPaymentSlots: [],
     broadcasts: [],
     broadcastRecipients: [],
   }
@@ -434,6 +437,7 @@ function dbKey(tableName: string): DbKey {
     donations: 'donations',
     donation_platform_stats: 'donationPlatformStats',
     pending_donation_payments: 'pendingDonationPayments',
+    donation_payment_slots: 'donationPaymentSlots',
     broadcasts: 'broadcasts',
     broadcast_recipients: 'broadcastRecipients',
   }

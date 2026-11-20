@@ -136,3 +136,52 @@ test('0028 upgrades 0027 with pending storage and monthly TTL while preserving e
     sqlite.close()
   }
 })
+
+test('0029 extends 0028 with nullable funding ownership and issuance slots without changing historical payments', () => {
+  const sqlite = new Database(':memory:')
+  const read = (path: string) =>
+    readFileSync(new URL(`../../../drizzle/${path}`, import.meta.url), 'utf8')
+  try {
+    for (const entry of journal.entries.filter(entry => entry.idx <= 28))
+      sqlite.exec(read(`${entry.tag}.sql`))
+    sqlite.exec(`INSERT INTO users (id) VALUES (1);
+      INSERT INTO donations (id, user_id, amount_sats, kind, payment_hash) VALUES ('old', 1, 50, 'one_shot', 'old-hash');
+      INSERT INTO pending_donation_payments (payment_hash, user_id, kind, amount_sats, expires_at) VALUES
+      ('legacy-feature', 1, 'feature_request', 21, unixepoch() + 60), ('tip-a', 1, 'percent', 5, unixepoch() + 60);`)
+    const ledger = sqlite.query('SELECT * FROM donations').all() as Record<string, unknown>[]
+    const pending = sqlite
+      .query('SELECT * FROM pending_donation_payments ORDER BY payment_hash')
+      .all() as Record<string, unknown>[]
+    sqlite.exec(read('0029_donation_attempt_issuance.sql'))
+    expect(sqlite.prepare('SELECT * FROM donations').all()).toEqual(
+      ledger.map(row => ({...row, attempt_id: null})),
+    )
+    expect(
+      sqlite.prepare('SELECT * FROM pending_donation_payments ORDER BY payment_hash').all(),
+    ).toEqual(pending.map(row => ({...row, attempt_id: null})))
+    sqlite.exec(`INSERT INTO pending_donation_payments (payment_hash, user_id, kind, amount_sats, expires_at, attempt_id) VALUES
+      ('tip-b', 1, 'percent', 5, unixepoch() + 60, NULL),
+      ('feature-a', 1, 'feature_request', 21, unixepoch() + 60, 'a'),
+      ('feature-b', 1, 'feature_request', 21, unixepoch() + 60, 'b');`)
+    expect(sqlite.query('SELECT * FROM pending_donation_payments').all()).toHaveLength(5)
+    sqlite.exec(
+      "INSERT INTO donation_payment_slots (key, token, expires_at) VALUES ('slot', 'owner', unixepoch() + 60)",
+    )
+    expect(() =>
+      sqlite.exec(
+        "INSERT INTO donation_payment_slots (key, token, expires_at) VALUES ('slot', 'other', unixepoch() + 60)",
+      ),
+    ).toThrow()
+    const previous = JSON.parse(read('meta/0028_snapshot.json'))
+    const current = JSON.parse(read('meta/0029_snapshot.json'))
+    expect(previous.id).toBe('f2e09d7f-822f-4972-a1c1-d644f7b869ab')
+    expect(current.prevId).toBe(previous.id)
+    expect(current.id).not.toBe(previous.id)
+    expect(current.tables.users).toEqual(previous.tables.users)
+    expect(current.tables.pending_donation_payments.columns.attempt_id.notNull).toBe(false)
+    expect(current.tables.donations.columns.attempt_id.notNull).toBe(false)
+    expect(journal.entries[29]?.tag).toBe('0029_donation_attempt_issuance')
+  } finally {
+    sqlite.close()
+  }
+})

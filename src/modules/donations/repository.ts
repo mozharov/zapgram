@@ -1,13 +1,19 @@
 import {type DonationLedgerKind, MONTHLY_DONATION_PERIOD_MS} from '@core/money/donation.js'
 import type {AppDatabase} from '@infra/db/client.js'
 import {
+  donationPaymentSlotsTable,
   donationPlatformStatsTable,
   donationsTable,
   pendingDonationPaymentsTable,
 } from '@infra/db/schema.js'
-import type {Donation, NewDonation, PendingDonationPayment} from '@infra/db/types.js'
+import type {
+  Donation,
+  NewDonation,
+  NewPendingDonationPayment,
+  PendingDonationPayment,
+} from '@infra/db/types.js'
 import {firstOrThrow} from '@infra/db/utils.js'
-import {and, asc, desc, eq, gte, sql} from 'drizzle-orm'
+import {and, asc, desc, eq, gt, gte, lte, sql} from 'drizzle-orm'
 import {getRuntime} from '../../runtime.js'
 
 export type UserDonationStats = {
@@ -73,8 +79,103 @@ export function createDonationRepository(database: AppDatabase) {
     return row
   }
 
-  async function savePending(data: Omit<PendingDonationPayment, 'createdAt'>) {
+  async function savePending(data: NewPendingDonationPayment) {
     await database.insert(pendingDonationPaymentsTable).values(data).onConflictDoNothing()
+  }
+
+  function pendingScope(userId: number, kind: PendingDonationPayment['kind'], attemptId?: string) {
+    return and(
+      eq(pendingDonationPaymentsTable.userId, userId),
+      eq(pendingDonationPaymentsTable.kind, kind),
+      kind === 'feature_request' && attemptId !== undefined
+        ? eq(pendingDonationPaymentsTable.attemptId, attemptId)
+        : undefined,
+    )
+  }
+
+  /** Claim and read in one write transaction, before any asynchronous invoice lookup or mint. */
+  async function reserveIssuance(
+    userId: number,
+    kind: 'one_shot' | 'feature_request',
+    attemptId?: string,
+    now = new Date(),
+  ) {
+    return database.transaction(
+      tx => {
+        const key = JSON.stringify([
+          userId,
+          kind,
+          kind === 'feature_request' ? (attemptId ?? null) : null,
+        ])
+        const token: string = crypto.randomUUID()
+        const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+        const claimed = tx
+          .insert(donationPaymentSlotsTable)
+          .values({key, token, expiresAt})
+          .onConflictDoUpdate({
+            target: donationPaymentSlotsTable.key,
+            set: {token, expiresAt},
+            setWhere: lte(donationPaymentSlotsTable.expiresAt, now),
+          })
+          .returning()
+          .get()
+        if (!claimed) return null
+        const rows = tx
+          .select()
+          .from(pendingDonationPaymentsTable)
+          .where(pendingScope(userId, kind, attemptId))
+          .all()
+        return {key, token, rows}
+      },
+      {behavior: 'immediate'},
+    )
+  }
+
+  async function releaseIssuance(slot: {key: string; token: string}) {
+    await database
+      .delete(donationPaymentSlotsTable)
+      .where(
+        and(
+          eq(donationPaymentSlotsTable.key, slot.key),
+          eq(donationPaymentSlotsTable.token, slot.token),
+        ),
+      )
+  }
+
+  /** Fence expired owners and persist the invoice BEFORE debit, including across process crashes. */
+  async function saveIssued(
+    slot: {key: string; token: string},
+    data: NewPendingDonationPayment,
+    now = new Date(),
+  ) {
+    return database.transaction(
+      tx => {
+        const owner = tx
+          .select()
+          .from(donationPaymentSlotsTable)
+          .where(
+            and(
+              eq(donationPaymentSlotsTable.key, slot.key),
+              eq(donationPaymentSlotsTable.token, slot.token),
+              gt(donationPaymentSlotsTable.expiresAt, now),
+            ),
+          )
+          .get()
+        if (!owner) return false
+        // A writer outside this lease may have installed a pending invoice while mint was in flight.
+        if (
+          tx
+            .select()
+            .from(pendingDonationPaymentsTable)
+            .where(pendingScope(data.userId, data.kind, data.attemptId ?? undefined))
+            .get()
+        )
+          return false
+        tx.insert(pendingDonationPaymentsTable).values(data).run()
+        return true
+      },
+      {behavior: 'immediate'},
+    )
   }
 
   async function listPending(userId?: number, kind?: PendingDonationPayment['kind']) {
@@ -119,6 +220,7 @@ export function createDonationRepository(database: AppDatabase) {
           amountSats: pending.amountSats,
           kind: pending.kind === 'percent' ? 'percent' : 'one_shot',
           paymentHash: hash,
+          attemptId: pending.kind === 'feature_request' ? pending.attemptId : null,
         })
       tx.delete(pendingDonationPaymentsTable)
         .where(eq(pendingDonationPaymentsTable.paymentHash, hash))
@@ -177,15 +279,29 @@ export function createDonationRepository(database: AppDatabase) {
     })
   }
 
+  async function findByAttempt(userId: number, attemptId: string) {
+    return database.query.donationsTable.findFirst({
+      where: and(
+        eq(donationsTable.userId, userId),
+        eq(donationsTable.kind, 'one_shot'),
+        eq(donationsTable.attemptId, attemptId),
+      ),
+    })
+  }
+
   return {
     insert,
     savePending,
+    reserveIssuance,
+    releaseIssuance,
+    saveIssued,
     listPending,
     removePending,
     completePending,
     getUserStats,
     getPlatformStats,
     findByPaymentHash,
+    findByAttempt,
     async insertDonation(input: {
       userId: number
       amountSats: number

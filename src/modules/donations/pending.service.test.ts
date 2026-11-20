@@ -30,7 +30,7 @@ function harness() {
   const service = createPendingDonationService({
     donations: {
       savePending: async row => {
-        rows.push({...row, createdAt: now})
+        rows.push({...row, attemptId: row.attemptId ?? null, createdAt: now})
       },
       listPending: async (userId, kind) =>
         rows.filter(
@@ -40,6 +40,7 @@ function harness() {
         ),
       completePending,
       removePending,
+      findByAttempt: async () => undefined,
     },
     lookupFeePayment,
     log,

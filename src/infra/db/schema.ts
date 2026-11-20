@@ -63,6 +63,8 @@ export const donationsTable = sqliteTable(
     amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
     kind: text('kind', {enum: ['percent', 'one_shot', 'monthly']}).notNull(),
     paymentHash: text('payment_hash'),
+    /** Retain feature funding ownership after pending reconciliation removes its row. */
+    attemptId: text('attempt_id'),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
   },
   table => [
@@ -81,6 +83,7 @@ export const pendingDonationPaymentsTable = sqliteTable(
       .notNull()
       .references(() => usersTable.id, {onDelete: 'cascade'}),
     kind: text('kind', {enum: ['one_shot', 'percent', 'feature_request']}).notNull(),
+    attemptId: text('attempt_id'),
     amountSats: integer('amount_sats', {mode: 'number'}).notNull(),
     expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
     createdAt: integer('created_at', {mode: 'timestamp'}).notNull().default(sql`(unixepoch())`),
@@ -93,6 +96,13 @@ export const pendingDonationPaymentsTable = sqliteTable(
     ),
   ],
 )
+
+/** Cross-process issuance lease; percent collections never acquire this slot. */
+export const donationPaymentSlotsTable = sqliteTable('donation_payment_slots', {
+  key: text('key').primaryKey(),
+  token: text('token').notNull(),
+  expiresAt: integer('expires_at', {mode: 'timestamp'}).notNull(),
+})
 
 /**
  * Singleton running total of successful platform donations (all-time).

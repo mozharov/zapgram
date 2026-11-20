@@ -1,5 +1,5 @@
 import {classifyDonationLookup, type DonationPaymentLookup} from '@core/money/donation-payment.js'
-import type {PendingDonationPayment} from '@infra/db/types.js'
+import type {NewPendingDonationPayment, PendingDonationPayment} from '@infra/db/types.js'
 import type {AppLogger} from '@infra/logger.js'
 import {HTTPError} from 'got'
 import type {DonationRepository} from './repository.js'
@@ -7,7 +7,7 @@ import type {DonationRepository} from './repository.js'
 export function createPendingDonationService(deps: {
   donations: Pick<
     DonationRepository,
-    'savePending' | 'listPending' | 'removePending' | 'completePending'
+    'savePending' | 'listPending' | 'removePending' | 'completePending' | 'findByAttempt'
   >
   lookupFeePayment: (hash: string) => Promise<DonationPaymentLookup>
   log: AppLogger
@@ -47,9 +47,37 @@ export function createPendingDonationService(deps: {
     }
   }
 
-  async function reconcileUser(userId: number, kind: PendingDonationPayment['kind']) {
+  async function reconcileUser(
+    userId: number,
+    kind: PendingDonationPayment['kind'],
+    attemptId?: string,
+    observed: PendingDonationPayment[] = [],
+  ) {
+    if (kind === 'feature_request' && attemptId !== undefined) {
+      const paid = await deps.donations.findByAttempt(userId, attemptId)
+      if (paid?.paymentHash)
+        return [
+          {
+            state: 'paid' as const,
+            row: {
+              paymentHash: paid.paymentHash,
+              userId,
+              kind,
+              attemptId,
+              amountSats: paid.amountSats,
+              createdAt: paid.createdAt,
+              expiresAt: paid.createdAt,
+            },
+          },
+        ]
+    }
     const results = []
-    for (const row of await deps.donations.listPending(userId, kind)) {
+    // Keep the transactional snapshot even if cron removed a paid row during our lookup.
+    const rows = new Map(observed.map(row => [row.paymentHash, row]))
+    for (const row of await deps.donations.listPending(userId, kind)) rows.set(row.paymentHash, row)
+    for (const row of rows.values()) {
+      if (kind === 'feature_request' && attemptId !== undefined && row.attemptId !== attemptId)
+        continue
       results.push({row, state: await reconcileSafely(row)})
     }
     return results
@@ -61,7 +89,7 @@ export function createPendingDonationService(deps: {
     }
   }
 
-  async function save(input: Omit<PendingDonationPayment, 'createdAt'>) {
+  async function save(input: NewPendingDonationPayment) {
     await deps.donations.savePending(input)
     deps.log.info(
       {userId: input.userId, paymentHash: input.paymentHash, kind: input.kind},
@@ -69,7 +97,13 @@ export function createPendingDonationService(deps: {
     )
   }
 
-  return {save, reconcileUser, reconcileAll}
+  return {
+    save,
+    reconcileUser,
+    reconcileAll,
+    complete: deps.donations.completePending,
+    remove: deps.donations.removePending,
+  }
 }
 
 export type PendingDonationService = ReturnType<typeof createPendingDonationService>

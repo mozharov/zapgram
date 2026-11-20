@@ -49,7 +49,7 @@ function escapeHtml(value: string): string {
  * Sats are an optional signal tip — not escrow and not a promise to ship.
  */
 export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
-  async function submit(input: {
+  async function doSubmit(input: {
     userId: number
     username?: string | null
     firstName?: string | null
@@ -58,6 +58,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     nwcUrl?: string | null
     nwc?: NostrWallet
   }): Promise<SubmitFeatureRequestResult> {
+    const attemptId = crypto.randomUUID()
     const username = input.username ?? null
     const firstName = input.firstName ?? null
     const text = input.source.text
@@ -73,6 +74,7 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
           amountSats: input.amountSats,
           kind: 'one_shot',
           pendingKind: 'feature_request',
+          attemptId,
           rail: 'auto',
           nwc: input.nwc,
           nwcUrl: input.nwcUrl,
@@ -156,6 +158,18 @@ export function createFeatureRequestService(deps: FeatureRequestSubmitDeps) {
     }
 
     return {fundStatus, amountPaidSats, adminNotified, sendPaused}
+  }
+
+  const inFlight = new Map<string, Promise<SubmitFeatureRequestResult>>()
+  function submit(input: Parameters<typeof doSubmit>[0]) {
+    const key = `${input.userId}:${input.source.chatId}:${input.source.messageId}`
+    const previous = inFlight.get(key)
+    if (previous) return previous
+    const current = doSubmit(input).finally(() => {
+      if (inFlight.get(key) === current) inFlight.delete(key)
+    })
+    inFlight.set(key, current)
+    return current
   }
 
   return {submit}

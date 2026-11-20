@@ -4,6 +4,7 @@ import type {
   chatsTable,
   conversationsTable,
   dmTransfersTable,
+  donationPaymentSlotsTable,
   donationPlatformStatsTable,
   donationsTable,
   lnurlPayAttemptsTable,
@@ -66,3 +67,6 @@ export type BroadcastRecipient = typeof broadcastRecipientsTable.$inferSelect
 export type BroadcastRecipientInsert = typeof broadcastRecipientsTable.$inferInsert
 
 export type PendingDonationPayment = typeof pendingDonationPaymentsTable.$inferSelect
+
+export type DonationPaymentSlot = typeof donationPaymentSlotsTable.$inferSelect
+export type NewPendingDonationPayment = typeof pendingDonationPaymentsTable.$inferInsert

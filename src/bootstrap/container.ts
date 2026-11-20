@@ -307,6 +307,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     log,
   })
   const donationPay = createDonationPayService({
+    issuance: donations,
     pending: pendingDonations,
     createFeeCollectionInvoice: sats => masterWallet.createFeeCollectionInvoice(sats),
     getUserWallet,

@@ -24,6 +24,7 @@ function harness() {
       ...input,
       id: crypto.randomUUID(),
       paymentHash: input.paymentHash ?? null,
+      attemptId: null,
       createdAt: new Date(),
     }
     ledger.push(row)
@@ -40,7 +41,17 @@ function harness() {
     }),
   )
   const donationPay = createDonationPayService({
-    pending: {save: async () => {}, reconcileUser: async () => []},
+    pending: {
+      save: async () => {},
+      reconcileUser: async () => [],
+      complete: async () => {},
+      remove: async () => {},
+    },
+    issuance: {
+      reserveIssuance: async () => null,
+      releaseIssuance: async () => {},
+      saveIssued: async () => false,
+    },
     createFeeCollectionInvoice,
     getUserWallet: async () => ({balance: 100_000, payInvoice}),
     insertDonation,
@@ -344,29 +355,52 @@ test('pending with live lookup and saved expiry waits without a new invoice', as
   expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
 })
 
-test('definite NWC refusal does not save lastHash and the following tick tries again', async () => {
-  const h = harness()
-  const payInvoice = mock(async () => {
-    throw new NWCPaymentFailedError()
-  })
-  h.user.nwcUrl = 'unit-test-nwc'
-  h.deps.donationPay = createDonationPayService({
-    pending: {save: async () => {}, reconcileUser: async () => []},
-    createFeeCollectionInvoice: h.createFeeCollectionInvoice,
-    getUserWallet: async () => ({balance: 0, payInvoice}),
-    createNwc: () => ({payInvoice}) as never,
-    insertDonation: h.insertDonation,
-    log: h.deps.log,
-  })
-  for (let i = 0; i < 2; i++) {
+for (const future of [false, true]) {
+  test(`NWC refusal retains lastHash and recovers real debit once (future nextAt: ${future})`, async () => {
+    const h = harness()
+    const payInvoice = mock(async () => {
+      throw new NWCPaymentFailedError()
+    })
+    h.user.nwcUrl = 'unit-test-nwc'
+    h.deps.donationPay = createDonationPayService({
+      pending: {
+        save: async () => {},
+        reconcileUser: async () => [],
+        complete: async () => {},
+        remove: async () => {},
+      },
+      issuance: {
+        reserveIssuance: async () => null,
+        releaseIssuance: async () => {},
+        saveIssued: async () => false,
+      },
+      createFeeCollectionInvoice: h.createFeeCollectionInvoice,
+      getUserWallet: async () => ({balance: 0, payInvoice}),
+      createNwc: () => ({payInvoice}) as never,
+      insertDonation: h.insertDonation,
+      log: h.deps.log,
+    })
     expect(await h.tick()).toBe('keep')
+    const hash = h.user.monthlyDonationLastHash
+    expect(hash).toBeTruthy()
+    expect(h.user.monthlyDonationExpiresAt).toBeInstanceOf(Date)
+    expect(await h.tick()).toBe('keep')
+    if (future)
+      h.user.monthlyDonationNextAt = new Date(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS)
+    const nextAt = h.user.monthlyDonationNextAt
+    h.lookupFeePayment.mockResolvedValue({paid: true, details: {amount: 50_000}})
+    expect(await h.tick()).toBe('done')
+    expect(await h.tick()).toBe('done')
     expect(h.user.monthlyDonationLastHash).toBeNull()
-  }
-  expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(2)
-  expect(payInvoice).toHaveBeenCalledTimes(2)
-  expect(h.lookupFeePayment).not.toHaveBeenCalled()
-  expect(h.ledger).toHaveLength(0)
-})
+    expect(h.user.monthlyDonationExpiresAt).toBeNull()
+    expect(h.user.monthlyDonationNextAt).toEqual(
+      future ? nextAt : new Date(h.now.getTime() + MONTHLY_DONATION_PERIOD_MS),
+    )
+    expect(h.createFeeCollectionInvoice).toHaveBeenCalledTimes(1)
+    expect(payInvoice).toHaveBeenCalledTimes(1)
+    expect(h.ledger).toEqual([expect.objectContaining({paymentHash: hash, kind: 'monthly'})])
+  })
+}
 
 test('paid recovery preserves a future nextAt and clears hash and TTL without charging', async () => {
   const h = harness()
