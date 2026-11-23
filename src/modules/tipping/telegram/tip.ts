@@ -18,6 +18,8 @@ import {replyOnlyToSenderOrDm} from '@telegram/helpers/ephemeral-message.js'
 import type {ChatTypeContext} from 'grammy'
 import {getRuntime} from '../../../runtime.js'
 
+export const TIP_COMMAND_MAX_AGE_SECONDS = 120
+
 type Context = ChatTypeContext<Filter<BotContext, ':text' | ':caption'>, 'group' | 'supergroup'>
 
 /** The text the trigger was matched against — same source grammY's own `hears` reads. */
@@ -39,7 +41,29 @@ export const tipInvalidCommand = async (ctx: Context) => {
 }
 
 export const tipCommand = async (ctx: Context) => {
+  const commandMeta = {
+    chatId: ctx.chat.id,
+    ephemeral_message_id: ctx.msg.ephemeral_message_id,
+    message_id: ctx.msg.message_id,
+    date: ctx.msg.date,
+  }
+  if (Math.floor(Date.now() / 1000) - ctx.msg.date > TIP_COMMAND_MAX_AGE_SECONDS) {
+    ctx.log.warn(commandMeta, 'Stale tip command skipped')
+    return
+  }
   const {sats, username} = requestOf(ctx)
+  if (sats !== 0) {
+    const claimed = await getRuntime().tipCommands.claim({
+      chatId: ctx.chat.id,
+      fromUserId: ctx.from.id,
+      messageId: ctx.msg.ephemeral_message_id ?? ctx.msg.message_id,
+      date: ctx.msg.date,
+    })
+    if (!claimed) {
+      ctx.log.info(commandMeta, 'Duplicate tip command skipped')
+      return
+    }
+  }
   await deleteMessageSafely(ctx)
   if (sats === 0) return
   await ctx.replyWithChatAction('typing').catch(() => null)
@@ -73,7 +97,13 @@ export const tipCommand = async (ctx: Context) => {
     } else await internalTransfer(ctx.user.id, toUser.id, sats)
 
     ctx.log.info(
-      {toUserId: toUser.id, sats, source: usedNwc ? 'nwc' : 'internal', viaPlatformBot},
+      {
+        ...commandMeta,
+        toUserId: toUser.id,
+        sats,
+        source: usedNwc ? 'nwc' : 'internal',
+        viaPlatformBot,
+      },
       'Tip sent',
     )
 

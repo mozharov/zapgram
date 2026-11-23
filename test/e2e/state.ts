@@ -34,6 +34,7 @@ export type WorldState = {
     pendingInvoices: PendingInvoice[]
     conversations: Conversation[]
     onchainChatPayments: OnchainChatPayment[]
+    tipCommands: (typeof schema.tipCommandsTable.$inferSelect)[]
     dmTransfers: DmTransfer[]
     lnurlPayAttempts: LnurlPayAttempt[]
     donations: Donation[]
@@ -358,6 +359,9 @@ function diffRows(key: DbKey, before: unknown[], after: unknown[]) {
 
 function rowIdentity(key: DbKey, value: unknown): string | number {
   const row = asRecord(value)
+  if (key === 'tipCommands') {
+    return JSON.stringify([row.chatId, row.fromUserId, row.messageId, row.date])
+  }
   const field =
     key === 'pendingInvoices'
       ? 'paymentRequest'
@@ -411,6 +415,7 @@ function emptyDbState(): WorldState['db'] {
     pendingInvoices: [],
     conversations: [],
     onchainChatPayments: [],
+    tipCommands: [],
     dmTransfers: [],
     lnurlPayAttempts: [],
     donations: [],
@@ -432,6 +437,7 @@ function dbKey(tableName: string): DbKey {
     pending_invoices: 'pendingInvoices',
     conversations: 'conversations',
     onchain_chat_payments: 'onchainChatPayments',
+    tip_commands: 'tipCommands',
     dm_transfers: 'dmTransfers',
     lnurl_pay_attempts: 'lnurlPayAttempts',
     donations: 'donations',

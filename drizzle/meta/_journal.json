@@ -211,6 +211,13 @@
       "when": 1794815007452,
       "tag": "0029_donation_attempt_issuance",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1795449340790,
+      "tag": "0030_tip_command_dedupe",
+      "breakpoints": true
     }
   ]
 }

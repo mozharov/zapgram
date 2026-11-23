@@ -130,6 +130,7 @@ test('tip with 5% donation charges tip + donation without success PM about donat
       ),
     {
       db: {
+        tipCommands: {added: 1},
         donations: {added: 1},
         donationPlatformStats: {changed: 1},
       },

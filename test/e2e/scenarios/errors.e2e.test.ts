@@ -386,6 +386,7 @@ test('a group error is an ephemeral message that needs no cleanup', async () => 
   const before = await snapshot(e2e)
 
   await expectDelta(e2e, () => e2e.send(groupText('/tip 21 @user_b')), {
+    db: {tipCommands: {added: 1}},
     telegram: [
       {method: 'deleteMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},
@@ -399,7 +400,8 @@ test('a group error is an ephemeral message that needs no cleanup', async () => 
   })
 
   const after = await snapshot(e2e)
-  expect(after.db).toEqual(before.db)
+  expect(after.db).toEqual({...before.db, tipCommands: after.db.tipCommands})
+  expect(after.db.tipCommands).toHaveLength(before.db.tipCommands.length + 1)
   expect(after.lnbits).toEqual(before.lnbits)
   expect(errorMessages()).toEqual(['Bot error'])
 })
@@ -410,6 +412,7 @@ test('a group error Telegram refuses to keep private falls back to a public temp
   e2e.tg.fail('sendMessage', {error_code: 400, description: 'Bad Request: user not found'})
 
   await expectDelta(e2e, () => sendAndWaitForTempMessage(groupText('/tip 21 @user_b')), {
+    db: {tipCommands: {added: 1}},
     telegram: [
       {method: 'deleteMessage', to: CHAT_GROUP},
       {method: 'sendChatAction', to: CHAT_GROUP},

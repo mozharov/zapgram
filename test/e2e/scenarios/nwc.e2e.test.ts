@@ -3,11 +3,12 @@ import {conversationsTable, subscriptionPaymentsTable} from '@infra/db/schema.js
 import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
 import {staticCallback} from '@telegram/callback-data.js'
-import {expectNoErrors} from '../asserts.js'
+import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedExpiringSubscription, seedUser} from '../fixtures/seed.js'
 import {
   chatJoinRequest,
+  groupEphemeralCommand,
   groupText,
   privateCallback,
   privateCommand,
@@ -377,6 +378,7 @@ test('a group tip with nwc_tips pays through NWC and leaves the sender LNbits ba
     e2e,
     () => e2e.send(groupText('/tip 21 @user_b', {from: {id: USER_A, username: 'user_a'}})),
     {
+      db: {tipCommands: {added: 1}},
       lnbits: {
         balances: {'100002 wallet': TIP_SATS},
         payments: [{out: false, sats: TIP_SATS, times: 1}],
@@ -398,6 +400,20 @@ test('a group tip with nwc_tips pays through NWC and leaves the sender LNbits ba
   const payCall = [...nwcCalls].reverse().find(call => call.method === 'payInvoice')
   const paidInvoice = String(payCall?.args[0] ?? '')
   expect(paidInvoice.startsWith('lnbc')).toBe(true)
+  expectNoErrors(e2e.logs)
+})
+
+test('a redelivered ephemeral tip pays through NWC only once', async () => {
+  await seedUser(e2e, {id: USER_B, username: 'user_b', firstName: 'User B'})
+  await connectNwc({nwcTips: true})
+  const update = groupEphemeralCommand('/tip 21 @user_b')
+  const paysBefore = nwcCalls.filter(call => call.method === 'payInvoice').length
+  await e2e.send(update)
+  await expectDelta(e2e, () => e2e.send({...update, update_id: update.update_id + 10000}), {})
+  expect(nwcCalls.filter(call => call.method === 'payInvoice')).toHaveLength(paysBefore + 1)
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times: 1})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: TIP_SATS, times: 0})
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(0)
   expectNoErrors(e2e.logs)
 })
 
