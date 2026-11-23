@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test'
-import {usersTable} from '@infra/db/schema.js'
+import {tipCommandsTable, usersTable} from '@infra/db/schema.js'
 import {sendingToUser} from '@modules/tipping/telegram/sending-to-user.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
@@ -761,6 +761,103 @@ test('a zero-sat tip is silently discarded after deleting the command', async ()
   expectNoErrors(e2e.logs)
 })
 
+// --- Command identity and delivery age ---
+
+for (const ephemeral of [true, false]) {
+  const kind = ephemeral ? 'ephemeral' : 'ordinary'
+  test(`redelivered ${kind} tips pay once across restart`, async () => {
+    await e2e.dispose()
+    e2e = await createE2E({mode: 'file', env: {LOG_LEVEL: 'info'}})
+    await seedSenderAndRecipient()
+    const make = ephemeral ? groupEphemeralCommand : groupText
+    const update = make('/tip 21 @user_b')
+    await e2e.send(update)
+    await e2e.restart()
+    const mark = e2e.tg.of('sendMessage').length
+    await e2e.send({...update, update_id: update.update_id + 10000})
+
+    expect(e2e.tg.of('sendMessage')).toHaveLength(mark)
+    expect(await e2e.db.select().from(tipCommandsTable)).toHaveLength(1)
+    const metadata = {
+      chatId: CHAT_GROUP,
+      message_id: update.message?.message_id,
+      ...(ephemeral ? {ephemeral_message_id: update.message?.ephemeral_message_id} : {}),
+      date: update.message?.date,
+    }
+    expect(e2e.logs.find(log => log.msg === 'Duplicate tip command skipped')).toMatchObject({
+      ...metadata,
+      level: 'info',
+    })
+    expect(e2e.logs.find(log => log.msg === 'Tip sent')).toMatchObject(metadata)
+    expectTipPayouts(1)
+    expectNoErrors(e2e.logs)
+  })
+}
+
+for (const changed of ['date', 'id'] as const) {
+  test(`ephemeral tips with different ${changed} pay separately`, async () => {
+    await seedSenderAndRecipient()
+    const update = groupEphemeralCommand('/tip 21 @user_b')
+    const message = update.message
+    if (!message) throw new Error('Expected a tip message')
+    const nextMessage = {
+      ...message,
+      ...(changed === 'date'
+        ? {date: message.date - 1}
+        : {ephemeral_message_id: (message.ephemeral_message_id ?? 0) + 1}),
+    }
+    await e2e.send(update)
+    await e2e.send({...update, update_id: update.update_id + 10000, message: nextMessage})
+    expect(await e2e.db.select().from(tipCommandsTable)).toHaveLength(2)
+    expectTipPayouts(2)
+    expectNoErrors(e2e.logs)
+  })
+}
+
+test('concurrent redeliveries of an ephemeral tip pay once', async () => {
+  await seedSenderAndRecipient()
+  const update = groupEphemeralCommand('/tip 21 @user_b')
+  await Promise.all([e2e.send(update), e2e.send({...update, update_id: update.update_id + 10000})])
+  expectTipPayouts(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('a failed tip keeps its claim even after the sender is funded', async () => {
+  await seedSenderAndRecipient({senderBalanceSats: 0})
+  const update = groupEphemeralCommand('/tip 21 @user_b')
+  await e2e.send(update)
+  credit(USER_A, STARTING_BALANCE_SATS)
+  const mark = e2e.tg.of('sendMessage').length
+  await e2e.send({...update, update_id: update.update_id + 10000})
+  expect(e2e.tg.of('sendMessage')).toHaveLength(mark)
+  expect(await e2e.db.select().from(tipCommandsTable)).toHaveLength(1)
+  expectTipPayouts(0)
+})
+
+test('tips older than 120 seconds are silently rejected', async () => {
+  e2e.container.log.level = 'info'
+  await seedSenderAndRecipient()
+  const update = groupEphemeralCommand('/tip 21 @user_b')
+  if (!update.message) throw new Error('Expected a tip message')
+  update.message.date = Math.floor(Date.now() / 1000) - 121
+  await expectDelta(e2e, () => e2e.send(update), {})
+  expect(e2e.logs.find(log => log.msg === 'Stale tip command skipped')).toMatchObject({
+    level: 'warn',
+    date: update.message.date,
+    ephemeral_message_id: update.message.ephemeral_message_id,
+  })
+  expectTipPayouts(0)
+  expectNoErrors(e2e.logs)
+})
+
+function expectTipPayouts(times: number): void {
+  expectPayoutsExactly(e2e.ln, {toWallet: '100002 wallet', sats: TIP_SATS, times})
+  expectPayoutsExactly(e2e.ln, {toWallet: 'fees wallet', sats: TIP_SATS, times: 0})
+  expect(e2e.ln.state.payments.filter(payment => payment.out)).toHaveLength(times)
+  expect(walletBalanceMsat(USER_B)).toBe(times * TIP_SATS * 1000)
+  expect(walletBalanceMsat(USER_A)).toBe((STARTING_BALANCE_SATS - times * TIP_SATS) * 1000)
+}
+
 // --- Building and checking the world ---
 
 async function seedSender(balanceSats = STARTING_BALANCE_SATS): Promise<void> {
@@ -785,6 +882,7 @@ async function expectInternalTransfer(
     db: {
       ...(opts.recipientAdded ? {users: {added: 1}} : {}),
       ...(opts.conversationRemoved ? {conversations: {removed: 1}} : {}),
+      tipCommands: {added: opts.conversationRemoved ? 0 : 1},
       dmTransfers: {added: opts.conversationRemoved ? 1 : 0},
     },
     lnbits: {
@@ -811,7 +909,10 @@ async function expectRefusedTip(
   errorText: RegExp,
   telegram: TelegramExpectation[],
 ): Promise<void> {
-  await expectDelta(e2e, () => e2e.send(update), {telegram})
+  await expectDelta(e2e, () => e2e.send(update), {
+    db: {tipCommands: {added: 1}},
+    telegram,
+  })
   expect(e2e.tg.of('sendMessage').some(call => errorText.test(String(call.text)))).toBe(true)
   expect(errorMessages()).toEqual(['Bot error'])
 }

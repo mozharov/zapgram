@@ -104,6 +104,7 @@ import {
   type DmTransferService,
 } from '@modules/tipping/dm-transfer.service.js'
 import {notifySatsReceivedOutcome} from '@modules/tipping/notify-sats-received.js'
+import {createTipCommandRepository, type TipCommandRepository} from '@modules/tipping/repository.js'
 import {createUserRepository, type UserRepository} from '@modules/users/repository.js'
 import {createUserWalletFactory} from '@modules/wallet/user-wallet.service.js'
 import type {BotContext} from '@telegram/context.js'
@@ -131,6 +132,7 @@ export type AppContainer = {
   rates: RateService
   notifier: Notifier
   notificationChrome: NotificationChrome
+  tipCommands: TipCommandRepository
   users: UserRepository
   chats: ChatRepository
   subscriptions: SubscriptionRepository
@@ -259,6 +261,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     config.botInfo,
     config.BOT_API_ROOT ? {apiRoot: config.BOT_API_ROOT} : undefined,
   )
+  const tipCommands = createTipCommandRepository(db)
   const users = createUserRepository(db, {
     defaultDonationPercent: config.DONATION_DEFAULT_PERCENT,
     log,
@@ -613,6 +616,7 @@ export async function createContainer(env: NodeJS.ProcessEnv = process.env): Pro
     rates,
     notifier,
     notificationChrome,
+    tipCommands,
     users,
     chats,
     subscriptions,

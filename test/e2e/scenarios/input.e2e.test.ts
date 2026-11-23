@@ -103,28 +103,12 @@ test('a redelivered join request resends the method chooser without minting an i
   expectNoErrors(e2e.logs)
 })
 
-test('a redelivered /tip sends the sats a second time', async () => {
+test('a redelivered /tip does not debit twice', async () => {
   await seedTippers()
   const update = groupText(`/tip ${TIP_PRICE} @user_b`, {from: {id: USER_A, username: 'user_a'}})
   await e2e.send(update)
 
-  // Deliberate, not a defect: a tip is a command, and a command the user issued twice pays twice.
-  // Redelivery is indistinguishable from that here, and the amount is small and bounded.
-  await expectDelta(e2e, () => e2e.send(update), {
-    lnbits: {
-      balances: {'100001 wallet': -TIP_PRICE, '100002 wallet': TIP_PRICE},
-      payments: [
-        {out: false, sats: TIP_PRICE, times: 1},
-        {out: true, sats: TIP_PRICE, times: 1},
-      ],
-    },
-    telegram: [
-      {method: 'deleteMessage'},
-      {method: 'sendChatAction'},
-      {method: 'sendMessage', to: CHAT_GROUP, text: /sent 21 sats to @user_b/},
-      {method: 'sendMessage', to: USER_B, text: /You received 21 sats/},
-    ],
-  })
+  await expectDelta(e2e, () => e2e.send({...update, update_id: update.update_id + 10000}), {})
   expectNoErrors(e2e.logs)
 })
 
@@ -227,6 +211,7 @@ test('a tip to someone without a username names them by first name', async () =>
   }
 
   await expectDelta(e2e, () => e2e.send(update), {
+    db: {tipCommands: {added: 1}},
     lnbits: {
       balances: {'100001 wallet': -TIP_PRICE, '100002 wallet': TIP_PRICE},
       payments: [
@@ -252,6 +237,7 @@ test('a handle the recipient no longer owns stops resolving', async () => {
     e2e,
     () => e2e.send(groupText('/tip 21 @old_handle', {from: {id: USER_A, username: 'user_a'}})),
     {
+      db: {tipCommands: {added: 1}},
       telegram: [
         {method: 'deleteMessage'},
         {method: 'sendChatAction'},
@@ -275,6 +261,7 @@ test('the new handle reaches the same recipient', async () => {
     e2e,
     () => e2e.send(groupText('/tip 21 @new_handle', {from: {id: USER_A, username: 'user_a'}})),
     {
+      db: {tipCommands: {added: 1}},
       lnbits: {
         balances: {'100001 wallet': -TIP_PRICE, '100002 wallet': TIP_PRICE},
         payments: [

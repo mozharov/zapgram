@@ -154,6 +154,7 @@ test('a new user receives, observes and tips sats without rebuilding the world',
     {
       db: {
         users: {added: 1},
+        tipCommands: {added: 1},
         donations: {added: 1},
         // Migration seeds the singleton; each successful donation bumps totals.
         donationPlatformStats: {changed: 1},

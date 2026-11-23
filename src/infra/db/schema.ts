@@ -546,3 +546,22 @@ export const lnurlPayAttemptsTable = sqliteTable(
       .where(sql`${table.invoiceHash} is not null AND ${table.status} = 'settled'`),
   ],
 )
+
+/** Claimed before paying a group tip; retained even when payment fails. */
+export const tipCommandsTable = sqliteTable(
+  'tip_commands',
+  {
+    chatId: integer('chat_id').notNull(),
+    fromUserId: integer('from_user_id').notNull(),
+    messageId: integer('message_id').notNull(),
+    date: integer('date').notNull(),
+  },
+  table => [
+    uniqueIndex('tip_commands_command_unique').on(
+      table.chatId,
+      table.fromUserId,
+      table.messageId,
+      table.date,
+    ),
+  ],
+)
