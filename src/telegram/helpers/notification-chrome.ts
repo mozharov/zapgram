@@ -3,6 +3,7 @@ import type {AppLogger} from '@infra/logger.js'
 import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import type {Notifier, SendOutcome} from '@modules/notifications/notifier.js'
 import {staticCallback} from '@telegram/callback-data.js'
+import {isMessageToDeleteNotFound} from '@telegram/errors/vanished-message.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import type {Api} from 'grammy'
 import type {InlineKeyboardMarkup} from 'grammy/types'
@@ -171,6 +172,20 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
             {error, userId, messageId: user.lastMenuMessageId},
             'Failed to delete superseded living menu',
           )
+          // A delete refusal (e.g. the 48-hour limit) does not mean the menu is gone.
+          // Disarm only the tracked old menu; never send a replacement to recover cleanup.
+          if (!isMessageToDeleteNotFound(error)) {
+            try {
+              await deps.editMessageReplyMarkup(userId, user.lastMenuMessageId, {
+                reply_markup: {inline_keyboard: []},
+              })
+            } catch (error) {
+              deps.log.warn(
+                {error, userId, messageId: user.lastMenuMessageId},
+                'Failed to disarm superseded living menu',
+              )
+            }
+          }
         }
       }
       const data: Partial<User> = {lastMenuMessageId: messageId}

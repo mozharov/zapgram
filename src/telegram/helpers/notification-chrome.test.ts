@@ -2,6 +2,7 @@ import {expect, mock, test} from 'bun:test'
 import {createUserRepository} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {createTestDb} from '@test/helpers/db.js'
+import {GrammyError} from 'grammy'
 import {createChromeNotifier, createNotificationChrome} from './notification-chrome.js'
 
 function setup() {
@@ -121,13 +122,15 @@ test('adoptLivingMenu is a no-op when the clicked message is already the living 
 })
 
 test('adoptLivingMenu deletes the tracked menu and re-points at the clicked message', async () => {
-  const {users, chrome, deleteMessage} = setup()
+  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
   await users.update(1, {lastMenuMessageId: 4})
 
   await chrome.adoptLivingMenu(1, 9)
 
   expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
   expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
 })
 
@@ -156,19 +159,70 @@ test('adoptLivingMenu forgets the notification when the receipt becomes the menu
   expect(user?.lastNotificationBaseMarkup).toBeNull()
 })
 
-test('adoptLivingMenu still re-points when deleting the tracked menu fails', async () => {
-  const {users, chrome, deleteMessage, warn} = setup()
+test('adoptLivingMenu re-points without editing when the tracked menu is already gone', async () => {
+  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
   await users.update(1, {lastMenuMessageId: 4})
   deleteMessage.mockImplementationOnce(() =>
-    Promise.reject(new Error('message to delete not found')),
+    Promise.reject(deleteError('Bad Request: message to delete not found')),
   )
 
   await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
 
-  expect(warn).toHaveBeenCalled()
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
   expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
 })
+
+test('adoptLivingMenu disarms an old menu when Telegram refuses deletion', async () => {
+  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4, lastNotificationMessageId: 7})
+  deleteMessage.mockRejectedValueOnce(
+    deleteError("Bad Request: message can't be deleted for everyone"),
+  )
+
+  await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+  expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 4, {
+    reply_markup: {inline_keyboard: []},
+  })
+  const user = await users.findById(1)
+  expect(user?.lastMenuMessageId).toBe(9)
+  expect(user?.lastNotificationMessageId).toBe(7)
+
+  // Replaying the same adoption must not touch either menu again.
+  await chrome.adoptLivingMenu(1, 9)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+})
+
+test('adoptLivingMenu still re-points when both deletion and disarming fail', async () => {
+  const {users, chrome, deleteMessage, editMessageReplyMarkup, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastMenuMessageId: 4})
+  deleteMessage.mockRejectedValueOnce(new Error('telegram down'))
+  editMessageReplyMarkup.mockRejectedValueOnce(new Error('telegram down'))
+
+  await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+
+  expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 4, {
+    reply_markup: {inline_keyboard: []},
+  })
+  expect(warn).toHaveBeenCalledTimes(2)
+  expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+})
+
+function deleteError(description: string) {
+  return new GrammyError(
+    description,
+    {ok: false, error_code: 400, description},
+    'deleteMessage',
+    {},
+  )
+}
 
 test('adoptLivingMenu swallows a failed persist', async () => {
   const users = createUserRepository(createTestDb())
