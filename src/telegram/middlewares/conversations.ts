@@ -32,7 +32,9 @@ conversations.use(
     ],
     storage: {
       type: 'key', // unique for each chat
-      version: 0,
+      // Bump whenever the conversation op sequence changes, or saved replays shift.
+      // On a version mismatch the plugin discards the saved state.
+      version: 1,
       adapter: {
         read: async key => {
           const conversation = await getConversation(key)

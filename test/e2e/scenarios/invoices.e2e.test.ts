@@ -67,6 +67,36 @@ afterEach(async () => {
 
 // --- Creating an invoice ---
 
+test('a stored version-0 conversation is discarded and the next update can start a new one', async () => {
+  await enterCreateInvoiceAtAmount()
+  const saved = await e2e.db.select().from(conversationsTable)
+  expect(saved).toHaveLength(1)
+  const row = saved[0]
+  if (!row) throw new Error('Expected a suspended invoice conversation')
+  expect(row.version).toEqual([0, 1])
+  // Keep a real suspended replay log, but mark it as persisted before the op sequence changed.
+  await e2e.db.update(conversationsTable).set({version: [0, 0]})
+
+  // Replaying the amount wait would mint an invoice. This update must reach the text fallback.
+  await e2e.send(privateText(String(AMOUNT)))
+  expect(e2e.tg.of('sendRichMessage')).toHaveLength(1)
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toEqual([])
+  expect(e2e.ln.state.payments).toHaveLength(0)
+  // Ignored on read; the adapter row is only replaced when another conversation is written.
+  expect(await e2e.db.select().from(conversationsTable)).toEqual([{...row, version: [0, 0]}])
+
+  await enterCreateInvoiceAtQr()
+  expect(await conversationVersion()).toEqual([0, 1])
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+  expect(e2e.ln.state.payments).toHaveLength(1)
+  expect(e2e.ln.state.payments.filter(payment => payment.out || payment.paid)).toHaveLength(0)
+  await e2e.send(
+    privateCallback(staticCallback.wallet, {messageId: requiredInvoiceHostMessageId()}),
+  )
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
 test('the create-invoice button opens a conversation asking for an amount', async () => {
   await expectDelta(e2e, () => e2e.send(privateCallback(staticCallback.createInvoice)), {
     db: {conversations: {added: 1}},
@@ -1102,13 +1132,13 @@ test('a pasted invoice on the recipient step offers to pay and does not reset th
   expect(payData).toMatch(/^pay-pasted:[0-9a-f]{16}$/)
   expect(backData).toMatch(/^pay-pasted-back:[0-9a-f]{16}$/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
-  expect(await conversationVersion()).toEqual([0, 0])
+  expect(await conversationVersion()).toEqual([0, 1])
 
   const offerId = requiredResultMessageId('sendMessage')
   await e2e.send(privateCallback(backData ?? '', {messageId: offerId}))
 
   expect(await conversationNames()).toEqual(['sendingToUser'])
-  expect(await conversationVersion()).toEqual([0, 0])
+  expect(await conversationVersion()).toEqual([0, 1])
   await e2e.send(privateText('not-a-user'))
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid username/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
@@ -1122,7 +1152,7 @@ test('a pasted invoice on the recipient step offers to pay and does not reset th
 
   expect(joinedInvoiceText()).toMatch(/Paying from your ZapGram wallet/)
   expect(await conversationNames()).toEqual(['payingInvoice'])
-  expect(await conversationVersion()).toEqual([0, 0])
+  expect(await conversationVersion()).toEqual([0, 1])
   expectNoErrors(e2e.logs)
 })
 
@@ -1145,7 +1175,7 @@ test('a Lightning address or LNURL on the recipient step offers to pay and can r
   expect(keyboardOf(lnurlNotice)[0]).toMatch(/^pay-pasted:/)
   expect(keyboardOf(lnurlNotice)[1]).toMatch(/^pay-pasted-back:/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
-  expect(await conversationVersion()).toEqual([0, 0])
+  expect(await conversationVersion()).toEqual([0, 1])
 
   const backData = keyboardOf(lnurlNotice)[1]
   await e2e.send(
@@ -1176,7 +1206,7 @@ test('a pasted invoice on the amount step offers to pay instead of rejecting the
 
   expect(String(e2e.tg.last('sendMessage')?.text)).toMatch(/Invalid amount/)
   expect(await conversationNames()).toEqual(['sendingToUser'])
-  expect(await conversationVersion()).toEqual([0, 0])
+  expect(await conversationVersion()).toEqual([0, 1])
   expectNoErrors(e2e.logs)
 })
 

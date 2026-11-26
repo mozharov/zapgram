@@ -13,6 +13,7 @@ import {
   moveInvoiceWidgetMessage,
   setInvoiceWidgetMessage,
 } from '@modules/invoices/repository.js'
+import {invoiceAnalyticsPaymentHash} from '@modules/invoices/telegram/helpers/invoice-analytics-payment-hash.js'
 import {waitForMemoText} from '@modules/invoices/telegram/helpers/wait-for-memo.js'
 import {waitForSats} from '@modules/invoices/telegram/helpers/wait-for-sats.js'
 import {waitForWallet} from '@modules/invoices/telegram/helpers/wait-for-wallet.js'
@@ -66,10 +67,11 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   await ctx.replyWithChatAction('typing')
   // LNbits + DB must not re-run when the conversation replays after later waits.
   // Errors are returned as data: conversation.external structuredClones throws and drops AppError.
-  let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
+  let invoice = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
+  let {paymentRequest} = invoice
   // Analytics is a side effect too: later waits replay the already minted invoice.
   await conversation.external(() => {
-    captureInvoiceCreated({sats, wallet, paymentRequest, hasMemo: false, isReplacement: false})
+    captureInvoiceCreated({...invoice, sats, wallet, hasMemo: false, isReplacement: false})
   })
 
   const invoiceView = await renderInvoice(conversation, ctx, host, paymentRequest, {
@@ -143,14 +145,17 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
 
   await ctx.replyWithChatAction('typing')
   // Keep the no-memo pending row: the old BOLT11 stays payable until expiry.
-  paymentRequest = await mintInvoiceOnce(conversation, () =>
+  invoice = await mintInvoiceOnce(conversation, () =>
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
+  paymentRequest = invoice.paymentRequest
   await conversation.external(() => {
-    captureInvoiceCreated({sats, wallet, paymentRequest, hasMemo: true, isReplacement: true})
+    captureInvoiceCreated({...invoice, sats, wallet, hasMemo: true, isReplacement: true})
   })
   await renderFinalInvoice(conversation, ctx, invoiceView, paymentRequest, {wallet, usdSuffix})
 }
+
+type MintedInvoice = {paymentRequest: string; paymentHash?: string}
 
 /**
  * Run mint/DB work once across conversation replays. Return failures as plain data so
@@ -158,11 +163,11 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
  */
 async function mintInvoiceOnce(
   conversation: BotConversation,
-  task: () => Promise<string>,
-): Promise<string> {
+  task: () => Promise<MintedInvoice>,
+): Promise<MintedInvoice> {
   const result = await conversation.external(async () => {
     try {
-      return {ok: true as const, paymentRequest: await task()}
+      return {ok: true as const, invoice: await task()}
     } catch (error) {
       const name = error instanceof Error ? error.name : 'Error'
       const message = error instanceof Error ? error.message : String(error)
@@ -170,7 +175,7 @@ async function mintInvoiceOnce(
       return {ok: false as const, name, message, code}
     }
   })
-  if (result.ok) return result.paymentRequest
+  if (result.ok) return result.invoice
   if (result.code === 'invoice_generation_failed' || result.name === InvoiceGenerationError.name) {
     throw new InvoiceGenerationError({message: result.message})
   }
@@ -182,13 +187,14 @@ async function mintInvoiceOnce(
 
 function captureInvoiceCreated(props: {
   paymentRequest: string
+  paymentHash?: string
   sats: number
   wallet: 'internal' | 'nwc'
   hasMemo: boolean
   isReplacement: boolean
 }) {
   captureBotEvent(getRuntime().posthog, 'invoice_created', {
-    payment_hash: decodeInvoice(props.paymentRequest).paymentHash,
+    payment_hash: invoiceAnalyticsPaymentHash(props),
     amount_sats: props.sats,
     wallet_type: props.wallet,
     has_memo: props.hasMemo,
@@ -202,9 +208,8 @@ async function createInvoice(
   wallet: 'internal' | 'nwc',
   sats: number,
   memo?: string,
-): Promise<string> {
+): Promise<MintedInvoice> {
   const msats = satsToMsats(sats)
-  let paymentRequest: string
   if (wallet === 'internal') {
     const invoice = await ctx.user.wallet.createInvoice({sats, memo})
     await createPendingInvoice({
@@ -213,20 +218,19 @@ async function createInvoice(
       paymentHash: invoice.payment_hash,
       expiresAt: invoice.expiry ?? undefined,
     })
-    paymentRequest = invoice.bolt11
     // Called through `mintInvoiceOnce` → `conversation.external`, so this logs once per mint
     // instead of once per conversation replay.
     ctx.log.info(
       {sats, source: wallet, paymentHash: invoice.payment_hash, hasMemo: Boolean(memo)},
       'Invoice created',
     )
+    return {paymentRequest: invoice.bolt11, paymentHash: invoice.payment_hash}
   } else {
     if (!ctx.user.nwc) throw new NWCConnectionError()
     const invoice = await ctx.user.nwc.createInvoice(msats, memo)
-    paymentRequest = invoice.invoice
     ctx.log.info({sats, source: wallet, hasMemo: Boolean(memo)}, 'Invoice created')
+    return {paymentRequest: invoice.invoice, paymentHash: invoice.payment_hash}
   }
-  return paymentRequest
 }
 
 function selectedWalletHtml(ctx: ConversationContext, wallet: 'internal' | 'nwc'): string {
