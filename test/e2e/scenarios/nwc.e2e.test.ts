@@ -4,6 +4,7 @@ import {NostrWallet as RealNostrWallet} from '@infra/nostr/wallet.js'
 import {connectingNWC} from '@modules/wallet/telegram/conversations/connecting-nwc.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {expectNoErrors, expectPayoutsExactly} from '../asserts.js'
+import {mintInvoice} from '../fakes/bolt11.js'
 import {CHAT_GROUP, OWNER, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedExpiringSubscription, seedUser} from '../fixtures/seed.js'
 import {
@@ -38,6 +39,7 @@ const PRICE = 1000
 type NwcCall = {method: string; args: unknown[]}
 
 const nwcCalls: NwcCall[] = []
+let nwcMintedHash: string | undefined
 let nwcBalanceMsat = NWC_BALANCE_SATS * 1000
 let getBalanceShouldFail = false
 let e2e: E2E
@@ -63,7 +65,9 @@ class FakeNostrWallet {
 
   async createInvoice(msats: number, memo = ''): Promise<{invoice: string; payment_hash: string}> {
     nwcCalls.push({method: 'createInvoice', args: [msats, memo]})
-    return {invoice: 'lnbc-fake-nwc', payment_hash: 'fake-nwc-hash'}
+    const invoice = mintInvoice({sats: msats / 1000, description: memo})
+    nwcMintedHash = invoice.paymentHash
+    return {invoice: invoice.bolt11, payment_hash: invoice.paymentHash}
   }
 
   async lookupInvoice(invoice: string): Promise<{preimage: string | null; fees_paid: number}> {
@@ -85,6 +89,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   nwcCalls.length = 0
+  nwcMintedHash = undefined
   nwcBalanceMsat = NWC_BALANCE_SATS * 1000
   getBalanceShouldFail = false
   e2e = await createE2E()
@@ -101,6 +106,34 @@ afterEach(async () => {
 })
 
 // --- Connect / disconnect / screen copy ---
+
+test('an invoice minted through NWC includes its payment hash in analytics once', async () => {
+  const events = recordPosthog(e2e)
+  await connectNwc()
+  await e2e.send(privateCallback(staticCallback.createInvoice))
+  await e2e.send(pressWallet('nwc', requiredPromptMessageId()))
+  await e2e.send(privateText('21'))
+
+  expect(nwcMintedHash).toBeDefined()
+  const created = capturesOf(events, 'invoice_created')
+  expect(created).toHaveLength(1)
+  expect(created[0]?.properties).toEqual({
+    payment_hash: nwcMintedHash,
+    amount_sats: 21,
+    wallet_type: 'nwc',
+    has_memo: false,
+    memo_path: 'none',
+    is_replacement: false,
+  })
+  const messageId = e2e.tg.lastMessageId('sendWidget')
+  if (messageId === undefined) throw new Error('Expected the NWC invoice widget')
+  await e2e.send(privateCallback(staticCallback.wallet, {messageId}))
+  expect(capturesOf(events, 'invoice_created')).toEqual(created)
+  expect(nwcCalls.filter(call => call.method === 'createInvoice')).toHaveLength(1)
+  expect(e2e.ln.state.payments).toHaveLength(0)
+  expect(await e2e.db.select().from(conversationsTable)).toEqual([])
+  expectNoErrors(e2e.logs)
+})
 
 test('connecting NWC validates the wallet and stores only nwc_url', async () => {
   const before = await snapshot(e2e)

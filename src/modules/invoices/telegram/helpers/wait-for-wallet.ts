@@ -70,12 +70,14 @@ export async function waitForWallet(
         requiredSats,
       )
       if (!funded.internal) {
-        captureBotEvent(posthog, 'wallet_resolved', {
-          flow,
-          selection: 'insufficient',
-          required_sats: requiredSats,
-          internal_funded: false,
-          nwc_funded: false,
+        await conversation.external(() => {
+          captureBotEvent(posthog, 'wallet_resolved', {
+            flow,
+            selection: 'insufficient',
+            required_sats: requiredSats,
+            internal_funded: false,
+            nwc_funded: false,
+          })
         })
         throw new InsufficientFundsError()
       }
@@ -97,11 +99,13 @@ export async function waitForWallet(
         }),
       })
     }
-    captureBotEvent(posthog, 'wallet_resolved', {
-      flow,
-      selection: 'no_nwc',
-      wallet_type: 'internal',
-      required_sats: requiredSats,
+    await conversation.external(() => {
+      captureBotEvent(posthog, 'wallet_resolved', {
+        flow,
+        selection: 'no_nwc',
+        wallet_type: 'internal',
+        required_sats: requiredSats,
+      })
     })
     return {wallet: 'internal', nwcBalanceError: false, confirmed: true}
   }
@@ -118,13 +122,15 @@ export async function waitForWallet(
     const funded = fundedWalletsForAmount(balances, requiredSats)
 
     if (!funded.internal && !funded.nwc) {
-      captureBotEvent(posthog, 'wallet_resolved', {
-        flow,
-        selection: 'insufficient',
-        required_sats: requiredSats,
-        internal_funded: false,
-        nwc_funded: false,
-        nwc_balance_error: funded.nwcBalanceError,
+      await conversation.external(() => {
+        captureBotEvent(posthog, 'wallet_resolved', {
+          flow,
+          selection: 'insufficient',
+          required_sats: requiredSats,
+          internal_funded: false,
+          nwc_funded: false,
+          nwc_balance_error: funded.nwcBalanceError,
+        })
       })
       throw new InsufficientFundsError()
     }
@@ -138,14 +144,16 @@ export async function waitForWallet(
           ? 'wait-for-wallet.auto-only-internal'
           : 'wait-for-wallet.auto-only-nwc'
       if (!opts?.host) await ctx.reply(ctx.t(autoKey))
-      captureBotEvent(posthog, 'wallet_resolved', {
-        flow,
-        selection: 'auto_only_funded',
-        wallet_type: wallet,
-        required_sats: requiredSats,
-        internal_funded: funded.internal,
-        nwc_funded: funded.nwc,
-        nwc_balance_error: funded.nwcBalanceError,
+      await conversation.external(() => {
+        captureBotEvent(posthog, 'wallet_resolved', {
+          flow,
+          selection: 'auto_only_funded',
+          wallet_type: wallet,
+          required_sats: requiredSats,
+          internal_funded: funded.internal,
+          nwc_funded: funded.nwc,
+          nwc_balance_error: funded.nwcBalanceError,
+        })
       })
       return {wallet, nwcBalanceError: funded.nwcBalanceError, confirmed: true}
     }
@@ -286,12 +294,14 @@ async function pickWallet(
     return conversation.halt()
   }
 
-  captureBotEvent(getRuntime().posthog, 'wallet_resolved', {
-    flow: opts.flow,
-    selection: 'manual',
-    wallet_type: wallet,
-    required_sats: opts.requiredSats,
-    nwc_balance_error: opts.nwcBalanceError,
+  await conversation.external(() => {
+    captureBotEvent(getRuntime().posthog, 'wallet_resolved', {
+      flow: opts.flow,
+      selection: 'manual',
+      wallet_type: wallet,
+      required_sats: opts.requiredSats,
+      nwc_balance_error: opts.nwcBalanceError,
+    })
   })
   return {
     wallet,
