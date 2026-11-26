@@ -20,7 +20,7 @@ import {CHAT_GROUP, USER_A, USER_B} from '../fixtures/ids.js'
 import {seedChat, seedPendingInvoice, seedUser} from '../fixtures/seed.js'
 import {privateCallback, privateCommand, privateText, type TestUpdate} from '../fixtures/updates.js'
 import {createE2E, type E2E} from '../harness.js'
-import {recordPosthog} from '../record-posthog.js'
+import {capturesOf, recordPosthog} from '../record-posthog.js'
 import {expectDelta, expectLedgerBalanced, snapshot} from '../state.js'
 import {scenarioCoverage} from './coverage.js'
 
@@ -158,6 +158,98 @@ test('wallet on the QR step sends a new wallet and drops the invoice keyboard', 
   })
   expect(e2e.tg.of('editMessageCaption')).toHaveLength(0)
   expect(await e2e.db.select().from(pendingInvoicesTable)).toHaveLength(1)
+  expectNoErrors(e2e.logs)
+})
+
+test('invoice analytics runs once when Wallet replays the issued invoice', async () => {
+  const events = recordPosthog(e2e)
+  await enterCreateInvoiceAtAmount()
+  expect(capturesOf(events, 'wallet_resolved')).toHaveLength(1)
+  await e2e.send(privateText(String(AMOUNT)))
+  const row = await onlyPendingInvoice()
+  const created = capturesOf(events, 'invoice_created')
+  expect(created).toHaveLength(1)
+  expect(created[0]?.properties).toEqual({
+    payment_hash: row.paymentHash,
+    amount_sats: AMOUNT,
+    wallet_type: 'internal',
+    has_memo: false,
+    memo_path: 'none',
+    is_replacement: false,
+  })
+
+  await e2e.send(
+    privateCallback(staticCallback.wallet, {messageId: requiredInvoiceHostMessageId()}),
+  )
+
+  expect(capturesOf(events, 'invoice_created')).toEqual(created)
+  expect(capturesOf(events, 'wallet_resolved')).toHaveLength(1)
+  expect(capturesOf(events, 'wallet_resolved')[0]?.properties).toEqual({
+    flow: 'create_invoice',
+    selection: 'no_nwc',
+    wallet_type: 'internal',
+    required_sats: undefined,
+  })
+  expect(await e2e.db.select().from(pendingInvoicesTable)).toEqual([row])
+  expect(e2e.ln.state.payments).toHaveLength(1)
+  expect(e2e.ln.state.payments.filter(payment => payment.out || payment.paid)).toHaveLength(0)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('two invoices for the same amount have separate analytics and payment hashes', async () => {
+  const events = recordPosthog(e2e)
+  for (let i = 0; i < 2; i++) {
+    await enterCreateInvoiceAtQr()
+    await e2e.send(
+      privateCallback(staticCallback.wallet, {messageId: requiredInvoiceHostMessageId()}),
+    )
+  }
+
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  const created = capturesOf(events, 'invoice_created')
+  expect(rows).toHaveLength(2)
+  expect(created).toHaveLength(2)
+  const hashes = created.map(event => event.properties?.payment_hash)
+  expect(new Set(hashes).size).toBe(2)
+  expect(hashes.sort()).toEqual(rows.map(row => row.paymentHash).sort())
+  expect(created.every(event => event.properties?.amount_sats === AMOUNT)).toBe(true)
+  expect(capturesOf(events, 'wallet_resolved')).toHaveLength(2)
+  expect(e2e.ln.state.payments).toHaveLength(2)
+  expect(e2e.ln.state.payments.filter(payment => payment.out || payment.paid)).toHaveLength(0)
+  await expectNoConversations(e2e.db)
+  expectNoErrors(e2e.logs)
+})
+
+test('memo retries do not repeat analytics and the replacement carries its own hash', async () => {
+  const events = recordPosthog(e2e)
+  await enterCreateInvoiceAtMemo()
+  await e2e.send(privateText('x'.repeat(151)))
+  expect(capturesOf(events, 'invoice_created')).toHaveLength(1)
+  expect(capturesOf(events, 'wallet_resolved')).toHaveLength(1)
+  expect(capturesOf(events, 'invoice_memo_add_tapped')).toHaveLength(1)
+
+  await e2e.send(privateText(MEMO))
+
+  const rows = await e2e.db.select().from(pendingInvoicesTable)
+  const created = capturesOf(events, 'invoice_created')
+  expect(rows).toHaveLength(2)
+  expect(created).toHaveLength(2)
+  expect(created.map(event => event.properties?.payment_hash).sort()).toEqual(
+    rows.map(row => row.paymentHash).sort(),
+  )
+  expect(created[1]?.properties).toMatchObject({
+    amount_sats: AMOUNT,
+    wallet_type: 'internal',
+    has_memo: true,
+    memo_path: 'added_after',
+    is_replacement: true,
+  })
+  expect(capturesOf(events, 'wallet_resolved')).toHaveLength(1)
+  expect(capturesOf(events, 'invoice_memo_add_tapped')).toHaveLength(1)
+  expect(e2e.ln.state.payments).toHaveLength(2)
+  expect(e2e.ln.state.payments.filter(payment => payment.out || payment.paid)).toHaveLength(0)
+  await expectNoConversations(e2e.db)
   expectNoErrors(e2e.logs)
 })
 

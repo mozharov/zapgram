@@ -67,7 +67,10 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   // LNbits + DB must not re-run when the conversation replays after later waits.
   // Errors are returned as data: conversation.external structuredClones throws and drops AppError.
   let paymentRequest = await mintInvoiceOnce(conversation, () => createInvoice(ctx, wallet, sats))
-  captureInvoiceCreated({sats, wallet, hasMemo: false, isReplacement: false})
+  // Analytics is a side effect too: later waits replay the already minted invoice.
+  await conversation.external(() => {
+    captureInvoiceCreated({sats, wallet, paymentRequest, hasMemo: false, isReplacement: false})
+  })
 
   const invoiceView = await renderInvoice(conversation, ctx, host, paymentRequest, {
     wallet,
@@ -110,9 +113,11 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     return conversation.halt({next: true})
   }
 
-  captureBotEvent(getRuntime().posthog, 'invoice_memo_add_tapped', {
-    amount_sats: sats,
-    wallet_type: wallet,
+  await conversation.external(() => {
+    captureBotEvent(getRuntime().posthog, 'invoice_memo_add_tapped', {
+      amount_sats: sats,
+      wallet_type: wallet,
+    })
   })
 
   const memoHtml = joinWizardHtml(invoiceView.html, ctx.t('wait-for-memo'))
@@ -122,10 +127,12 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
     kind: 'caption',
   })
   if (memoResult.status !== 'ok') {
-    captureBotEvent(getRuntime().posthog, 'invoice_memo_add_cancelled', {
-      reason: memoResult.reason,
-      amount_sats: sats,
-      wallet_type: wallet,
+    await conversation.external(() => {
+      captureBotEvent(getRuntime().posthog, 'invoice_memo_add_cancelled', {
+        reason: memoResult.reason,
+        amount_sats: sats,
+        wallet_type: wallet,
+      })
     })
     // Both an explicit cancel and an interrupting update (new invoice, command, ...) leave the
     // invoice itself unchanged, so re-render its terminal state either way.
@@ -139,7 +146,9 @@ export async function creatingInvoice(conversation: BotConversation, ctx: Conver
   paymentRequest = await mintInvoiceOnce(conversation, () =>
     createInvoice(ctx, wallet, sats, memoResult.memo),
   )
-  captureInvoiceCreated({sats, wallet, hasMemo: true, isReplacement: true})
+  await conversation.external(() => {
+    captureInvoiceCreated({sats, wallet, paymentRequest, hasMemo: true, isReplacement: true})
+  })
   await renderFinalInvoice(conversation, ctx, invoiceView, paymentRequest, {wallet, usdSuffix})
 }
 
@@ -172,12 +181,14 @@ async function mintInvoiceOnce(
 }
 
 function captureInvoiceCreated(props: {
+  paymentRequest: string
   sats: number
   wallet: 'internal' | 'nwc'
   hasMemo: boolean
   isReplacement: boolean
 }) {
   captureBotEvent(getRuntime().posthog, 'invoice_created', {
+    payment_hash: decodeInvoice(props.paymentRequest).paymentHash,
     amount_sats: props.sats,
     wallet_type: props.wallet,
     has_memo: props.hasMemo,
