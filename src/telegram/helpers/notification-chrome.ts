@@ -3,7 +3,7 @@ import type {AppLogger} from '@infra/logger.js'
 import {isTelegramUserUnreachableError} from '@modules/broadcast/telegram-errors.js'
 import type {Notifier, SendOutcome} from '@modules/notifications/notifier.js'
 import {staticCallback} from '@telegram/callback-data.js'
-import {isMessageToDeleteNotFound} from '@telegram/errors/vanished-message.js'
+import {isMessageDeletionRefused} from '@telegram/errors/vanished-message.js'
 import {translate} from '@telegram/i18n/i18n.js'
 import type {Api} from 'grammy'
 import type {InlineKeyboardMarkup} from 'grammy/types'
@@ -164,30 +164,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
       await dropJoinScreen(userId)
       const user = await deps.findUser(userId)
       if (!user || user.lastMenuMessageId === messageId) return
-      if (user.lastMenuMessageId) {
-        try {
-          await deps.deleteMessage(userId, user.lastMenuMessageId)
-        } catch (error) {
-          deps.log.warn(
-            {error, userId, messageId: user.lastMenuMessageId},
-            'Failed to delete superseded living menu',
-          )
-          // A delete refusal (e.g. the 48-hour limit) does not mean the menu is gone.
-          // Disarm only the tracked old menu; never send a replacement to recover cleanup.
-          if (!isMessageToDeleteNotFound(error)) {
-            try {
-              await deps.editMessageReplyMarkup(userId, user.lastMenuMessageId, {
-                reply_markup: {inline_keyboard: []},
-              })
-            } catch (error) {
-              deps.log.warn(
-                {error, userId, messageId: user.lastMenuMessageId},
-                'Failed to disarm superseded living menu',
-              )
-            }
-          }
-        }
-      }
+      await deleteSupersededMenu(userId, user.lastMenuMessageId, 'living menu')
       const data: Partial<User> = {lastMenuMessageId: messageId}
       // A receipt edited into a menu: a later notification must not restore its base keyboard.
       if (user.lastNotificationMessageId === messageId) {
@@ -217,7 +194,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     try {
       const user = await deps.findUser(userId)
       if (!user || user.lastJoinMessageId === messageId) return
-      await deleteJoinScreen(userId, user.lastJoinMessageId)
+      await deleteSupersededMenu(userId, user.lastJoinMessageId, 'join payment screen')
       await deps.updateUser(userId, {lastJoinMessageId: messageId})
     } catch (error) {
       deps.log.warn({error, userId, messageId}, 'Failed to adopt join payment screen')
@@ -228,7 +205,7 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     try {
       const user = await deps.findUser(userId)
       if (!user?.lastJoinMessageId) return
-      await deleteJoinScreen(userId, user.lastJoinMessageId)
+      await deleteSupersededMenu(userId, user.lastJoinMessageId, 'join payment screen')
       await deps.updateUser(userId, {lastJoinMessageId: null})
     } catch (error) {
       deps.log.warn({error, userId}, 'Failed to drop join payment screen')
@@ -251,12 +228,29 @@ export function createNotificationChrome(deps: NotificationChromeDeps) {
     }
   }
 
-  async function deleteJoinScreen(userId: number, messageId: number | null): Promise<void> {
+  async function deleteSupersededMenu(
+    userId: number,
+    messageId: number | null,
+    kind: 'living menu' | 'join payment screen',
+  ): Promise<void> {
     if (!messageId) return
     try {
       await deps.deleteMessage(userId, messageId)
-    } catch (error) {
-      deps.log.warn({error, userId, messageId}, 'Failed to delete superseded join payment screen')
+    } catch (deleteError) {
+      deps.log.warn({error: deleteError, userId, messageId}, `Failed to delete superseded ${kind}`)
+      // Only a permanent refusal (e.g. the 48-hour limit) warrants removing buttons.
+      // Already-gone messages and temporary failures need no edit or recovery menu.
+      if (!isMessageDeletionRefused(deleteError)) return
+      try {
+        await deps.editMessageReplyMarkup(userId, messageId, {
+          reply_markup: {inline_keyboard: []},
+        })
+      } catch (disarmError) {
+        deps.log.warn(
+          {error: disarmError, userId, messageId},
+          `Failed to disarm superseded ${kind}`,
+        )
+      }
     }
   }
 

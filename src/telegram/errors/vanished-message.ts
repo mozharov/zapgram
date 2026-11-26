@@ -1,11 +1,12 @@
 import {GrammyError} from 'grammy'
 
+const DELETE_REFUSED_MARKERS = ["message can't be deleted", 'message can not be deleted']
+
 const VANISHED_MARKERS = [
   'message to delete not found',
   'message to edit not found',
   'message is not modified',
-  "message can't be deleted",
-  'message can not be deleted',
+  ...DELETE_REFUSED_MARKERS,
 ]
 
 const DELETE_NOT_FOUND = 'message to delete not found'
@@ -28,4 +29,11 @@ export function isVanishedTelegramMessageError(error: unknown): boolean {
 export function isMessageToDeleteNotFound(error: unknown): boolean {
   if (!(error instanceof GrammyError)) return false
   return error.description.toLowerCase().includes(DELETE_NOT_FOUND)
+}
+
+/** Telegram permanently refused deletion, but the message may still carry buttons. */
+export function isMessageDeletionRefused(error: unknown): boolean {
+  if (!(error instanceof GrammyError) || error.error_code !== 400) return false
+  const description = error.description.toLowerCase()
+  return DELETE_REFUSED_MARKERS.some(marker => description.includes(marker))
 }

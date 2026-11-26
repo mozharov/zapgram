@@ -2,7 +2,7 @@ import {expect, mock, test} from 'bun:test'
 import {createUserRepository} from '@modules/users/repository.js'
 import {staticCallback} from '@telegram/callback-data.js'
 import {createTestDb} from '@test/helpers/db.js'
-import {GrammyError} from 'grammy'
+import {GrammyError, HttpError} from 'grammy'
 import {createChromeNotifier, createNotificationChrome} from './notification-chrome.js'
 
 function setup() {
@@ -173,37 +173,44 @@ test('adoptLivingMenu re-points without editing when the tracked menu is already
   expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
 })
 
-test('adoptLivingMenu disarms an old menu when Telegram refuses deletion', async () => {
-  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
-  await users.getOrCreate({id: 1, languageCode: 'en'})
-  await users.update(1, {lastMenuMessageId: 4, lastNotificationMessageId: 7})
-  deleteMessage.mockRejectedValueOnce(
-    deleteError("Bad Request: message can't be deleted for everyone"),
-  )
+const deletionRefusals = [
+  "Bad Request: message can't be deleted for everyone",
+  'Bad Request: message can not be deleted',
+]
 
-  await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+for (const description of deletionRefusals) {
+  test(`adoptLivingMenu disarms an old menu on ${description}`, async () => {
+    const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
+    await users.getOrCreate({id: 1, languageCode: 'en'})
+    await users.update(1, {lastMenuMessageId: 4, lastNotificationMessageId: 7})
+    deleteMessage.mockRejectedValueOnce(deleteError(description))
 
-  expect(deleteMessage).toHaveBeenCalledTimes(1)
-  expect(deleteMessage).toHaveBeenCalledWith(1, 4)
-  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
-  expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 4, {
-    reply_markup: {inline_keyboard: []},
+    await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+
+    expect(deleteMessage).toHaveBeenCalledTimes(1)
+    expect(deleteMessage).toHaveBeenCalledWith(1, 4)
+    expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+    expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 4, {
+      reply_markup: {inline_keyboard: []},
+    })
+    const user = await users.findById(1)
+    expect(user?.lastMenuMessageId).toBe(9)
+    expect(user?.lastNotificationMessageId).toBe(7)
+
+    // Replaying the same adoption must not touch either menu again.
+    await chrome.adoptLivingMenu(1, 9)
+    expect(deleteMessage).toHaveBeenCalledTimes(1)
+    expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
   })
-  const user = await users.findById(1)
-  expect(user?.lastMenuMessageId).toBe(9)
-  expect(user?.lastNotificationMessageId).toBe(7)
-
-  // Replaying the same adoption must not touch either menu again.
-  await chrome.adoptLivingMenu(1, 9)
-  expect(deleteMessage).toHaveBeenCalledTimes(1)
-  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
-})
+}
 
 test('adoptLivingMenu still re-points when both deletion and disarming fail', async () => {
   const {users, chrome, deleteMessage, editMessageReplyMarkup, warn} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
   await users.update(1, {lastMenuMessageId: 4})
-  deleteMessage.mockRejectedValueOnce(new Error('telegram down'))
+  deleteMessage.mockRejectedValueOnce(
+    deleteError("Bad Request: message can't be deleted for everyone"),
+  )
   editMessageReplyMarkup.mockRejectedValueOnce(new Error('telegram down'))
 
   await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
@@ -215,13 +222,43 @@ test('adoptLivingMenu still re-points when both deletion and disarming fail', as
   expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
 })
 
-function deleteError(description: string) {
+function deleteError(description: string, errorCode = 400) {
   return new GrammyError(
     description,
-    {ok: false, error_code: 400, description},
+    {ok: false, error_code: errorCode, description},
     'deleteMessage',
     {},
   )
+}
+
+const nonDisarmErrors = [
+  {name: '429', error: deleteError('Too Many Requests: retry after 1', 429)},
+  {name: '500', error: deleteError('Internal Server Error', 500)},
+  {
+    name: 'network failure',
+    error: new HttpError('Network request for deleteMessage failed!', new Error('reset')),
+  },
+  {name: 'unrelated 400', error: deleteError('Bad Request: chat not found')},
+]
+
+for (const {name, error} of nonDisarmErrors) {
+  test(`adoptLivingMenu only warns and re-points on ${name}`, async () => {
+    const {users, chrome, deleteMessage, editMessageReplyMarkup, warn} = setup()
+    await users.getOrCreate({id: 1, languageCode: 'en'})
+    await users.update(1, {lastMenuMessageId: 4})
+    deleteMessage.mockRejectedValueOnce(error)
+
+    await expect(chrome.adoptLivingMenu(1, 9)).resolves.toBeUndefined()
+
+    expect(deleteMessage).toHaveBeenCalledTimes(1)
+    expect(editMessageReplyMarkup).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(
+      {error, userId: 1, messageId: 4},
+      'Failed to delete superseded living menu',
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect((await users.findById(1))?.lastMenuMessageId).toBe(9)
+  })
 }
 
 test('adoptLivingMenu swallows a failed persist', async () => {
@@ -316,7 +353,7 @@ test('notifier send with withoutMenu bypasses the chrome and appends no open-men
 // --- The join payment screen: a second, temporary menu ---
 
 test('a new join screen deletes the one the previous request left behind', async () => {
-  const {users, chrome, deleteMessage} = setup()
+  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
 
   await chrome.adoptJoinScreen(1, 30)
@@ -325,6 +362,8 @@ test('a new join screen deletes the one the previous request left behind', async
   await chrome.adoptJoinScreen(1, 31)
 
   expect(deleteMessage).toHaveBeenCalledWith(1, 30)
+  expect(deleteMessage).toHaveBeenCalledTimes(1)
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
   expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
 })
 
@@ -371,16 +410,19 @@ test('repainting the same menu in place still clears the join screen', async () 
 })
 
 test('a forgotten join screen is left in the chat by the next menu', async () => {
-  const {users, chrome, deleteMessage} = setup()
+  const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
   await users.getOrCreate({id: 1, languageCode: 'en'})
   await chrome.adoptJoinScreen(1, 30)
 
   // Settled: message 30 is the member's proof of access now, not a payment screen.
   await chrome.forgetJoinScreen(1, 30)
   await chrome.adoptLivingMenu(1, 6)
+  await chrome.adoptJoinScreen(1, 31)
+
+  expect(editMessageReplyMarkup).not.toHaveBeenCalled()
 
   expect(deleteMessage).not.toHaveBeenCalled()
-  expect((await users.findById(1))?.lastJoinMessageId).toBeNull()
+  expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
 })
 
 test('forgetting a join screen the pointer no longer names changes nothing', async () => {
@@ -390,5 +432,69 @@ test('forgetting a join screen the pointer no longer names changes nothing', asy
 
   await chrome.forgetJoinScreen(1, 30)
 
+  expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
+})
+
+for (const description of deletionRefusals) {
+  for (const action of ['adopt', 'drop'] as const) {
+    test(`${action} join screen disarms on ${description}`, async () => {
+      const {users, chrome, deleteMessage, editMessageReplyMarkup} = setup()
+      await users.getOrCreate({id: 1, languageCode: 'en'})
+      await users.update(1, {lastJoinMessageId: 30})
+      deleteMessage.mockRejectedValueOnce(deleteError(description))
+
+      await expect(
+        action === 'adopt' ? chrome.adoptJoinScreen(1, 31) : chrome.dropJoinScreen(1),
+      ).resolves.toBeUndefined()
+
+      expect(deleteMessage).toHaveBeenCalledTimes(1)
+      expect(deleteMessage).toHaveBeenCalledWith(1, 30)
+      expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+      expect(editMessageReplyMarkup).toHaveBeenCalledWith(1, 30, {
+        reply_markup: {inline_keyboard: []},
+      })
+      expect((await users.findById(1))?.lastJoinMessageId).toBe(action === 'adopt' ? 31 : null)
+    })
+  }
+}
+
+for (const {name, error} of [
+  ...nonDisarmErrors,
+  {name: 'already gone', error: deleteError('Bad Request: message to delete not found')},
+]) {
+  for (const action of ['adopt', 'drop'] as const) {
+    test(`${action} join screen skips disarming on ${name}`, async () => {
+      const {users, chrome, deleteMessage, editMessageReplyMarkup, warn} = setup()
+      await users.getOrCreate({id: 1, languageCode: 'en'})
+      await users.update(1, {lastJoinMessageId: 30})
+      deleteMessage.mockRejectedValueOnce(error)
+
+      await expect(
+        action === 'adopt' ? chrome.adoptJoinScreen(1, 31) : chrome.dropJoinScreen(1),
+      ).resolves.toBeUndefined()
+
+      expect(deleteMessage).toHaveBeenCalledTimes(1)
+      expect(editMessageReplyMarkup).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith(
+        {error, userId: 1, messageId: 30},
+        'Failed to delete superseded join payment screen',
+      )
+      expect((await users.findById(1))?.lastJoinMessageId).toBe(action === 'adopt' ? 31 : null)
+    })
+  }
+}
+
+test('join screen still re-points when deletion and disarming both fail', async () => {
+  const {users, chrome, deleteMessage, editMessageReplyMarkup, warn} = setup()
+  await users.getOrCreate({id: 1, languageCode: 'en'})
+  await users.update(1, {lastJoinMessageId: 30})
+  deleteMessage.mockRejectedValueOnce(deleteError("Bad Request: message can't be deleted"))
+  editMessageReplyMarkup.mockRejectedValueOnce(new Error('telegram down'))
+
+  await expect(chrome.adoptJoinScreen(1, 31)).resolves.toBeUndefined()
+
+  expect(editMessageReplyMarkup).toHaveBeenCalledTimes(1)
+  expect(warn).toHaveBeenCalledTimes(2)
   expect((await users.findById(1))?.lastJoinMessageId).toBe(31)
 })

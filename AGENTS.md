@@ -63,6 +63,8 @@ Two helpers in `src/telegram/helpers/living-menu.ts`, and every menu render must
 Both end in `chrome.adoptLivingMenu(userId, messageId)`: same id → no-op, different id → delete the
 tracked menu and move the pointer. That is what stops a click on an orphaned menu from leaving two
 live menus, and it is why there is no "delete the tracked menu" primitive to call on its own.
+If Telegram permanently refuses deletion (other than "message to delete not found"), the old menu
+is disarmed with an empty keyboard; temporary deletion failures are only logged.
 
 **Send before deleting — this order is load-bearing.** Every `conversation.wait()` re-runs the
 conversation body from the top. grammY replays `ctx.api` calls from its log, but the chrome reaches
