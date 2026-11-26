@@ -45,6 +45,9 @@ test('a second /wallet deletes the user command and the previous menu', async ()
   const deleted = deletedIdsSince(mark)
   // One delete for the typed command, one for the menu that /wallet just replaced.
   expect(deleted).toContain(first)
+  if (first === undefined) throw new Error('no menu was sent')
+  expect(e2e.tg.isDeleted(USER_A, first)).toBe(true)
+  expect(methodsSince(mark)).not.toContain('editMessageReplyMarkup')
   expect(deleted).toHaveLength(2)
   expect(methodsSince(mark).filter(method => method === 'sendRichMessage')).toHaveLength(1)
   const second = e2e.tg.lastMessageId('sendRichMessage')
@@ -62,6 +65,62 @@ test('plain text replaces the menu the same way a command does', async () => {
 
   expect(deletedIdsSince(mark)).toContain(first)
   expect(await menuPointer()).toBe(e2e.tg.lastMessageId('sendRichMessage'))
+  expectNoErrors(e2e.logs)
+})
+
+test('a new /wallet disarms the previous menu when it is too old to delete', async () => {
+  await e2e.send(privateCommand('/wallet'))
+  const first = e2e.tg.lastMessageId('sendRichMessage')
+  if (first === undefined) throw new Error('no menu was sent')
+  const mark = e2e.tg.calls.length
+  // The command is deleted first; only deletion of the tracked old menu is refused.
+  e2e.tg.reply('deleteMessage', true)
+  e2e.tg.fail('deleteMessage', {
+    error_code: 400,
+    description: "Bad Request: message can't be deleted for everyone",
+  })
+
+  await e2e.send(privateCommand('/wallet'))
+
+  expect(e2e.tg.isDeleted(USER_A, first)).toBe(false)
+  expect(e2e.tg.calls.slice(mark).filter(call => call.method === 'editMessageReplyMarkup')).toEqual(
+    [
+      {
+        method: 'editMessageReplyMarkup',
+        payload: {chat_id: USER_A, message_id: first, reply_markup: {inline_keyboard: []}},
+      },
+    ],
+  )
+  expect(e2e.tg.succeeded('editMessageReplyMarkup')).toHaveLength(1)
+  const second = e2e.tg.lastMessageId('sendRichMessage')
+  expect(second).not.toBe(first)
+  expect(await menuPointer()).toBe(second)
+  expect(methodsSince(mark).filter(method => method === 'sendRichMessage')).toHaveLength(1)
+  expect(methodsSince(mark)).not.toContain('sendMessage')
+  expectNoErrors(e2e.logs)
+})
+
+test('a new /wallet survives failure of both old menu cleanup calls', async () => {
+  await e2e.send(privateCommand('/wallet'))
+  const first = e2e.tg.lastMessageId('sendRichMessage')
+  const mark = e2e.tg.calls.length
+  e2e.tg.reply('deleteMessage', true)
+  e2e.tg.fail('deleteMessage', {
+    error_code: 400,
+    description: "Bad Request: message can't be deleted for everyone",
+  })
+  e2e.tg.fail('editMessageReplyMarkup', {
+    error_code: 400,
+    description: 'Bad Request: message to edit not found',
+  })
+
+  await e2e.send(privateCommand('/wallet'))
+
+  expect(e2e.tg.last('editMessageReplyMarkup')?.message_id).toBe(first)
+  expect(await menuPointer()).toBe(e2e.tg.lastMessageId('sendRichMessage'))
+  expect(await menuPointer()).not.toBe(first)
+  expect(methodsSince(mark).filter(method => method === 'sendRichMessage')).toHaveLength(1)
+  expect(methodsSince(mark)).not.toContain('sendMessage')
   expectNoErrors(e2e.logs)
 })
 
@@ -115,11 +174,15 @@ test('adoption survives Telegram refusing to delete the tracked menu', async () 
     error_code: 400,
     description: 'Bad Request: message to delete not found',
   })
+  const mark = e2e.tg.calls.length
 
   await e2e.send(privateCallback(staticCallback.settings, {messageId: orphan}))
 
   // No second menu is spawned to "recover" — that loop is what produced multiple live menus.
   expect(await menuPointer()).toBe(orphan)
+  expect(methodsSince(mark)).not.toContain('editMessageReplyMarkup')
+  expect(methodsSince(mark)).not.toContain('sendRichMessage')
+  expect(methodsSince(mark)).not.toContain('sendMessage')
   expectNoErrors(e2e.logs)
 })
 
